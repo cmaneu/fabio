@@ -29,8 +29,8 @@ class TestLibsecretDetection:
     def test_linux_with_working_secret_service(
         self, mock_run: MagicMock, _mock_sys: object
     ) -> None:
-        # secret-tool exits 1 when item not found -- service is reachable
-        mock_run.return_value = MagicMock(returncode=1)
+        # secret-tool exits 1 when item not found, no stderr -- service is reachable
+        mock_run.return_value = MagicMock(returncode=1, stderr=b"")
         assert _is_libsecret_available() is True
 
     @patch("fabio.cache.platform.system", return_value="Linux")
@@ -46,8 +46,11 @@ class TestLibsecretDetection:
     @patch("fabio.cache.platform.system", return_value="Linux")
     @patch("fabio.cache.subprocess.run")
     def test_linux_secret_tool_dbus_failure(self, mock_run: MagicMock, _mock_sys: object) -> None:
-        # secret-tool exits with code other than 0 or 1 when D-Bus is broken
-        mock_run.return_value = MagicMock(returncode=2)
+        # secret-tool exits 1 with stderr when the secret service is unreachable
+        mock_run.return_value = MagicMock(
+            returncode=1,
+            stderr=b"secret-tool: The name org.freedesktop.secrets was not provided",
+        )
         assert _is_libsecret_available() is False
 
     @patch("fabio.cache.platform.system", return_value="Linux")

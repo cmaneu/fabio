@@ -40,18 +40,21 @@ def _is_libsecret_available() -> bool:
         _libsecret_available = True
         return True
 
-    # Attempt to probe the secret service via secret-tool.  A successful exit
-    # (even with no results) means the keyring daemon is reachable.  Any
-    # failure (missing binary, no D-Bus, no keyring) means we cannot use it.
+    # Attempt to probe the secret service via secret-tool.  A successful
+    # lookup (even with no results) means the keyring daemon is reachable.
+    # If secret-tool writes to stderr it means the service is broken.
     try:
         result = subprocess.run(
             ["secret-tool", "lookup", "fabio-probe", "test"],
             capture_output=True,
             timeout=5,
         )
-        # Exit code 0 or 1 both indicate the tool ran successfully
-        # (1 = not found, which is fine -- the service is reachable).
-        _libsecret_available = result.returncode in (0, 1)
+        # If stderr has content, the secret service is not functional
+        # (e.g. "The name org.freedesktop.secrets was not provided...").
+        # Exit 0 = found item, exit 1 = not found (both mean service works).
+        _libsecret_available = (
+            not result.stderr and result.returncode in (0, 1)
+        )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         _libsecret_available = False
 
