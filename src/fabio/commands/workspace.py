@@ -16,8 +16,8 @@ def workspace() -> None:
     """Manage Microsoft Fabric workspaces."""
 
 
-@workspace.command(name="ls")
-def ls() -> None:
+@workspace.command(name="list")
+def list_workspaces() -> None:
     """List all accessible workspaces."""
     data = client.get("/workspaces")
     workspaces = data.get("value", [])

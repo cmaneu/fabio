@@ -29,8 +29,8 @@ class TestRequireAuth:
     def test_exits_when_not_logged_in(self, auth_files: Path) -> None:
         """Commands that need auth should fail gracefully when unauthenticated."""
         runner = CliRunner()
-        # workspace ls calls client.get -> require_auth internally.
-        result = runner.invoke(main, ["workspace", "ls"])
+        # workspace list calls client.get -> require_auth internally.
+        result = runner.invoke(main, ["workspace", "list"])
 
         assert result.exit_code != 0
         assert "Not authenticated" in result.output
@@ -40,7 +40,7 @@ class TestRequireAuth:
         save_record(AuthRecord(username="u", tenant_id="t", authority="a"))
 
         runner = CliRunner()
-        result = runner.invoke(main, ["workspace", "ls"])
+        result = runner.invoke(main, ["workspace", "list"])
 
         assert result.exit_code != 0
         assert "Not authenticated" in result.output
@@ -65,7 +65,7 @@ class TestRequireAuth:
         mock_cred_cls.return_value = mock_cred
 
         runner = CliRunner()
-        result = runner.invoke(main, ["workspace", "ls"])
+        result = runner.invoke(main, ["workspace", "list"])
 
         assert result.exit_code != 0
         assert "Session expired" in result.output
@@ -104,7 +104,7 @@ class TestRequireAuth:
         mock_requests_get.return_value = mock_resp
 
         runner = CliRunner()
-        result = runner.invoke(main, ["workspace", "ls"])
+        result = runner.invoke(main, ["workspace", "list"])
 
         assert result.exit_code == 0
         assert "TestWS" in result.output

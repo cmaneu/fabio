@@ -1,4 +1,4 @@
-"""Tests for ``fabio workspace ls`` command."""
+"""Tests for ``fabio workspace list`` command."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ class TestWorkspaceLs:
     def test_lists_workspaces(self) -> None:
         runner = CliRunner()
         with patch("fabio.commands.workspace.client.get", return_value=_fake_workspaces()):
-            result = runner.invoke(main, ["workspace", "ls"])
+            result = runner.invoke(main, ["workspace", "list"])
 
         assert result.exit_code == 0
         assert "My Workspace" in result.output
@@ -43,7 +43,7 @@ class TestWorkspaceLs:
     def test_empty_workspaces(self) -> None:
         runner = CliRunner()
         with patch("fabio.commands.workspace.client.get", return_value={"value": []}):
-            result = runner.invoke(main, ["workspace", "ls"])
+            result = runner.invoke(main, ["workspace", "list"])
 
         assert result.exit_code == 0
         assert "No workspaces found" in result.output
@@ -56,7 +56,7 @@ class TestWorkspaceLs:
             "fabio.commands.workspace.client.get",
             side_effect=click.ClickException("Fabric API error 401: Unauthorized"),
         ):
-            result = runner.invoke(main, ["workspace", "ls"])
+            result = runner.invoke(main, ["workspace", "list"])
 
         assert result.exit_code != 0
         assert "401" in result.output
