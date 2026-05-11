@@ -49,10 +49,7 @@ def _do_interactive_login(tenant_id: str | None) -> tuple[AuthRecord, str]:
         kwargs["tenant_id"] = tenant_id
 
     credential = InteractiveBrowserCredential(**kwargs)
-    # Force token acquisition to populate the cache and authentication_record.
-    credential.get_token(FABRIC_SCOPE)
-
-    azure_record = credential.authentication_record  # type: ignore[attr-defined]
+    azure_record = credential.authenticate(scopes=(FABRIC_SCOPE,))
     return _record_from_azure_auth(azure_record), azure_record.serialize()
 
 
@@ -67,9 +64,7 @@ def _do_device_code_login(tenant_id: str | None) -> tuple[AuthRecord, str]:
         kwargs["tenant_id"] = tenant_id
 
     credential = DeviceCodeCredential(**kwargs)  # type: ignore[arg-type]
-    credential.get_token(FABRIC_SCOPE)
-
-    azure_record = credential.authentication_record  # type: ignore[attr-defined]
+    azure_record = credential.authenticate(scopes=(FABRIC_SCOPE,))
     return _record_from_azure_auth(azure_record), azure_record.serialize()
 
 

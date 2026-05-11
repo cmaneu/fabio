@@ -56,8 +56,7 @@ class TestLogin:
         self, mock_cred_cls: MagicMock, runner: CliRunner, auth_files: Path
     ) -> None:
         mock_cred = MagicMock()
-        mock_cred.get_token.return_value = MagicMock(token="fake")
-        mock_cred.authentication_record = _mock_azure_record()
+        mock_cred.authenticate.return_value = _mock_azure_record()
         mock_cred_cls.return_value = mock_cred
 
         result = runner.invoke(main, ["auth", "login"])
@@ -71,8 +70,7 @@ class TestLogin:
         self, mock_cred_cls: MagicMock, runner: CliRunner, auth_files: Path
     ) -> None:
         mock_cred = MagicMock()
-        mock_cred.get_token.return_value = MagicMock(token="fake")
-        mock_cred.authentication_record = _mock_azure_record(
+        mock_cred.authenticate.return_value = _mock_azure_record(
             username="dev@contoso.com", tenant_id="t2"
         )
         mock_cred_cls.return_value = mock_cred
@@ -87,8 +85,7 @@ class TestLogin:
         self, mock_cred_cls: MagicMock, runner: CliRunner, auth_files: Path
     ) -> None:
         mock_cred = MagicMock()
-        mock_cred.get_token.return_value = MagicMock(token="fake")
-        mock_cred.authentication_record = _mock_azure_record(tenant_id="custom-tenant")
+        mock_cred.authenticate.return_value = _mock_azure_record(tenant_id="custom-tenant")
         mock_cred_cls.return_value = mock_cred
 
         result = runner.invoke(main, ["auth", "login", "--tenant", "custom-tenant"])
