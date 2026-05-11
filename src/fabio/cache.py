@@ -11,7 +11,7 @@ never an issue.
 from __future__ import annotations
 
 import platform
-import shutil
+import subprocess
 
 from azure.identity import TokenCachePersistenceOptions
 from rich.console import Console
@@ -20,21 +20,42 @@ console = Console(stderr=True)
 
 _CACHE_NAME = "fabio"
 
+# Cache the probe result so we only check once per process.
+_libsecret_available: bool | None = None
+
 
 def _is_libsecret_available() -> bool:
-    """Check whether libsecret is usable on the current system."""
+    """Check whether libsecret is actually usable on the current system.
+
+    On non-Linux platforms this always returns True (macOS Keychain / Windows
+    DPAPI are always functional).  On Linux we attempt a real ``secret-tool``
+    lookup to verify the secret service is reachable.
+    """
+    global _libsecret_available
+
+    if _libsecret_available is not None:
+        return _libsecret_available
+
     if platform.system() != "Linux":
-        # macOS uses Keychain, Windows uses DPAPI -- always available.
+        _libsecret_available = True
         return True
 
-    # libsecret requires the `secret-tool` binary and a running D-Bus session.
-    if shutil.which("secret-tool") is None:
-        return False
+    # Attempt to probe the secret service via secret-tool.  A successful exit
+    # (even with no results) means the keyring daemon is reachable.  Any
+    # failure (missing binary, no D-Bus, no keyring) means we cannot use it.
+    try:
+        result = subprocess.run(
+            ["secret-tool", "lookup", "fabio-probe", "test"],
+            capture_output=True,
+            timeout=5,
+        )
+        # Exit code 0 or 1 both indicate the tool ran successfully
+        # (1 = not found, which is fine -- the service is reachable).
+        _libsecret_available = result.returncode in (0, 1)
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        _libsecret_available = False
 
-    # Check if DBUS_SESSION_BUS_ADDRESS is set (needed for secret service).
-    import os
-
-    return "DBUS_SESSION_BUS_ADDRESS" in os.environ
+    return _libsecret_available
 
 
 def get_cache_options(warn: bool = True) -> TokenCachePersistenceOptions:
