@@ -25,6 +25,7 @@ classifiers = [
 dependencies = [
     "click>=8.1",
     "azure-identity>=1.15",
+    "requests>=2.31",
     "rich>=13.0",
 ]
 

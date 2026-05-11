@@ -6,6 +6,7 @@ import click
 
 from fabio import __version__
 from fabio.commands.auth import auth
+from fabio.commands.workspace import workspace
 
 
 @click.group()
@@ -15,3 +16,4 @@ def main() -> None:
 
 
 main.add_command(auth)
+main.add_command(workspace)
