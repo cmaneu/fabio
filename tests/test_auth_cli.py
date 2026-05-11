@@ -72,7 +72,7 @@ class TestLogin:
         mock_cred.get_token.return_value = MagicMock(token=token_str)
         mock_cred_cls.return_value = mock_cred
 
-        result = runner.invoke(main, ["auth", "login", "--device-code"])
+        result = runner.invoke(main, ["auth", "login", "--use-device-code"])
 
         assert result.exit_code == 0
         assert "dev@contoso.com" in result.output

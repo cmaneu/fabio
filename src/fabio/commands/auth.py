@@ -74,15 +74,17 @@ def auth() -> None:
 @auth.command()
 @click.option("--tenant", "-t", default=None, help="Azure AD tenant ID or domain.")
 @click.option(
-    "--device-code",
+    "--use-device-code",
     is_flag=True,
     default=False,
     help="Use device-code flow instead of opening a browser.",
 )
-def login(tenant: str | None, device_code: bool) -> None:
+def login(tenant: str | None, use_device_code: bool) -> None:
     """Sign in to Microsoft Fabric."""
     try:
-        record = _do_device_code_login(tenant) if device_code else _do_interactive_login(tenant)
+        record = (
+            _do_device_code_login(tenant) if use_device_code else _do_interactive_login(tenant)
+        )
     except Exception as exc:
         console.print(f"[red]Login failed:[/red] {exc}")
         sys.exit(1)
