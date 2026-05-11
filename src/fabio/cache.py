@@ -81,8 +81,7 @@ def get_cache_options(warn: bool = True) -> TokenCachePersistenceOptions:
 
     if warn:
         console.print(
-            "[yellow]Warning:[/yellow] No secret service provider (keyring daemon) is running. "
-            "Credentials will be stored unencrypted in the file system.\n"
-            "Start a keyring daemon (e.g. gnome-keyring-daemon) for encrypted storage.",
+            "[yellow]Warning:[/yellow] No keyring daemon running. "
+            "Credentials will be stored unencrypted at ~/.config/fabio/.",
         )
     return TokenCachePersistenceOptions(name=_CACHE_NAME, allow_unencrypted_storage=True)
