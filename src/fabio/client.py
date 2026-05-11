@@ -18,18 +18,16 @@ from azure.identity import (
 )
 from azure.identity import (
     InteractiveBrowserCredential,
-    TokenCachePersistenceOptions,
 )
 from rich.console import Console
 
 from fabio.auth_store import load_azure_record, load_record
+from fabio.cache import get_cache_options
 
 FABRIC_BASE_URL = "https://api.fabric.microsoft.com/v1"
 FABRIC_SCOPE = "https://analysis.windows.net/powerbi/api/.default"
 
 console = Console()
-
-_cache_options = TokenCachePersistenceOptions(name="fabio")
 
 
 def require_auth() -> str:
@@ -52,7 +50,7 @@ def require_auth() -> str:
 
     credential = InteractiveBrowserCredential(
         authentication_record=azure_record,
-        cache_persistence_options=_cache_options,
+        cache_persistence_options=get_cache_options(warn=False),
         # Disable automatic interactive auth -- if the cache is empty/expired
         # we want to fail explicitly rather than pop open a browser.
         disable_automatic_authentication=True,

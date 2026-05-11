@@ -11,7 +11,6 @@ from azure.identity import (
 from azure.identity import (
     DeviceCodeCredential,
     InteractiveBrowserCredential,
-    TokenCachePersistenceOptions,
 )
 from rich.console import Console
 
@@ -22,14 +21,12 @@ from fabio.auth_store import (
     save_azure_record,
     save_record,
 )
+from fabio.cache import get_cache_options
 
 # Microsoft Fabric / Power BI REST API scope
 FABRIC_SCOPE = "https://analysis.windows.net/powerbi/api/.default"
 
 console = Console()
-
-# Enable persistent MSAL token cache so refresh tokens survive across sessions.
-_cache_options = TokenCachePersistenceOptions(name="fabio")
 
 
 def _record_from_azure_auth(azure_record: AzureAuthRecord) -> AuthRecord:
@@ -46,7 +43,8 @@ def _do_interactive_login(tenant_id: str | None) -> tuple[AuthRecord, str]:
 
     Returns the display AuthRecord and the serialized azure AuthenticationRecord.
     """
-    kwargs: dict[str, object] = {"cache_persistence_options": _cache_options}
+    cache_options = get_cache_options()
+    kwargs: dict[str, object] = {"cache_persistence_options": cache_options}
     if tenant_id:
         kwargs["tenant_id"] = tenant_id
 
@@ -63,7 +61,8 @@ def _do_device_code_login(tenant_id: str | None) -> tuple[AuthRecord, str]:
 
     Returns the display AuthRecord and the serialized azure AuthenticationRecord.
     """
-    kwargs: dict[str, object] = {"cache_persistence_options": _cache_options}
+    cache_options = get_cache_options()
+    kwargs: dict[str, object] = {"cache_persistence_options": cache_options}
     if tenant_id:
         kwargs["tenant_id"] = tenant_id
 
