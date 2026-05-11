@@ -6,10 +6,8 @@ azure-identity interactions so no real browser/device-code flows are needed.
 
 from __future__ import annotations
 
-import base64
-import json
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -28,20 +26,25 @@ def runner() -> CliRunner:
 
 
 @pytest.fixture()
-def auth_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Redirect AUTH_FILE to a temp location."""
-    fake = tmp_path / "auth.json"
-    monkeypatch.setattr("fabio.auth_store.AUTH_FILE", fake)
-    # Also patch the reference in auth command module (it imports at call time
-    # through the helper functions so the monkeypatch above is sufficient).
-    return fake
+def auth_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Redirect auth files to a temp location."""
+    fake_auth = tmp_path / "auth.json"
+    fake_azure = tmp_path / "azure_auth_record.json"
+    monkeypatch.setattr("fabio.auth_store.AUTH_FILE", fake_auth)
+    monkeypatch.setattr("fabio.auth_store.AZURE_RECORD_FILE", fake_azure)
+    return fake_auth
 
 
-def _make_fake_token(claims: dict[str, Any]) -> str:
-    """Build a fake JWT-shaped string with the given payload claims."""
-    header = base64.urlsafe_b64encode(b'{"alg":"none"}').decode().rstrip("=")
-    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
-    return f"{header}.{payload}.sig"
+def _mock_azure_record(
+    username: str = "user@contoso.com", tenant_id: str = "tenant-1"
+) -> MagicMock:
+    """Create a mock azure-identity AuthenticationRecord."""
+    rec = MagicMock()
+    rec.username = username
+    rec.tenant_id = tenant_id
+    rec.authority = f"https://login.microsoftonline.com/{tenant_id}"
+    rec.serialize.return_value = '{"mock": "serialized"}'
+    return rec
 
 
 # -- fabio auth login -------------------------------------------------------
@@ -50,26 +53,28 @@ def _make_fake_token(claims: dict[str, Any]) -> str:
 class TestLogin:
     @patch("fabio.commands.auth.InteractiveBrowserCredential", autospec=False)
     def test_login_browser_success(
-        self, mock_cred_cls: MagicMock, runner: CliRunner, auth_file: Path
+        self, mock_cred_cls: MagicMock, runner: CliRunner, auth_files: Path
     ) -> None:
-        token_str = _make_fake_token({"upn": "user@contoso.com", "tid": "tenant-1"})
         mock_cred = MagicMock()
-        mock_cred.get_token.return_value = MagicMock(token=token_str)
+        mock_cred.get_token.return_value = MagicMock(token="fake")
+        mock_cred.authentication_record = _mock_azure_record()
         mock_cred_cls.return_value = mock_cred
 
         result = runner.invoke(main, ["auth", "login"])
 
         assert result.exit_code == 0
         assert "user@contoso.com" in result.output
-        assert auth_file.exists()
+        assert auth_files.exists()
 
     @patch("fabio.commands.auth.DeviceCodeCredential", autospec=False)
     def test_login_device_code_success(
-        self, mock_cred_cls: MagicMock, runner: CliRunner, auth_file: Path
+        self, mock_cred_cls: MagicMock, runner: CliRunner, auth_files: Path
     ) -> None:
-        token_str = _make_fake_token({"preferred_username": "dev@contoso.com", "tid": "t2"})
         mock_cred = MagicMock()
-        mock_cred.get_token.return_value = MagicMock(token=token_str)
+        mock_cred.get_token.return_value = MagicMock(token="fake")
+        mock_cred.authentication_record = _mock_azure_record(
+            username="dev@contoso.com", tenant_id="t2"
+        )
         mock_cred_cls.return_value = mock_cred
 
         result = runner.invoke(main, ["auth", "login", "--use-device-code"])
@@ -79,21 +84,23 @@ class TestLogin:
 
     @patch("fabio.commands.auth.InteractiveBrowserCredential", autospec=False)
     def test_login_with_tenant(
-        self, mock_cred_cls: MagicMock, runner: CliRunner, auth_file: Path
+        self, mock_cred_cls: MagicMock, runner: CliRunner, auth_files: Path
     ) -> None:
-        token_str = _make_fake_token({"sub": "s", "tid": "custom-tenant"})
         mock_cred = MagicMock()
-        mock_cred.get_token.return_value = MagicMock(token=token_str)
+        mock_cred.get_token.return_value = MagicMock(token="fake")
+        mock_cred.authentication_record = _mock_azure_record(tenant_id="custom-tenant")
         mock_cred_cls.return_value = mock_cred
 
         result = runner.invoke(main, ["auth", "login", "--tenant", "custom-tenant"])
 
         assert result.exit_code == 0
-        mock_cred_cls.assert_called_once_with(tenant_id="custom-tenant")
+        # Verify tenant was passed to the credential constructor.
+        call_kwargs = mock_cred_cls.call_args[1]
+        assert call_kwargs["tenant_id"] == "custom-tenant"
 
     @patch("fabio.commands.auth.InteractiveBrowserCredential", autospec=False)
     def test_login_failure(
-        self, mock_cred_cls: MagicMock, runner: CliRunner, auth_file: Path
+        self, mock_cred_cls: MagicMock, runner: CliRunner, auth_files: Path
     ) -> None:
         mock_cred_cls.side_effect = RuntimeError("no browser")
 
@@ -107,16 +114,16 @@ class TestLogin:
 
 
 class TestLogout:
-    def test_logout_with_session(self, runner: CliRunner, auth_file: Path) -> None:
+    def test_logout_with_session(self, runner: CliRunner, auth_files: Path) -> None:
         save_record(AuthRecord(username="u", tenant_id="t", authority="a"))
 
         result = runner.invoke(main, ["auth", "logout"])
 
         assert result.exit_code == 0
         assert "Logged out" in result.output
-        assert not auth_file.exists()
+        assert not auth_files.exists()
 
-    def test_logout_without_session(self, runner: CliRunner, auth_file: Path) -> None:
+    def test_logout_without_session(self, runner: CliRunner, auth_files: Path) -> None:
         result = runner.invoke(main, ["auth", "logout"])
 
         assert result.exit_code == 0
@@ -127,7 +134,7 @@ class TestLogout:
 
 
 class TestStatus:
-    def test_status_logged_in(self, runner: CliRunner, auth_file: Path) -> None:
+    def test_status_logged_in(self, runner: CliRunner, auth_files: Path) -> None:
         save_record(
             AuthRecord(
                 username="alice@contoso.com",
@@ -143,7 +150,7 @@ class TestStatus:
         assert "alice@contoso.com" in result.output
         assert "tid-123" in result.output
 
-    def test_status_not_logged_in(self, runner: CliRunner, auth_file: Path) -> None:
+    def test_status_not_logged_in(self, runner: CliRunner, auth_files: Path) -> None:
         result = runner.invoke(main, ["auth", "status"])
 
         assert result.exit_code != 0

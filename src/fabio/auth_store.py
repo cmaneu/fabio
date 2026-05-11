@@ -1,10 +1,11 @@
-"""Persistent token / session cache for Fabric authentication.
+"""Persistent authentication state for Fabric CLI.
 
-Tokens are stored as JSON in ``~/.config/fabio/auth.json`` (XDG-compatible on
-Linux, ``%APPDATA%/fabio`` on Windows).  The file contains only the metadata
-needed to display auth status (account hint, expiry); actual credential caching
-is delegated to ``azure-identity``'s built-in persistent cache so that refresh
-tokens are handled securely.
+Stores the azure-identity ``AuthenticationRecord`` (serialized) alongside a
+lightweight metadata record.  The ``AuthenticationRecord`` enables silent token
+acquisition on subsequent CLI invocations without re-prompting the user.
+
+Files are stored in ``~/.config/fabio/`` (XDG on Linux, ``%APPDATA%/fabio`` on
+Windows).
 """
 
 from __future__ import annotations
@@ -26,12 +27,14 @@ def _config_dir() -> Path:
     return Path(base) / "fabio"
 
 
-AUTH_FILE = _config_dir() / "auth.json"
+CONFIG_DIR = _config_dir()
+AUTH_FILE = CONFIG_DIR / "auth.json"
+AZURE_RECORD_FILE = CONFIG_DIR / "azure_auth_record.json"
 
 
 @dataclass
 class AuthRecord:
-    """Lightweight record persisted alongside the azure-identity cache."""
+    """Lightweight metadata persisted for display purposes (status command)."""
 
     username: str
     tenant_id: str
@@ -46,6 +49,9 @@ class AuthRecord:
         if delta < 3600:
             return f"{delta // 60}m ago"
         return f"{delta // 3600}h {(delta % 3600) // 60}m ago"
+
+
+# -- Metadata record persistence ---------------------------------------------
 
 
 def save_record(record: AuthRecord) -> None:
@@ -65,9 +71,31 @@ def load_record() -> AuthRecord | None:
         return None
 
 
+# -- Azure-identity AuthenticationRecord persistence --------------------------
+
+
+def save_azure_record(serialized: str) -> None:
+    """Persist the serialized azure-identity AuthenticationRecord."""
+    AZURE_RECORD_FILE.parent.mkdir(parents=True, exist_ok=True)
+    AZURE_RECORD_FILE.write_text(serialized)
+
+
+def load_azure_record() -> str | None:
+    """Load the serialized azure-identity AuthenticationRecord, or None."""
+    if not AZURE_RECORD_FILE.exists():
+        return None
+    content = AZURE_RECORD_FILE.read_text().strip()
+    return content if content else None
+
+
+# -- Cleanup ------------------------------------------------------------------
+
+
 def clear_record() -> bool:
-    """Remove the persisted auth record.  Returns *True* if a file was deleted."""
-    if AUTH_FILE.exists():
-        AUTH_FILE.unlink()
-        return True
-    return False
+    """Remove all persisted auth state.  Returns *True* if anything was deleted."""
+    removed = False
+    for path in (AUTH_FILE, AZURE_RECORD_FILE):
+        if path.exists():
+            path.unlink()
+            removed = True
+    return removed

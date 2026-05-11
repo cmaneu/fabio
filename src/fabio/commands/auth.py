@@ -2,63 +2,76 @@
 
 from __future__ import annotations
 
-import base64
-import json
 import sys
 
 import click
-from azure.identity import DeviceCodeCredential, InteractiveBrowserCredential
+from azure.identity import (
+    AuthenticationRecord as AzureAuthRecord,
+)
+from azure.identity import (
+    DeviceCodeCredential,
+    InteractiveBrowserCredential,
+    TokenCachePersistenceOptions,
+)
 from rich.console import Console
 
-from fabio.auth_store import AuthRecord, clear_record, load_record, save_record
+from fabio.auth_store import (
+    AuthRecord,
+    clear_record,
+    load_record,
+    save_azure_record,
+    save_record,
+)
 
 # Microsoft Fabric / Power BI REST API scope
 FABRIC_SCOPE = "https://analysis.windows.net/powerbi/api/.default"
 
 console = Console()
 
-
-def _decode_jwt_claims(token_str: str) -> dict[str, object]:
-    """Decode the payload segment of a JWT without signature verification."""
-    payload_b64 = token_str.split(".")[1]
-    payload_b64 += "=" * (-len(payload_b64) % 4)
-    return json.loads(base64.urlsafe_b64decode(payload_b64))  # type: ignore[no-any-return]
+# Enable persistent MSAL token cache so refresh tokens survive across sessions.
+_cache_options = TokenCachePersistenceOptions(name="fabio")
 
 
-def _record_from_token(token_str: str, fallback_tenant: str | None) -> AuthRecord:
-    """Build an *AuthRecord* by inspecting JWT claims."""
-    claims = _decode_jwt_claims(token_str)
-    username = (
-        claims.get("upn") or claims.get("preferred_username") or claims.get("sub", "unknown")
-    )
-    tid = claims.get("tid", fallback_tenant or "unknown")
+def _record_from_azure_auth(azure_record: AzureAuthRecord) -> AuthRecord:
+    """Build a display-friendly AuthRecord from an azure-identity AuthenticationRecord."""
     return AuthRecord(
-        username=str(username),
-        tenant_id=str(tid),
-        authority=f"https://login.microsoftonline.com/{tid}",
+        username=azure_record.username,
+        tenant_id=azure_record.tenant_id,
+        authority=azure_record.authority,
     )
 
 
-def _do_interactive_login(tenant_id: str | None) -> AuthRecord:
-    """Run an interactive browser-based login and return an AuthRecord."""
-    kwargs: dict[str, object] = {}
+def _do_interactive_login(tenant_id: str | None) -> tuple[AuthRecord, str]:
+    """Run an interactive browser-based login.
+
+    Returns the display AuthRecord and the serialized azure AuthenticationRecord.
+    """
+    kwargs: dict[str, object] = {"cache_persistence_options": _cache_options}
     if tenant_id:
         kwargs["tenant_id"] = tenant_id
 
     credential = InteractiveBrowserCredential(**kwargs)
-    token = credential.get_token(FABRIC_SCOPE)
-    return _record_from_token(token.token, tenant_id)
+    # Force token acquisition to populate the cache and authentication_record.
+    credential.get_token(FABRIC_SCOPE)
+
+    azure_record = credential.authentication_record  # type: ignore[attr-defined]
+    return _record_from_azure_auth(azure_record), azure_record.serialize()
 
 
-def _do_device_code_login(tenant_id: str | None) -> AuthRecord:
-    """Run a device-code login flow and return an AuthRecord."""
-    kwargs: dict[str, object] = {}
+def _do_device_code_login(tenant_id: str | None) -> tuple[AuthRecord, str]:
+    """Run a device-code login flow.
+
+    Returns the display AuthRecord and the serialized azure AuthenticationRecord.
+    """
+    kwargs: dict[str, object] = {"cache_persistence_options": _cache_options}
     if tenant_id:
         kwargs["tenant_id"] = tenant_id
 
     credential = DeviceCodeCredential(**kwargs)  # type: ignore[arg-type]
-    token = credential.get_token(FABRIC_SCOPE)
-    return _record_from_token(token.token, tenant_id)
+    credential.get_token(FABRIC_SCOPE)
+
+    azure_record = credential.authentication_record  # type: ignore[attr-defined]
+    return _record_from_azure_auth(azure_record), azure_record.serialize()
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +95,7 @@ def auth() -> None:
 def login(tenant: str | None, use_device_code: bool) -> None:
     """Sign in to Microsoft Fabric."""
     try:
-        record = (
+        record, serialized = (
             _do_device_code_login(tenant) if use_device_code else _do_interactive_login(tenant)
         )
     except Exception as exc:
@@ -90,6 +103,7 @@ def login(tenant: str | None, use_device_code: bool) -> None:
         sys.exit(1)
 
     save_record(record)
+    save_azure_record(serialized)
     console.print(f"[green]Logged in as[/green] {record.username}")
 
 
