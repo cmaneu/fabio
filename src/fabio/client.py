@@ -108,7 +108,11 @@ def get(path: str, params: dict[str, str] | None = None) -> dict[str, Any]:
 
 
 def list_onelake_files(
-    workspace_id: str, lakehouse_id: str, directory: str = "Files"
+    workspace_id: str,
+    lakehouse_id: str,
+    directory: str = "Files",
+    *,
+    recursive: bool = False,
 ) -> list[dict[str, Any]]:
     """List files in a lakehouse via the OneLake DFS API.
 
@@ -120,6 +124,8 @@ def list_onelake_files(
         The lakehouse item ID.
     directory:
         Directory path within the lakehouse (default ``Files``).
+    recursive:
+        If True, list all contents recursively.
 
     Returns
     -------
@@ -130,7 +136,11 @@ def list_onelake_files(
     url = f"{ONELAKE_DFS_URL}/{workspace_id}/{lakehouse_id}"
     resp = requests.get(
         url,
-        params={"resource": "filesystem", "directory": directory, "recursive": "false"},
+        params={
+            "resource": "filesystem",
+            "directory": directory,
+            "recursive": "true" if recursive else "false",
+        },
         headers={"Authorization": f"Bearer {token}"},
         timeout=30,
     )

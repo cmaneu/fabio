@@ -65,6 +65,43 @@ def _show_lakehouse_contents(workspace_id: str, lakehouse_id: str, title: str) -
     console.print(ftable)
 
 
+def _show_directory(workspace_id: str, lakehouse_id: str, directory: str) -> None:
+    """List all contents of a directory in a lakehouse (recursively)."""
+    entries = client.list_onelake_files(
+        workspace_id, lakehouse_id, directory=directory, recursive=True
+    )
+
+    if not entries:
+        console.print(f"[yellow]No files found in '{directory}'.[/yellow]")
+        return
+
+    # Strip the directory prefix for cleaner display.
+    prefix = f"{directory}/" if not directory.endswith("/") else directory
+
+    table = Table(title=f"Contents of '{directory}'")
+    table.add_column("Name", style="bold")
+    table.add_column("Size")
+    table.add_column("Last Modified")
+    table.add_column("Type", style="dim")
+
+    for entry in entries:
+        full_name = entry.get("name", "")
+        # Show path relative to the listed directory.
+        rel_name = full_name[len(prefix):] if full_name.startswith(prefix) else full_name
+        if not rel_name:
+            continue
+        is_dir = entry.get("isDirectory", "false")
+        size = str(entry.get("contentLength", "")) if is_dir != "true" else "-"
+        table.add_row(
+            rel_name,
+            size,
+            entry.get("lastModified", ""),
+            "dir" if is_dir == "true" else "file",
+        )
+
+    console.print(table)
+
+
 @click.group()
 def workspace() -> None:
     """Manage Microsoft Fabric workspaces."""
@@ -101,8 +138,13 @@ def list_workspaces() -> None:
 @click.option("--name", "-n", required=True, help="Name of the workspace to show.")
 @click.option("--item", "-i", default=None, help="Name of a specific item to inspect.")
 @click.option("--type", "-t", "item_type", default=None, help="Filter artifacts by type.")
-def show_workspace(name: str, item: str | None, item_type: str | None) -> None:
+@click.option("--dir", "-d", "dir_path", default=None, help="Directory path to list within a lakehouse.")
+def show_workspace(name: str, item: str | None, item_type: str | None, dir_path: str | None) -> None:
     """Show Fabric artifacts in a workspace, or details of a specific item."""
+    if dir_path is not None and item is None:
+        console.print("[red]--dir requires --item to specify a lakehouse.[/red]")
+        raise SystemExit(1)
+
     # Resolve workspace name to ID.
     data = client.get("/workspaces")
     workspaces = data.get("value", [])
@@ -169,5 +211,10 @@ def show_workspace(name: str, item: str | None, item_type: str | None) -> None:
 
     # If the item is a Lakehouse, also list its tables and files.
     if item_detail.get("type", "").lower() == "lakehouse":
-        console.print()
-        _show_lakehouse_contents(workspace_id, item_id, item_detail.get("displayName", ""))
+        if dir_path is not None:
+            # List contents of a specific directory.
+            directory = f"Files/{dir_path}" if dir_path else "Files"
+            _show_directory(workspace_id, item_id, directory)
+        else:
+            console.print()
+            _show_lakehouse_contents(workspace_id, item_id, item_detail.get("displayName", ""))

@@ -296,3 +296,108 @@ class TestWorkspaceShow:
         assert "products" in result.output
         assert "Main lakehouse" in result.output
         assert "inventory.parquet" in result.output
+
+    def test_dir_lists_directory_contents(self) -> None:
+        runner = CliRunner()
+        items_with_lakehouse: dict[str, object] = {
+            "value": [
+                {"id": "lh-001", "displayName": "SalesLakehouse", "type": "Lakehouse"},
+            ]
+        }
+        item_detail = {
+            "id": "lh-001",
+            "displayName": "SalesLakehouse",
+            "type": "Lakehouse",
+        }
+        dir_entries = [
+            {
+                "name": "Files/raw/orders.csv",
+                "contentLength": "4096",
+                "lastModified": "2025-03-01T09:00:00Z",
+                "isDirectory": "false",
+            },
+            {
+                "name": "Files/raw/2024",
+                "isDirectory": "true",
+                "lastModified": "2025-03-01T08:00:00Z",
+            },
+            {
+                "name": "Files/raw/2024/jan.parquet",
+                "contentLength": "8192",
+                "lastModified": "2025-01-31T12:00:00Z",
+                "isDirectory": "false",
+            },
+        ]
+        with (
+            patch(
+                "fabio.commands.workspace.client.get",
+                side_effect=[_fake_workspaces(), items_with_lakehouse, item_detail],
+            ),
+            patch(
+                "fabio.commands.workspace.client.list_onelake_files",
+                return_value=dir_entries,
+            ) as mock_list,
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "workspace", "show",
+                    "--name", "My Workspace",
+                    "--item", "SalesLakehouse",
+                    "--dir", "raw",
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert "orders.csv" in result.output
+        assert "2024" in result.output
+        assert "2024/jan.parquet" in result.output
+        # Verify a single recursive call was made.
+        mock_list.assert_called_once_with(
+            "ws-001", "lh-001", directory="Files/raw", recursive=True
+        )
+
+    def test_dir_empty_directory(self) -> None:
+        runner = CliRunner()
+        items_with_lakehouse: dict[str, object] = {
+            "value": [
+                {"id": "lh-001", "displayName": "SalesLakehouse", "type": "Lakehouse"},
+            ]
+        }
+        item_detail = {
+            "id": "lh-001",
+            "displayName": "SalesLakehouse",
+            "type": "Lakehouse",
+        }
+        with (
+            patch(
+                "fabio.commands.workspace.client.get",
+                side_effect=[_fake_workspaces(), items_with_lakehouse, item_detail],
+            ),
+            patch(
+                "fabio.commands.workspace.client.list_onelake_files",
+                return_value=[],
+            ),
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "workspace", "show",
+                    "--name", "My Workspace",
+                    "--item", "SalesLakehouse",
+                    "--dir", "nonexistent",
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert "No files found" in result.output
+
+    def test_dir_requires_item(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["workspace", "show", "--name", "My Workspace", "--dir", "raw"],
+        )
+
+        assert result.exit_code != 0
+        assert "--dir requires --item" in result.output
