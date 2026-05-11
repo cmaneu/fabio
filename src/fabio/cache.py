@@ -1,7 +1,8 @@
 """Token cache configuration with encrypted/unencrypted storage detection.
 
-On Linux, MSAL uses libsecret for encrypted persistent token caching.  If
-libsecret is unavailable (SSH sessions, containers, WSL without a keyring
+On Linux, MSAL uses libsecret to talk to a secret service provider (keyring
+daemon such as gnome-keyring) for encrypted persistent token caching.  If no
+secret service is reachable (SSH sessions, containers, WSL without a keyring
 daemon), we fall back to unencrypted storage and warn the user.
 
 On macOS and Windows, the OS keychain is always available so encryption is
@@ -80,9 +81,8 @@ def get_cache_options(warn: bool = True) -> TokenCachePersistenceOptions:
 
     if warn:
         console.print(
-            "[yellow]Warning:[/yellow] libsecret is not available. "
+            "[yellow]Warning:[/yellow] No secret service provider (keyring daemon) is running. "
             "Credentials will be stored unencrypted in the file system.\n"
-            "Install libsecret and ensure a keyring daemon is running for "
-            "encrypted storage.",
+            "Start a keyring daemon (e.g. gnome-keyring-daemon) for encrypted storage.",
         )
     return TokenCachePersistenceOptions(name=_CACHE_NAME, allow_unencrypted_storage=True)
