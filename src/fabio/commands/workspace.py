@@ -11,6 +11,60 @@ from fabio import client
 console = Console()
 
 
+def _show_lakehouse_contents(workspace_id: str, lakehouse_id: str, title: str) -> None:
+    """Fetch and display tables and files for a lakehouse."""
+    # Tables
+    tables_data = client.get(
+        f"/workspaces/{workspace_id}/lakehouses/{lakehouse_id}/tables"
+    )
+    tables = tables_data.get("data", [])
+
+    table = Table(title=f"Tables in '{title}'")
+    table.add_column("Name", style="bold")
+    table.add_column("Type")
+    table.add_column("Format")
+    table.add_column("Location", style="dim")
+
+    if tables:
+        for t in tables:
+            table.add_row(
+                t.get("name", ""),
+                t.get("type", ""),
+                t.get("format", ""),
+                t.get("location", ""),
+            )
+    else:
+        table.add_row("(empty)", "", "", "")
+
+    console.print(table)
+    console.print()
+
+    # Files (via OneLake DFS API)
+    files = client.list_onelake_files(workspace_id, lakehouse_id)
+
+    ftable = Table(title=f"Files in '{title}'")
+    ftable.add_column("Name", style="bold")
+    ftable.add_column("Size")
+    ftable.add_column("Last Modified")
+    ftable.add_column("Directory", style="dim")
+
+    if files:
+        for f in files:
+            name = f.get("name", "").rsplit("/", 1)[-1]
+            is_dir = f.get("isDirectory", "false")
+            size = str(f.get("contentLength", "")) if is_dir != "true" else "-"
+            ftable.add_row(
+                name,
+                size,
+                f.get("lastModified", ""),
+                "yes" if is_dir == "true" else "",
+            )
+    else:
+        ftable.add_row("(empty)", "", "", "")
+
+    console.print(ftable)
+
+
 @click.group()
 def workspace() -> None:
     """Manage Microsoft Fabric workspaces."""
@@ -46,7 +100,8 @@ def list_workspaces() -> None:
 @workspace.command(name="show")
 @click.option("--name", "-n", required=True, help="Name of the workspace to show.")
 @click.option("--item", "-i", default=None, help="Name of a specific item to inspect.")
-def show_workspace(name: str, item: str | None) -> None:
+@click.option("--type", "-t", "item_type", default=None, help="Filter artifacts by type.")
+def show_workspace(name: str, item: str | None, item_type: str | None) -> None:
     """Show Fabric artifacts in a workspace, or details of a specific item."""
     # Resolve workspace name to ID.
     data = client.get("/workspaces")
@@ -60,13 +115,23 @@ def show_workspace(name: str, item: str | None) -> None:
     workspace_id = match["id"]
 
     # Fetch items in the workspace.
-    items_data = client.get(f"/workspaces/{workspace_id}/items")
+    params: dict[str, str] | None = {"type": item_type} if item_type else None
+    items_data = client.get(f"/workspaces/{workspace_id}/items", params=params)
     items = items_data.get("value", [])
 
     if item is None:
         # List all artifacts.
         if not items:
             console.print(f"[yellow]No artifacts found in workspace '{name}'.[/yellow]")
+            return
+
+        # If type is Lakehouse, show tables and files for each lakehouse.
+        if item_type and item_type.lower() == "lakehouse":
+            for lakehouse in items:
+                lh_name = lakehouse.get("displayName", "")
+                lh_id = lakehouse.get("id", "")
+                _show_lakehouse_contents(workspace_id, lh_id, lh_name)
+                console.print()
             return
 
         table = Table(title=f"Artifacts in '{name}'")
@@ -101,3 +166,8 @@ def show_workspace(name: str, item: str | None) -> None:
     console.print(f"  Workspace:   {name} ({workspace_id})")
     if item_detail.get("description"):
         console.print(f"  Description: {item_detail['description']}")
+
+    # If the item is a Lakehouse, also list its tables and files.
+    if item_detail.get("type", "").lower() == "lakehouse":
+        console.print()
+        _show_lakehouse_contents(workspace_id, item_id, item_detail.get("displayName", ""))

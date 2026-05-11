@@ -169,3 +169,130 @@ class TestWorkspaceShow:
 
         assert result.exit_code != 0
         assert "Item not found" in result.output
+
+    def test_filter_by_type(self) -> None:
+        runner = CliRunner()
+        filtered_items: dict[str, object] = {
+            "value": [
+                {"id": "item-001", "displayName": "SalesReport", "type": "Report"},
+            ]
+        }
+        with patch(
+            "fabio.commands.workspace.client.get",
+            side_effect=[_fake_workspaces(), filtered_items],
+        ) as mock_get:
+            result = runner.invoke(
+                main,
+                ["workspace", "show", "--name", "My Workspace", "--type", "Report"],
+            )
+
+        assert result.exit_code == 0
+        assert "SalesReport" in result.output
+        # Verify the type param was passed to the items API call.
+        items_call = mock_get.call_args_list[1]
+        assert items_call[1]["params"] == {"type": "Report"}
+
+    def test_type_lakehouse_lists_tables_and_files(self) -> None:
+        runner = CliRunner()
+        lakehouses: dict[str, object] = {
+            "value": [
+                {"id": "lh-001", "displayName": "SalesLakehouse", "type": "Lakehouse"},
+            ]
+        }
+        tables: dict[str, object] = {
+            "data": [
+                {
+                    "name": "orders",
+                    "type": "Managed",
+                    "format": "delta",
+                    "location": "abfss://path/orders",
+                },
+                {
+                    "name": "customers",
+                    "type": "Managed",
+                    "format": "delta",
+                    "location": "abfss://path/customers",
+                },
+            ]
+        }
+        files = [
+            {
+                "name": "Files/raw_sales.csv",
+                "contentLength": "1024",
+                "lastModified": "2025-01-15T10:00:00Z",
+                "isDirectory": "false",
+            },
+        ]
+        with (
+            patch(
+                "fabio.commands.workspace.client.get",
+                side_effect=[_fake_workspaces(), lakehouses, tables],
+            ),
+            patch(
+                "fabio.commands.workspace.client.list_onelake_files",
+                return_value=files,
+            ),
+        ):
+            result = runner.invoke(
+                main,
+                ["workspace", "show", "--name", "My Workspace", "--type", "Lakehouse"],
+            )
+
+        assert result.exit_code == 0
+        assert "orders" in result.output
+        assert "customers" in result.output
+        assert "SalesLakehouse" in result.output
+        assert "raw_sales.csv" in result.output
+
+    def test_item_lakehouse_lists_tables_and_files(self) -> None:
+        runner = CliRunner()
+        items_with_lakehouse: dict[str, object] = {
+            "value": [
+                {"id": "lh-001", "displayName": "SalesLakehouse", "type": "Lakehouse"},
+            ]
+        }
+        item_detail = {
+            "id": "lh-001",
+            "displayName": "SalesLakehouse",
+            "type": "Lakehouse",
+            "description": "Main lakehouse",
+        }
+        tables: dict[str, object] = {
+            "data": [
+                {
+                    "name": "products",
+                    "type": "Managed",
+                    "format": "delta",
+                    "location": "abfss://path/products",
+                },
+            ]
+        }
+        files = [
+            {
+                "name": "Files/inventory.parquet",
+                "contentLength": "2048",
+                "lastModified": "2025-02-10T14:30:00Z",
+                "isDirectory": "false",
+            },
+        ]
+        with (
+            patch(
+                "fabio.commands.workspace.client.get",
+                side_effect=[_fake_workspaces(), items_with_lakehouse, item_detail, tables],
+            ),
+            patch(
+                "fabio.commands.workspace.client.list_onelake_files",
+                return_value=files,
+            ),
+        ):
+            result = runner.invoke(
+                main,
+                ["workspace", "show", "--name", "My Workspace", "--item", "SalesLakehouse"],
+            )
+
+        assert result.exit_code == 0
+        assert "SalesLakehouse" in result.output
+        assert "Lakehouse" in result.output
+        assert "products" in result.output
+        assert "Main lakehouse" in result.output
+        assert "inventory.parquet" in result.output
