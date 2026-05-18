@@ -173,6 +173,62 @@ def copy_item(
         fabio item copy --source-workspace <ws1> --id <item-id> --dest-workspace <ws2>
         fabio item copy -sw <ws1> --id <id> -dw <ws2> --name "Copy of Report"
     """
+    result = _copy_item_impl(source_workspace, item_id, dest_workspace, name)
+    output(ctx, result, plain_key="id")
+
+
+@item.command(name="move")
+@click.option(
+    "--source-workspace",
+    "-sw",
+    required=True,
+    help="Source workspace ID.",
+)
+@click.option("--id", "item_id", required=True, help="Source item ID.")
+@click.option(
+    "--dest-workspace",
+    "-dw",
+    required=True,
+    help="Destination workspace ID.",
+)
+@click.option(
+    "--name",
+    "-n",
+    default=None,
+    help="New name in destination (default: same name).",
+)
+@click.pass_context
+def move_item(
+    ctx: click.Context,
+    source_workspace: str,
+    item_id: str,
+    dest_workspace: str,
+    name: str | None,
+) -> None:
+    """Move an item from one workspace to another.
+
+    \b
+    Copies the item definition to the destination workspace, then deletes
+    the source. Safe failure mode: if interrupted after copy, you get a
+    duplicate rather than data loss.
+
+    Examples:
+        fabio item move --source-workspace <ws1> --id <item-id> --dest-workspace <ws2>
+        fabio item move -sw <ws1> --id <id> -dw <ws2> --name "Renamed Item"
+    """
+    result = _copy_item_impl(source_workspace, item_id, dest_workspace, name)
+    client.delete(f"/workspaces/{source_workspace}/items/{item_id}")
+    result["status"] = "moved"
+    output(ctx, result, plain_key="id")
+
+
+def _copy_item_impl(
+    source_workspace: str,
+    item_id: str,
+    dest_workspace: str,
+    name: str | None,
+) -> dict[str, object]:
+    """Copy an item and return the result dict (shared by copy and move)."""
     # Get source item metadata
     source_item = client.get(f"/workspaces/{source_workspace}/items/{item_id}")
     item_type = source_item.get("type", "")
@@ -189,16 +245,15 @@ def copy_item(
     if definition and definition.get("definition"):
         body["definition"] = definition["definition"]
     elif definition and definition.get("parts"):
-        # Some APIs return definition at top level
         body["definition"] = definition
 
     data = client.post(f"/workspaces/{dest_workspace}/items", body=body, poll=True)
-    result = data if data else {}
+    result: dict[str, object] = data if data else {}
     result["copySource"] = {
         "workspace": source_workspace,
         "itemId": item_id,
     }
-    output(ctx, result, plain_key="id")
+    return result
 
 
 def _resolve_item_name(workspace_id: str, name: str, item_type: str | None) -> str:
