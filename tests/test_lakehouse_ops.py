@@ -296,15 +296,15 @@ class TestLakehouseCopyFile:
         assert result.exit_code == 0, result.output
 
 
-class TestLakehouseRemoveFile:
-    def test_remove_file(self) -> None:
+class TestLakehouseDeleteFile:
+    def test_delete_file(self) -> None:
         runner = CliRunner()
         with patch("fabio.commands.lakehouse.client.delete_onelake_file") as mock_delete:
             result = runner.invoke(
                 main,
                 [
                     "lakehouse",
-                    "remove-file",
+                    "delete-file",
                     "-w",
                     "ws-001",
                     "--id",
@@ -320,14 +320,14 @@ class TestLakehouseRemoveFile:
         assert parsed["data"]["path"] == "Files/old_data.csv"
         mock_delete.assert_called_once_with("ws-001", "lh-001", "Files/old_data.csv")
 
-    def test_remove_file_nested_path(self) -> None:
+    def test_delete_file_nested_path(self) -> None:
         runner = CliRunner()
         with patch("fabio.commands.lakehouse.client.delete_onelake_file") as mock_delete:
             result = runner.invoke(
                 main,
                 [
                     "lakehouse",
-                    "remove-file",
+                    "delete-file",
                     "-w",
                     "ws-001",
                     "--id",

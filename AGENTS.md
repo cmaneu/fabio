@@ -23,7 +23,7 @@
 - **CAPACITY_INACTIVE** error code: detects `CapacityNotActive` in response body/errorCode, returns clear message
 - **Device-code login fix**: `prompt_callback` prints code/URL to stderr
 - **Empty response handling**: `_handle_response` handles 200 with empty body (e.g. assignToCapacity)
-- Commands: `workspace list/show/create/delete/assign-capacity`, `item list/show/create/delete/copy`, `lakehouse tables/files/upload/download/load-table/copy-file/remove-file/move-file/delete-table/copy-table/move-table/create-shortcut/get-shortcut/delete-shortcut`, `notebook create/get-definition/run/status/stop/delete`, `auth login/logout/status`
+- Commands: `workspace list/show/create/delete/assign-capacity`, `item list/show/create/delete/copy`, `lakehouse tables/files/upload/download/load-table/copy-file/delete-file/move-file/delete-table/copy-table/move-table/create-shortcut/get-shortcut/delete-shortcut`, `notebook create/get-definition/run/status/stop/delete`, `auth login/logout/status`
 - **Server-side file copy**: Uses OneLake Blob API (`PUT` with `x-ms-copy-source` header), async with polling
 - **Server-side file move**: copy + DFS DELETE (OneLake rejects `x-ms-rename-source`)
 - **Server-side table copy/move/delete**: Lists table files via root filesystem listing, copies each file via Blob API, deletes via recursive DFS DELETE
@@ -87,14 +87,14 @@
 - `src/fabio/client.py`: HTTP client with LRO polling, OneLake upload/download/copy/delete/move, table ops, Blob + DFS endpoints
 - `src/fabio/commands/workspace.py`: list/show/create/delete/assign-capacity
 - `src/fabio/commands/item.py`: list/show/create/delete/copy (LRO-enabled)
-- `src/fabio/commands/lakehouse.py`: tables/files/upload/download/load-table/copy-file/remove-file/move-file/delete-table/copy-table/move-table/create-shortcut/get-shortcut/delete-shortcut
+- `src/fabio/commands/lakehouse.py`: tables/files/upload/download/load-table/copy-file/delete-file/move-file/delete-table/copy-table/move-table/create-shortcut/get-shortcut/delete-shortcut
 - `src/fabio/commands/notebook.py`: create (ipynb list-of-strings source, LRO)/get-definition/run/status/stop/delete
 - `src/fabio/commands/auth.py`: login (browser + device-code with prompt_callback)/logout/status
 - `src/fabio/auth_store.py`: Persistent auth state (~/.config/fabio/)
 - `src/fabio/cache.py`: Token cache with libsecret detection
 - `tests/test_client.py`: Tests for _handle_response, _poll_lro, require_auth, copy, delete, table ops
 - `tests/test_workspace_crud.py`: Tests for workspace create/delete/assign-capacity
-- `tests/test_lakehouse_ops.py`: Tests for upload/download/load-table/copy-file/remove-file/move-file/delete-table/copy-table/move-table
+- `tests/test_lakehouse_ops.py`: Tests for upload/download/load-table/copy-file/delete-file/move-file/delete-table/copy-table/move-table
 - `tests/test_shortcut.py`: Tests for shortcut create/get/delete
 - `tests/test_notebook.py`: Tests for notebook create/get-definition/run/status/stop/delete
 - `tests/test_item_copy.py`: Tests for item copy

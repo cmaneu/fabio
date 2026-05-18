@@ -7,7 +7,7 @@ Commands:
     download        - Download a file from a lakehouse
     load-table      - Create/load a table from a file in the lakehouse
     copy-file       - Server-side copy a file between lakehouses
-    remove-file     - Delete a file from a lakehouse
+    delete-file     - Delete a file from a lakehouse
     move-file       - Server-side move a file between lakehouses
     delete-table    - Delete a Delta table from a lakehouse
     copy-table      - Server-side copy a table between lakehouses
@@ -374,12 +374,12 @@ def copy_file(
     output(ctx, result, plain_key="destination")
 
 
-@lakehouse.command(name="remove-file")
+@lakehouse.command(name="delete-file")
 @click.option("--workspace", "-w", required=True, help="Workspace ID.")
 @click.option("--id", "lakehouse_id", required=True, help="Lakehouse item ID.")
 @click.option("--path", "-p", required=True, help="File path to delete (e.g. Files/data.csv).")
 @click.pass_context
-def remove_file(
+def delete_file(
     ctx: click.Context,
     workspace: str,
     lakehouse_id: str,
@@ -389,8 +389,8 @@ def remove_file(
 
     \b
     Examples:
-        fabio lakehouse remove-file -w <ws> --id <lh> -p Files/old_data.csv
-        fabio lakehouse remove-file -w <ws> --id <lh> -p Files/staging/temp.parquet
+        fabio lakehouse delete-file -w <ws> --id <lh> -p Files/old_data.csv
+        fabio lakehouse delete-file -w <ws> --id <lh> -p Files/staging/temp.parquet
     """
     client.delete_onelake_file(workspace, lakehouse_id, path)
     output(
@@ -477,7 +477,7 @@ def delete_table_cmd(
     """Delete a Delta table from a lakehouse.
 
     \b
-    Recursively removes the table directory (Tables/<name>) including
+    Recursively deletes the table directory (Tables/<name>) including
     all Delta log files and data files.
 
     \b
