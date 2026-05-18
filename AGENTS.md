@@ -8,41 +8,29 @@
 - JSON output by default with `--output json|table|plain` flag
 - Composable: manage inputs and produce outputs for piping
 - Machine-readable error codes in structured JSON envelope
-- Python 3.10+, uses Click, azure-identity, requests, rich
-- Linting: ruff (line-length 99), mypy strict, pytest
-- venv at `.venv/`, run commands with `.venv/bin/python3`, `.venv/bin/pytest`, etc.
+- Rust (edition 2024, rust-version 1.85), uses clap derive, tokio, reqwest, azure_identity, serde, comfy-table, thiserror/anyhow
+- Linting: clippy pedantic+nursery (zero warnings), rustfmt
+- CI: GitHub Actions (cargo fmt, clippy, test, build release) on ubuntu/macos/windows
+- Installable via `cargo install --git https://github.com/iemejia/fabio.git`
 
 ## Progress
 ### Done
+- **Full Rust implementation** (38 commands across 6 groups): auth, workspace, item, lakehouse, notebook, warehouse
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain formats
-- Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, etc.) + `FabioError` exception
-- `FabioGroup` custom Click group catches `FabioError` and renders to stderr
-- Global options: `--output/-o`, `--query/-q`, `--quiet`
-- Client: `get/post/patch/delete`, `upload_onelake_file`, `download_onelake_file`, `load_table`, `get_item_definition`, `update_item_definition`
-- **LRO polling**: `_poll_lro()` handles 202 responses by polling `Location` header until Succeeded/Failed; used by `post(path, body, poll=True)`
-- **CAPACITY_INACTIVE** error code: detects `CapacityNotActive` in response body/errorCode, returns clear message
-- **Device-code login fix**: `prompt_callback` prints code/URL to stderr
-- **Empty response handling**: `_handle_response` handles 200 with empty body (e.g. assignToCapacity)
-- Commands: `workspace list/show/create/delete/assign-capacity`, `item list/show/create/delete/copy`, `lakehouse tables/files/upload/download/load-table/copy-file/delete-file/move-file/delete-table/copy-table/move-table/create-shortcut/get-shortcut/delete-shortcut`, `notebook create/get-definition/run/status/stop/delete`, `auth login/logout/status`
-- **Server-side file copy**: Uses OneLake Blob API (`PUT` with `x-ms-copy-source` header), async with polling
-- **Server-side file move**: copy + DFS DELETE (OneLake rejects `x-ms-rename-source`)
-- **Server-side table copy/move/delete**: Lists table files via root filesystem listing, copies each file via Blob API, deletes via recursive DFS DELETE
-- **Shortcuts**: Create/get/delete OneLake, ADLS Gen2, and S3 shortcuts
-- **load-table fixes**: PascalCase mode (`Overwrite`/`Append`), `formatOptions.format` key, LRO polling enabled
-- **Notebook ipynb fix**: `source` field as list of strings per ipynb spec (Fabric rejects single string)
-- **item copy + notebook create**: LRO-enabled (`poll=True`)
-- 155 tests passing, ruff + format clean
-- All pushed to main (latest commit `4251767`)
-- **End-to-end workflow verified** against live Fabric tenant:
-  - Created `fabio-demo-source` workspace → SalesLakehouse → uploaded CSV → loaded Delta table → created SalesAnalysis notebook
-  - Created `fabio-demo-dest` workspace → SalesLakehouse → downloaded/uploaded CSV copy → loaded table → copied notebook via `item copy`
-  - Server-side file copy, move, delete between workspaces
-  - Table copy, move, delete between workspaces
-  - Shortcut create/get/delete between workspaces
-- Reassigned 5 workspaces from inactive capacity `64fd7fa6-...` to active `afdf5707-...` using `workspace assign-capacity`
-- Research files saved: `~/repositories/research/fabio-cli-commands.md`, `~/repositories/research/fabric-api-unexpected-behaviors.md`
-- **Notebook execution commands**: run/status/stop/delete all verified against live tenant
-- 165 tests passing, pushed to main (commit `20a90d0`)
+- Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, etc.) + `FabioError`
+- Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout)
+- HTTP client: async get/post/delete with LRO polling (`Location` + `x-ms-operation-id` + resource follow)
+- OneLake operations: DFS upload (create+append+flush), download, file listing; Blob API copy (server-side async)
+- **LRO polling**: 2s interval, 120s max, handles 200/202, checks `status` field until Succeeded/Failed
+- **Server-side file copy/move**: Blob API `PUT` with `x-ms-copy-source`, move = copy + delete
+- **Server-side table copy/move/delete**: Root listing + prefix filter, per-file Blob copy, recursive DFS delete
+- **Shortcuts**: Create/get/delete OneLake, ADLS Gen2, S3 shortcuts
+- **Notebook run**: Captures job instance ID from Location header, status/stop via Jobs API
+- **Item copy/move**: getDefinition LRO + create in dest workspace LRO; move = copy + delete source
+- **E2E verified** against live Fabric tenant: all 38 commands tested
+- **61 Rust tests** (6 unit + 55 E2E integration), zero clippy warnings, rustfmt clean
+- **CI/CD**: GitHub Actions (3 OS matrix), Dependabot for cargo + github-actions
+- Release binary: 4.4 MB, stripped, LTO-optimized
 
 ### Blocked
 - (none)
@@ -51,56 +39,66 @@
 - JSON envelope always wraps output: lists get `{"data":[...],"count":N}`, objects get `{"data":{...}}`
 - Errors on stderr as `{"error":{"code":"...","message":"..."}}` with non-zero exit
 - `--query` supports simple dot-notation field projection (not full JMESPath; users can pipe to `jq`)
-- `FabioError` raised everywhere instead of `click.ClickException`
+- `--quiet` suppresses all stdout; errors still go to stderr
 - OneLake upload uses DFS create+append+flush 3-step pattern
 - Notebook creation builds minimal .ipynb JSON, base64-encodes for Fabric API; `source` must be list of strings
 - Item copy fetches definition from source via LRO, posts to destination workspace via LRO
 - LRO polling: 2s default interval, 120s max wait, handles `Location`/`x-ms-operation-id` headers
-- `post()` accepts `poll=True` for LRO-aware operations; non-LRO callers use default `poll=False`
+- `post()` accepts `poll: bool` for LRO-aware operations
 - Load-table requires PascalCase values (`"Overwrite"`, `"Csv"`) and `format` inside `formatOptions`
-- **Server-side copy**: OneLake Blob API (`onelake.blob.fabric.microsoft.com`) supports `PUT` with `x-ms-copy-source`; returns 202 with `x-ms-copy-status: pending` for async copy. Poll via HEAD.
-- **No native move/rename**: OneLake rejects `x-ms-rename-source` (`UnsupportedHeader`). Move = copy + delete.
-- **Table file listing**: DFS listing with `directory='Tables/<name>'` shows virtual lakehouse-in-lakehouse view. Must list from root (no `directory` param) to get real paths prefixed with item ID.
-- **Recursive delete**: DFS `DELETE /{ws}/{lh}/Tables/{name}?recursive=true` works for deleting table directories.
+- **Server-side copy**: OneLake Blob API supports `PUT` with `x-ms-copy-source`; returns 202 with pending status. Poll via HEAD.
+- **No native move/rename**: OneLake rejects `x-ms-rename-source`. Move = copy + delete.
+- **Table file listing**: Must list from root (no `directory` param) to get real paths prefixed with item ID.
+- **Recursive delete**: DFS `DELETE /{ws}/{lh}/Tables/{name}?recursive=true` works for directories.
+- All destructive actions use consistent verb `delete` (not `remove`)
+- Cross-workspace ops use `--source-workspace`/`--dest-workspace` with `visible_alias` short forms
+- Auth relies on `DefaultAzureCredential` chain (az login, environment, managed identity)
+- `azure_identity`/`azure_core` with `default-features = false` (no OpenSSL dependency)
+- `unsafe_code = "forbid"` in lints
 
 ## Critical Context
-- Fabric Shortcuts API: `POST /v1/workspaces/{workspaceId}/items/{itemId}/shortcuts` with target body specifying source workspace/lakehouse/path
-- User's tenant: `f32b018c-68ee-40d8-9e1a-d7ab42193a10`, username `imejiauseche.local@cadata2607.onmicrosoft.com`
+- User's tenant: `f32b018c-68ee-40d8-9e1a-d7ab42193a10`
 - Active capacity: `afdf5707-dde2-41ef-9d98-df65aa40eb7f` (small SKU, Spark concurrency limit ~1)
 - Inactive capacity: `64fd7fa6-4b6e-4262-85c1-b70872798927` (paused)
 - Source workspace: `1619af1e-c97a-43f8-8f1e-c1990b0b3914` (fabio-demo-source), lakehouse `d4f7211c-cc03-4a86-9f16-0bb2f2af3c59`
 - Dest workspace: `c112b455-f02d-4c18-a0af-be75a82816d0` (fabio-demo-dest), lakehouse `36755b0f-b6af-4699-8945-df3aeb8717d6`
 - Notebook in source: `38177352-dc1c-440b-a860-a83ec508e806` (SalesAnalysis)
-- Notebook in dest: `0bff0250-5447-4853-acb8-eb478a6a7a72` (copied SalesAnalysis)
 - Fabric REST base URL: `https://api.fabric.microsoft.com/v1`
 - OneLake DFS base URL: `https://onelake.dfs.fabric.microsoft.com`
 - OneLake Blob base URL: `https://onelake.blob.fabric.microsoft.com`
 - Fabric scope: `https://analysis.windows.net/powerbi/api/.default`
 - Storage scope: `https://storage.azure.com/.default`
-- Entry point: `fabio = "fabio.cli:main"`
-- Spark rate limit on small capacity: LRO reports 430 `TooManyRequestsForCapacity` (non-standard code, need to wait ~5min)
+- Spark rate limit on small capacity: LRO reports 430 `TooManyRequestsForCapacity` (non-standard code)
+- Test env vars: `FABIO_TEST_SOURCE_WORKSPACE`, `FABIO_TEST_SOURCE_LAKEHOUSE`, `FABIO_TEST_DEST_WORKSPACE`, `FABIO_TEST_DEST_LAKEHOUSE`, `FABIO_TEST_NOTEBOOK_ID`, `FABIO_TEST_CAPACITY_ID`
 
 ## Relevant Files
-- `src/fabio/cli.py`: Main entry point, FabioGroup, global options, command registration
-- `src/fabio/output.py`: Structured output system (render_json, render_table, render_plain, _apply_query, read_stdin_json)
-- `src/fabio/errors.py`: ErrorCode enum (incl. CAPACITY_INACTIVE) + FabioError exception
-- `src/fabio/client.py`: HTTP client with LRO polling, OneLake upload/download/copy/delete/move, table ops, Blob + DFS endpoints
-- `src/fabio/commands/workspace.py`: list/show/create/delete/assign-capacity
-- `src/fabio/commands/item.py`: list/show/create/delete/copy (LRO-enabled)
-- `src/fabio/commands/lakehouse.py`: tables/files/upload/download/load-table/copy-file/delete-file/move-file/delete-table/copy-table/move-table/create-shortcut/get-shortcut/delete-shortcut
-- `src/fabio/commands/notebook.py`: create (ipynb list-of-strings source, LRO)/get-definition/run/status/stop/delete
-- `src/fabio/commands/auth.py`: login (browser + device-code with prompt_callback)/logout/status
-- `src/fabio/auth_store.py`: Persistent auth state (~/.config/fabio/)
-- `src/fabio/cache.py`: Token cache with libsecret detection
-- `tests/test_client.py`: Tests for _handle_response, _poll_lro, require_auth, copy, delete, table ops
-- `tests/test_workspace_crud.py`: Tests for workspace create/delete/assign-capacity
-- `tests/test_lakehouse_ops.py`: Tests for upload/download/load-table/copy-file/delete-file/move-file/delete-table/copy-table/move-table
-- `tests/test_shortcut.py`: Tests for shortcut create/get/delete
-- `tests/test_notebook.py`: Tests for notebook create/get-definition/run/status/stop/delete
-- `tests/test_item_copy.py`: Tests for item copy
-- `~/repositories/research/fabio-cli-commands.md`: Full command reference
-- `~/repositories/research/fabric-api-unexpected-behaviors.md`: 12 documented API gotchas
-- `pyproject.toml`: Project config, dependencies, ruff/mypy settings
+- `Cargo.toml`: Project config, dependencies, clippy/lints config, release profile (LTO+strip)
+- `rust-toolchain.toml`: stable channel, rustfmt+clippy components
+- `src/main.rs`: Entry point, tokio async main, error handling dispatch
+- `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 6 subcommand groups
+- `src/errors.rs`: ErrorCode enum + FabioError struct with thiserror
+- `src/output.rs`: render_list, render_object, render_error (respects --quiet/--query), apply_query, unit tests
+- `src/client.rs`: FabricClient with async HTTP, LRO polling, OneLake DFS/Blob ops, run_notebook
+- `src/commands/mod.rs`: Command dispatch
+- `src/commands/auth.rs`: login/logout/status (DefaultAzureCredential chain)
+- `src/commands/workspace.rs`: list/show/create/delete/assign-capacity
+- `src/commands/item.rs`: list/show/create/delete/copy/move
+- `src/commands/lakehouse.rs`: 14 subcommands (tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, create-shortcut, get-shortcut, delete-shortcut)
+- `src/commands/notebook.rs`: create/get-definition/run/status/stop/delete
+- `src/commands/warehouse.rs`: list/query (endpoint resolved, ODBC execution TODO)
+- `tests/common/mod.rs`: Shared E2E test harness (TestConfig, helpers)
+- `tests/e2e_auth.rs`: Auth integration tests
+- `tests/e2e_workspace.rs`: Workspace CRUD + assign-capacity tests
+- `tests/e2e_global_options.rs`: --query, --quiet, --output format tests
+- `tests/e2e_item.rs`: Item list/show/create/delete/copy/move tests
+- `tests/e2e_lakehouse.rs`: Tables/files/upload/download tests
+- `tests/e2e_lakehouse_files.rs`: File copy/move/delete tests
+- `tests/e2e_lakehouse_tables.rs`: Table load/copy/move/delete tests
+- `tests/e2e_lakehouse_shortcuts.rs`: Shortcut create/get/delete tests
+- `tests/e2e_notebook.rs`: Notebook create/get-definition/run/status/stop/delete tests
+- `tests/e2e_warehouse.rs`: Warehouse list/query tests
+- `.github/workflows/ci.yml`: Rust CI (fmt, clippy, test, build) on 3 OS
+- `.github/dependabot.yml`: Cargo + GitHub Actions dependency updates
 
 ## OneLake API Behaviors Discovered
 - Blob API copy (`x-ms-copy-source`): works for server-side file copy, async (202 with pending status)
@@ -112,3 +110,10 @@
 - **DFS directory parameter "virtual lakehouse-in-lakehouse" view**: When `directory=X` is specified, the API returns ALL paths prefixed with `X/`, where top-level lakehouse dirs appear doubled (e.g., `Files/Files/myfile.csv` for a file at `Files/myfile.csv`). With `recursive=false`, only immediate virtual children show. Fix: always use `recursive=true` and strip the doubled prefix client-side.
 - **Notebook Jobs API**: `POST /workspaces/{ws}/items/{id}/jobs/instances?jobType=RunNotebook` returns 202 + Location header with job instance URL. Status endpoint returns `NotStarted`, `InProgress`, `Completed`, `Failed`, `Cancelled`. Cancel via `POST .../cancel`.
 - **Spark cold start on small capacity**: First notebook run can take 2-5 minutes to transition from `NotStarted` to `InProgress` due to Spark session allocation.
+
+## Next Steps
+- Add ODBC support to warehouse query (`odbc-api` crate)
+- Add `warehouse show` command
+- Consider `--wait` flag for notebook run (poll until completion)
+- Add stdin piping support for `warehouse query` (read SQL from stdin)
+- Publish release binaries via GitHub Releases

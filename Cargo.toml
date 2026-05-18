@@ -1,0 +1,78 @@
+[package]
+name = "fabio"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Agent-first CLI for managing Microsoft Fabric artifacts and data"
+license = "MIT"
+repository = "https://github.com/iemejia/fabio"
+keywords = ["microsoft-fabric", "cli", "data-engineering", "lakehouse"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "fabio"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Azure auth
+azure_identity = { version = "0.22", default-features = false }
+azure_core = { version = "0.22", default-features = false }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Output formatting
+comfy-table = "7"
+colored = "3"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Token persistence
+dirs = "6"
+
+# Misc
+base64 = "0.22"
+urlencoding = "2"
+glob = "0.3"
+fnmatch-regex = "0.2"
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
+wiremock = "0.6"
+serial_test = "3"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
+codegen-units = 1
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+# Allow common patterns
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

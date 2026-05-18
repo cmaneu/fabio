@@ -7,62 +7,46 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  rust:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         os:
           - ubuntu-latest
           - macos-latest     # ARM64 (Apple Silicon)
-          - macos-13         # x64 (Intel)
           - windows-latest   # x64
 
     runs-on: ${{ matrix.os }}
     name: >-
-      ${{ matrix.os }} / py${{ matrix.python-version }}
+      rust / ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: ${{ matrix.python-version }}
-          allow-prereleases: true
+          components: rustfmt, clippy
 
-      - name: Install ODBC Driver (Ubuntu)
-        if: runner.os == 'Linux'
-        run: |
-          curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
-          curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
-          sudo apt-get update
-          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
-      - name: Install ODBC Driver (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew tap microsoft/mssql-release https://github.com/Microsoft/homebrew-mssql-release
-          brew update
-          HOMEBREW_ACCEPT_EULA=Y brew install msodbcsql18
+      - name: Check formatting
+        run: cargo fmt -- --check
 
-      - name: Install ODBC Driver (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          choco install sqlserver-odbcdriver --yes --no-progress
+      - name: Clippy
+        run: cargo clippy --tests -- -D warnings
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+      - name: Run unit tests
+        run: cargo test
 
-      - name: Lint (ruff)
-        run: |
-          ruff check src/ tests/
-          ruff format --check src/ tests/
-
-      - name: Type check (mypy)
-        run: mypy src/
-
-      - name: Run tests
-        run: pytest --tb=short -q
+      - name: Build release binary
+        run: cargo build --release

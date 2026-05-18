@@ -1,14 +1,17 @@
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-.eggs/
-*.egg
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-.venv/
+# Build artifacts
+/target/
+*.d
+*.o
 *.so
-.coverage
-htmlcov/
+*.dylib
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

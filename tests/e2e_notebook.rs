@@ -1,0 +1,211 @@
+//! End-to-end integration tests for `fabio notebook` commands.
+
+mod common;
+
+use common::{TestConfig, extract_data, fabio, parse_json};
+use predicates::prelude::*;
+use serial_test::serial;
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn notebook_create_get_definition_and_delete() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("nb_test");
+
+    // Create notebook
+    let assert = fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--content",
+            "print('integration test')",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "Succeeded");
+
+    // Find the notebook ID
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--type",
+            "Notebook",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    let nb = items
+        .iter()
+        .find(|i| i["displayName"] == name)
+        .expect("created notebook not found in item list");
+    let nb_id = nb["id"].as_str().unwrap().to_string();
+
+    // Get definition
+    let assert = fabio()
+        .args([
+            "notebook",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Should have definition.parts
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    assert!(!parts.is_empty());
+    assert!(parts.iter().any(|p| p["path"] == "notebook-content.py"));
+
+    // Delete
+    fabio()
+        .args([
+            "notebook",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("deleted"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn notebook_run_status_stop() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("nb_run");
+
+    // Create a simple notebook
+    fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--content",
+            "import time; time.sleep(30); print('done')",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    // Find notebook ID
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--type",
+            "Notebook",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    let nb = items
+        .iter()
+        .find(|i| i["displayName"] == name)
+        .expect("notebook not found");
+    let nb_id = nb["id"].as_str().unwrap().to_string();
+
+    // Run
+    let assert = fabio()
+        .args([
+            "notebook",
+            "run",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "started");
+    let job_id = data["jobId"].as_str().unwrap().to_string();
+    assert!(!job_id.is_empty());
+
+    // Status
+    let assert = fabio()
+        .args([
+            "notebook",
+            "status",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+            "--job-id",
+            &job_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Status should be NotStarted or InProgress (Spark cold start)
+    let status = data["status"].as_str().unwrap();
+    assert!(
+        ["NotStarted", "InProgress", "Completed"].contains(&status),
+        "unexpected status: {status}"
+    );
+
+    // Stop (cancel)
+    let assert = fabio()
+        .args([
+            "notebook",
+            "stop",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+            "--job-id",
+            &job_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "cancelled");
+
+    // Delete notebook
+    fabio()
+        .args([
+            "notebook",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+        ])
+        .assert()
+        .success();
+}
