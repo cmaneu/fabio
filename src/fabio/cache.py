@@ -1,5 +1,9 @@
 """Token cache configuration with encrypted/unencrypted storage detection.
 
+Uses the shared MSAL token cache (same as az CLI, azd, and other Microsoft
+developer tools).  This means if the user is already logged in via ``az login``,
+fabio can silently acquire tokens without re-prompting.
+
 On Linux, MSAL uses libsecret to talk to a secret service provider (keyring
 daemon such as gnome-keyring) for encrypted persistent token caching.  If no
 secret service is reachable (SSH sessions, containers, WSL without a keyring
@@ -18,8 +22,6 @@ from azure.identity import TokenCachePersistenceOptions
 from rich.console import Console
 
 console = Console(stderr=True)
-
-_CACHE_NAME = "fabio"
 
 # Cache the probe result so we only check once per process.
 _libsecret_available: bool | None = None
@@ -61,7 +63,12 @@ def _is_libsecret_available() -> bool:
 
 
 def get_cache_options(warn: bool = True) -> TokenCachePersistenceOptions:
-    """Build TokenCachePersistenceOptions with appropriate encryption setting.
+    """Build TokenCachePersistenceOptions using the shared MSAL developer tools cache.
+
+    By not specifying a custom cache name, we use the default shared cache
+    that is also used by az CLI, azd, and other Microsoft developer tools.
+    This means users who are already authenticated via ``az login`` can use
+    fabio without re-authenticating.
 
     Parameters
     ----------
@@ -75,11 +82,11 @@ def get_cache_options(warn: bool = True) -> TokenCachePersistenceOptions:
         Configured for encrypted storage if possible, unencrypted otherwise.
     """
     if _is_libsecret_available():
-        return TokenCachePersistenceOptions(name=_CACHE_NAME)
+        return TokenCachePersistenceOptions()
 
     if warn:
         console.print(
             "[yellow]Warning:[/yellow] No keyring daemon running. "
-            "Credentials will be stored unencrypted at ~/.config/fabio/.",
+            "Credentials will be stored unencrypted.",
         )
-    return TokenCachePersistenceOptions(name=_CACHE_NAME, allow_unencrypted_storage=True)
+    return TokenCachePersistenceOptions(allow_unencrypted_storage=True)
