@@ -212,3 +212,162 @@ def list_onelake_files(
 
     data = resp.json()
     return data.get("paths", [])  # type: ignore[no-any-return]
+
+
+def upload_onelake_file(
+    workspace_id: str,
+    lakehouse_id: str,
+    dest_path: str,
+    content: bytes,
+) -> None:
+    """Upload a file to a lakehouse via the OneLake DFS API.
+
+    Uses the create + append + flush pattern for the DFS API.
+    """
+    token = require_auth(scope=STORAGE_SCOPE)
+    base_url = f"{ONELAKE_DFS_URL}/{workspace_id}/{lakehouse_id}/{dest_path}"
+
+    # Step 1: Create the file resource
+    try:
+        resp = requests.put(
+            base_url,
+            params={"resource": "file"},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+    except requests.Timeout as exc:
+        raise FabioError(ErrorCode.TIMEOUT, "OneLake create timed out") from exc
+    except requests.ConnectionError as e:
+        raise FabioError(ErrorCode.API_ERROR, f"Connection error: {e}") from e
+
+    if not resp.ok:
+        _handle_response(resp)
+
+    # Step 2: Append content
+    try:
+        resp = requests.patch(
+            base_url,
+            params={"action": "append", "position": "0"},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/octet-stream",
+            },
+            data=content,
+            timeout=60,
+        )
+    except requests.Timeout as exc:
+        raise FabioError(ErrorCode.TIMEOUT, "OneLake append timed out") from exc
+    except requests.ConnectionError as e:
+        raise FabioError(ErrorCode.API_ERROR, f"Connection error: {e}") from e
+
+    if not resp.ok:
+        _handle_response(resp)
+
+    # Step 3: Flush (commit)
+    try:
+        resp = requests.patch(
+            base_url,
+            params={"action": "flush", "position": str(len(content))},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+    except requests.Timeout as exc:
+        raise FabioError(ErrorCode.TIMEOUT, "OneLake flush timed out") from exc
+    except requests.ConnectionError as e:
+        raise FabioError(ErrorCode.API_ERROR, f"Connection error: {e}") from e
+
+    if not resp.ok:
+        _handle_response(resp)
+
+
+def download_onelake_file(
+    workspace_id: str,
+    lakehouse_id: str,
+    file_path: str,
+) -> bytes:
+    """Download a file from a lakehouse via the OneLake DFS API."""
+    token = require_auth(scope=STORAGE_SCOPE)
+    url = f"{ONELAKE_DFS_URL}/{workspace_id}/{lakehouse_id}/{file_path}"
+
+    try:
+        resp = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=60,
+        )
+    except requests.Timeout as exc:
+        raise FabioError(ErrorCode.TIMEOUT, "OneLake download timed out") from exc
+    except requests.ConnectionError as e:
+        raise FabioError(ErrorCode.API_ERROR, f"Connection error: {e}") from e
+
+    if not resp.ok:
+        _handle_response(resp)
+
+    return resp.content
+
+
+def load_table(
+    workspace_id: str,
+    lakehouse_id: str,
+    table_name: str,
+    relative_path: str,
+    *,
+    file_extension: str | None = None,
+    format_options: dict[str, Any] | None = None,
+    mode: str = "overwrite",
+    recursive: bool = False,
+) -> dict[str, Any]:
+    """Load a file into a lakehouse table via the Tables API.
+
+    Parameters
+    ----------
+    relative_path:
+        Path relative to lakehouse root (e.g. "Files/data.csv").
+    file_extension:
+        File extension hint (e.g. "csv", "parquet").
+    format_options:
+        Format-specific options (e.g. {"header": "true", "delimiter": ","}).
+    mode:
+        Load mode: "overwrite" or "append".
+    recursive:
+        Whether to recursively load from a directory.
+    """
+    path = f"/workspaces/{workspace_id}/lakehouses/{lakehouse_id}/tables/{table_name}/load"
+
+    body: dict[str, Any] = {
+        "relativePath": relative_path,
+        "pathType": "File",
+        "mode": mode,
+        "recursive": recursive,
+    }
+    if file_extension:
+        body["fileExtension"] = file_extension
+    if format_options:
+        body["formatOptions"] = format_options
+
+    return post(path, body=body)
+
+
+def get_item_definition(
+    workspace_id: str,
+    item_id: str,
+) -> dict[str, Any]:
+    """Get the definition of an item (for notebooks, reports, etc).
+
+    POST /workspaces/{ws}/items/{item}/getDefinition
+    """
+    path = f"/workspaces/{workspace_id}/items/{item_id}/getDefinition"
+    return post(path)
+
+
+def update_item_definition(
+    workspace_id: str,
+    item_id: str,
+    definition: dict[str, Any],
+) -> dict[str, Any]:
+    """Update the definition of an item.
+
+    POST /workspaces/{ws}/items/{item}/updateDefinition
+    """
+    path = f"/workspaces/{workspace_id}/items/{item_id}/updateDefinition"
+    return post(path, body={"definition": definition})

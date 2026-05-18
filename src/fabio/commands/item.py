@@ -135,6 +135,72 @@ def delete_item(ctx: click.Context, workspace: str, item_id: str) -> None:
     output(ctx, {"id": item_id, "status": "deleted"}, plain_key="id")
 
 
+@item.command(name="copy")
+@click.option(
+    "--source-workspace",
+    "-sw",
+    required=True,
+    help="Source workspace ID.",
+)
+@click.option("--id", "item_id", required=True, help="Source item ID.")
+@click.option(
+    "--dest-workspace",
+    "-dw",
+    required=True,
+    help="Destination workspace ID.",
+)
+@click.option(
+    "--name",
+    "-n",
+    default=None,
+    help="New name in destination (default: same name).",
+)
+@click.pass_context
+def copy_item(
+    ctx: click.Context,
+    source_workspace: str,
+    item_id: str,
+    dest_workspace: str,
+    name: str | None,
+) -> None:
+    """Copy an item from one workspace to another.
+
+    \b
+    Fetches the item definition from the source and creates it in the
+    destination workspace.
+
+    Examples:
+        fabio item copy --source-workspace <ws1> --id <item-id> --dest-workspace <ws2>
+        fabio item copy -sw <ws1> --id <id> -dw <ws2> --name "Copy of Report"
+    """
+    # Get source item metadata
+    source_item = client.get(f"/workspaces/{source_workspace}/items/{item_id}")
+    item_type = source_item.get("type", "")
+    item_name = name or source_item.get("displayName", "")
+
+    # Get the item definition
+    definition = client.get_item_definition(source_workspace, item_id)
+
+    # Create in destination with the definition
+    body: dict[str, object] = {
+        "displayName": item_name,
+        "type": item_type,
+    }
+    if definition and definition.get("definition"):
+        body["definition"] = definition["definition"]
+    elif definition and definition.get("parts"):
+        # Some APIs return definition at top level
+        body["definition"] = definition
+
+    data = client.post(f"/workspaces/{dest_workspace}/items", body=body)
+    result = data if data else {}
+    result["copySource"] = {
+        "workspace": source_workspace,
+        "itemId": item_id,
+    }
+    output(ctx, result, plain_key="id")
+
+
 def _resolve_item_name(workspace_id: str, name: str, item_type: str | None) -> str:
     """Resolve an item display name to its ID within a workspace."""
     params: dict[str, str] | None = {"type": item_type} if item_type else None

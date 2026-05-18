@@ -3,6 +3,8 @@
 Commands:
     list   - List all accessible workspaces
     show   - Get details for a specific workspace
+    create - Create a new workspace
+    delete - Delete a workspace
 """
 
 from __future__ import annotations
@@ -60,6 +62,45 @@ def show_workspace(ctx: click.Context, workspace_id: str | None, name: str | Non
 
     data = client.get(f"/workspaces/{workspace_id}")
     output(ctx, data, plain_key="id")
+
+
+@workspace.command(name="create")
+@click.option("--name", "-n", required=True, help="Workspace display name.")
+@click.option("--capacity", "-c", default=None, help="Capacity ID to assign.")
+@click.option("--description", "-d", default=None, help="Optional description.")
+@click.pass_context
+def create_workspace(
+    ctx: click.Context,
+    name: str,
+    capacity: str | None,
+    description: str | None,
+) -> None:
+    """Create a new Fabric workspace.
+
+    \b
+    Example: fabio workspace create --name "My Analytics" --capacity <cap-id>
+    """
+    body: dict[str, object] = {"displayName": name}
+    if capacity:
+        body["capacityId"] = capacity
+    if description:
+        body["description"] = description
+
+    data = client.post("/workspaces", body=body)
+    output(ctx, data, plain_key="id")
+
+
+@workspace.command(name="delete")
+@click.option("--id", "workspace_id", required=True, help="Workspace ID to delete.")
+@click.pass_context
+def delete_workspace(ctx: click.Context, workspace_id: str) -> None:
+    """Delete a workspace.
+
+    \b
+    Example: fabio workspace delete --id <workspace-id>
+    """
+    client.delete(f"/workspaces/{workspace_id}")
+    output(ctx, {"id": workspace_id, "status": "deleted"}, plain_key="id")
 
 
 def _resolve_workspace_name(name: str) -> str:

@@ -76,9 +76,11 @@ def main(ctx: click.Context, output: str, query: str | None, quiet: bool) -> Non
 from fabio.commands.auth import auth  # noqa: E402
 from fabio.commands.item import item  # noqa: E402
 from fabio.commands.lakehouse import lakehouse  # noqa: E402
+from fabio.commands.notebook import notebook  # noqa: E402
 from fabio.commands.workspace import workspace  # noqa: E402
 
 main.add_command(auth)
 main.add_command(workspace)
 main.add_command(item)
 main.add_command(lakehouse)
+main.add_command(notebook)
