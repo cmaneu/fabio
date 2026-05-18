@@ -32,6 +32,149 @@ from fabio import client
 from fabio.errors import ErrorCode, FabioError
 from fabio.output import output
 
+# ---------- glob helpers ----------
+
+GLOB_CHARS = set("*?[")
+
+
+def _has_glob(pattern: str) -> bool:
+    """Return True if the string contains glob metacharacters."""
+    return bool(GLOB_CHARS & set(pattern))
+
+
+def _glob_base_dir(pattern: str) -> str:
+    """Extract the non-glob prefix directory from a pattern.
+
+    E.g., "Files/raw/*.csv" → "Files/raw"
+          "Files/**/*.parquet" → "Files"
+          "Files/data.csv" → "Files" (but caller should check _has_glob first)
+    """
+    parts = pattern.replace("\\", "/").split("/")
+    base_parts: list[str] = []
+    for p in parts:
+        if GLOB_CHARS & set(p):
+            break
+        base_parts.append(p)
+    return "/".join(base_parts) if base_parts else "Files"
+
+
+def _resolve_remote_glob(workspace: str, lakehouse_id: str, pattern: str) -> list[str]:
+    """Resolve a glob pattern against remote lakehouse files.
+
+    Returns a list of full remote paths matching the pattern.
+    Pattern is matched against the full path (e.g. "Files/raw/*.csv").
+    Supports *, ?, [...] and ** (recursive via fnmatch).
+    """
+    base_dir = _glob_base_dir(pattern)
+    entries = client.list_onelake_files(
+        workspace, lakehouse_id, directory=base_dir, recursive=True
+    )
+
+    # OneLake DFS virtual view: directory=X → content at X/X/
+    base_stripped = base_dir.rstrip("/")
+    real_prefix = f"{base_stripped}/{base_stripped}/"
+
+    matched: list[str] = []
+    for entry in entries:
+        name = entry.get("name", "")
+        if not name.startswith(real_prefix):
+            continue
+        # Reconstruct the real path: base_dir + relative
+        rel = name[len(real_prefix) :]
+        if not rel:
+            continue
+        if entry.get("isDirectory") == "true":
+            continue
+        full_path = f"{base_stripped}/{rel}"
+        # fnmatch doesn't handle ** natively; use custom matching
+        if _glob_match(full_path, pattern):
+            matched.append(full_path)
+
+    return sorted(matched)
+
+
+def _glob_match(path: str, pattern: str) -> bool:
+    """Match a path against a glob pattern with proper path semantics.
+
+    - * matches anything except /
+    - ** matches anything including /
+    - ? matches any single character except /
+    - [...] matches character classes
+    """
+    import re
+
+    # Convert glob pattern to regex
+    i = 0
+    regex_parts: list[str] = []
+    n = len(pattern)
+    while i < n:
+        c = pattern[i]
+        if c == "*":
+            if i + 1 < n and pattern[i + 1] == "*":
+                # ** matches any path segment(s)
+                regex_parts.append(".*")
+                i += 2
+                # Skip trailing / after **
+                if i < n and pattern[i] == "/":
+                    i += 1
+            else:
+                # * matches anything except /
+                regex_parts.append("[^/]*")
+                i += 1
+        elif c == "?":
+            regex_parts.append("[^/]")
+            i += 1
+        elif c == "[":
+            # Find the closing bracket
+            j = i + 1
+            if j < n and pattern[j] == "!":
+                j += 1
+            if j < n and pattern[j] == "]":
+                j += 1
+            while j < n and pattern[j] != "]":
+                j += 1
+            regex_parts.append(pattern[i : j + 1])
+            i = j + 1
+        else:
+            regex_parts.append(re.escape(c))
+            i += 1
+
+    regex = "^" + "".join(regex_parts) + "$"
+    return bool(re.match(regex, path))
+
+
+def _resolve_local_glob(pattern: str) -> list[Path]:
+    """Resolve a glob pattern against local filesystem.
+
+    Returns a sorted list of matching file Paths (not directories).
+    Supports *, ?, [...], and ** (recursive).
+    """
+    # Use Path.glob from the base directory
+    p = Path(pattern)
+    # Find the non-glob prefix
+    parts = p.parts
+    base_parts: list[str] = []
+    glob_rest: list[str] = []
+    found_glob = False
+    for part in parts:
+        if found_glob or (GLOB_CHARS & set(part)):
+            found_glob = True
+            glob_rest.append(part)
+        else:
+            base_parts.append(part)
+
+    base = Path(".") if not base_parts else Path(*base_parts)
+
+    if not glob_rest:
+        # No glob chars - just return the file if it exists
+        if p.is_file():
+            return [p]
+        return []
+
+    glob_pattern = str(Path(*glob_rest))
+    matched = [f for f in base.glob(glob_pattern) if f.is_file()]
+    return sorted(matched)
+
 
 @click.group()
 def lakehouse() -> None:
@@ -130,12 +273,12 @@ def list_files(
 @lakehouse.command(name="upload")
 @click.option("--workspace", "-w", required=True, help="Workspace ID.")
 @click.option("--id", "lakehouse_id", required=True, help="Lakehouse item ID.")
-@click.option("--source", "-s", required=True, help="Local file path to upload.")
+@click.option("--source", "-s", required=True, help="Local file path or glob pattern.")
 @click.option(
     "--dest",
     "-d",
     default=None,
-    help="Destination path in lakehouse (default: Files/<filename>).",
+    help="Destination path/directory in lakehouse (default: Files/<filename> or Files/).",
 )
 @click.pass_context
 def upload_file(
@@ -145,46 +288,74 @@ def upload_file(
     source: str,
     dest: str | None,
 ) -> None:
-    """Upload a local file to a lakehouse.
+    """Upload local file(s) to a lakehouse. Supports glob patterns.
 
     \b
-    Examples:
+    Single file:
         fabio lakehouse upload -w <ws-id> --id <lh-id> --source data.csv
         fabio lakehouse upload -w <ws-id> --id <lh-id> -s data.csv -d Files/raw/data.csv
+
+    \b
+    Glob patterns:
+        fabio lakehouse upload -w <ws-id> --id <lh-id> -s "*.csv" -d Files/raw/
+        fabio lakehouse upload -w <ws-id> --id <lh-id> -s "data/**/*.parquet" -d Files/
     """
-    src_path = Path(source)
-    if not src_path.exists():
-        raise FabioError(ErrorCode.INVALID_INPUT, f"Source file not found: {source}")
-
-    if dest is None:
-        dest = f"Files/{src_path.name}"
-
-    content = src_path.read_bytes()
-    client.upload_onelake_file(workspace, lakehouse_id, dest, content)
-
-    output(
-        ctx,
-        {
-            "status": "uploaded",
-            "source": source,
-            "destination": dest,
-            "size": len(content),
-            "workspace": workspace,
-            "lakehouse": lakehouse_id,
-        },
-        plain_key="destination",
-    )
+    if _has_glob(source):
+        files = _resolve_local_glob(source)
+        if not files:
+            raise FabioError(ErrorCode.NOT_FOUND, f"No files match pattern: {source}")
+        # Determine base directory for relative path computation
+        base_dir = Path(_glob_base_dir(source))
+        dest_dir = dest.rstrip("/") if dest else "Files"
+        results: list[dict[str, Any]] = []
+        for f in files:
+            try:
+                rel = str(f.relative_to(base_dir)).replace(os.sep, "/")
+            except ValueError:
+                rel = f.name
+            target = f"{dest_dir}/{rel}"
+            content = f.read_bytes()
+            client.upload_onelake_file(workspace, lakehouse_id, target, content)
+            results.append(
+                {
+                    "status": "uploaded",
+                    "source": str(f),
+                    "destination": target,
+                    "size": len(content),
+                }
+            )
+        output(ctx, results, plain_key="destination")
+    else:
+        src_path = Path(source)
+        if not src_path.exists():
+            raise FabioError(ErrorCode.INVALID_INPUT, f"Source file not found: {source}")
+        if dest is None:
+            dest = f"Files/{src_path.name}"
+        content = src_path.read_bytes()
+        client.upload_onelake_file(workspace, lakehouse_id, dest, content)
+        output(
+            ctx,
+            {
+                "status": "uploaded",
+                "source": source,
+                "destination": dest,
+                "size": len(content),
+                "workspace": workspace,
+                "lakehouse": lakehouse_id,
+            },
+            plain_key="destination",
+        )
 
 
 @lakehouse.command(name="download")
 @click.option("--workspace", "-w", required=True, help="Workspace ID.")
 @click.option("--id", "lakehouse_id", required=True, help="Lakehouse item ID.")
-@click.option("--path", "-p", required=True, help="File path in lakehouse to download.")
+@click.option("--path", "-p", required=True, help="File path or glob pattern in lakehouse.")
 @click.option(
     "--dest",
     "-d",
     default=None,
-    help="Local destination path (default: current dir/<filename>).",
+    help="Local destination path or directory (default: ./<filename> or ./).",
 )
 @click.pass_context
 def download_file(
@@ -194,33 +365,63 @@ def download_file(
     path: str,
     dest: str | None,
 ) -> None:
-    """Download a file from a lakehouse to local disk.
+    """Download file(s) from a lakehouse. Supports glob patterns.
 
     \b
-    Examples:
+    Single file:
         fabio lakehouse download -w <ws-id> --id <lh-id> --path Files/data.csv
         fabio lakehouse download -w <ws-id> --id <lh-id> -p Files/data.csv -d ./out.csv
+
+    \b
+    Glob patterns:
+        fabio lakehouse download -w <ws-id> --id <lh-id> -p "Files/*.csv" -d ./output/
+        fabio lakehouse download -w <ws-id> --id <lh-id> -p "Files/**/*.parquet" -d ./data/
     """
-    content = client.download_onelake_file(workspace, lakehouse_id, path)
-
-    if dest is None:
-        filename = path.rsplit("/", 1)[-1]
-        dest = filename
-
-    dest_path = Path(dest)
-    dest_path.parent.mkdir(parents=True, exist_ok=True)
-    dest_path.write_bytes(content)
-
-    output(
-        ctx,
-        {
-            "status": "downloaded",
-            "source": path,
-            "destination": str(dest_path),
-            "size": len(content),
-        },
-        plain_key="destination",
-    )
+    if _has_glob(path):
+        matched = _resolve_remote_glob(workspace, lakehouse_id, path)
+        if not matched:
+            raise FabioError(ErrorCode.NOT_FOUND, f"No remote files match pattern: {path}")
+        base_dir = _glob_base_dir(path)
+        dest_dir = Path(dest) if dest else Path(".")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        results: list[dict[str, Any]] = []
+        for remote_path in matched:
+            content = client.download_onelake_file(workspace, lakehouse_id, remote_path)
+            # Compute relative path from base_dir
+            if remote_path.startswith(base_dir + "/"):
+                rel = remote_path[len(base_dir) + 1 :]
+            else:
+                rel = remote_path.rsplit("/", 1)[-1]
+            local_file = dest_dir / rel
+            local_file.parent.mkdir(parents=True, exist_ok=True)
+            local_file.write_bytes(content)
+            results.append(
+                {
+                    "status": "downloaded",
+                    "source": remote_path,
+                    "destination": str(local_file),
+                    "size": len(content),
+                }
+            )
+        output(ctx, results, plain_key="destination")
+    else:
+        content = client.download_onelake_file(workspace, lakehouse_id, path)
+        if dest is None:
+            filename = path.rsplit("/", 1)[-1]
+            dest = filename
+        dest_path = Path(dest)
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        dest_path.write_bytes(content)
+        output(
+            ctx,
+            {
+                "status": "downloaded",
+                "source": path,
+                "destination": str(dest_path),
+                "size": len(content),
+            },
+            plain_key="destination",
+        )
 
 
 @lakehouse.command(name="load-table")
@@ -309,16 +510,14 @@ def load_table_cmd(
 @lakehouse.command(name="copy-file")
 @click.option("--source-workspace", "-sw", required=True, help="Source workspace ID.")
 @click.option("--source-id", "-si", required=True, help="Source lakehouse item ID.")
-@click.option(
-    "--source-path", "-sp", required=True, help="Source file path (e.g. Files/data.csv)."
-)
+@click.option("--source-path", "-sp", required=True, help="Source file path or glob pattern.")
 @click.option("--dest-workspace", "-dw", required=True, help="Destination workspace ID.")
 @click.option("--dest-id", "-di", required=True, help="Destination lakehouse item ID.")
 @click.option(
     "--dest-path",
     "-dp",
     default=None,
-    help="Destination file path (default: same as source path).",
+    help="Destination path/directory (default: same as source path).",
 )
 @click.pass_context
 def copy_file(
@@ -330,48 +529,74 @@ def copy_file(
     dest_id: str,
     dest_path: str | None,
 ) -> None:
-    """Copy a file between lakehouses via server-side copy.
+    """Copy file(s) between lakehouses via server-side copy. Supports glob patterns.
 
     \b
     Copies are performed server-side (data never transits through the client).
-    Works across workspaces. Supports any file in the lakehouse (Files/ or Tables/).
+    Works across workspaces.
 
     \b
-    Examples:
+    Single file:
         fabio lakehouse copy-file \\
             -sw <src-ws> -si <src-lh> -sp Files/data.csv \\
             -dw <dest-ws> -di <dest-lh>
 
+    \b
+    Glob patterns:
         fabio lakehouse copy-file \\
-            -sw <src-ws> -si <src-lh> -sp Files/raw/input.parquet \\
-            -dw <dest-ws> -di <dest-lh> -dp Files/staging/input.parquet
+            -sw <src-ws> -si <src-lh> -sp "Files/raw/*.csv" \\
+            -dw <dest-ws> -di <dest-lh> -dp Files/staging/
     """
-    if dest_path is None:
-        dest_path = source_path
-
-    result = client.copy_onelake_file(
-        source_workspace,
-        source_id,
-        source_path,
-        dest_workspace,
-        dest_id,
-        dest_path,
-    )
-
-    result.update(
-        {
-            "status": "copied",
-            "source": f"{source_workspace}/{source_id}/{source_path}",
-            "destination": f"{dest_workspace}/{dest_id}/{dest_path}",
-        }
-    )
-    output(ctx, result, plain_key="destination")
+    if _has_glob(source_path):
+        matched = _resolve_remote_glob(source_workspace, source_id, source_path)
+        if not matched:
+            raise FabioError(ErrorCode.NOT_FOUND, f"No remote files match pattern: {source_path}")
+        base_dir = _glob_base_dir(source_path)
+        dest_dir = dest_path.rstrip("/") if dest_path else base_dir
+        results: list[dict[str, Any]] = []
+        for remote_path in matched:
+            # Compute relative path and destination
+            if remote_path.startswith(base_dir + "/"):
+                rel = remote_path[len(base_dir) + 1 :]
+            else:
+                rel = remote_path.rsplit("/", 1)[-1]
+            target = f"{dest_dir}/{rel}"
+            result = client.copy_onelake_file(
+                source_workspace,
+                source_id,
+                remote_path,
+                dest_workspace,
+                dest_id,
+                target,
+            )
+            result.update({"status": "copied", "source": remote_path, "destination": target})
+            results.append(result)
+        output(ctx, results, plain_key="destination")
+    else:
+        if dest_path is None:
+            dest_path = source_path
+        result = client.copy_onelake_file(
+            source_workspace,
+            source_id,
+            source_path,
+            dest_workspace,
+            dest_id,
+            dest_path,
+        )
+        result.update(
+            {
+                "status": "copied",
+                "source": f"{source_workspace}/{source_id}/{source_path}",
+                "destination": f"{dest_workspace}/{dest_id}/{dest_path}",
+            }
+        )
+        output(ctx, result, plain_key="destination")
 
 
 @lakehouse.command(name="delete-file")
 @click.option("--workspace", "-w", required=True, help="Workspace ID.")
 @click.option("--id", "lakehouse_id", required=True, help="Lakehouse item ID.")
-@click.option("--path", "-p", required=True, help="File path to delete (e.g. Files/data.csv).")
+@click.option("--path", "-p", required=True, help="File path or glob pattern to delete.")
 @click.pass_context
 def delete_file(
     ctx: click.Context,
@@ -379,34 +604,46 @@ def delete_file(
     lakehouse_id: str,
     path: str,
 ) -> None:
-    """Delete a file from a lakehouse.
+    """Delete file(s) from a lakehouse. Supports glob patterns.
 
     \b
-    Examples:
+    Single file:
         fabio lakehouse delete-file -w <ws> --id <lh> -p Files/old_data.csv
-        fabio lakehouse delete-file -w <ws> --id <lh> -p Files/staging/temp.parquet
+
+    \b
+    Glob patterns:
+        fabio lakehouse delete-file -w <ws> --id <lh> -p "Files/temp/*.csv"
+        fabio lakehouse delete-file -w <ws> --id <lh> -p "Files/staging/**/*.parquet"
     """
-    client.delete_onelake_file(workspace, lakehouse_id, path)
-    output(
-        ctx,
-        {"status": "deleted", "path": path, "workspace": workspace, "lakehouse": lakehouse_id},
-        plain_key="path",
-    )
+    if _has_glob(path):
+        matched = _resolve_remote_glob(workspace, lakehouse_id, path)
+        if not matched:
+            raise FabioError(ErrorCode.NOT_FOUND, f"No remote files match pattern: {path}")
+        results: list[dict[str, Any]] = []
+        for remote_path in matched:
+            client.delete_onelake_file(workspace, lakehouse_id, remote_path)
+            results.append({"status": "deleted", "path": remote_path})
+        output(ctx, results, plain_key="path")
+    else:
+        client.delete_onelake_file(workspace, lakehouse_id, path)
+        output(
+            ctx,
+            {"status": "deleted", "path": path, "workspace": workspace, "lakehouse": lakehouse_id},
+            plain_key="path",
+        )
 
 
 @lakehouse.command(name="move-file")
 @click.option("--source-workspace", "-sw", required=True, help="Source workspace ID.")
 @click.option("--source-id", "-si", required=True, help="Source lakehouse item ID.")
-@click.option(
-    "--source-path", "-sp", required=True, help="Source file path (e.g. Files/data.csv)."
-)
+@click.option("--source-path", "-sp", required=True, help="Source file path or glob pattern.")
 @click.option("--dest-workspace", "-dw", required=True, help="Destination workspace ID.")
 @click.option("--dest-id", "-di", required=True, help="Destination lakehouse item ID.")
 @click.option(
     "--dest-path",
     "-dp",
     default=None,
-    help="Destination file path (default: same as source path).",
+    help="Destination path/directory (default: same as source path).",
 )
 @click.pass_context
 def move_file(
@@ -418,43 +655,67 @@ def move_file(
     dest_id: str,
     dest_path: str | None,
 ) -> None:
-    """Move a file between lakehouses (server-side copy + delete source).
+    """Move file(s) between lakehouses (server-side copy + delete). Supports glob patterns.
 
     \b
     Performs a server-side copy then deletes the source. Data never transits
-    through the client. Safe failure mode: if interrupted after copy, you get
-    a duplicate rather than data loss.
+    through the client.
 
     \b
-    Examples:
+    Single file:
         fabio lakehouse move-file \\
             -sw <src-ws> -si <src-lh> -sp Files/data.csv \\
             -dw <dest-ws> -di <dest-lh>
 
+    \b
+    Glob patterns:
         fabio lakehouse move-file \\
-            -sw <src-ws> -si <src-lh> -sp Files/staging/raw.parquet \\
-            -dw <dest-ws> -di <dest-lh> -dp Files/archive/raw.parquet
+            -sw <src-ws> -si <src-lh> -sp "Files/staging/*.parquet" \\
+            -dw <dest-ws> -di <dest-lh> -dp Files/archive/
     """
-    if dest_path is None:
-        dest_path = source_path
-
-    result = client.move_onelake_file(
-        source_workspace,
-        source_id,
-        source_path,
-        dest_workspace,
-        dest_id,
-        dest_path,
-    )
-
-    result.update(
-        {
-            "status": "moved",
-            "source": f"{source_workspace}/{source_id}/{source_path}",
-            "destination": f"{dest_workspace}/{dest_id}/{dest_path}",
-        }
-    )
-    output(ctx, result, plain_key="destination")
+    if _has_glob(source_path):
+        matched = _resolve_remote_glob(source_workspace, source_id, source_path)
+        if not matched:
+            raise FabioError(ErrorCode.NOT_FOUND, f"No remote files match pattern: {source_path}")
+        base_dir = _glob_base_dir(source_path)
+        dest_dir = dest_path.rstrip("/") if dest_path else base_dir
+        results: list[dict[str, Any]] = []
+        for remote_path in matched:
+            if remote_path.startswith(base_dir + "/"):
+                rel = remote_path[len(base_dir) + 1 :]
+            else:
+                rel = remote_path.rsplit("/", 1)[-1]
+            target = f"{dest_dir}/{rel}"
+            result = client.move_onelake_file(
+                source_workspace,
+                source_id,
+                remote_path,
+                dest_workspace,
+                dest_id,
+                target,
+            )
+            result.update({"status": "moved", "source": remote_path, "destination": target})
+            results.append(result)
+        output(ctx, results, plain_key="destination")
+    else:
+        if dest_path is None:
+            dest_path = source_path
+        result = client.move_onelake_file(
+            source_workspace,
+            source_id,
+            source_path,
+            dest_workspace,
+            dest_id,
+            dest_path,
+        )
+        result.update(
+            {
+                "status": "moved",
+                "source": f"{source_workspace}/{source_id}/{source_path}",
+                "destination": f"{dest_workspace}/{dest_id}/{dest_path}",
+            }
+        )
+        output(ctx, result, plain_key="destination")
 
 
 @lakehouse.command(name="delete-table")
