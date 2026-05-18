@@ -187,3 +187,110 @@ class TestLakehouseLoadTable:
             format_options={"format": "Parquet"},
             mode="Overwrite",
         )
+
+
+class TestLakehouseCopyFile:
+    def test_copy_file_basic(self) -> None:
+        runner = CliRunner()
+        with patch(
+            "fabio.commands.lakehouse.client.copy_onelake_file",
+            return_value={"copyId": "abc-123", "copyStatus": "success"},
+        ) as mock_copy:
+            result = runner.invoke(
+                main,
+                [
+                    "lakehouse",
+                    "copy-file",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-sp",
+                    "Files/data.csv",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        parsed = json.loads(result.output)
+        assert parsed["data"]["status"] == "copied"
+        assert parsed["data"]["copyStatus"] == "success"
+        assert "src-ws/src-lh/Files/data.csv" in parsed["data"]["source"]
+        assert "dest-ws/dest-lh/Files/data.csv" in parsed["data"]["destination"]
+        mock_copy.assert_called_once_with(
+            "src-ws",
+            "src-lh",
+            "Files/data.csv",
+            "dest-ws",
+            "dest-lh",
+            "Files/data.csv",
+        )
+
+    def test_copy_file_custom_dest_path(self) -> None:
+        runner = CliRunner()
+        with patch(
+            "fabio.commands.lakehouse.client.copy_onelake_file",
+            return_value={"copyId": "def-456", "copyStatus": "success"},
+        ) as mock_copy:
+            result = runner.invoke(
+                main,
+                [
+                    "lakehouse",
+                    "copy-file",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-sp",
+                    "Files/raw/input.parquet",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
+                    "-dp",
+                    "Files/staging/input.parquet",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        parsed = json.loads(result.output)
+        assert "dest-ws/dest-lh/Files/staging/input.parquet" in parsed["data"]["destination"]
+        mock_copy.assert_called_once_with(
+            "src-ws",
+            "src-lh",
+            "Files/raw/input.parquet",
+            "dest-ws",
+            "dest-lh",
+            "Files/staging/input.parquet",
+        )
+
+    def test_copy_file_same_workspace(self) -> None:
+        runner = CliRunner()
+        with patch(
+            "fabio.commands.lakehouse.client.copy_onelake_file",
+            return_value={"copyId": "ghi-789", "copyStatus": "success"},
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "lakehouse",
+                    "copy-file",
+                    "-sw",
+                    "ws-001",
+                    "-si",
+                    "lh-src",
+                    "-sp",
+                    "Files/report.csv",
+                    "-dw",
+                    "ws-001",
+                    "-di",
+                    "lh-dest",
+                    "-dp",
+                    "Files/report_backup.csv",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output

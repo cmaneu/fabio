@@ -6,6 +6,7 @@ Commands:
     upload          - Upload a local file to a lakehouse
     download        - Download a file from a lakehouse
     load-table      - Create/load a table from a file in the lakehouse
+    copy-file       - Server-side copy a file between lakehouses
     create-shortcut - Create a OneLake/ADLS/S3 shortcut in a lakehouse
     get-shortcut    - Get details of a shortcut
     delete-shortcut - Delete a shortcut
@@ -281,6 +282,68 @@ def load_table_cmd(
         }
     )
     output(ctx, result, plain_key="table")
+
+
+@lakehouse.command(name="copy-file")
+@click.option("--source-workspace", "-sw", required=True, help="Source workspace ID.")
+@click.option("--source-id", "-si", required=True, help="Source lakehouse item ID.")
+@click.option(
+    "--source-path", "-sp", required=True, help="Source file path (e.g. Files/data.csv)."
+)
+@click.option("--dest-workspace", "-dw", required=True, help="Destination workspace ID.")
+@click.option("--dest-id", "-di", required=True, help="Destination lakehouse item ID.")
+@click.option(
+    "--dest-path",
+    "-dp",
+    default=None,
+    help="Destination file path (default: same as source path).",
+)
+@click.pass_context
+def copy_file(
+    ctx: click.Context,
+    source_workspace: str,
+    source_id: str,
+    source_path: str,
+    dest_workspace: str,
+    dest_id: str,
+    dest_path: str | None,
+) -> None:
+    """Copy a file between lakehouses via server-side copy.
+
+    \b
+    Copies are performed server-side (data never transits through the client).
+    Works across workspaces. Supports any file in the lakehouse (Files/ or Tables/).
+
+    \b
+    Examples:
+        fabio lakehouse copy-file \\
+            -sw <src-ws> -si <src-lh> -sp Files/data.csv \\
+            -dw <dest-ws> -di <dest-lh>
+
+        fabio lakehouse copy-file \\
+            -sw <src-ws> -si <src-lh> -sp Files/raw/input.parquet \\
+            -dw <dest-ws> -di <dest-lh> -dp Files/staging/input.parquet
+    """
+    if dest_path is None:
+        dest_path = source_path
+
+    result = client.copy_onelake_file(
+        source_workspace,
+        source_id,
+        source_path,
+        dest_workspace,
+        dest_id,
+        dest_path,
+    )
+
+    result.update(
+        {
+            "status": "copied",
+            "source": f"{source_workspace}/{source_id}/{source_path}",
+            "destination": f"{dest_workspace}/{dest_id}/{dest_path}",
+        }
+    )
+    output(ctx, result, plain_key="destination")
 
 
 @lakehouse.command(name="create-shortcut")

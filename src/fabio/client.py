@@ -24,6 +24,7 @@ from fabio.errors import ErrorCode, FabioError
 
 FABRIC_BASE_URL = "https://api.fabric.microsoft.com/v1"
 ONELAKE_DFS_URL = "https://onelake.dfs.fabric.microsoft.com"
+ONELAKE_BLOB_URL = "https://onelake.blob.fabric.microsoft.com"
 FABRIC_SCOPE = "https://analysis.windows.net/powerbi/api/.default"
 STORAGE_SCOPE = "https://storage.azure.com/.default"
 
@@ -155,7 +156,7 @@ def _poll_lro(resp: requests.Response, token: str) -> dict[str, Any]:
                 )
                 if final_resp.ok and final_resp.text.strip():
                     return final_resp.json()  # type: ignore[no-any-return]
-            return result
+            return result  # type: ignore[no-any-return]
         elif status == "failed":
             error_msg = result.get("error", {}).get("message", "Operation failed")
             raise FabioError(ErrorCode.API_ERROR, f"LRO failed: {error_msg}")
@@ -460,3 +461,88 @@ def update_item_definition(
     """
     path = f"/workspaces/{workspace_id}/items/{item_id}/updateDefinition"
     return post(path, body={"definition": definition})
+
+
+# Copy polling defaults
+COPY_POLL_INTERVAL = 1  # seconds between polls
+COPY_MAX_WAIT = 300  # seconds max total wait (large files can take time)
+
+
+def copy_onelake_file(
+    src_workspace_id: str,
+    src_item_id: str,
+    src_path: str,
+    dest_workspace_id: str,
+    dest_item_id: str,
+    dest_path: str,
+) -> dict[str, Any]:
+    """Copy a file between lakehouses via server-side copy (OneLake Blob API).
+
+    Uses PUT with x-ms-copy-source to trigger an async server-side copy.
+    The data never transits through the client. Polls until copy completes.
+
+    Returns dict with copy status and metadata.
+    """
+    token = require_auth(scope=STORAGE_SCOPE)
+
+    source_url = f"{ONELAKE_BLOB_URL}/{src_workspace_id}/{src_item_id}/{src_path}"
+    dest_url = f"{ONELAKE_BLOB_URL}/{dest_workspace_id}/{dest_item_id}/{dest_path}"
+
+    # Initiate server-side copy
+    try:
+        resp = requests.put(
+            dest_url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "x-ms-copy-source": source_url,
+                "x-ms-version": "2024-08-04",
+            },
+            timeout=30,
+        )
+    except requests.Timeout as exc:
+        raise FabioError(ErrorCode.TIMEOUT, "OneLake copy initiation timed out") from exc
+    except requests.ConnectionError as e:
+        raise FabioError(ErrorCode.API_ERROR, f"Connection error: {e}") from e
+
+    if not resp.ok:
+        _handle_response(resp)
+
+    copy_status = resp.headers.get("x-ms-copy-status", "")
+    copy_id = resp.headers.get("x-ms-copy-id", "")
+
+    # If copy completed synchronously (small files)
+    if copy_status == "success":
+        return {"copyId": copy_id, "copyStatus": "success"}
+
+    # Poll for async copy completion via HEAD on destination
+    elapsed = 0.0
+    while elapsed < COPY_MAX_WAIT and copy_status == "pending":
+        time.sleep(COPY_POLL_INTERVAL)
+        elapsed += COPY_POLL_INTERVAL
+
+        try:
+            head_resp = requests.head(
+                dest_url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "x-ms-version": "2024-08-04",
+                },
+                timeout=30,
+            )
+        except (requests.Timeout, requests.ConnectionError):
+            continue
+
+        copy_status = head_resp.headers.get("x-ms-copy-status", "pending")
+
+    if copy_status == "success":
+        return {"copyId": copy_id, "copyStatus": "success"}
+    elif copy_status == "failed":
+        desc = resp.headers.get("x-ms-copy-status-description", "Unknown error")
+        raise FabioError(ErrorCode.API_ERROR, f"Server-side copy failed: {desc}")
+    elif copy_status == "pending":
+        raise FabioError(
+            ErrorCode.TIMEOUT,
+            f"Copy still pending after {COPY_MAX_WAIT}s. Copy ID: {copy_id}",
+        )
+    else:
+        return {"copyId": copy_id, "copyStatus": copy_status}

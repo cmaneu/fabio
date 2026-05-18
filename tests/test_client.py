@@ -280,3 +280,93 @@ class TestPollLro:
 
         result = _poll_lro(resp_202, "token-123")
         assert result == {}
+
+
+class TestCopyOneLakeFile:
+    """Test the server-side copy logic."""
+
+    @patch("fabio.client.require_auth", return_value="token-abc")
+    @patch("fabio.client.requests.put")
+    @patch("fabio.client.requests.head")
+    @patch("fabio.client.time.sleep")
+    def test_copy_sync_success(
+        self,
+        mock_sleep: MagicMock,
+        mock_head: MagicMock,
+        mock_put: MagicMock,
+        mock_auth: MagicMock,
+    ) -> None:
+        """Copy completes synchronously (small file)."""
+        from fabio.client import copy_onelake_file
+
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.status_code = 202
+        mock_resp.headers = {
+            "x-ms-copy-status": "success",
+            "x-ms-copy-id": "copy-001",
+        }
+        mock_put.return_value = mock_resp
+
+        result = copy_onelake_file("ws-a", "lh-a", "Files/f.csv", "ws-b", "lh-b", "Files/f.csv")
+
+        assert result["copyStatus"] == "success"
+        assert result["copyId"] == "copy-001"
+        mock_head.assert_not_called()
+
+    @patch("fabio.client.require_auth", return_value="token-abc")
+    @patch("fabio.client.requests.put")
+    @patch("fabio.client.requests.head")
+    @patch("fabio.client.time.sleep")
+    def test_copy_async_polls_until_success(
+        self,
+        mock_sleep: MagicMock,
+        mock_head: MagicMock,
+        mock_put: MagicMock,
+        mock_auth: MagicMock,
+    ) -> None:
+        """Copy is async, polls HEAD until success."""
+        from fabio.client import copy_onelake_file
+
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.status_code = 202
+        mock_resp.headers = {
+            "x-ms-copy-status": "pending",
+            "x-ms-copy-id": "copy-002",
+        }
+        mock_put.return_value = mock_resp
+
+        # First poll: still pending
+        head_pending = MagicMock()
+        head_pending.headers = {"x-ms-copy-status": "pending"}
+        # Second poll: success
+        head_done = MagicMock()
+        head_done.headers = {"x-ms-copy-status": "success"}
+        mock_head.side_effect = [head_pending, head_done]
+
+        result = copy_onelake_file("ws-a", "lh-a", "Files/f.csv", "ws-b", "lh-b", "Files/f.csv")
+
+        assert result["copyStatus"] == "success"
+        assert mock_head.call_count == 2
+
+    @patch("fabio.client.require_auth", return_value="token-abc")
+    @patch("fabio.client.requests.put")
+    def test_copy_source_not_found(
+        self,
+        mock_put: MagicMock,
+        mock_auth: MagicMock,
+    ) -> None:
+        """Copy fails when source file doesn't exist."""
+        from fabio.client import copy_onelake_file
+
+        mock_resp = MagicMock()
+        mock_resp.ok = False
+        mock_resp.status_code = 404
+        mock_resp.text = "Source not found"
+        mock_resp.json.side_effect = Exception("no json")
+        mock_put.return_value = mock_resp
+
+        with pytest.raises(FabioError) as exc_info:
+            copy_onelake_file("ws-a", "lh-a", "Files/x.csv", "ws-b", "lh-b", "Files/x.csv")
+        assert exc_info.value.code == ErrorCode.NOT_FOUND
