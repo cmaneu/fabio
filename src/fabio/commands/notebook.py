@@ -293,8 +293,7 @@ def run_notebook(
     if status in ("NotStarted", "InProgress"):
         result["status"] = status
         result["message"] = (
-            f"Job still {status} after {int(elapsed)}s."
-            " Check with 'notebook status'."
+            f"Job still {status} after {int(elapsed)}s. Check with 'notebook status'."
         )
     else:
         result["status"] = status

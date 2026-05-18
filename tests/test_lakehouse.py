@@ -112,16 +112,16 @@ class TestLakehouseFiles:
 
     def test_list_files_recursive(self) -> None:
         runner = CliRunner()
-        # For non-top-level paths like "Files/raw", prefix is just "Files/raw/"
+        # OneLake DFS virtual view: directory=X → content at X/X/
         files = [
             {
-                "name": "Files/raw/orders.csv",
+                "name": "Files/raw/Files/raw/orders.csv",
                 "contentLength": "4096",
                 "lastModified": "2025-03-01T09:00:00Z",
                 "isDirectory": "false",
             },
             {
-                "name": "Files/raw/nested/deep.csv",
+                "name": "Files/raw/Files/raw/nested/deep.csv",
                 "contentLength": "100",
                 "lastModified": "2025-03-01T09:00:00Z",
                 "isDirectory": "false",

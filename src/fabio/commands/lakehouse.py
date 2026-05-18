@@ -15,10 +15,14 @@ Commands:
     create-shortcut - Create a OneLake/ADLS/S3 shortcut in a lakehouse
     get-shortcut    - Get details of a shortcut
     delete-shortcut - Delete a shortcut
+    sync-files      - Sync files between local directory and lakehouse
 """
 
 from __future__ import annotations
 
+import contextlib
+import os
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -85,31 +89,21 @@ def list_files(
     # are doubled (e.g. directory=Files returns Files/Files/myfile.csv for
     # a file at Files/myfile.csv). We must always use recursive=true to see
     # actual file content and then filter client-side.
-    entries = client.list_onelake_files(
-        workspace, lakehouse_id, directory=path, recursive=True
-    )
+    entries = client.list_onelake_files(workspace, lakehouse_id, directory=path, recursive=True)
 
-    # The real contents of path X are at prefix X/X/ due to the virtual view
-    # e.g., for path="Files", actual files appear as "Files/Files/data.csv"
+    # OneLake DFS API virtual view: directory=X always returns content
+    # at path X/X/ (the directory path is doubled in the result).
+    # e.g., directory="Files" → "Files/Files/data.csv"
+    #        directory="Files/sub" → "Files/sub/Files/sub/data.csv"
     path_stripped = path.rstrip("/")
-    content_prefix = f"{path_stripped}/{path_stripped}/"
-    # Also handle subdirectory paths like "Files/raw" -> "Files/raw/raw/"
-    # Actually the pattern is: directory=X → contents at X/<basename(X)>/
-    # For "Files" → "Files/Files/", for "Tables" → "Tables/Tables/"
-    # But for subpaths like "Files/raw", we need to check empirically.
-    # The safe approach: use the doubled-prefix for top-level lakehouse dirs
-    # and fall back to single-prefix stripping otherwise.
-    top_level_dirs = {"Files", "Tables", "Functions", "TableMaintenance"}
-    real_prefix = (
-        content_prefix if path_stripped in top_level_dirs else f"{path_stripped}/"
-    )
+    real_prefix = f"{path_stripped}/{path_stripped}/"
 
     normalized: list[dict[str, object]] = []
     for entry in entries:
         full_name = entry.get("name", "")
         if not full_name.startswith(real_prefix):
             continue
-        rel_name = full_name[len(real_prefix):]
+        rel_name = full_name[len(real_prefix) :]
         if not rel_name:
             continue
         # If not recursive mode, only show direct children (no / in rel_name)
@@ -790,3 +784,239 @@ def delete_shortcut(
         {"status": "deleted", "shortcutName": name, "shortcutPath": path},
         plain_key="shortcutName",
     )
+
+
+# ---------- sync-files ----------
+
+
+def _list_remote_files(
+    workspace: str, lakehouse_id: str, remote_dir: str
+) -> dict[str, dict[str, Any]]:
+    """List remote files and return a dict keyed by relative path.
+
+    Each value contains: contentLength (int), lastModified (datetime), etag.
+    Handles the OneLake DFS virtual view (doubled prefix).
+    """
+    entries = client.list_onelake_files(
+        workspace, lakehouse_id, directory=remote_dir, recursive=True
+    )
+
+    # OneLake DFS virtual view: directory=X → content at X/X/
+    remote_dir_stripped = remote_dir.rstrip("/")
+    real_prefix = f"{remote_dir_stripped}/{remote_dir_stripped}/"
+
+    result: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        name = entry.get("name", "")
+        if not name.startswith(real_prefix):
+            continue
+        rel = name[len(real_prefix) :]
+        if not rel:
+            continue
+        # Skip directories
+        if entry.get("isDirectory") == "true":
+            continue
+        size = int(entry.get("contentLength", "0"))
+        mtime_str = entry.get("lastModified", "")
+        mtime_ts = 0.0
+        if mtime_str:
+            with contextlib.suppress(ValueError, TypeError):
+                mtime_ts = parsedate_to_datetime(mtime_str).timestamp()
+        result[rel] = {
+            "size": size,
+            "mtime": mtime_ts,
+            "etag": entry.get("etag", ""),
+        }
+    return result
+
+
+def _list_local_files(local_dir: Path) -> dict[str, dict[str, Any]]:
+    """List local files recursively and return a dict keyed by relative path.
+
+    Each value contains: size (int), mtime (float timestamp).
+    """
+    result: dict[str, dict[str, Any]] = {}
+    if not local_dir.exists():
+        return result
+    for f in local_dir.rglob("*"):
+        if f.is_file():
+            rel = str(f.relative_to(local_dir)).replace(os.sep, "/")
+            stat = f.stat()
+            result[rel] = {
+                "size": stat.st_size,
+                "mtime": stat.st_mtime,
+            }
+    return result
+
+
+def _compute_sync_plan(
+    source: dict[str, dict[str, Any]],
+    dest: dict[str, dict[str, Any]],
+    *,
+    delete: bool = False,
+) -> dict[str, list[str]]:
+    """Compute what needs to be synced.
+
+    Returns dict with keys: upload/download, skip, delete.
+    Uses size + mtime comparison (like rsync default).
+    Source mtime > dest mtime means changed.
+    """
+    transfer: list[str] = []
+    skip: list[str] = []
+    to_delete: list[str] = []
+
+    for rel, src_meta in sorted(source.items()):
+        if rel not in dest:
+            transfer.append(rel)
+        else:
+            dest_meta = dest[rel]
+            # Changed if size differs or source is newer
+            if (
+                src_meta["size"] != dest_meta["size"]
+                or src_meta["mtime"] > dest_meta["mtime"] + 1.0
+            ):
+                transfer.append(rel)
+            else:
+                skip.append(rel)
+
+    if delete:
+        for rel in sorted(dest.keys()):
+            if rel not in source:
+                to_delete.append(rel)
+
+    return {"transfer": transfer, "skip": skip, "delete": to_delete}
+
+
+@lakehouse.command(name="sync-files")
+@click.option("--workspace", "-w", required=True, help="Workspace ID.")
+@click.option("--id", "lakehouse_id", required=True, help="Lakehouse item ID.")
+@click.option(
+    "--direction",
+    type=click.Choice(["push", "pull"]),
+    required=True,
+    help="push=local→lakehouse, pull=lakehouse→local.",
+)
+@click.option("--local", "-l", "local_dir", required=True, help="Local directory path.")
+@click.option(
+    "--remote",
+    "-r",
+    "remote_dir",
+    default="Files",
+    help="Remote lakehouse directory (default: Files).",
+)
+@click.option("--delete", is_flag=True, default=False, help="Delete destination-only files.")
+@click.option("--dry-run", is_flag=True, default=False, help="Show plan without executing.")
+@click.pass_context
+def sync_files(
+    ctx: click.Context,
+    workspace: str,
+    lakehouse_id: str,
+    direction: str,
+    local_dir: str,
+    remote_dir: str,
+    delete: bool,
+    dry_run: bool,
+) -> None:
+    """Sync files between a local directory and a lakehouse.
+
+    \b
+    Compares source and destination using file size and modification time
+    (like rsync). Only transfers changed or new files.
+
+    \b
+    Push (local → lakehouse):
+        fabio lakehouse sync-files -w <ws> --id <lh> --direction push \\
+            --local ./data/ --remote Files/data
+
+    \b
+    Pull (lakehouse → local):
+        fabio lakehouse sync-files -w <ws> --id <lh> --direction pull \\
+            --local ./data/ --remote Files/data
+
+    \b
+    With --delete, files in destination not present in source are removed.
+    With --dry-run, shows what would be synced without making changes.
+    """
+    local_path = Path(local_dir)
+
+    if direction == "push" and not local_path.exists():
+        raise FabioError(
+            ErrorCode.INVALID_INPUT,
+            f"Local directory does not exist: {local_dir}",
+        )
+
+    if direction == "pull":
+        local_path.mkdir(parents=True, exist_ok=True)
+
+    # Build file inventories
+    local_files = _list_local_files(local_path)
+    remote_files = _list_remote_files(workspace, lakehouse_id, remote_dir)
+
+    # Compute diff
+    if direction == "push":
+        plan = _compute_sync_plan(local_files, remote_files, delete=delete)
+    else:
+        plan = _compute_sync_plan(remote_files, local_files, delete=delete)
+
+    summary: dict[str, Any] = {
+        "direction": direction,
+        "local": local_dir,
+        "remote": remote_dir,
+        "filesTransferred": len(plan["transfer"]),
+        "filesSkipped": len(plan["skip"]),
+        "filesDeleted": len(plan["delete"]),
+        "dryRun": dry_run,
+    }
+
+    if dry_run:
+        summary["toTransfer"] = plan["transfer"]
+        summary["toDelete"] = plan["delete"]
+        output(ctx, summary)
+        return
+
+    # Execute the sync
+    transferred = 0
+    errors: list[str] = []
+
+    if direction == "push":
+        for rel in plan["transfer"]:
+            file_path = local_path / rel
+            try:
+                content = file_path.read_bytes()
+                dest = f"{remote_dir}/{rel}"
+                client.upload_onelake_file(workspace, lakehouse_id, dest, content)
+                transferred += 1
+            except (OSError, FabioError) as e:
+                errors.append(f"{rel}: {e}")
+
+        for rel in plan["delete"]:
+            try:
+                dest = f"{remote_dir}/{rel}"
+                client.delete_onelake_file(workspace, lakehouse_id, dest)
+            except FabioError as e:
+                errors.append(f"delete {rel}: {e}")
+
+    else:  # pull
+        for rel in plan["transfer"]:
+            try:
+                src = f"{remote_dir}/{rel}"
+                content = client.download_onelake_file(workspace, lakehouse_id, src)
+                dest_file = local_path / rel
+                dest_file.parent.mkdir(parents=True, exist_ok=True)
+                dest_file.write_bytes(content)
+                transferred += 1
+            except (OSError, FabioError) as e:
+                errors.append(f"{rel}: {e}")
+
+        for rel in plan["delete"]:
+            try:
+                target = local_path / rel
+                if target.exists():
+                    target.unlink()
+            except OSError as e:
+                errors.append(f"delete {rel}: {e}")
+
+    summary["filesTransferred"] = transferred
+    if errors:
+        summary["errors"] = errors
+    output(ctx, summary)
