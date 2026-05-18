@@ -145,7 +145,7 @@ class TestUploadGlob:
         sub.mkdir()
         (sub / "x.csv").write_text("x")
 
-        with patch("fabio.commands.lakehouse.client.upload_onelake_file") as mock_upload:
+        with patch("fabio.commands.lakehouse.client.upload_onelake_file"):
             result = runner.invoke(
                 main,
                 [
@@ -476,7 +476,7 @@ class TestResolveRemoteGlob:
                 "fabio.commands.lakehouse.client.list_onelake_files",
                 return_value=remote_entries,
             ),
-            patch("fabio.commands.lakehouse.client.delete_onelake_file") as mock_del,
+            patch("fabio.commands.lakehouse.client.delete_onelake_file"),
         ):
             result = runner.invoke(
                 main,

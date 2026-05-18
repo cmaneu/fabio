@@ -126,7 +126,7 @@ def _resolve_workspace_name(name: str) -> str:
             f"Multiple workspaces named '{name}': {ids}. Use --id instead.",
         )
 
-    return matches[0]["id"]
+    return str(matches[0]["id"])
 
 
 @workspace.command(name="assign-capacity")

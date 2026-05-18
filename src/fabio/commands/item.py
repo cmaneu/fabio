@@ -276,4 +276,4 @@ def _resolve_item_name(workspace_id: str, name: str, item_type: str | None) -> s
             f"Multiple items named '{name}' (types: {types}). Use --id or add --type.",
         )
 
-    return matches[0]["id"]
+    return str(matches[0]["id"])

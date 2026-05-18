@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
 from fabio.cli import main
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class TestWarehouseList:
@@ -70,10 +73,14 @@ class TestWarehouseQuery:
             result = runner.invoke(
                 main,
                 [
-                    "warehouse", "query",
-                    "-w", "ws-001",
-                    "--id", "wh-001",
-                    "--sql", "SELECT id, name, amount FROM sales",
+                    "warehouse",
+                    "query",
+                    "-w",
+                    "ws-001",
+                    "--id",
+                    "wh-001",
+                    "--sql",
+                    "SELECT id, name, amount FROM sales",
                 ],
             )
 
@@ -108,10 +115,14 @@ class TestWarehouseQuery:
             result = runner.invoke(
                 main,
                 [
-                    "warehouse", "query",
-                    "-w", "ws-001",
-                    "--id", "wh-001",
-                    "--sql", "DELETE FROM staging WHERE processed = 1",
+                    "warehouse",
+                    "query",
+                    "-w",
+                    "ws-001",
+                    "--id",
+                    "wh-001",
+                    "--sql",
+                    "DELETE FROM staging WHERE processed = 1",
                 ],
             )
 
@@ -148,10 +159,14 @@ class TestWarehouseQuery:
             result = runner.invoke(
                 main,
                 [
-                    "warehouse", "query",
-                    "-w", "ws-001",
-                    "--id", "wh-001",
-                    "--sql", f"@{sql_file}",
+                    "warehouse",
+                    "query",
+                    "-w",
+                    "ws-001",
+                    "--id",
+                    "wh-001",
+                    "--sql",
+                    f"@{sql_file}",
                 ],
             )
 
@@ -177,10 +192,14 @@ class TestWarehouseQuery:
             result = runner.invoke(
                 main,
                 [
-                    "warehouse", "query",
-                    "-w", "ws-001",
-                    "--id", "wh-001",
-                    "--sql", "SELECT 1",
+                    "warehouse",
+                    "query",
+                    "-w",
+                    "ws-001",
+                    "--id",
+                    "wh-001",
+                    "--sql",
+                    "SELECT 1",
                 ],
             )
 
@@ -207,18 +226,20 @@ class TestWarehouseQuery:
 
         with (
             patch("fabio.commands.warehouse.client.get", return_value=wh_data),
-            patch(
-                "fabio.commands.warehouse.client.require_auth", return_value="my-token"
-            ),
+            patch("fabio.commands.warehouse.client.require_auth", return_value="my-token"),
             patch("pyodbc.connect", return_value=mock_conn) as mock_connect,
         ):
             result = runner.invoke(
                 main,
                 [
-                    "warehouse", "query",
-                    "-w", "ws-001",
-                    "--id", "wh-001",
-                    "--sql", "SELECT 1 AS x",
+                    "warehouse",
+                    "query",
+                    "-w",
+                    "ws-001",
+                    "--id",
+                    "wh-001",
+                    "--sql",
+                    "SELECT 1 AS x",
                 ],
             )
 
@@ -266,10 +287,14 @@ class TestWarehouseQuery:
             result = runner.invoke(
                 main,
                 [
-                    "warehouse", "query",
-                    "-w", "ws-001",
-                    "--id", "lh-001",
-                    "--sql", "SELECT 99 AS val",
+                    "warehouse",
+                    "query",
+                    "-w",
+                    "ws-001",
+                    "--id",
+                    "lh-001",
+                    "--sql",
+                    "SELECT 99 AS val",
                 ],
             )
 

@@ -10,7 +10,6 @@ from click.testing import CliRunner
 from fabio.cli import main
 from fabio.commands.lakehouse import _resolve_table_glob
 
-
 MOCK_TABLES_RESPONSE = {
     "data": [
         {"name": "sales_2023", "type": "Managed"},
@@ -93,9 +92,14 @@ class TestDeleteTableGlob:
             result = runner.invoke(
                 main,
                 [
-                    "lakehouse", "delete-table",
-                    "-w", "ws-001", "--id", "lh-001",
-                    "-t", "staging_*",
+                    "lakehouse",
+                    "delete-table",
+                    "-w",
+                    "ws-001",
+                    "--id",
+                    "lh-001",
+                    "-t",
+                    "staging_*",
                 ],
             )
 
@@ -118,9 +122,14 @@ class TestDeleteTableGlob:
             result = runner.invoke(
                 main,
                 [
-                    "lakehouse", "delete-table",
-                    "-w", "ws-001", "--id", "lh-001",
-                    "-t", "nonexist_*",
+                    "lakehouse",
+                    "delete-table",
+                    "-w",
+                    "ws-001",
+                    "--id",
+                    "lh-001",
+                    "-t",
+                    "nonexist_*",
                 ],
             )
 
@@ -141,17 +150,27 @@ class TestCopyTableGlob:
             result = runner.invoke(
                 main,
                 [
-                    "lakehouse", "copy-table",
-                    "-sw", "src-ws", "-si", "src-lh",
-                    "-st", "sales",
-                    "-dw", "dest-ws", "-di", "dest-lh",
+                    "lakehouse",
+                    "copy-table",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-st",
+                    "sales",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
                 ],
             )
 
         assert result.exit_code == 0, result.output
         parsed = json.loads(result.output)
         assert parsed["data"]["status"] == "copied"
-        mock_copy.assert_called_once_with("src-ws", "src-lh", "sales", "dest-ws", "dest-lh", "sales")
+        mock_copy.assert_called_once_with(
+            "src-ws", "src-lh", "sales", "dest-ws", "dest-lh", "sales"
+        )
 
     def test_copy_table_glob_pattern(self) -> None:
         """Glob pattern copies all matching tables."""
@@ -169,10 +188,18 @@ class TestCopyTableGlob:
             result = runner.invoke(
                 main,
                 [
-                    "lakehouse", "copy-table",
-                    "-sw", "src-ws", "-si", "src-lh",
-                    "-st", "sales_*",
-                    "-dw", "dest-ws", "-di", "dest-lh",
+                    "lakehouse",
+                    "copy-table",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-st",
+                    "sales_*",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
                 ],
             )
 
@@ -182,8 +209,12 @@ class TestCopyTableGlob:
         tables = [r["destTable"] for r in parsed["data"]]
         assert tables == ["sales_2023", "sales_2024"]
         assert mock_copy.call_count == 2
-        mock_copy.assert_any_call("src-ws", "src-lh", "sales_2023", "dest-ws", "dest-lh", "sales_2023")
-        mock_copy.assert_any_call("src-ws", "src-lh", "sales_2024", "dest-ws", "dest-lh", "sales_2024")
+        mock_copy.assert_any_call(
+            "src-ws", "src-lh", "sales_2023", "dest-ws", "dest-lh", "sales_2023"
+        )
+        mock_copy.assert_any_call(
+            "src-ws", "src-lh", "sales_2024", "dest-ws", "dest-lh", "sales_2024"
+        )
 
     def test_copy_table_glob_no_match(self) -> None:
         """Glob with no matches raises NOT_FOUND error."""
@@ -195,10 +226,18 @@ class TestCopyTableGlob:
             result = runner.invoke(
                 main,
                 [
-                    "lakehouse", "copy-table",
-                    "-sw", "src-ws", "-si", "src-lh",
-                    "-st", "nonexist_*",
-                    "-dw", "dest-ws", "-di", "dest-lh",
+                    "lakehouse",
+                    "copy-table",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-st",
+                    "nonexist_*",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
                 ],
             )
 
@@ -221,17 +260,28 @@ class TestCopyTableGlob:
             result = runner.invoke(
                 main,
                 [
-                    "lakehouse", "copy-table",
-                    "-sw", "src-ws", "-si", "src-lh",
-                    "-st", "sales_*",
-                    "-dw", "dest-ws", "-di", "dest-lh",
-                    "-dt", "ignored_name",
+                    "lakehouse",
+                    "copy-table",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-st",
+                    "sales_*",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
+                    "-dt",
+                    "ignored_name",
                 ],
             )
 
         assert result.exit_code == 0, result.output
         # Glob mode ignores --dest-table, uses source name
-        mock_copy.assert_any_call("src-ws", "src-lh", "sales_2023", "dest-ws", "dest-lh", "sales_2023")
+        mock_copy.assert_any_call(
+            "src-ws", "src-lh", "sales_2023", "dest-ws", "dest-lh", "sales_2023"
+        )
 
 
 class TestMoveTableGlob:
@@ -242,22 +292,37 @@ class TestMoveTableGlob:
         runner = CliRunner()
         with patch(
             "fabio.commands.lakehouse.client.move_table",
-            return_value={"filesCopied": 3, "sourceTable": "staging", "destTable": "staging", "status": "moved"},
+            return_value={
+                "filesCopied": 3,
+                "sourceTable": "staging",
+                "destTable": "staging",
+                "status": "moved",
+            },
         ) as mock_move:
             result = runner.invoke(
                 main,
                 [
-                    "lakehouse", "move-table",
-                    "-sw", "src-ws", "-si", "src-lh",
-                    "-st", "staging",
-                    "-dw", "dest-ws", "-di", "dest-lh",
+                    "lakehouse",
+                    "move-table",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-st",
+                    "staging",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
                 ],
             )
 
         assert result.exit_code == 0, result.output
         parsed = json.loads(result.output)
         assert parsed["data"]["status"] == "moved"
-        mock_move.assert_called_once_with("src-ws", "src-lh", "staging", "dest-ws", "dest-lh", "staging")
+        mock_move.assert_called_once_with(
+            "src-ws", "src-lh", "staging", "dest-ws", "dest-lh", "staging"
+        )
 
     def test_move_table_glob_pattern(self) -> None:
         """Glob pattern moves all matching tables."""
@@ -275,10 +340,18 @@ class TestMoveTableGlob:
             result = runner.invoke(
                 main,
                 [
-                    "lakehouse", "move-table",
-                    "-sw", "src-ws", "-si", "src-lh",
-                    "-st", "staging_*",
-                    "-dw", "dest-ws", "-di", "dest-lh",
+                    "lakehouse",
+                    "move-table",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-st",
+                    "staging_*",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
                 ],
             )
 
@@ -288,8 +361,12 @@ class TestMoveTableGlob:
         tables = [r["destTable"] for r in parsed["data"]]
         assert tables == ["staging_orders", "staging_products"]
         assert mock_move.call_count == 2
-        mock_move.assert_any_call("src-ws", "src-lh", "staging_orders", "dest-ws", "dest-lh", "staging_orders")
-        mock_move.assert_any_call("src-ws", "src-lh", "staging_products", "dest-ws", "dest-lh", "staging_products")
+        mock_move.assert_any_call(
+            "src-ws", "src-lh", "staging_orders", "dest-ws", "dest-lh", "staging_orders"
+        )
+        mock_move.assert_any_call(
+            "src-ws", "src-lh", "staging_products", "dest-ws", "dest-lh", "staging_products"
+        )
 
     def test_move_table_glob_no_match(self) -> None:
         """Glob with no matches raises NOT_FOUND error."""
@@ -301,10 +378,18 @@ class TestMoveTableGlob:
             result = runner.invoke(
                 main,
                 [
-                    "lakehouse", "move-table",
-                    "-sw", "src-ws", "-si", "src-lh",
-                    "-st", "nonexist_*",
-                    "-dw", "dest-ws", "-di", "dest-lh",
+                    "lakehouse",
+                    "move-table",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-st",
+                    "nonexist_*",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
                 ],
             )
 

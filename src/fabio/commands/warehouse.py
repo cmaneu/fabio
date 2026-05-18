@@ -70,7 +70,7 @@ def query_cmd(
         fabio warehouse query -w <ws> --id <wh> -s @query.sql  (read from file)
     """
     try:
-        import pyodbc  # type: ignore[import-not-found]
+        import pyodbc
     except ImportError as exc:
         raise FabioError(
             ErrorCode.INVALID_INPUT,
@@ -127,11 +127,7 @@ def query_cmd(
     token_bytes = token.encode("UTF-16-LE")
     token_struct = struct.pack(f"<I{len(token_bytes)}s", len(token_bytes), token_bytes)
 
-    odbc_conn_str = (
-        f"DRIVER={{ODBC Driver 18 for SQL Server}};"
-        f"SERVER={server};"
-        f"DATABASE={database}"
-    )
+    odbc_conn_str = f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={server};DATABASE={database}"
 
     try:
         conn = pyodbc.connect(
@@ -185,7 +181,7 @@ def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
 
     result: dict[str, Any] = {}
     for key, val in row.items():
-        if isinstance(val, (datetime.date, datetime.datetime)):
+        if isinstance(val, datetime.datetime | datetime.date):
             result[key] = val.isoformat()
         elif isinstance(val, Decimal):
             result[key] = float(val)
