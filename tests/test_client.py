@@ -370,3 +370,87 @@ class TestCopyOneLakeFile:
         with pytest.raises(FabioError) as exc_info:
             copy_onelake_file("ws-a", "lh-a", "Files/x.csv", "ws-b", "lh-b", "Files/x.csv")
         assert exc_info.value.code == ErrorCode.NOT_FOUND
+
+
+class TestDeleteOneLakeFile:
+    """Test the delete_onelake_file function."""
+
+    @patch("fabio.client.require_auth", return_value="token-abc")
+    @patch("fabio.client.requests.delete")
+    def test_delete_success(
+        self,
+        mock_delete: MagicMock,
+        mock_auth: MagicMock,
+    ) -> None:
+        from fabio.client import delete_onelake_file
+
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.status_code = 200
+        mock_delete.return_value = mock_resp
+
+        # Should not raise
+        delete_onelake_file("ws-a", "lh-a", "Files/old.csv")
+
+        mock_delete.assert_called_once()
+        call_url = mock_delete.call_args[0][0]
+        assert "ws-a/lh-a/Files/old.csv" in call_url
+
+    @patch("fabio.client.require_auth", return_value="token-abc")
+    @patch("fabio.client.requests.delete")
+    def test_delete_not_found(
+        self,
+        mock_delete: MagicMock,
+        mock_auth: MagicMock,
+    ) -> None:
+        from fabio.client import delete_onelake_file
+
+        mock_resp = MagicMock()
+        mock_resp.ok = False
+        mock_resp.status_code = 404
+        mock_resp.text = "Not found"
+        mock_resp.json.side_effect = Exception("no json")
+        mock_delete.return_value = mock_resp
+
+        with pytest.raises(FabioError) as exc_info:
+            delete_onelake_file("ws-a", "lh-a", "Files/missing.csv")
+        assert exc_info.value.code == ErrorCode.NOT_FOUND
+
+
+class TestMoveOneLakeFile:
+    """Test the move_onelake_file function."""
+
+    @patch("fabio.client.delete_onelake_file")
+    @patch("fabio.client.copy_onelake_file")
+    def test_move_calls_copy_then_delete(
+        self,
+        mock_copy: MagicMock,
+        mock_delete: MagicMock,
+    ) -> None:
+        from fabio.client import move_onelake_file
+
+        mock_copy.return_value = {"copyId": "cp-1", "copyStatus": "success"}
+
+        result = move_onelake_file("ws-a", "lh-a", "Files/f.csv", "ws-b", "lh-b", "Files/f.csv")
+
+        assert result["copyStatus"] == "moved"
+        mock_copy.assert_called_once_with(
+            "ws-a", "lh-a", "Files/f.csv", "ws-b", "lh-b", "Files/f.csv"
+        )
+        mock_delete.assert_called_once_with("ws-a", "lh-a", "Files/f.csv")
+
+    @patch("fabio.client.delete_onelake_file")
+    @patch("fabio.client.copy_onelake_file")
+    def test_move_does_not_delete_if_copy_fails(
+        self,
+        mock_copy: MagicMock,
+        mock_delete: MagicMock,
+    ) -> None:
+        from fabio.client import move_onelake_file
+
+        mock_copy.side_effect = FabioError(ErrorCode.NOT_FOUND, "Source not found")
+
+        with pytest.raises(FabioError) as exc_info:
+            move_onelake_file("ws-a", "lh-a", "Files/x.csv", "ws-b", "lh-b", "Files/x.csv")
+        assert exc_info.value.code == ErrorCode.NOT_FOUND
+        mock_delete.assert_not_called()

@@ -546,3 +546,63 @@ def copy_onelake_file(
         )
     else:
         return {"copyId": copy_id, "copyStatus": copy_status}
+
+
+def delete_onelake_file(
+    workspace_id: str,
+    item_id: str,
+    file_path: str,
+) -> None:
+    """Delete a file from a lakehouse via the OneLake DFS API.
+
+    Raises FabioError if the file doesn't exist or on failure.
+    """
+    token = require_auth(scope=STORAGE_SCOPE)
+    url = f"{ONELAKE_DFS_URL}/{workspace_id}/{item_id}/{file_path}"
+
+    try:
+        resp = requests.delete(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+    except requests.Timeout as exc:
+        raise FabioError(ErrorCode.TIMEOUT, "OneLake delete timed out") from exc
+    except requests.ConnectionError as e:
+        raise FabioError(ErrorCode.API_ERROR, f"Connection error: {e}") from e
+
+    if not resp.ok:
+        _handle_response(resp)
+
+
+def move_onelake_file(
+    src_workspace_id: str,
+    src_item_id: str,
+    src_path: str,
+    dest_workspace_id: str,
+    dest_item_id: str,
+    dest_path: str,
+) -> dict[str, Any]:
+    """Move a file between lakehouses (server-side copy + delete source).
+
+    Performs a server-side copy via the Blob API, then deletes the source
+    file via the DFS API. Data never transits through the client.
+
+    Safe failure mode: if delete fails after copy, you get a duplicate
+    rather than data loss.
+    """
+    # Step 1: Server-side copy
+    result = copy_onelake_file(
+        src_workspace_id,
+        src_item_id,
+        src_path,
+        dest_workspace_id,
+        dest_item_id,
+        dest_path,
+    )
+
+    # Step 2: Delete source (only after copy confirmed success)
+    delete_onelake_file(src_workspace_id, src_item_id, src_path)
+
+    result["copyStatus"] = "moved"
+    return result

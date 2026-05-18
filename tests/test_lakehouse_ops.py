@@ -294,3 +294,128 @@ class TestLakehouseCopyFile:
             )
 
         assert result.exit_code == 0, result.output
+
+
+class TestLakehouseRemoveFile:
+    def test_remove_file(self) -> None:
+        runner = CliRunner()
+        with patch("fabio.commands.lakehouse.client.delete_onelake_file") as mock_delete:
+            result = runner.invoke(
+                main,
+                [
+                    "lakehouse",
+                    "remove-file",
+                    "-w",
+                    "ws-001",
+                    "--id",
+                    "lh-001",
+                    "-p",
+                    "Files/old_data.csv",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        parsed = json.loads(result.output)
+        assert parsed["data"]["status"] == "deleted"
+        assert parsed["data"]["path"] == "Files/old_data.csv"
+        mock_delete.assert_called_once_with("ws-001", "lh-001", "Files/old_data.csv")
+
+    def test_remove_file_nested_path(self) -> None:
+        runner = CliRunner()
+        with patch("fabio.commands.lakehouse.client.delete_onelake_file") as mock_delete:
+            result = runner.invoke(
+                main,
+                [
+                    "lakehouse",
+                    "remove-file",
+                    "-w",
+                    "ws-001",
+                    "--id",
+                    "lh-001",
+                    "-p",
+                    "Files/staging/temp/batch_001.parquet",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        mock_delete.assert_called_once_with(
+            "ws-001", "lh-001", "Files/staging/temp/batch_001.parquet"
+        )
+
+
+class TestLakehouseMoveFile:
+    def test_move_file_basic(self) -> None:
+        runner = CliRunner()
+        with patch(
+            "fabio.commands.lakehouse.client.move_onelake_file",
+            return_value={"copyId": "mv-001", "copyStatus": "moved"},
+        ) as mock_move:
+            result = runner.invoke(
+                main,
+                [
+                    "lakehouse",
+                    "move-file",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-sp",
+                    "Files/data.csv",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        parsed = json.loads(result.output)
+        assert parsed["data"]["status"] == "moved"
+        assert "src-ws/src-lh/Files/data.csv" in parsed["data"]["source"]
+        assert "dest-ws/dest-lh/Files/data.csv" in parsed["data"]["destination"]
+        mock_move.assert_called_once_with(
+            "src-ws",
+            "src-lh",
+            "Files/data.csv",
+            "dest-ws",
+            "dest-lh",
+            "Files/data.csv",
+        )
+
+    def test_move_file_custom_dest(self) -> None:
+        runner = CliRunner()
+        with patch(
+            "fabio.commands.lakehouse.client.move_onelake_file",
+            return_value={"copyId": "mv-002", "copyStatus": "moved"},
+        ) as mock_move:
+            result = runner.invoke(
+                main,
+                [
+                    "lakehouse",
+                    "move-file",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-sp",
+                    "Files/incoming/report.csv",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
+                    "-dp",
+                    "Files/archive/report.csv",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        parsed = json.loads(result.output)
+        assert "Files/archive/report.csv" in parsed["data"]["destination"]
+        mock_move.assert_called_once_with(
+            "src-ws",
+            "src-lh",
+            "Files/incoming/report.csv",
+            "dest-ws",
+            "dest-lh",
+            "Files/archive/report.csv",
+        )

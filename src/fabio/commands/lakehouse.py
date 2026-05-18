@@ -7,6 +7,8 @@ Commands:
     download        - Download a file from a lakehouse
     load-table      - Create/load a table from a file in the lakehouse
     copy-file       - Server-side copy a file between lakehouses
+    remove-file     - Delete a file from a lakehouse
+    move-file       - Server-side move a file between lakehouses
     create-shortcut - Create a OneLake/ADLS/S3 shortcut in a lakehouse
     get-shortcut    - Get details of a shortcut
     delete-shortcut - Delete a shortcut
@@ -339,6 +341,95 @@ def copy_file(
     result.update(
         {
             "status": "copied",
+            "source": f"{source_workspace}/{source_id}/{source_path}",
+            "destination": f"{dest_workspace}/{dest_id}/{dest_path}",
+        }
+    )
+    output(ctx, result, plain_key="destination")
+
+
+@lakehouse.command(name="remove-file")
+@click.option("--workspace", "-w", required=True, help="Workspace ID.")
+@click.option("--id", "lakehouse_id", required=True, help="Lakehouse item ID.")
+@click.option("--path", "-p", required=True, help="File path to delete (e.g. Files/data.csv).")
+@click.pass_context
+def remove_file(
+    ctx: click.Context,
+    workspace: str,
+    lakehouse_id: str,
+    path: str,
+) -> None:
+    """Delete a file from a lakehouse.
+
+    \b
+    Examples:
+        fabio lakehouse remove-file -w <ws> --id <lh> -p Files/old_data.csv
+        fabio lakehouse remove-file -w <ws> --id <lh> -p Files/staging/temp.parquet
+    """
+    client.delete_onelake_file(workspace, lakehouse_id, path)
+    output(
+        ctx,
+        {"status": "deleted", "path": path, "workspace": workspace, "lakehouse": lakehouse_id},
+        plain_key="path",
+    )
+
+
+@lakehouse.command(name="move-file")
+@click.option("--source-workspace", "-sw", required=True, help="Source workspace ID.")
+@click.option("--source-id", "-si", required=True, help="Source lakehouse item ID.")
+@click.option(
+    "--source-path", "-sp", required=True, help="Source file path (e.g. Files/data.csv)."
+)
+@click.option("--dest-workspace", "-dw", required=True, help="Destination workspace ID.")
+@click.option("--dest-id", "-di", required=True, help="Destination lakehouse item ID.")
+@click.option(
+    "--dest-path",
+    "-dp",
+    default=None,
+    help="Destination file path (default: same as source path).",
+)
+@click.pass_context
+def move_file(
+    ctx: click.Context,
+    source_workspace: str,
+    source_id: str,
+    source_path: str,
+    dest_workspace: str,
+    dest_id: str,
+    dest_path: str | None,
+) -> None:
+    """Move a file between lakehouses (server-side copy + delete source).
+
+    \b
+    Performs a server-side copy then deletes the source. Data never transits
+    through the client. Safe failure mode: if interrupted after copy, you get
+    a duplicate rather than data loss.
+
+    \b
+    Examples:
+        fabio lakehouse move-file \\
+            -sw <src-ws> -si <src-lh> -sp Files/data.csv \\
+            -dw <dest-ws> -di <dest-lh>
+
+        fabio lakehouse move-file \\
+            -sw <src-ws> -si <src-lh> -sp Files/staging/raw.parquet \\
+            -dw <dest-ws> -di <dest-lh> -dp Files/archive/raw.parquet
+    """
+    if dest_path is None:
+        dest_path = source_path
+
+    result = client.move_onelake_file(
+        source_workspace,
+        source_id,
+        source_path,
+        dest_workspace,
+        dest_id,
+        dest_path,
+    )
+
+    result.update(
+        {
+            "status": "moved",
             "source": f"{source_workspace}/{source_id}/{source_path}",
             "destination": f"{dest_workspace}/{dest_id}/{dest_path}",
         }
