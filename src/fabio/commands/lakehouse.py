@@ -1,16 +1,20 @@
 """``fabio lakehouse`` command group.
 
 Commands:
-    tables     - List tables in a lakehouse
-    files      - List files in a lakehouse
-    upload     - Upload a local file to a lakehouse
-    download   - Download a file from a lakehouse
-    load-table - Create/load a table from a file in the lakehouse
+    tables          - List tables in a lakehouse
+    files           - List files in a lakehouse
+    upload          - Upload a local file to a lakehouse
+    download        - Download a file from a lakehouse
+    load-table      - Create/load a table from a file in the lakehouse
+    create-shortcut - Create a OneLake/ADLS/S3 shortcut in a lakehouse
+    get-shortcut    - Get details of a shortcut
+    delete-shortcut - Delete a shortcut
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -277,3 +281,200 @@ def load_table_cmd(
         }
     )
     output(ctx, result, plain_key="table")
+
+
+@lakehouse.command(name="create-shortcut")
+@click.option("--workspace", "-w", required=True, help="Workspace ID (target lakehouse).")
+@click.option("--id", "lakehouse_id", required=True, help="Lakehouse item ID (target).")
+@click.option("--name", "-n", required=True, help="Shortcut name.")
+@click.option(
+    "--path",
+    "-p",
+    default="Tables",
+    help="Parent path for the shortcut (Tables or Files). Default: Tables.",
+)
+@click.option(
+    "--target-type",
+    "-t",
+    type=click.Choice(["onelake", "adls", "s3"]),
+    default="onelake",
+    help="Target type (default: onelake).",
+)
+@click.option(
+    "--source-workspace",
+    default=None,
+    help="[onelake] Source workspace ID.",
+)
+@click.option(
+    "--source-id",
+    default=None,
+    help="[onelake] Source lakehouse/item ID.",
+)
+@click.option(
+    "--source-path",
+    default=None,
+    help="[onelake] Path in source item (e.g. Tables/sales).",
+)
+@click.option(
+    "--location",
+    default=None,
+    help="[adls/s3] Storage account URL or S3 bucket URL.",
+)
+@click.option(
+    "--subpath",
+    default=None,
+    help="[adls/s3] Sub-path within the storage container/bucket.",
+)
+@click.option(
+    "--connection-id",
+    default=None,
+    help="[adls/s3] Connection ID for authentication.",
+)
+@click.pass_context
+def create_shortcut(
+    ctx: click.Context,
+    workspace: str,
+    lakehouse_id: str,
+    name: str,
+    path: str,
+    target_type: str,
+    source_workspace: str | None,
+    source_id: str | None,
+    source_path: str | None,
+    location: str | None,
+    subpath: str | None,
+    connection_id: str | None,
+) -> None:
+    """Create a shortcut in a lakehouse.
+
+    \b
+    OneLake shortcuts reference tables/files in another lakehouse:
+        fabio lakehouse create-shortcut -w <ws> --id <lh> -n sales \\
+            --source-workspace <src-ws> --source-id <src-lh> \\
+            --source-path Tables/sales
+
+    \b
+    ADLS Gen2 shortcuts reference external Azure storage:
+        fabio lakehouse create-shortcut -w <ws> --id <lh> -n raw \\
+            --path Files --target-type adls \\
+            --location https://account.dfs.core.windows.net \\
+            --subpath /container/path --connection-id <conn-id>
+
+    \b
+    S3 shortcuts reference Amazon S3 buckets:
+        fabio lakehouse create-shortcut -w <ws> --id <lh> -n external \\
+            --path Files --target-type s3 \\
+            --location https://bucket.s3.region.amazonaws.com \\
+            --subpath /prefix --connection-id <conn-id>
+    """
+    target: dict[str, Any] = {}
+
+    if target_type == "onelake":
+        if not source_workspace or not source_id or not source_path:
+            raise FabioError(
+                ErrorCode.INVALID_INPUT,
+                "OneLake shortcuts require --source-workspace, --source-id, and --source-path.",
+            )
+        target["oneLake"] = {
+            "workspaceId": source_workspace,
+            "itemId": source_id,
+            "path": source_path,
+        }
+    elif target_type == "adls":
+        if not location or not subpath:
+            raise FabioError(
+                ErrorCode.INVALID_INPUT,
+                "ADLS shortcuts require --location and --subpath.",
+            )
+        adls_target: dict[str, str] = {"location": location, "subpath": subpath}
+        if connection_id:
+            adls_target["connectionId"] = connection_id
+        target["adlsGen2"] = adls_target
+    elif target_type == "s3":
+        if not location or not subpath:
+            raise FabioError(
+                ErrorCode.INVALID_INPUT,
+                "S3 shortcuts require --location and --subpath.",
+            )
+        s3_target: dict[str, str] = {"location": location, "subpath": subpath}
+        if connection_id:
+            s3_target["connectionId"] = connection_id
+        target["amazonS3"] = s3_target
+
+    body: dict[str, Any] = {
+        "path": path,
+        "name": name,
+        "target": target,
+    }
+
+    api_path = f"/workspaces/{workspace}/items/{lakehouse_id}/shortcuts"
+    data = client.post(api_path, body=body)
+
+    # The API returns the created shortcut details
+    result: dict[str, Any] = data if data else {}
+    result.update({"status": "created", "shortcutName": name, "shortcutPath": path})
+    output(ctx, result, plain_key="shortcutName")
+
+
+@lakehouse.command(name="get-shortcut")
+@click.option("--workspace", "-w", required=True, help="Workspace ID.")
+@click.option("--id", "lakehouse_id", required=True, help="Lakehouse item ID.")
+@click.option("--name", "-n", required=True, help="Shortcut name.")
+@click.option(
+    "--path",
+    "-p",
+    default="Tables",
+    help="Shortcut parent path (Tables or Files). Default: Tables.",
+)
+@click.pass_context
+def get_shortcut(
+    ctx: click.Context,
+    workspace: str,
+    lakehouse_id: str,
+    name: str,
+    path: str,
+) -> None:
+    """Get details of a shortcut.
+
+    \b
+    Examples:
+        fabio lakehouse get-shortcut -w <ws> --id <lh> -n sales
+        fabio lakehouse get-shortcut -w <ws> --id <lh> -n raw --path Files
+    """
+    api_path = f"/workspaces/{workspace}/items/{lakehouse_id}/shortcuts/{path}/{name}"
+    data = client.get(api_path)
+    output(ctx, data, plain_key="name")
+
+
+@lakehouse.command(name="delete-shortcut")
+@click.option("--workspace", "-w", required=True, help="Workspace ID.")
+@click.option("--id", "lakehouse_id", required=True, help="Lakehouse item ID.")
+@click.option("--name", "-n", required=True, help="Shortcut name.")
+@click.option(
+    "--path",
+    "-p",
+    default="Tables",
+    help="Shortcut parent path (Tables or Files). Default: Tables.",
+)
+@click.pass_context
+def delete_shortcut(
+    ctx: click.Context,
+    workspace: str,
+    lakehouse_id: str,
+    name: str,
+    path: str,
+) -> None:
+    """Delete a shortcut from a lakehouse.
+
+    \b
+    Examples:
+        fabio lakehouse delete-shortcut -w <ws> --id <lh> -n sales
+        fabio lakehouse delete-shortcut -w <ws> --id <lh> -n raw --path Files
+    """
+    api_path = f"/workspaces/{workspace}/items/{lakehouse_id}/shortcuts/{path}/{name}"
+    client.delete(api_path)
+    output(
+        ctx,
+        {"status": "deleted", "shortcutName": name, "shortcutPath": path},
+        plain_key="shortcutName",
+    )
