@@ -1,8 +1,12 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use clap::Subcommand;
+use tokio::time::sleep;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -40,6 +44,14 @@ pub enum NotebookCommand {
         /// Notebook item ID
         #[arg(long)]
         id: String,
+
+        /// Wait for the notebook run to complete (polls until finished)
+        #[arg(long)]
+        wait: bool,
+
+        /// Maximum time to wait in seconds (default: 600)
+        #[arg(long, default_value = "600")]
+        timeout: u64,
     },
     /// Check the status of a notebook run
     Status {
@@ -91,7 +103,12 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
         NotebookCommand::GetDefinition { workspace, id } => {
             get_definition(cli, client, workspace, id).await
         }
-        NotebookCommand::Run { workspace, id } => run(cli, client, workspace, id).await,
+        NotebookCommand::Run {
+            workspace,
+            id,
+            wait,
+            timeout,
+        } => run(cli, client, workspace, id, *wait, *timeout).await,
         NotebookCommand::Status {
             workspace,
             id,
@@ -167,17 +184,82 @@ async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &
     Ok(())
 }
 
-async fn run(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn run(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    wait: bool,
+    timeout_secs: u64,
+) -> Result<()> {
     let job_id = client.run_notebook(workspace, id).await?;
 
-    let obj = serde_json::json!({
-        "itemId": id,
-        "jobId": job_id,
-        "status": "started"
-    });
+    if !wait {
+        let obj = serde_json::json!({
+            "itemId": id,
+            "jobId": job_id,
+            "status": "started"
+        });
+        output::render_object(cli, &obj, "jobId");
+        return Ok(());
+    }
 
-    output::render_object(cli, &obj, "jobId");
-    Ok(())
+    // Poll until completion
+    let poll_interval = Duration::from_secs(5);
+    let max_wait = Duration::from_secs(timeout_secs);
+    let start = std::time::Instant::now();
+
+    loop {
+        if start.elapsed() > max_wait {
+            return Err(FabioError::new(
+                ErrorCode::Timeout,
+                format!(
+                    "Notebook run timed out after {timeout_secs}s. Job ID: {job_id}. Use 'notebook status' to check progress."
+                ),
+            )
+            .into());
+        }
+
+        sleep(poll_interval).await;
+
+        let data = client
+            .get(&format!(
+                "/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}"
+            ))
+            .await?;
+
+        let status_str = data
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
+
+        match status_str {
+            "Completed" => {
+                let obj = serde_json::json!({
+                    "itemId": id,
+                    "jobId": job_id,
+                    "status": "Completed"
+                });
+                output::render_object(cli, &obj, "status");
+                return Ok(());
+            }
+            "Failed" => {
+                let message = data
+                    .get("failureReason")
+                    .and_then(|r| r.get("message"))
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Notebook run failed");
+                return Err(FabioError::new(ErrorCode::ApiError, message).into());
+            }
+            "Cancelled" => {
+                return Err(
+                    FabioError::new(ErrorCode::ApiError, "Notebook run was cancelled").into(),
+                );
+            }
+            // NotStarted, InProgress, Deduped - keep polling
+            _ => {}
+        }
+    }
 }
 
 async fn status(

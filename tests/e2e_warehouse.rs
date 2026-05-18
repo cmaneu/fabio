@@ -26,6 +26,46 @@ fn warehouse_list_returns_json() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
+fn warehouse_show_returns_details() {
+    let cfg = TestConfig::from_env();
+
+    // First list warehouses to get an ID
+    let assert = fabio()
+        .args(["warehouse", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    if items.is_empty() {
+        eprintln!("No warehouses found in source workspace, skipping show test");
+        return;
+    }
+
+    let wh_id = items[0]["id"].as_str().unwrap();
+
+    // Show the warehouse
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "show",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            wh_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["id"], wh_id);
+    assert!(data.get("displayName").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn warehouse_query_resolves_endpoint() {
     let cfg = TestConfig::from_env();
 
@@ -60,6 +100,31 @@ fn warehouse_query_resolves_endpoint() {
             "unexpected endpoint: {endpoint}"
         );
     }
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_query_from_stdin() {
+    let cfg = TestConfig::from_env();
+
+    // Pipe SQL via stdin
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .write_stdin("SELECT 1 AS test")
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["sql"], "SELECT 1 AS test");
 }
 
 #[test]

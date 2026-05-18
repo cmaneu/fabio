@@ -1,3 +1,5 @@
+use std::io::{self, Read};
+
 use anyhow::Result;
 use clap::Subcommand;
 use serde_json::Value;
@@ -15,6 +17,16 @@ pub enum WarehouseCommand {
         #[arg(short, long)]
         workspace: String,
     },
+    /// Show details of a warehouse
+    Show {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Warehouse item ID
+        #[arg(long)]
+        id: String,
+    },
     /// Execute a SQL query against a warehouse or SQL endpoint
     Query {
         /// Workspace ID
@@ -25,17 +37,18 @@ pub enum WarehouseCommand {
         #[arg(long)]
         id: String,
 
-        /// SQL query to execute (prefix with @ to read from file)
+        /// SQL query to execute (prefix with @ to read from file, omit to read from stdin)
         #[arg(short, long)]
-        sql: String,
+        sql: Option<String>,
     },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseCommand) -> Result<()> {
     match command {
         WarehouseCommand::List { workspace } => list(cli, client, workspace).await,
+        WarehouseCommand::Show { workspace, id } => show(cli, client, workspace, id).await,
         WarehouseCommand::Query { workspace, id, sql } => {
-            query(cli, client, workspace, id, sql).await
+            query(cli, client, workspace, id, sql.as_deref()).await
         }
     }
 }
@@ -54,19 +67,48 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
     Ok(())
 }
 
+async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let data = client
+        .get(&format!("/workspaces/{workspace}/warehouses/{id}"))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
 async fn query(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     id: &str,
-    sql: &str,
+    sql: Option<&str>,
 ) -> Result<()> {
-    // Read SQL from file if prefixed with @
-    let sql_text = if let Some(file_path) = sql.strip_prefix('@') {
-        std::fs::read_to_string(file_path)
-            .map_err(|e| FabioError::not_found(format!("SQL file not found: {file_path}: {e}")))?
-    } else {
-        sql.to_string()
+    // Resolve SQL text: --sql flag, @file prefix, or stdin
+    let sql_text = match sql {
+        Some(s) if s.starts_with('@') => {
+            let file_path = &s[1..];
+            std::fs::read_to_string(file_path).map_err(|e| {
+                FabioError::not_found(format!("SQL file not found: {file_path}: {e}"))
+            })?
+        }
+        Some(s) => s.to_string(),
+        None => {
+            // Read from stdin
+            let mut buf = String::new();
+            io::stdin().read_to_string(&mut buf).map_err(|e| {
+                FabioError::new(
+                    ErrorCode::ApiError,
+                    format!("Failed to read SQL from stdin: {e}"),
+                )
+            })?;
+            if buf.trim().is_empty() {
+                return Err(FabioError::new(
+                    ErrorCode::ApiError,
+                    "No SQL provided. Use --sql, @file, or pipe SQL via stdin.",
+                )
+                .into());
+            }
+            buf
+        }
     };
 
     // Get connection string from warehouse or lakehouse
@@ -82,7 +124,7 @@ async fn query(
         "sql": sql_text,
         "endpoint": connection_string,
         "status": "not_implemented",
-        "message": "SQL execution via ODBC not yet implemented in Rust build. Use Python build or az sql query."
+        "message": "SQL execution via ODBC not yet implemented. Use 'az sql query' or sqlcmd."
     });
     output::render_object(cli, &obj, "status");
     Ok(())

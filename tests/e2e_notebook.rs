@@ -209,3 +209,83 @@ fn notebook_run_status_stop() {
         .assert()
         .success();
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn notebook_run_with_wait() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("nb_wait");
+
+    // Create a quick notebook
+    fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--content",
+            "print('quick run')",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    // Find notebook ID
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--type",
+            "Notebook",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    let nb = items
+        .iter()
+        .find(|i| i["displayName"] == name)
+        .expect("notebook not found");
+    let nb_id = nb["id"].as_str().unwrap().to_string();
+
+    // Run with --wait (use a generous timeout for Spark cold start)
+    let assert = fabio()
+        .args([
+            "notebook",
+            "run",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+            "--wait",
+            "--timeout",
+            "600",
+        ])
+        .timeout(std::time::Duration::from_secs(660))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "Completed");
+    assert!(data.get("jobId").is_some());
+
+    // Delete notebook
+    fabio()
+        .args([
+            "notebook",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+        ])
+        .assert()
+        .success();
+}
