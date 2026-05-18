@@ -52,10 +52,23 @@ def _do_interactive_login(tenant_id: str | None) -> tuple[AuthRecord, str]:
     return _record_from_azure_auth(azure_record), azure_record.serialize()
 
 
+def _device_code_prompt(verification_uri: str, user_code: str, expires_on: object) -> None:
+    """Print device-code login instructions to stderr."""
+    import sys
+
+    sys.stderr.write(
+        f"\nTo sign in, open {verification_uri} in a browser and enter the code: {user_code}\n\n"
+    )
+    sys.stderr.flush()
+
+
 def _do_device_code_login(tenant_id: str | None) -> tuple[AuthRecord, str]:
     """Run a device-code login flow."""
     cache_options = get_cache_options()
-    kwargs: dict[str, object] = {"cache_persistence_options": cache_options}
+    kwargs: dict[str, object] = {
+        "cache_persistence_options": cache_options,
+        "prompt_callback": _device_code_prompt,
+    }
     if tenant_id:
         kwargs["tenant_id"] = tenant_id
 
