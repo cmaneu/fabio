@@ -128,7 +128,6 @@ impl FabricClient {
     }
 
     /// PATCH request to Fabric REST API.
-    #[allow(dead_code)]
     pub async fn patch(&self, path: &str, body: &Value) -> Result<Value> {
         let token = self.require_auth().await?;
         let url = format!("{FABRIC_BASE_URL}{path}");

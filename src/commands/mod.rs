@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod dataagent;
 pub mod item;
 pub mod lakehouse;
 pub mod notebook;
@@ -21,5 +22,6 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Lakehouse { command } => lakehouse::execute(&cli, &client, command).await,
         Command::Notebook { command } => notebook::execute(&cli, &client, command).await,
         Command::Warehouse { command } => warehouse::execute(&cli, &client, command).await,
+        Command::DataAgent { command } => dataagent::execute(&cli, &client, command).await,
     }
 }

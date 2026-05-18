@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
-use crate::commands::{auth, item, lakehouse, notebook, warehouse, workspace};
+use crate::commands::{auth, dataagent, item, lakehouse, notebook, warehouse, workspace};
 
 /// Agent-first CLI for managing Microsoft Fabric artifacts and data.
 ///
@@ -63,5 +63,11 @@ pub enum Command {
     Warehouse {
         #[command(subcommand)]
         command: warehouse::WarehouseCommand,
+    },
+    /// Manage data agents (create, query, and interact with AI agents)
+    #[command(visible_alias = "da")]
+    DataAgent {
+        #[command(subcommand)]
+        command: dataagent::DataAgentCommand,
     },
 }
