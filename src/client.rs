@@ -17,7 +17,6 @@ const ONELAKE_DFS_URL: &str = "https://onelake.dfs.fabric.microsoft.com";
 const ONELAKE_BLOB_URL: &str = "https://onelake.blob.fabric.microsoft.com";
 const FABRIC_SCOPE: &str = "https://analysis.windows.net/powerbi/api/.default";
 const STORAGE_SCOPE: &str = "https://storage.azure.com/.default";
-const SQL_SCOPE: &str = "https://database.windows.net/.default";
 const LRO_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const LRO_MAX_WAIT: Duration = Duration::from_secs(120);
 
@@ -27,7 +26,6 @@ pub struct FabricClient {
     http: Client,
     token: Arc<tokio::sync::RwLock<Option<String>>>,
     storage_token: Arc<tokio::sync::RwLock<Option<String>>>,
-    sql_token: Arc<tokio::sync::RwLock<Option<String>>>,
 }
 
 impl FabricClient {
@@ -41,7 +39,6 @@ impl FabricClient {
             http,
             token: Arc::new(tokio::sync::RwLock::new(None)),
             storage_token: Arc::new(tokio::sync::RwLock::new(None)),
-            sql_token: Arc::new(tokio::sync::RwLock::new(None)),
         }
     }
 
@@ -70,21 +67,6 @@ impl FabricClient {
 
         let token = get_token(STORAGE_SCOPE).await?;
         let mut guard = self.storage_token.write().await;
-        *guard = Some(token.clone());
-        drop(guard);
-        Ok(token)
-    }
-
-    /// Get a SQL token for TDS connections to Fabric warehouses/SQL endpoints.
-    pub async fn require_sql_auth(&self) -> Result<String> {
-        let guard = self.sql_token.read().await;
-        if let Some(ref t) = *guard {
-            return Ok(t.clone());
-        }
-        drop(guard);
-
-        let token = get_token(SQL_SCOPE).await?;
-        let mut guard = self.sql_token.write().await;
         *guard = Some(token.clone());
         drop(guard);
         Ok(token)
