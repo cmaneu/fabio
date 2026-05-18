@@ -1,8 +1,11 @@
-"""``fabio auth`` command group - login, logout, status."""
+"""``fabio auth`` command group - login, logout, status.
+
+Auth commands are the one exception to JSON-only output:
+login is inherently interactive (opens browser), so it uses
+stderr for human messages but still returns structured JSON on stdout.
+"""
 
 from __future__ import annotations
-
-import sys
 
 import click
 from azure.identity import (
@@ -12,7 +15,6 @@ from azure.identity import (
     DeviceCodeCredential,
     InteractiveBrowserCredential,
 )
-from rich.console import Console
 
 from fabio.auth_store import (
     AuthRecord,
@@ -22,11 +24,11 @@ from fabio.auth_store import (
     save_record,
 )
 from fabio.cache import get_cache_options
+from fabio.errors import ErrorCode, FabioError
+from fabio.output import output
 
 # Microsoft Fabric / Power BI REST API scope
 FABRIC_SCOPE = "https://analysis.windows.net/powerbi/api/.default"
-
-console = Console()
 
 
 def _record_from_azure_auth(azure_record: AzureAuthRecord) -> AuthRecord:
@@ -39,10 +41,7 @@ def _record_from_azure_auth(azure_record: AzureAuthRecord) -> AuthRecord:
 
 
 def _do_interactive_login(tenant_id: str | None) -> tuple[AuthRecord, str]:
-    """Run an interactive browser-based login.
-
-    Returns the display AuthRecord and the serialized azure AuthenticationRecord.
-    """
+    """Run an interactive browser-based login."""
     cache_options = get_cache_options()
     kwargs: dict[str, object] = {"cache_persistence_options": cache_options}
     if tenant_id:
@@ -54,10 +53,7 @@ def _do_interactive_login(tenant_id: str | None) -> tuple[AuthRecord, str]:
 
 
 def _do_device_code_login(tenant_id: str | None) -> tuple[AuthRecord, str]:
-    """Run a device-code login flow.
-
-    Returns the display AuthRecord and the serialized azure AuthenticationRecord.
-    """
+    """Run a device-code login flow."""
     cache_options = get_cache_options()
     kwargs: dict[str, object] = {"cache_persistence_options": cache_options}
     if tenant_id:
@@ -66,11 +62,6 @@ def _do_device_code_login(tenant_id: str | None) -> tuple[AuthRecord, str]:
     credential = DeviceCodeCredential(**kwargs)  # type: ignore[arg-type]
     azure_record = credential.authenticate(scopes=(FABRIC_SCOPE,))
     return _record_from_azure_auth(azure_record), azure_record.serialize()
-
-
-# ---------------------------------------------------------------------------
-# CLI commands
-# ---------------------------------------------------------------------------
 
 
 @click.group()
@@ -86,43 +77,75 @@ def auth() -> None:
     default=False,
     help="Use device-code flow instead of opening a browser.",
 )
-def login(tenant: str | None, use_device_code: bool) -> None:
-    """Sign in to Microsoft Fabric."""
+@click.pass_context
+def login(ctx: click.Context, tenant: str | None, use_device_code: bool) -> None:
+    """Sign in to Microsoft Fabric.
+
+    \b
+    Opens a browser for interactive login (default), or prints
+    a device code for headless environments.
+
+    Example: fabio auth login --tenant contoso.com
+    """
     try:
         record, serialized = (
             _do_device_code_login(tenant) if use_device_code else _do_interactive_login(tenant)
         )
     except Exception as exc:
-        console.print(f"[red]Login failed:[/red] {exc}")
-        sys.exit(1)
+        raise FabioError(ErrorCode.AUTH_FAILED, f"Login failed: {exc}") from exc
 
     save_record(record)
     save_azure_record(serialized)
-    console.print(f"[green]Logged in as[/green] {record.username}")
+
+    output(
+        ctx,
+        {
+            "status": "authenticated",
+            "username": record.username,
+            "tenant_id": record.tenant_id,
+        },
+    )
 
 
 @auth.command()
-def logout() -> None:
-    """Sign out and clear cached credentials."""
+@click.pass_context
+def logout(ctx: click.Context) -> None:
+    """Sign out and clear cached credentials.
+
+    \b
+    Example: fabio auth logout
+    """
     removed = clear_record()
-    if removed:
-        console.print("[green]Logged out successfully.[/green]")
-    else:
-        console.print("[yellow]No active session found.[/yellow]")
+    output(
+        ctx,
+        {
+            "status": "logged_out" if removed else "no_session",
+        },
+    )
 
 
 @auth.command()
-def status() -> None:
-    """Show current authentication status."""
+@click.pass_context
+def status(ctx: click.Context) -> None:
+    """Show current authentication status.
+
+    \b
+    Example: fabio auth status
+    """
     record = load_record()
     if record is None:
-        console.print(
-            "[yellow]Not logged in.[/yellow] Run [bold]fabio auth login[/bold] to sign in."
+        raise FabioError(
+            ErrorCode.AUTH_REQUIRED,
+            "Not logged in. Run 'fabio auth login' to sign in.",
         )
-        sys.exit(1)
 
-    console.print("[green]Logged in[/green]")
-    console.print(f"  Account:   {record.username}")
-    console.print(f"  Tenant:    {record.tenant_id}")
-    console.print(f"  Authority: {record.authority}")
-    console.print(f"  Session:   {record.age_human()}")
+    output(
+        ctx,
+        {
+            "status": "authenticated",
+            "username": record.username,
+            "tenant_id": record.tenant_id,
+            "authority": record.authority,
+            "session_age": record.age_human(),
+        },
+    )

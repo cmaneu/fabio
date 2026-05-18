@@ -53,9 +53,7 @@ def _is_libsecret_available() -> bool:
         # If stderr has content, the secret service is not functional
         # (e.g. "The name org.freedesktop.secrets was not provided...").
         # Exit 0 = found item, exit 1 = not found (both mean service works).
-        _libsecret_available = (
-            not result.stderr and result.returncode in (0, 1)
-        )
+        _libsecret_available = not result.stderr and result.returncode in (0, 1)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         _libsecret_available = False
 

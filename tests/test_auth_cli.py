@@ -1,4 +1,4 @@
-"""Tests for ``fabio auth`` CLI commands.
+"""Tests for ``fabio auth`` CLI commands with structured output.
 
 These tests exercise the Click commands via CliRunner and mock out all
 azure-identity interactions so no real browser/device-code flows are needed.
@@ -6,6 +6,7 @@ azure-identity interactions so no real browser/device-code flows are needed.
 
 from __future__ import annotations
 
+import json
 import time
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
@@ -18,6 +19,15 @@ from fabio.cli import main
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def _extract_json(output: str) -> dict:
+    """Extract the JSON line from CLI output (may contain Rich warnings)."""
+    for line in output.strip().split("\n"):
+        line = line.strip()
+        if line.startswith("{"):
+            return json.loads(line)
+    raise ValueError(f"No JSON found in output: {output!r}")
 
 
 @pytest.fixture()
@@ -62,7 +72,9 @@ class TestLogin:
         result = runner.invoke(main, ["auth", "login"])
 
         assert result.exit_code == 0
-        assert "user@contoso.com" in result.output
+        parsed = _extract_json(result.output)
+        assert parsed["data"]["status"] == "authenticated"
+        assert parsed["data"]["username"] == "user@contoso.com"
         assert auth_files.exists()
 
     @patch("fabio.commands.auth.DeviceCodeCredential", autospec=False)
@@ -78,7 +90,8 @@ class TestLogin:
         result = runner.invoke(main, ["auth", "login", "--use-device-code"])
 
         assert result.exit_code == 0
-        assert "dev@contoso.com" in result.output
+        parsed = _extract_json(result.output)
+        assert parsed["data"]["username"] == "dev@contoso.com"
 
     @patch("fabio.commands.auth.InteractiveBrowserCredential", autospec=False)
     def test_login_with_tenant(
@@ -91,7 +104,6 @@ class TestLogin:
         result = runner.invoke(main, ["auth", "login", "--tenant", "custom-tenant"])
 
         assert result.exit_code == 0
-        # Verify tenant was passed to the credential constructor.
         call_kwargs = mock_cred_cls.call_args[1]
         assert call_kwargs["tenant_id"] == "custom-tenant"
 
@@ -104,7 +116,8 @@ class TestLogin:
         result = runner.invoke(main, ["auth", "login"])
 
         assert result.exit_code != 0
-        assert "Login failed" in result.output
+        parsed = _extract_json(result.output)
+        assert parsed["error"]["code"] == "AUTH_FAILED"
 
 
 # -- fabio auth logout -------------------------------------------------------
@@ -117,14 +130,16 @@ class TestLogout:
         result = runner.invoke(main, ["auth", "logout"])
 
         assert result.exit_code == 0
-        assert "Logged out" in result.output
+        parsed = _extract_json(result.output)
+        assert parsed["data"]["status"] == "logged_out"
         assert not auth_files.exists()
 
     def test_logout_without_session(self, runner: CliRunner, auth_files: Path) -> None:
         result = runner.invoke(main, ["auth", "logout"])
 
         assert result.exit_code == 0
-        assert "No active session" in result.output
+        parsed = _extract_json(result.output)
+        assert parsed["data"]["status"] == "no_session"
 
 
 # -- fabio auth status -------------------------------------------------------
@@ -144,14 +159,17 @@ class TestStatus:
         result = runner.invoke(main, ["auth", "status"])
 
         assert result.exit_code == 0
-        assert "alice@contoso.com" in result.output
-        assert "tid-123" in result.output
+        parsed = _extract_json(result.output)
+        assert parsed["data"]["username"] == "alice@contoso.com"
+        assert parsed["data"]["tenant_id"] == "tid-123"
+        assert parsed["data"]["status"] == "authenticated"
 
     def test_status_not_logged_in(self, runner: CliRunner, auth_files: Path) -> None:
         result = runner.invoke(main, ["auth", "status"])
 
         assert result.exit_code != 0
-        assert "Not logged in" in result.output
+        parsed = _extract_json(result.output)
+        assert parsed["error"]["code"] == "AUTH_REQUIRED"
 
 
 # -- fabio --version ---------------------------------------------------------
