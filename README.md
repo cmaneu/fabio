@@ -6,14 +6,20 @@ Designed for composability: structured JSON output by default, consistent error 
 
 ## Installation
 
+With [uv](https://docs.astral.sh/uv/) (recommended):
+
 ```bash
-pip install fabio-cli
+# Install globally as a CLI tool
+uv tool install git+https://github.com/iemejia/fabio.git
+
+# Or run without installing (ephemeral)
+uvx --from git+https://github.com/iemejia/fabio.git fabio workspace list
 ```
 
-Or with [uv](https://docs.astral.sh/uv/):
+With pip:
 
 ```bash
-uv tool install fabio-cli
+pip install git+https://github.com/iemejia/fabio.git
 ```
 
 ## Design Principles
