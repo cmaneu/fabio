@@ -31,7 +31,7 @@ class TestLakehouseUpload:
                     "ws-001",
                     "--id",
                     "lh-001",
-                    "--source",
+                    "--source-path",
                     str(csv_file),
                 ],
             )
@@ -59,9 +59,9 @@ class TestLakehouseUpload:
                     "ws-001",
                     "--id",
                     "lh-001",
-                    "--source",
+                    "--source-path",
                     str(csv_file),
-                    "--dest",
+                    "--dest-path",
                     "Files/raw/input.csv",
                 ],
             )
@@ -81,7 +81,7 @@ class TestLakehouseUpload:
                 "ws-001",
                 "--id",
                 "lh-001",
-                "--source",
+                "--source-path",
                 "/nonexistent/file.csv",
             ],
         )
@@ -110,9 +110,9 @@ class TestLakehouseDownload:
                     "ws-001",
                     "--id",
                     "lh-001",
-                    "--path",
+                    "--source-path",
                     "Files/data.csv",
-                    "--dest",
+                    "--dest-path",
                     str(dest),
                 ],
             )

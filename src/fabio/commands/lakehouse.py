@@ -273,10 +273,10 @@ def list_files(
 @lakehouse.command(name="upload")
 @click.option("--workspace", "-w", required=True, help="Workspace ID.")
 @click.option("--id", "lakehouse_id", required=True, help="Lakehouse item ID.")
-@click.option("--source", "-s", required=True, help="Local file path or glob pattern.")
+@click.option("--source-path", "-sp", required=True, help="Local file path or glob pattern.")
 @click.option(
-    "--dest",
-    "-d",
+    "--dest-path",
+    "-dp",
     default=None,
     help="Destination path/directory in lakehouse (default: Files/<filename> or Files/).",
 )
@@ -285,28 +285,28 @@ def upload_file(
     ctx: click.Context,
     workspace: str,
     lakehouse_id: str,
-    source: str,
-    dest: str | None,
+    source_path: str,
+    dest_path: str | None,
 ) -> None:
     """Upload local file(s) to a lakehouse. Supports glob patterns.
 
     \b
     Single file:
-        fabio lakehouse upload -w <ws-id> --id <lh-id> --source data.csv
-        fabio lakehouse upload -w <ws-id> --id <lh-id> -s data.csv -d Files/raw/data.csv
+        fabio lakehouse upload -w <ws-id> --id <lh-id> --source-path data.csv
+        fabio lakehouse upload -w <ws-id> --id <lh-id> -sp data.csv -dp Files/raw/data.csv
 
     \b
     Glob patterns:
-        fabio lakehouse upload -w <ws-id> --id <lh-id> -s "*.csv" -d Files/raw/
-        fabio lakehouse upload -w <ws-id> --id <lh-id> -s "data/**/*.parquet" -d Files/
+        fabio lakehouse upload -w <ws-id> --id <lh-id> -sp "*.csv" -dp Files/raw/
+        fabio lakehouse upload -w <ws-id> --id <lh-id> -sp "data/**/*.parquet" -dp Files/
     """
-    if _has_glob(source):
-        files = _resolve_local_glob(source)
+    if _has_glob(source_path):
+        files = _resolve_local_glob(source_path)
         if not files:
-            raise FabioError(ErrorCode.NOT_FOUND, f"No files match pattern: {source}")
+            raise FabioError(ErrorCode.NOT_FOUND, f"No files match pattern: {source_path}")
         # Determine base directory for relative path computation
-        base_dir = Path(_glob_base_dir(source))
-        dest_dir = dest.rstrip("/") if dest else "Files"
+        base_dir = Path(_glob_base_dir(source_path))
+        dest_dir = dest_path.rstrip("/") if dest_path else "Files"
         results: list[dict[str, Any]] = []
         for f in files:
             try:
@@ -326,18 +326,17 @@ def upload_file(
             )
         output(ctx, results, plain_key="destination")
     else:
-        src_path = Path(source)
-        if not src_path.exists():
-            raise FabioError(ErrorCode.INVALID_INPUT, f"Source file not found: {source}")
-        if dest is None:
-            dest = f"Files/{src_path.name}"
-        content = src_path.read_bytes()
+        src = Path(source_path)
+        if not src.exists():
+            raise FabioError(ErrorCode.INVALID_INPUT, f"Source file not found: {source_path}")
+        dest = dest_path if dest_path is not None else f"Files/{src.name}"
+        content = src.read_bytes()
         client.upload_onelake_file(workspace, lakehouse_id, dest, content)
         output(
             ctx,
             {
                 "status": "uploaded",
-                "source": source,
+                "source": source_path,
                 "destination": dest,
                 "size": len(content),
                 "workspace": workspace,
@@ -350,10 +349,12 @@ def upload_file(
 @lakehouse.command(name="download")
 @click.option("--workspace", "-w", required=True, help="Workspace ID.")
 @click.option("--id", "lakehouse_id", required=True, help="Lakehouse item ID.")
-@click.option("--path", "-p", required=True, help="File path or glob pattern in lakehouse.")
 @click.option(
-    "--dest",
-    "-d",
+    "--source-path", "-sp", required=True, help="File path or glob pattern in lakehouse."
+)
+@click.option(
+    "--dest-path",
+    "-dp",
     default=None,
     help="Local destination path or directory (default: ./<filename> or ./).",
 )
@@ -362,27 +363,27 @@ def download_file(
     ctx: click.Context,
     workspace: str,
     lakehouse_id: str,
-    path: str,
-    dest: str | None,
+    source_path: str,
+    dest_path: str | None,
 ) -> None:
     """Download file(s) from a lakehouse. Supports glob patterns.
 
     \b
     Single file:
-        fabio lakehouse download -w <ws-id> --id <lh-id> --path Files/data.csv
-        fabio lakehouse download -w <ws-id> --id <lh-id> -p Files/data.csv -d ./out.csv
+        fabio lakehouse download -w <ws-id> --id <lh-id> --source-path Files/data.csv
+        fabio lakehouse download -w <ws-id> --id <lh-id> -sp Files/data.csv -dp ./out.csv
 
     \b
     Glob patterns:
-        fabio lakehouse download -w <ws-id> --id <lh-id> -p "Files/*.csv" -d ./output/
-        fabio lakehouse download -w <ws-id> --id <lh-id> -p "Files/**/*.parquet" -d ./data/
+        fabio lakehouse download -w <ws-id> --id <lh-id> -sp "Files/*.csv" -dp ./output/
+        fabio lakehouse download -w <ws-id> --id <lh-id> -sp "Files/**/*.parquet" -dp ./data/
     """
-    if _has_glob(path):
-        matched = _resolve_remote_glob(workspace, lakehouse_id, path)
+    if _has_glob(source_path):
+        matched = _resolve_remote_glob(workspace, lakehouse_id, source_path)
         if not matched:
-            raise FabioError(ErrorCode.NOT_FOUND, f"No remote files match pattern: {path}")
-        base_dir = _glob_base_dir(path)
-        dest_dir = Path(dest) if dest else Path(".")
+            raise FabioError(ErrorCode.NOT_FOUND, f"No remote files match pattern: {source_path}")
+        base_dir = _glob_base_dir(source_path)
+        dest_dir = Path(dest_path) if dest_path else Path(".")
         dest_dir.mkdir(parents=True, exist_ok=True)
         results: list[dict[str, Any]] = []
         for remote_path in matched:
@@ -405,19 +406,19 @@ def download_file(
             )
         output(ctx, results, plain_key="destination")
     else:
-        content = client.download_onelake_file(workspace, lakehouse_id, path)
-        if dest is None:
-            filename = path.rsplit("/", 1)[-1]
-            dest = filename
-        dest_path = Path(dest)
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
-        dest_path.write_bytes(content)
+        content = client.download_onelake_file(workspace, lakehouse_id, source_path)
+        if dest_path is None:
+            filename = source_path.rsplit("/", 1)[-1]
+            dest_path = filename
+        local = Path(dest_path)
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_bytes(content)
         output(
             ctx,
             {
                 "status": "downloaded",
-                "source": path,
-                "destination": str(dest_path),
+                "source": source_path,
+                "destination": str(local),
                 "size": len(content),
             },
             plain_key="destination",

@@ -125,9 +125,9 @@ class TestUploadGlob:
                     "ws-001",
                     "--id",
                     "lh-001",
-                    "-s",
+                    "-sp",
                     str(tmp_path / "*.csv"),
-                    "-d",
+                    "-dp",
                     "Files/data/",
                 ],
             )
@@ -155,9 +155,9 @@ class TestUploadGlob:
                     "ws-001",
                     "--id",
                     "lh-001",
-                    "-s",
+                    "-sp",
                     str(tmp_path / "**/*.csv"),
-                    "-d",
+                    "-dp",
                     "Files/",
                 ],
             )
@@ -180,7 +180,7 @@ class TestUploadGlob:
                 "ws-001",
                 "--id",
                 "lh-001",
-                "-s",
+                "-sp",
                 str(tmp_path / "*.csv"),
             ],
         )
@@ -234,9 +234,9 @@ class TestDownloadGlob:
                     "ws-001",
                     "--id",
                     "lh-001",
-                    "-p",
+                    "-sp",
                     "Files/*.csv",
-                    "-d",
+                    "-dp",
                     str(tmp_path),
                 ],
             )
@@ -261,7 +261,7 @@ class TestDownloadGlob:
                     "ws-001",
                     "--id",
                     "lh-001",
-                    "-p",
+                    "-sp",
                     "Files/*.csv",
                 ],
             )
