@@ -176,6 +176,21 @@ def _resolve_local_glob(pattern: str) -> list[Path]:
     return sorted(matched)
 
 
+def _resolve_table_glob(workspace: str, lakehouse_id: str, pattern: str) -> list[str]:
+    """Resolve a glob pattern against table names in a lakehouse.
+
+    Lists tables via the Fabric API and filters names using fnmatch.
+    Returns a sorted list of matching table names.
+    """
+    import fnmatch
+
+    data = client.get(f"/workspaces/{workspace}/lakehouses/{lakehouse_id}/tables")
+    tables = data.get("data", [])
+    names = [t["name"] for t in tables if "name" in t]
+    matched = [n for n in names if fnmatch.fnmatch(n, pattern)]
+    return sorted(matched)
+
+
 @click.group()
 def lakehouse() -> None:
     """Manage lakehouse tables and files."""
@@ -722,7 +737,7 @@ def move_file(
 @lakehouse.command(name="delete-table")
 @click.option("--workspace", "-w", required=True, help="Workspace ID.")
 @click.option("--id", "lakehouse_id", required=True, help="Lakehouse item ID.")
-@click.option("--table", "-t", required=True, help="Table name to delete.")
+@click.option("--table", "-t", required=True, help="Table name or glob pattern to delete.")
 @click.pass_context
 def delete_table_cmd(
     ctx: click.Context,
@@ -730,29 +745,48 @@ def delete_table_cmd(
     lakehouse_id: str,
     table: str,
 ) -> None:
-    """Delete a Delta table from a lakehouse.
+    """Delete Delta table(s) from a lakehouse. Supports glob patterns.
 
     \b
     Recursively deletes the table directory (Tables/<name>) including
     all Delta log files and data files.
 
     \b
-    Examples:
+    Single table:
         fabio lakehouse delete-table -w <ws> --id <lh> -t staging_orders
-        fabio lakehouse delete-table -w <ws> --id <lh> --table old_sales
+
+    \b
+    Glob patterns:
+        fabio lakehouse delete-table -w <ws> --id <lh> -t "staging_*"
+        fabio lakehouse delete-table -w <ws> --id <lh> -t "temp_*"
     """
-    client.delete_table(workspace, lakehouse_id, table)
-    output(
-        ctx,
-        {"status": "deleted", "table": table, "workspace": workspace, "lakehouse": lakehouse_id},
-        plain_key="table",
-    )
+    if _has_glob(table):
+        matched = _resolve_table_glob(workspace, lakehouse_id, table)
+        if not matched:
+            raise FabioError(ErrorCode.NOT_FOUND, f"No tables match pattern: {table}")
+        results: list[dict[str, Any]] = []
+        for name in matched:
+            client.delete_table(workspace, lakehouse_id, name)
+            results.append({"status": "deleted", "table": name})
+        output(ctx, results, plain_key="table")
+    else:
+        client.delete_table(workspace, lakehouse_id, table)
+        output(
+            ctx,
+            {
+                "status": "deleted",
+                "table": table,
+                "workspace": workspace,
+                "lakehouse": lakehouse_id,
+            },
+            plain_key="table",
+        )
 
 
 @lakehouse.command(name="copy-table")
 @click.option("--source-workspace", "-sw", required=True, help="Source workspace ID.")
 @click.option("--source-id", "-si", required=True, help="Source lakehouse item ID.")
-@click.option("--source-table", "-st", required=True, help="Source table name.")
+@click.option("--source-table", "-st", required=True, help="Source table name or glob pattern.")
 @click.option("--dest-workspace", "-dw", required=True, help="Destination workspace ID.")
 @click.option("--dest-id", "-di", required=True, help="Destination lakehouse item ID.")
 @click.option(
@@ -768,42 +802,59 @@ def copy_table_cmd(
     dest_id: str,
     dest_table: str | None,
 ) -> None:
-    """Copy a Delta table between lakehouses (server-side).
+    """Copy Delta table(s) between lakehouses (server-side). Supports glob patterns.
 
     \b
     Copies all files (Delta log + parquet) from the source table to the
     destination. Data never transits through the client.
 
     \b
-    Examples:
+    Single table:
         fabio lakehouse copy-table \\
             -sw <src-ws> -si <src-lh> -st sales \\
             -dw <dest-ws> -di <dest-lh>
 
+    \b
+    Glob patterns (dest-table ignored, keeps source names):
         fabio lakehouse copy-table \\
-            -sw <src-ws> -si <src-lh> -st orders \\
-            -dw <dest-ws> -di <dest-lh> -dt orders_backup
+            -sw <src-ws> -si <src-lh> -st "sales_*" \\
+            -dw <dest-ws> -di <dest-lh>
     """
-    if dest_table is None:
-        dest_table = source_table
-
-    result = client.copy_table(
-        source_workspace,
-        source_id,
-        source_table,
-        dest_workspace,
-        dest_id,
-        dest_table,
-    )
-
-    result.update({"status": "copied"})
-    output(ctx, result, plain_key="destTable")
+    if _has_glob(source_table):
+        matched = _resolve_table_glob(source_workspace, source_id, source_table)
+        if not matched:
+            raise FabioError(ErrorCode.NOT_FOUND, f"No tables match pattern: {source_table}")
+        results: list[dict[str, Any]] = []
+        for name in matched:
+            result = client.copy_table(
+                source_workspace,
+                source_id,
+                name,
+                dest_workspace,
+                dest_id,
+                name,
+            )
+            entry = {**result, "status": "copied", "sourceTable": name, "destTable": name}
+            results.append(entry)
+        output(ctx, results, plain_key="destTable")
+    else:
+        if dest_table is None:
+            dest_table = source_table
+        result = client.copy_table(
+            source_workspace,
+            source_id,
+            source_table,
+            dest_workspace,
+            dest_id,
+            dest_table,
+        )
+        output(ctx, {**result, "status": "copied"}, plain_key="destTable")
 
 
 @lakehouse.command(name="move-table")
 @click.option("--source-workspace", "-sw", required=True, help="Source workspace ID.")
 @click.option("--source-id", "-si", required=True, help="Source lakehouse item ID.")
-@click.option("--source-table", "-st", required=True, help="Source table name.")
+@click.option("--source-table", "-st", required=True, help="Source table name or glob pattern.")
 @click.option("--dest-workspace", "-dw", required=True, help="Destination workspace ID.")
 @click.option("--dest-id", "-di", required=True, help="Destination lakehouse item ID.")
 @click.option(
@@ -819,7 +870,7 @@ def move_table_cmd(
     dest_id: str,
     dest_table: str | None,
 ) -> None:
-    """Move a Delta table between lakehouses (server-side copy + delete).
+    """Move Delta table(s) between lakehouses (server-side copy + delete). Supports globs.
 
     \b
     Copies all table files to the destination, then deletes the source table.
@@ -827,28 +878,46 @@ def move_table_cmd(
     than data loss.
 
     \b
-    Examples:
+    Single table:
         fabio lakehouse move-table \\
             -sw <src-ws> -si <src-lh> -st staging_data \\
             -dw <dest-ws> -di <dest-lh>
 
+    \b
+    Glob patterns (dest-table ignored, keeps source names):
         fabio lakehouse move-table \\
-            -sw <src-ws> -si <src-lh> -st raw_events \\
-            -dw <dest-ws> -di <dest-lh> -dt archived_events
+            -sw <src-ws> -si <src-lh> -st "staging_*" \\
+            -dw <dest-ws> -di <dest-lh>
     """
-    if dest_table is None:
-        dest_table = source_table
-
-    result = client.move_table(
-        source_workspace,
-        source_id,
-        source_table,
-        dest_workspace,
-        dest_id,
-        dest_table,
-    )
-
-    output(ctx, result, plain_key="destTable")
+    if _has_glob(source_table):
+        matched = _resolve_table_glob(source_workspace, source_id, source_table)
+        if not matched:
+            raise FabioError(ErrorCode.NOT_FOUND, f"No tables match pattern: {source_table}")
+        results: list[dict[str, Any]] = []
+        for name in matched:
+            result = client.move_table(
+                source_workspace,
+                source_id,
+                name,
+                dest_workspace,
+                dest_id,
+                name,
+            )
+            entry = {**result, "status": "moved", "sourceTable": name, "destTable": name}
+            results.append(entry)
+        output(ctx, results, plain_key="destTable")
+    else:
+        if dest_table is None:
+            dest_table = source_table
+        result = client.move_table(
+            source_workspace,
+            source_id,
+            source_table,
+            dest_workspace,
+            dest_id,
+            dest_table,
+        )
+        output(ctx, result, plain_key="destTable")
 
 
 @lakehouse.command(name="create-shortcut")
