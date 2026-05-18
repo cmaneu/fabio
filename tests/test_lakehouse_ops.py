@@ -153,8 +153,8 @@ class TestLakehouseLoadTable:
             "orders",
             "Files/orders.csv",
             file_extension="csv",
-            format_options={"header": "true", "delimiter": ","},
-            mode="overwrite",
+            format_options={"format": "Csv", "header": "true", "delimiter": ","},
+            mode="Overwrite",
         )
 
     def test_load_parquet_table(self) -> None:
@@ -177,13 +177,13 @@ class TestLakehouseLoadTable:
             )
 
         assert result.exit_code == 0
-        # Parquet should not have format_options
+        # Parquet should have format_options with just format key
         mock_load.assert_called_once_with(
             "ws-001",
             "lh-001",
             "sales",
             "Files/sales.parquet",
             file_extension="parquet",
-            format_options=None,
-            mode="overwrite",
+            format_options={"format": "Parquet"},
+            mode="Overwrite",
         )

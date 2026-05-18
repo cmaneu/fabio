@@ -192,7 +192,7 @@ def copy_item(
         # Some APIs return definition at top level
         body["definition"] = definition
 
-    data = client.post(f"/workspaces/{dest_workspace}/items", body=body)
+    data = client.post(f"/workspaces/{dest_workspace}/items", body=body, poll=True)
     result = data if data else {}
     result["copySource"] = {
         "workspace": source_workspace,

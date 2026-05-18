@@ -6,6 +6,7 @@ No click dependencies - this module is pure logic.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import requests
@@ -25,6 +26,10 @@ FABRIC_BASE_URL = "https://api.fabric.microsoft.com/v1"
 ONELAKE_DFS_URL = "https://onelake.dfs.fabric.microsoft.com"
 FABRIC_SCOPE = "https://analysis.windows.net/powerbi/api/.default"
 STORAGE_SCOPE = "https://storage.azure.com/.default"
+
+# LRO polling defaults
+LRO_POLL_INTERVAL = 2  # seconds between polls
+LRO_MAX_WAIT = 120  # seconds max total wait
 
 
 def require_auth(scope: str = FABRIC_SCOPE) -> str:
@@ -100,6 +105,73 @@ def _handle_response(resp: requests.Response) -> dict[str, Any]:
         raise FabioError(ErrorCode.API_ERROR, f"HTTP {status}: {message}", status=status)
 
 
+def _poll_lro(resp: requests.Response, token: str) -> dict[str, Any]:
+    """Poll a long-running operation until it completes.
+
+    Fabric LROs return 202 with a Location header or Retry-After.
+    We poll the Location URL until status is Succeeded/Failed.
+    """
+    location = resp.headers.get("Location")
+    operation_id = resp.headers.get("x-ms-operation-id")
+
+    if not location and not operation_id:
+        # No LRO info, just return empty
+        return {}
+
+    poll_url = location or f"{FABRIC_BASE_URL}/operations/{operation_id}"
+    retry_after = int(resp.headers.get("Retry-After", str(LRO_POLL_INTERVAL)))
+
+    elapsed = 0.0
+    while elapsed < LRO_MAX_WAIT:
+        time.sleep(retry_after)
+        elapsed += retry_after
+
+        try:
+            poll_resp = requests.get(
+                poll_url,
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30,
+            )
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            raise FabioError(ErrorCode.TIMEOUT, f"LRO poll failed: {exc}") from exc
+
+        if not poll_resp.ok:
+            _handle_response(poll_resp)
+
+        if not poll_resp.text.strip():
+            continue
+
+        result = poll_resp.json()
+        status = result.get("status", "").lower()
+
+        if status == "succeeded":
+            # Check if there's a resource location to fetch the final result
+            resource_location = poll_resp.headers.get("Location")
+            if resource_location:
+                final_resp = requests.get(
+                    resource_location,
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=30,
+                )
+                if final_resp.ok and final_resp.text.strip():
+                    return final_resp.json()  # type: ignore[no-any-return]
+            return result
+        elif status == "failed":
+            error_msg = result.get("error", {}).get("message", "Operation failed")
+            raise FabioError(ErrorCode.API_ERROR, f"LRO failed: {error_msg}")
+        elif status in ("running", "notstarted"):
+            retry_after = int(poll_resp.headers.get("Retry-After", str(LRO_POLL_INTERVAL)))
+            continue
+        else:
+            # Unknown status, keep polling
+            continue
+
+    raise FabioError(
+        ErrorCode.TIMEOUT,
+        f"Operation timed out after {LRO_MAX_WAIT}s. Operation ID: {operation_id}",
+    )
+
+
 def get(path: str, params: dict[str, str] | None = None) -> dict[str, Any]:
     """Make an authenticated GET request to the Fabric API.
 
@@ -123,8 +195,11 @@ def get(path: str, params: dict[str, str] | None = None) -> dict[str, Any]:
     return _handle_response(resp)
 
 
-def post(path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Make an authenticated POST request to the Fabric API."""
+def post(path: str, body: dict[str, Any] | None = None, *, poll: bool = False) -> dict[str, Any]:
+    """Make an authenticated POST request to the Fabric API.
+
+    If poll=True, handles 202 responses by polling the LRO until completion.
+    """
     token = require_auth()
     url = f"{FABRIC_BASE_URL}{path}"
     try:
@@ -141,6 +216,9 @@ def post(path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         raise FabioError(ErrorCode.TIMEOUT, f"Request timed out: POST {path}") from exc
     except requests.ConnectionError as e:
         raise FabioError(ErrorCode.API_ERROR, f"Connection error: {e}") from e
+
+    if poll and resp.status_code == 202:
+        return _poll_lro(resp, token)
 
     return _handle_response(resp)
 
@@ -324,7 +402,7 @@ def load_table(
     *,
     file_extension: str | None = None,
     format_options: dict[str, Any] | None = None,
-    mode: str = "overwrite",
+    mode: str = "Overwrite",
     recursive: bool = False,
 ) -> dict[str, Any]:
     """Load a file into a lakehouse table via the Tables API.
@@ -334,11 +412,11 @@ def load_table(
     relative_path:
         Path relative to lakehouse root (e.g. "Files/data.csv").
     file_extension:
-        File extension hint (e.g. "csv", "parquet").
+        File extension hint (e.g. "Csv", "Parquet").
     format_options:
-        Format-specific options (e.g. {"header": "true", "delimiter": ","}).
+        Format-specific options (e.g. {"format": "Csv", "header": "true"}).
     mode:
-        Load mode: "overwrite" or "append".
+        Load mode: "Overwrite" or "Append" (PascalCase).
     recursive:
         Whether to recursively load from a directory.
     """
@@ -355,7 +433,7 @@ def load_table(
     if format_options:
         body["formatOptions"] = format_options
 
-    return post(path, body=body)
+    return post(path, body=body, poll=True)
 
 
 def get_item_definition(
@@ -365,9 +443,10 @@ def get_item_definition(
     """Get the definition of an item (for notebooks, reports, etc).
 
     POST /workspaces/{ws}/items/{item}/getDefinition
+    Uses LRO polling since the API may return 202.
     """
     path = f"/workspaces/{workspace_id}/items/{item_id}/getDefinition"
-    return post(path)
+    return post(path, poll=True)
 
 
 def update_item_definition(

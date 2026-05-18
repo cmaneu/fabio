@@ -34,6 +34,12 @@ def _build_notebook_definition(
 
     Creates a minimal .ipynb-compatible notebook with one code cell.
     """
+    # Build source as list of lines (ipynb spec requires list of strings)
+    source_lines = [line + "\n" for line in code.split("\n")]
+    # Remove trailing newline from last line
+    if source_lines and source_lines[-1] == "\n":
+        source_lines = source_lines[:-1]
+
     # Build a standard Jupyter notebook structure
     nb: dict[str, object] = {
         "nbformat": 4,
@@ -46,7 +52,7 @@ def _build_notebook_definition(
             {
                 "cell_type": "code",
                 "metadata": {},
-                "source": code,
+                "source": source_lines,
                 "outputs": [],
             }
         ],
@@ -159,7 +165,7 @@ def create_notebook(
     if description:
         body["description"] = description
 
-    data = client.post(f"/workspaces/{workspace}/items", body=body)
+    data = client.post(f"/workspaces/{workspace}/items", body=body, poll=True)
     output(ctx, data, plain_key="id")
 
 

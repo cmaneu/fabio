@@ -205,3 +205,78 @@ class TestHandleResponse:
         with pytest.raises(FabioError) as exc_info:
             _handle_response(mock_resp)
         assert exc_info.value.code == ErrorCode.CAPACITY_INACTIVE
+
+
+class TestPollLro:
+    """Test the LRO polling logic."""
+
+    @patch("fabio.client.time.sleep")
+    @patch("fabio.client.requests.get")
+    def test_poll_succeeds(self, mock_get: MagicMock, mock_sleep: MagicMock) -> None:
+        from fabio.client import _poll_lro
+
+        # Simulated 202 response with Location header
+        resp_202 = MagicMock()
+        resp_202.status_code = 202
+        resp_202.headers = {
+            "Location": "https://api.fabric.microsoft.com/v1/operations/op-1",
+            "Retry-After": "1",
+        }
+
+        # First poll: running
+        poll_running = MagicMock()
+        poll_running.ok = True
+        poll_running.text = '{"status":"Running"}'
+        poll_running.json.return_value = {"status": "Running"}
+        poll_running.headers = {"Retry-After": "1"}
+
+        # Second poll: succeeded
+        poll_done = MagicMock()
+        poll_done.ok = True
+        poll_done.text = '{"status":"Succeeded"}'
+        poll_done.json.return_value = {"status": "Succeeded"}
+        poll_done.headers = {}
+
+        mock_get.side_effect = [poll_running, poll_done]
+
+        result = _poll_lro(resp_202, "token-123")
+        assert result["status"] == "Succeeded"
+        assert mock_get.call_count == 2
+
+    @patch("fabio.client.time.sleep")
+    @patch("fabio.client.requests.get")
+    def test_poll_fails(self, mock_get: MagicMock, mock_sleep: MagicMock) -> None:
+        from fabio.client import _poll_lro
+
+        resp_202 = MagicMock()
+        resp_202.status_code = 202
+        resp_202.headers = {
+            "Location": "https://api.fabric.microsoft.com/v1/operations/op-2",
+            "Retry-After": "1",
+        }
+
+        poll_failed = MagicMock()
+        poll_failed.ok = True
+        poll_failed.text = '{"status":"Failed","error":{"message":"bad input"}}'
+        poll_failed.json.return_value = {
+            "status": "Failed",
+            "error": {"message": "bad input"},
+        }
+        poll_failed.headers = {}
+
+        mock_get.return_value = poll_failed
+
+        with pytest.raises(FabioError) as exc_info:
+            _poll_lro(resp_202, "token-123")
+        assert exc_info.value.code == ErrorCode.API_ERROR
+        assert "bad input" in exc_info.value.message
+
+    def test_poll_no_location_returns_empty(self) -> None:
+        from fabio.client import _poll_lro
+
+        resp_202 = MagicMock()
+        resp_202.status_code = 202
+        resp_202.headers = {}
+
+        result = _poll_lro(resp_202, "token-123")
+        assert result == {}

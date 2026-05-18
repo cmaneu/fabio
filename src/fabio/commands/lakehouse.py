@@ -215,9 +215,9 @@ def download_file(
 @click.option(
     "--mode",
     "-m",
-    default="overwrite",
-    type=click.Choice(["overwrite", "append"]),
-    help="Load mode (default: overwrite).",
+    default="Overwrite",
+    type=click.Choice(["Overwrite", "Append"]),
+    help="Load mode (default: Overwrite).",
 )
 @click.option("--header/--no-header", default=True, help="CSV has header row.")
 @click.option("--delimiter", default=",", help="CSV delimiter (default: ',').")
@@ -248,12 +248,13 @@ def load_table_cmd(
         if suffix in ("csv", "parquet", "json", "avro"):
             file_format = suffix
 
+    # Build formatOptions with format key (PascalCase value)
     format_options: dict[str, str] | None = None
-    if file_format == "csv":
-        format_options = {
-            "header": str(header).lower(),
-            "delimiter": delimiter,
-        }
+    if file_format:
+        format_options = {"format": file_format.capitalize()}
+        if file_format == "csv":
+            format_options["header"] = str(header).lower()
+            format_options["delimiter"] = delimiter
 
     data = client.load_table(
         workspace,
