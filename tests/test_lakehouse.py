@@ -72,15 +72,27 @@ class TestLakehouseTables:
 class TestLakehouseFiles:
     def test_list_files(self) -> None:
         runner = CliRunner()
+        # OneLake DFS API returns paths with doubled prefix for top-level dirs
+        # e.g. directory=Files returns "Files/Files/myfile.csv"
         files = [
             {
-                "name": "Files/raw_sales.csv",
+                "name": "Files/Files",
+                "isDirectory": "true",
+                "lastModified": "2025-01-10T08:00:00Z",
+            },
+            {
+                "name": "Files/Files/raw_sales.csv",
                 "contentLength": "1024",
                 "lastModified": "2025-01-15T10:00:00Z",
                 "isDirectory": "false",
             },
             {
-                "name": "Files/data",
+                "name": "Files/Files/data",
+                "isDirectory": "true",
+                "lastModified": "2025-01-10T08:00:00Z",
+            },
+            {
+                "name": "Files/Functions",
                 "isDirectory": "true",
                 "lastModified": "2025-01-10T08:00:00Z",
             },
@@ -100,10 +112,17 @@ class TestLakehouseFiles:
 
     def test_list_files_recursive(self) -> None:
         runner = CliRunner()
+        # For non-top-level paths like "Files/raw", prefix is just "Files/raw/"
         files = [
             {
                 "name": "Files/raw/orders.csv",
                 "contentLength": "4096",
+                "lastModified": "2025-03-01T09:00:00Z",
+                "isDirectory": "false",
+            },
+            {
+                "name": "Files/raw/nested/deep.csv",
+                "contentLength": "100",
                 "lastModified": "2025-03-01T09:00:00Z",
                 "isDirectory": "false",
             },
@@ -127,9 +146,14 @@ class TestLakehouseFiles:
             )
 
         assert result.exit_code == 0
+        # Always calls with recursive=True (filters client-side)
         mock_list.assert_called_once_with(
             "ws-001", "lh-001", directory="Files/raw", recursive=True
         )
+        parsed = json.loads(result.output)
+        assert parsed["count"] == 2
+        assert parsed["data"][0]["name"] == "orders.csv"
+        assert parsed["data"][1]["name"] == "nested/deep.csv"
 
     def test_empty_directory(self) -> None:
         runner = CliRunner()
@@ -145,9 +169,10 @@ class TestLakehouseFiles:
 
     def test_plain_output(self) -> None:
         runner = CliRunner()
+        # Doubled prefix for top-level "Files" directory
         files = [
             {
-                "name": "Files/report.csv",
+                "name": "Files/Files/report.csv",
                 "contentLength": "512",
                 "lastModified": "",
                 "isDirectory": "false",

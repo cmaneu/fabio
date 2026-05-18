@@ -80,17 +80,40 @@ def list_files(
         fabio lakehouse files --workspace <ws-id> --id <lh-id>
         fabio lakehouse files -w <ws-id> --id <lh-id> --path Files/raw -r
     """
+    # OneLake DFS API has a "virtual lakehouse-in-lakehouse" behavior:
+    # directory=X returns paths prefixed with X/ where the actual contents
+    # are doubled (e.g. directory=Files returns Files/Files/myfile.csv for
+    # a file at Files/myfile.csv). We must always use recursive=true to see
+    # actual file content and then filter client-side.
     entries = client.list_onelake_files(
-        workspace, lakehouse_id, directory=path, recursive=recursive
+        workspace, lakehouse_id, directory=path, recursive=True
     )
 
-    # Normalize entries: strip the directory prefix for cleaner output
-    prefix = f"{path}/" if not path.endswith("/") else path
+    # The real contents of path X are at prefix X/X/ due to the virtual view
+    # e.g., for path="Files", actual files appear as "Files/Files/data.csv"
+    path_stripped = path.rstrip("/")
+    content_prefix = f"{path_stripped}/{path_stripped}/"
+    # Also handle subdirectory paths like "Files/raw" -> "Files/raw/raw/"
+    # Actually the pattern is: directory=X → contents at X/<basename(X)>/
+    # For "Files" → "Files/Files/", for "Tables" → "Tables/Tables/"
+    # But for subpaths like "Files/raw", we need to check empirically.
+    # The safe approach: use the doubled-prefix for top-level lakehouse dirs
+    # and fall back to single-prefix stripping otherwise.
+    top_level_dirs = {"Files", "Tables", "Functions", "TableMaintenance"}
+    real_prefix = (
+        content_prefix if path_stripped in top_level_dirs else f"{path_stripped}/"
+    )
+
     normalized: list[dict[str, object]] = []
     for entry in entries:
         full_name = entry.get("name", "")
-        rel_name = full_name[len(prefix) :] if full_name.startswith(prefix) else full_name
+        if not full_name.startswith(real_prefix):
+            continue
+        rel_name = full_name[len(real_prefix):]
         if not rel_name:
+            continue
+        # If not recursive mode, only show direct children (no / in rel_name)
+        if not recursive and "/" in rel_name:
             continue
         normalized.append(
             {
