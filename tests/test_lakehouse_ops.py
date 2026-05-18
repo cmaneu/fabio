@@ -419,3 +419,171 @@ class TestLakehouseMoveFile:
             "dest-lh",
             "Files/archive/report.csv",
         )
+
+
+class TestLakehouseDeleteTable:
+    def test_delete_table(self) -> None:
+        runner = CliRunner()
+        with patch("fabio.commands.lakehouse.client.delete_table") as mock_delete:
+            result = runner.invoke(
+                main,
+                [
+                    "lakehouse",
+                    "delete-table",
+                    "-w",
+                    "ws-001",
+                    "--id",
+                    "lh-001",
+                    "-t",
+                    "old_sales",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        parsed = json.loads(result.output)
+        assert parsed["data"]["status"] == "deleted"
+        assert parsed["data"]["table"] == "old_sales"
+        mock_delete.assert_called_once_with("ws-001", "lh-001", "old_sales")
+
+
+class TestLakehouseCopyTable:
+    def test_copy_table_basic(self) -> None:
+        runner = CliRunner()
+        with patch(
+            "fabio.commands.lakehouse.client.copy_table",
+            return_value={"filesCopied": 3, "sourceTable": "sales", "destTable": "sales"},
+        ) as mock_copy:
+            result = runner.invoke(
+                main,
+                [
+                    "lakehouse",
+                    "copy-table",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-st",
+                    "sales",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        parsed = json.loads(result.output)
+        assert parsed["data"]["status"] == "copied"
+        assert parsed["data"]["filesCopied"] == 3
+        mock_copy.assert_called_once_with(
+            "src-ws", "src-lh", "sales", "dest-ws", "dest-lh", "sales"
+        )
+
+    def test_copy_table_rename(self) -> None:
+        runner = CliRunner()
+        with patch(
+            "fabio.commands.lakehouse.client.copy_table",
+            return_value={
+                "filesCopied": 5,
+                "sourceTable": "orders",
+                "destTable": "orders_backup",
+            },
+        ) as mock_copy:
+            result = runner.invoke(
+                main,
+                [
+                    "lakehouse",
+                    "copy-table",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-st",
+                    "orders",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
+                    "-dt",
+                    "orders_backup",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        mock_copy.assert_called_once_with(
+            "src-ws", "src-lh", "orders", "dest-ws", "dest-lh", "orders_backup"
+        )
+
+
+class TestLakehouseMoveTable:
+    def test_move_table_basic(self) -> None:
+        runner = CliRunner()
+        with patch(
+            "fabio.commands.lakehouse.client.move_table",
+            return_value={
+                "filesCopied": 3,
+                "sourceTable": "staging",
+                "destTable": "staging",
+                "status": "moved",
+            },
+        ) as mock_move:
+            result = runner.invoke(
+                main,
+                [
+                    "lakehouse",
+                    "move-table",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-st",
+                    "staging",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        parsed = json.loads(result.output)
+        assert parsed["data"]["status"] == "moved"
+        assert parsed["data"]["filesCopied"] == 3
+        mock_move.assert_called_once_with(
+            "src-ws", "src-lh", "staging", "dest-ws", "dest-lh", "staging"
+        )
+
+    def test_move_table_rename(self) -> None:
+        runner = CliRunner()
+        with patch(
+            "fabio.commands.lakehouse.client.move_table",
+            return_value={
+                "filesCopied": 2,
+                "sourceTable": "raw",
+                "destTable": "archived_raw",
+                "status": "moved",
+            },
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "lakehouse",
+                    "move-table",
+                    "-sw",
+                    "src-ws",
+                    "-si",
+                    "src-lh",
+                    "-st",
+                    "raw",
+                    "-dw",
+                    "dest-ws",
+                    "-di",
+                    "dest-lh",
+                    "-dt",
+                    "archived_raw",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        parsed = json.loads(result.output)
+        assert parsed["data"]["destTable"] == "archived_raw"

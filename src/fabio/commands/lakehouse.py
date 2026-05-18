@@ -9,6 +9,9 @@ Commands:
     copy-file       - Server-side copy a file between lakehouses
     remove-file     - Delete a file from a lakehouse
     move-file       - Server-side move a file between lakehouses
+    delete-table    - Delete a Delta table from a lakehouse
+    copy-table      - Server-side copy a table between lakehouses
+    move-table      - Server-side move a table between lakehouses
     create-shortcut - Create a OneLake/ADLS/S3 shortcut in a lakehouse
     get-shortcut    - Get details of a shortcut
     delete-shortcut - Delete a shortcut
@@ -435,6 +438,138 @@ def move_file(
         }
     )
     output(ctx, result, plain_key="destination")
+
+
+@lakehouse.command(name="delete-table")
+@click.option("--workspace", "-w", required=True, help="Workspace ID.")
+@click.option("--id", "lakehouse_id", required=True, help="Lakehouse item ID.")
+@click.option("--table", "-t", required=True, help="Table name to delete.")
+@click.pass_context
+def delete_table_cmd(
+    ctx: click.Context,
+    workspace: str,
+    lakehouse_id: str,
+    table: str,
+) -> None:
+    """Delete a Delta table from a lakehouse.
+
+    \b
+    Recursively removes the table directory (Tables/<name>) including
+    all Delta log files and data files.
+
+    \b
+    Examples:
+        fabio lakehouse delete-table -w <ws> --id <lh> -t staging_orders
+        fabio lakehouse delete-table -w <ws> --id <lh> --table old_sales
+    """
+    client.delete_table(workspace, lakehouse_id, table)
+    output(
+        ctx,
+        {"status": "deleted", "table": table, "workspace": workspace, "lakehouse": lakehouse_id},
+        plain_key="table",
+    )
+
+
+@lakehouse.command(name="copy-table")
+@click.option("--source-workspace", "-sw", required=True, help="Source workspace ID.")
+@click.option("--source-id", "-si", required=True, help="Source lakehouse item ID.")
+@click.option("--source-table", "-st", required=True, help="Source table name.")
+@click.option("--dest-workspace", "-dw", required=True, help="Destination workspace ID.")
+@click.option("--dest-id", "-di", required=True, help="Destination lakehouse item ID.")
+@click.option(
+    "--dest-table", "-dt", default=None, help="Destination table name (default: same as source)."
+)
+@click.pass_context
+def copy_table_cmd(
+    ctx: click.Context,
+    source_workspace: str,
+    source_id: str,
+    source_table: str,
+    dest_workspace: str,
+    dest_id: str,
+    dest_table: str | None,
+) -> None:
+    """Copy a Delta table between lakehouses (server-side).
+
+    \b
+    Copies all files (Delta log + parquet) from the source table to the
+    destination. Data never transits through the client.
+
+    \b
+    Examples:
+        fabio lakehouse copy-table \\
+            -sw <src-ws> -si <src-lh> -st sales \\
+            -dw <dest-ws> -di <dest-lh>
+
+        fabio lakehouse copy-table \\
+            -sw <src-ws> -si <src-lh> -st orders \\
+            -dw <dest-ws> -di <dest-lh> -dt orders_backup
+    """
+    if dest_table is None:
+        dest_table = source_table
+
+    result = client.copy_table(
+        source_workspace,
+        source_id,
+        source_table,
+        dest_workspace,
+        dest_id,
+        dest_table,
+    )
+
+    result.update({"status": "copied"})
+    output(ctx, result, plain_key="destTable")
+
+
+@lakehouse.command(name="move-table")
+@click.option("--source-workspace", "-sw", required=True, help="Source workspace ID.")
+@click.option("--source-id", "-si", required=True, help="Source lakehouse item ID.")
+@click.option("--source-table", "-st", required=True, help="Source table name.")
+@click.option("--dest-workspace", "-dw", required=True, help="Destination workspace ID.")
+@click.option("--dest-id", "-di", required=True, help="Destination lakehouse item ID.")
+@click.option(
+    "--dest-table", "-dt", default=None, help="Destination table name (default: same as source)."
+)
+@click.pass_context
+def move_table_cmd(
+    ctx: click.Context,
+    source_workspace: str,
+    source_id: str,
+    source_table: str,
+    dest_workspace: str,
+    dest_id: str,
+    dest_table: str | None,
+) -> None:
+    """Move a Delta table between lakehouses (server-side copy + delete).
+
+    \b
+    Copies all table files to the destination, then deletes the source table.
+    Safe failure mode: if interrupted after copy, you get a duplicate rather
+    than data loss.
+
+    \b
+    Examples:
+        fabio lakehouse move-table \\
+            -sw <src-ws> -si <src-lh> -st staging_data \\
+            -dw <dest-ws> -di <dest-lh>
+
+        fabio lakehouse move-table \\
+            -sw <src-ws> -si <src-lh> -st raw_events \\
+            -dw <dest-ws> -di <dest-lh> -dt archived_events
+    """
+    if dest_table is None:
+        dest_table = source_table
+
+    result = client.move_table(
+        source_workspace,
+        source_id,
+        source_table,
+        dest_workspace,
+        dest_id,
+        dest_table,
+    )
+
+    output(ctx, result, plain_key="destTable")
 
 
 @lakehouse.command(name="create-shortcut")

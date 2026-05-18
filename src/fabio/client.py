@@ -606,3 +606,192 @@ def move_onelake_file(
 
     result["copyStatus"] = "moved"
     return result
+
+
+def _list_table_files(
+    workspace_id: str,
+    item_id: str,
+    table_name: str,
+) -> list[str]:
+    """List all files belonging to a Delta table in a lakehouse.
+
+    Uses the root filesystem listing and filters for the table prefix.
+    Returns relative paths like 'Tables/sales/_delta_log/00000.json'.
+    """
+    token = require_auth(scope=STORAGE_SCOPE)
+    url = f"{ONELAKE_DFS_URL}/{workspace_id}/{item_id}"
+
+    try:
+        resp = requests.get(
+            url,
+            params={"resource": "filesystem", "recursive": "true"},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=60,
+        )
+    except requests.Timeout as exc:
+        raise FabioError(ErrorCode.TIMEOUT, "OneLake list timed out") from exc
+    except requests.ConnectionError as e:
+        raise FabioError(ErrorCode.API_ERROR, f"Connection error: {e}") from e
+
+    if not resp.ok:
+        _handle_response(resp)
+
+    paths = resp.json().get("paths", [])
+    prefix = f"{item_id}/Tables/{table_name}/"
+    table_files: list[str] = []
+
+    for entry in paths:
+        name = entry.get("name", "")
+        is_dir = entry.get("isDirectory", "false") == "true"
+        if not is_dir and name.startswith(prefix):
+            # Strip the item_id prefix to get relative path
+            rel_path = name[len(f"{item_id}/") :]
+            table_files.append(rel_path)
+
+    return table_files
+
+
+def delete_onelake_directory(
+    workspace_id: str,
+    item_id: str,
+    dir_path: str,
+) -> None:
+    """Recursively delete a directory from a lakehouse via OneLake DFS API."""
+    token = require_auth(scope=STORAGE_SCOPE)
+    url = f"{ONELAKE_DFS_URL}/{workspace_id}/{item_id}/{dir_path}"
+
+    try:
+        resp = requests.delete(
+            url,
+            params={"recursive": "true"},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=60,
+        )
+    except requests.Timeout as exc:
+        raise FabioError(ErrorCode.TIMEOUT, "OneLake directory delete timed out") from exc
+    except requests.ConnectionError as e:
+        raise FabioError(ErrorCode.API_ERROR, f"Connection error: {e}") from e
+
+    if not resp.ok:
+        _handle_response(resp)
+
+
+def delete_table(
+    workspace_id: str,
+    item_id: str,
+    table_name: str,
+) -> None:
+    """Delete a Delta table from a lakehouse (recursive directory delete)."""
+    delete_onelake_directory(workspace_id, item_id, f"Tables/{table_name}")
+
+
+def copy_table(
+    src_workspace_id: str,
+    src_item_id: str,
+    src_table: str,
+    dest_workspace_id: str,
+    dest_item_id: str,
+    dest_table: str,
+) -> dict[str, Any]:
+    """Copy a Delta table between lakehouses via server-side file copy.
+
+    Lists all files in the source table directory, then copies each file
+    to the destination using the Blob API (server-side, no client transit).
+
+    Returns dict with file count and status.
+    """
+    # List all files in the source table
+    source_files = _list_table_files(src_workspace_id, src_item_id, src_table)
+
+    if not source_files:
+        raise FabioError(
+            ErrorCode.NOT_FOUND,
+            f"Table '{src_table}' not found or has no files.",
+        )
+
+    token = require_auth(scope=STORAGE_SCOPE)
+    src_prefix = f"Tables/{src_table}/"
+    dest_prefix = f"Tables/{dest_table}/"
+    copied = 0
+
+    for file_path in source_files:
+        # Replace source table prefix with dest table prefix
+        relative = file_path[len(src_prefix) :]
+        dest_path = f"{dest_prefix}{relative}"
+
+        source_url = f"{ONELAKE_BLOB_URL}/{src_workspace_id}/{src_item_id}/{file_path}"
+        dest_url = f"{ONELAKE_BLOB_URL}/{dest_workspace_id}/{dest_item_id}/{dest_path}"
+
+        try:
+            resp = requests.put(
+                dest_url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "x-ms-copy-source": source_url,
+                    "x-ms-version": "2024-08-04",
+                },
+                timeout=30,
+            )
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            raise FabioError(ErrorCode.API_ERROR, f"Copy failed for {file_path}: {exc}") from exc
+
+        if not resp.ok:
+            _handle_response(resp)
+
+        # Wait for async copy if pending
+        copy_status = resp.headers.get("x-ms-copy-status", "success")
+        if copy_status == "pending":
+            elapsed = 0.0
+            while elapsed < COPY_MAX_WAIT and copy_status == "pending":
+                time.sleep(COPY_POLL_INTERVAL)
+                elapsed += COPY_POLL_INTERVAL
+                try:
+                    head = requests.head(
+                        dest_url,
+                        headers={
+                            "Authorization": f"Bearer {token}",
+                            "x-ms-version": "2024-08-04",
+                        },
+                        timeout=30,
+                    )
+                    copy_status = head.headers.get("x-ms-copy-status", "pending")
+                except (requests.Timeout, requests.ConnectionError):
+                    continue
+
+            if copy_status != "success":
+                raise FabioError(
+                    ErrorCode.API_ERROR,
+                    f"Copy timed out for {file_path}. Status: {copy_status}",
+                )
+
+        copied += 1
+
+    return {"filesCopied": copied, "sourceTable": src_table, "destTable": dest_table}
+
+
+def move_table(
+    src_workspace_id: str,
+    src_item_id: str,
+    src_table: str,
+    dest_workspace_id: str,
+    dest_item_id: str,
+    dest_table: str,
+) -> dict[str, Any]:
+    """Move a Delta table between lakehouses (server-side copy + delete).
+
+    Copies all table files to the destination, then deletes the source
+    table directory. Safe failure mode: duplicate rather than data loss.
+    """
+    result = copy_table(
+        src_workspace_id,
+        src_item_id,
+        src_table,
+        dest_workspace_id,
+        dest_item_id,
+        dest_table,
+    )
+
+    delete_table(src_workspace_id, src_item_id, src_table)
+
+    result["status"] = "moved"
+    return result

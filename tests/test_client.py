@@ -454,3 +454,154 @@ class TestMoveOneLakeFile:
             move_onelake_file("ws-a", "lh-a", "Files/x.csv", "ws-b", "lh-b", "Files/x.csv")
         assert exc_info.value.code == ErrorCode.NOT_FOUND
         mock_delete.assert_not_called()
+
+
+class TestListTableFiles:
+    """Test the _list_table_files function."""
+
+    @patch("fabio.client.require_auth", return_value="token-abc")
+    @patch("fabio.client.requests.get")
+    def test_lists_and_filters_table_files(
+        self,
+        mock_get: MagicMock,
+        mock_auth: MagicMock,
+    ) -> None:
+        from fabio.client import _list_table_files
+
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = {
+            "paths": [
+                {"name": "lh-001/Files/data.csv", "isDirectory": "false"},
+                {"name": "lh-001/Tables/sales", "isDirectory": "true"},
+                {"name": "lh-001/Tables/sales/_delta_log", "isDirectory": "true"},
+                {
+                    "name": "lh-001/Tables/sales/_delta_log/00000.json",
+                    "isDirectory": "false",
+                    "contentLength": "1200",
+                },
+                {
+                    "name": "lh-001/Tables/sales/part-00000.parquet",
+                    "isDirectory": "false",
+                    "contentLength": "5000",
+                },
+                {"name": "lh-001/Tables/other", "isDirectory": "true"},
+                {
+                    "name": "lh-001/Tables/other/part-00000.parquet",
+                    "isDirectory": "false",
+                },
+            ]
+        }
+        mock_get.return_value = mock_resp
+
+        files = _list_table_files("ws-a", "lh-001", "sales")
+
+        assert len(files) == 2
+        assert "Tables/sales/_delta_log/00000.json" in files
+        assert "Tables/sales/part-00000.parquet" in files
+        # Should NOT include directories or other tables
+        assert "Tables/other/part-00000.parquet" not in files
+
+    @patch("fabio.client.require_auth", return_value="token-abc")
+    @patch("fabio.client.requests.get")
+    def test_empty_table_returns_empty(
+        self,
+        mock_get: MagicMock,
+        mock_auth: MagicMock,
+    ) -> None:
+        from fabio.client import _list_table_files
+
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = {"paths": []}
+        mock_get.return_value = mock_resp
+
+        files = _list_table_files("ws-a", "lh-001", "nonexistent")
+        assert files == []
+
+
+class TestCopyTable:
+    """Test the copy_table function."""
+
+    @patch("fabio.client.require_auth", return_value="token-abc")
+    @patch("fabio.client.requests.put")
+    @patch("fabio.client._list_table_files")
+    def test_copy_table_copies_all_files(
+        self,
+        mock_list: MagicMock,
+        mock_put: MagicMock,
+        mock_auth: MagicMock,
+    ) -> None:
+        from fabio.client import copy_table
+
+        mock_list.return_value = [
+            "Tables/sales/_delta_log/00000.json",
+            "Tables/sales/part-00000.parquet",
+        ]
+
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.headers = {"x-ms-copy-status": "success", "x-ms-copy-id": "cp-1"}
+        mock_put.return_value = mock_resp
+
+        result = copy_table("ws-a", "lh-a", "sales", "ws-b", "lh-b", "sales_copy")
+
+        assert result["filesCopied"] == 2
+        assert result["sourceTable"] == "sales"
+        assert result["destTable"] == "sales_copy"
+        assert mock_put.call_count == 2
+
+    @patch("fabio.client.require_auth", return_value="token-abc")
+    @patch("fabio.client._list_table_files")
+    def test_copy_table_not_found(
+        self,
+        mock_list: MagicMock,
+        mock_auth: MagicMock,
+    ) -> None:
+        from fabio.client import copy_table
+
+        mock_list.return_value = []
+
+        with pytest.raises(FabioError) as exc_info:
+            copy_table("ws-a", "lh-a", "missing", "ws-b", "lh-b", "missing")
+        assert exc_info.value.code == ErrorCode.NOT_FOUND
+
+
+class TestMoveTable:
+    """Test the move_table function."""
+
+    @patch("fabio.client.delete_table")
+    @patch("fabio.client.copy_table")
+    def test_move_copies_then_deletes(
+        self,
+        mock_copy: MagicMock,
+        mock_delete: MagicMock,
+    ) -> None:
+        from fabio.client import move_table
+
+        mock_copy.return_value = {
+            "filesCopied": 2,
+            "sourceTable": "sales",
+            "destTable": "sales",
+        }
+
+        result = move_table("ws-a", "lh-a", "sales", "ws-b", "lh-b", "sales")
+
+        assert result["status"] == "moved"
+        mock_copy.assert_called_once_with("ws-a", "lh-a", "sales", "ws-b", "lh-b", "sales")
+        mock_delete.assert_called_once_with("ws-a", "lh-a", "sales")
+
+    @patch("fabio.client.delete_table")
+    @patch("fabio.client.copy_table")
+    def test_move_does_not_delete_if_copy_fails(
+        self,
+        mock_copy: MagicMock,
+        mock_delete: MagicMock,
+    ) -> None:
+        from fabio.client import move_table
+
+        mock_copy.side_effect = FabioError(ErrorCode.NOT_FOUND, "Table not found")
+
+        with pytest.raises(FabioError):
+            move_table("ws-a", "lh-a", "x", "ws-b", "lh-b", "x")
+        mock_delete.assert_not_called()
