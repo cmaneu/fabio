@@ -15,6 +15,7 @@ from azure.identity import (
     AuthenticationRecord as AzureAuthRecord,
 )
 from azure.identity import (
+    DeviceCodeCredential,
     InteractiveBrowserCredential,
 )
 
@@ -37,6 +38,8 @@ def require_auth(scope: str = FABRIC_SCOPE) -> str:
     """Validate authentication and return a valid access token.
 
     Raises FabioError if not authenticated or token expired.
+    Uses the same credential type (browser or device-code) that was
+    used during login, so that silent token refresh works correctly.
     """
     record = load_record()
     azure_record_serialized = load_azure_record()
@@ -48,12 +51,21 @@ def require_auth(scope: str = FABRIC_SCOPE) -> str:
         )
 
     azure_record = AzureAuthRecord.deserialize(azure_record_serialized)
+    cache_options = get_cache_options(warn=False)
 
-    credential = InteractiveBrowserCredential(
-        authentication_record=azure_record,
-        cache_persistence_options=get_cache_options(warn=False),
-        disable_automatic_authentication=True,
-    )
+    auth_method = getattr(record, "auth_method", "browser")
+    if auth_method == "device_code":
+        credential = DeviceCodeCredential(
+            authentication_record=azure_record,
+            cache_persistence_options=cache_options,
+            disable_automatic_authentication=True,
+        )
+    else:
+        credential = InteractiveBrowserCredential(  # type: ignore[assignment]
+            authentication_record=azure_record,
+            cache_persistence_options=cache_options,
+            disable_automatic_authentication=True,
+        )
 
     try:
         token = credential.get_token(scope)

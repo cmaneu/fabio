@@ -40,6 +40,7 @@ class AuthRecord:
     tenant_id: str
     authority: str
     login_time: float = field(default_factory=time.time)
+    auth_method: str = "browser"  # "browser" or "device_code"
 
     def age_human(self) -> str:
         """Return a human-readable string describing how long ago login happened."""

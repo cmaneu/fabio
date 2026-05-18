@@ -31,12 +31,15 @@ from fabio.output import output
 FABRIC_SCOPE = "https://analysis.windows.net/powerbi/api/.default"
 
 
-def _record_from_azure_auth(azure_record: AzureAuthRecord) -> AuthRecord:
+def _record_from_azure_auth(
+    azure_record: AzureAuthRecord, auth_method: str = "browser"
+) -> AuthRecord:
     """Build a display-friendly AuthRecord from an azure-identity AuthenticationRecord."""
     return AuthRecord(
         username=azure_record.username,
         tenant_id=azure_record.tenant_id,
         authority=azure_record.authority,
+        auth_method=auth_method,
     )
 
 
@@ -49,7 +52,7 @@ def _do_interactive_login(tenant_id: str | None) -> tuple[AuthRecord, str]:
 
     credential = InteractiveBrowserCredential(**kwargs)
     azure_record = credential.authenticate(scopes=(FABRIC_SCOPE,))
-    return _record_from_azure_auth(azure_record), azure_record.serialize()
+    return _record_from_azure_auth(azure_record, "browser"), azure_record.serialize()
 
 
 def _device_code_prompt(verification_uri: str, user_code: str, expires_on: object) -> None:
@@ -74,7 +77,7 @@ def _do_device_code_login(tenant_id: str | None) -> tuple[AuthRecord, str]:
 
     credential = DeviceCodeCredential(**kwargs)  # type: ignore[arg-type]
     azure_record = credential.authenticate(scopes=(FABRIC_SCOPE,))
-    return _record_from_azure_auth(azure_record), azure_record.serialize()
+    return _record_from_azure_auth(azure_record, "device_code"), azure_record.serialize()
 
 
 @click.group()

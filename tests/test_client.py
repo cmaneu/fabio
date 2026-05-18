@@ -74,6 +74,34 @@ class TestRequireAuth:
 
         assert exc_info.value.code == ErrorCode.AUTH_EXPIRED
 
+    @patch("fabio.client.DeviceCodeCredential", autospec=False)
+    @patch("fabio.client.AzureAuthRecord", autospec=False)
+    def test_uses_device_code_credential_when_auth_method_device_code(
+        self,
+        mock_azure_record_cls: MagicMock,
+        mock_device_cred_cls: MagicMock,
+        auth_files: Path,
+    ) -> None:
+        """require_auth uses DeviceCodeCredential when auth_method is device_code."""
+        save_record(
+            AuthRecord(username="u", tenant_id="t", authority="a", auth_method="device_code")
+        )
+        save_azure_record('{"serialized": "data"}')
+
+        mock_azure_record_cls.deserialize.return_value = MagicMock()
+        mock_cred = MagicMock()
+        mock_cred.get_token.return_value = MagicMock(token="device-token")
+        mock_device_cred_cls.return_value = mock_cred
+
+        from fabio.client import require_auth
+
+        token = require_auth()
+
+        assert token == "device-token"
+        mock_device_cred_cls.assert_called_once()
+        call_kwargs = mock_device_cred_cls.call_args[1]
+        assert call_kwargs["disable_automatic_authentication"] is True
+
     @patch("fabio.client.requests.get")
     @patch("fabio.client.InteractiveBrowserCredential", autospec=False)
     @patch("fabio.client.AzureAuthRecord", autospec=False)
