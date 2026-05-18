@@ -170,3 +170,38 @@ class TestHandleResponse:
 
         result = _handle_response(mock_resp)
         assert result == {}
+
+    def test_capacity_not_active_raises_capacity_inactive(self) -> None:
+        from fabio.client import _handle_response
+
+        mock_resp = MagicMock()
+        mock_resp.ok = False
+        mock_resp.status_code = 404
+        mock_resp.text = "CapacityNotActive"
+        mock_resp.json.return_value = {
+            "errorCode": "CapacityNotActive",
+            "message": "Capacity 64fd7fa6 is not active",
+        }
+
+        with pytest.raises(FabioError) as exc_info:
+            _handle_response(mock_resp)
+        assert exc_info.value.code == ErrorCode.CAPACITY_INACTIVE
+        assert "paused or inactive" in exc_info.value.message
+
+    def test_capacity_not_active_nested_error(self) -> None:
+        from fabio.client import _handle_response
+
+        mock_resp = MagicMock()
+        mock_resp.ok = False
+        mock_resp.status_code = 404
+        mock_resp.text = ""
+        mock_resp.json.return_value = {
+            "error": {
+                "code": "ItemNotFound",
+                "message": "Internal error CapacityNotActive.Capacity xyz is not active",
+            }
+        }
+
+        with pytest.raises(FabioError) as exc_info:
+            _handle_response(mock_resp)
+        assert exc_info.value.code == ErrorCode.CAPACITY_INACTIVE

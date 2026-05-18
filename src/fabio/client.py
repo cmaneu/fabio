@@ -71,8 +71,18 @@ def _handle_response(resp: requests.Response) -> dict[str, Any]:
     try:
         body = resp.json()
         message = body.get("error", {}).get("message", resp.text)
+        error_code = body.get("error", {}).get("code", "") or body.get("errorCode", "")
     except Exception:
         message = resp.text
+        error_code = ""
+
+    # Detect Fabric-specific capacity errors before generic status mapping
+    if "CapacityNotActive" in error_code or "CapacityNotActive" in message:
+        raise FabioError(
+            ErrorCode.CAPACITY_INACTIVE,
+            "Fabric capacity is paused or inactive. Resume it in the Azure portal.",
+            status=status,
+        )
 
     if status == 401:
         raise FabioError(ErrorCode.AUTH_EXPIRED, message, status=status)
