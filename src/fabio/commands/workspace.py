@@ -1,10 +1,11 @@
 """``fabio workspace`` command group.
 
 Commands:
-    list   - List all accessible workspaces
-    show   - Get details for a specific workspace
-    create - Create a new workspace
-    delete - Delete a workspace
+    list              - List all accessible workspaces
+    show              - Get details for a specific workspace
+    create            - Create a new workspace
+    delete            - Delete a workspace
+    assign-capacity   - Assign a workspace to a different capacity
 """
 
 from __future__ import annotations
@@ -126,3 +127,24 @@ def _resolve_workspace_name(name: str) -> str:
         )
 
     return matches[0]["id"]
+
+
+@workspace.command(name="assign-capacity")
+@click.option("--id", "workspace_id", required=True, help="Workspace ID.")
+@click.option("--capacity", "-c", required=True, help="Target capacity ID.")
+@click.pass_context
+def assign_capacity(ctx: click.Context, workspace_id: str, capacity: str) -> None:
+    """Assign a workspace to a different Fabric capacity.
+
+    \b
+    Example: fabio workspace assign-capacity --id <ws-id> -c <capacity-id>
+    """
+    client.post(
+        f"/workspaces/{workspace_id}/assignToCapacity",
+        body={"capacityId": capacity},
+    )
+    output(
+        ctx,
+        {"id": workspace_id, "capacityId": capacity, "status": "assigned"},
+        plain_key="id",
+    )

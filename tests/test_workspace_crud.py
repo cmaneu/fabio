@@ -51,3 +51,22 @@ class TestWorkspaceDelete:
         parsed = json.loads(result.output)
         assert parsed["data"]["status"] == "deleted"
         mock.assert_called_once_with("/workspaces/ws-001")
+
+
+class TestWorkspaceAssignCapacity:
+    def test_assign_capacity(self) -> None:
+        runner = CliRunner()
+        with patch("fabio.commands.workspace.client.post", return_value={}) as mock:
+            result = runner.invoke(
+                main,
+                ["workspace", "assign-capacity", "--id", "ws-001", "-c", "cap-new"],
+            )
+
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert parsed["data"]["status"] == "assigned"
+        assert parsed["data"]["capacityId"] == "cap-new"
+        mock.assert_called_once_with(
+            "/workspaces/ws-001/assignToCapacity",
+            body={"capacityId": "cap-new"},
+        )

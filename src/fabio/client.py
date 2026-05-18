@@ -63,7 +63,7 @@ def require_auth(scope: str = FABRIC_SCOPE) -> str:
 def _handle_response(resp: requests.Response) -> dict[str, Any]:
     """Check response and raise structured errors on failure."""
     if resp.ok:
-        if resp.status_code == 204:
+        if resp.status_code == 204 or not resp.text.strip():
             return {}
         return resp.json()  # type: ignore[no-any-return]
 
