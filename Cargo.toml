@@ -21,15 +21,15 @@ clap = { version = "4", features = ["derive", "env"] }
 tokio = { version = "1", features = ["full"] }
 
 # HTTP
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.13", features = ["json", "rustls"], default-features = false }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Azure auth
-azure_identity = { version = "0.22", default-features = false }
-azure_core = { version = "0.22", default-features = false }
+azure_identity = { version = "1", default-features = false }
+azure_core = { version = "1", default-features = false }
 
 # Error handling
 thiserror = "2"
@@ -49,7 +49,7 @@ dirs = "6"
 base64 = "0.22"
 urlencoding = "2"
 glob = "0.3"
-fnmatch-regex = "0.2"
+fnmatch-regex = "0.3"
 
 [dev-dependencies]
 assert_cmd = "2"

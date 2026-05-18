@@ -494,15 +494,13 @@ impl FabricClient {
 
 /// Get an access token using the default Azure credential chain.
 async fn get_token(scope: &str) -> Result<String> {
-    use azure_identity::DefaultAzureCredential;
+    use azure_identity::DeveloperToolsCredential;
 
-    let credential = DefaultAzureCredential::new()
-        .context("Failed to create Azure credential. Run 'az login' or 'fabio auth login'.")?;
+    let credential = DeveloperToolsCredential::new(None)
+        .context("Failed to create Azure credential. Run 'az login' first.")?;
 
-    let token = credential.get_token(&[scope]).await.map_err(|e| {
-        FabioError::auth_required(format!(
-            "Authentication failed: {e}. Run 'az login' or 'fabio auth login'."
-        ))
+    let token = credential.get_token(&[scope], None).await.map_err(|e| {
+        FabioError::auth_required(format!("Authentication failed: {e}. Run 'az login' first."))
     })?;
 
     Ok(token.token.secret().to_string())
