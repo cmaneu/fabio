@@ -44,13 +44,13 @@ pub enum OntologyCommand {
         description: Option<String>,
 
         /// Path to definition JSON file (base64-encoded parts format)
-        #[arg(long, conflicts_with = "rdf")]
+        #[arg(long, conflicts_with = "file")]
         definition: Option<String>,
 
-        /// Path to an RDF file (.ttl, .owl, .rdf, .jsonld, .nt, .n3, .trig)
+        /// Path to a local RDF file (.ttl, .owl, .rdf, .jsonld, .nt, .n3, .trig)
         /// Auto-detects format from extension and wraps into Fabric definition
         #[arg(long, conflicts_with = "definition")]
-        rdf: Option<String>,
+        file: Option<String>,
     },
     /// Update ontology properties (name and/or description)
     Update {
@@ -109,13 +109,13 @@ pub enum OntologyCommand {
         id: String,
 
         /// Path to definition JSON file, or - for stdin
-        #[arg(long, conflicts_with = "rdf")]
+        #[arg(long, conflicts_with = "file")]
         definition: Option<String>,
 
-        /// Path to an RDF file (.ttl, .owl, .rdf, .jsonld, .nt, .n3, .trig)
+        /// Path to a local RDF file (.ttl, .owl, .rdf, .jsonld, .nt, .n3, .trig)
         /// Auto-detects format from extension and wraps into Fabric definition
         #[arg(long, conflicts_with = "definition")]
-        rdf: Option<String>,
+        file: Option<String>,
 
         /// Also update item metadata from .platform file
         #[arg(long)]
@@ -132,7 +132,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             name,
             description,
             definition,
-            rdf,
+            file,
         } => {
             create(
                 cli,
@@ -141,7 +141,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
                 name,
                 description.as_deref(),
                 definition.as_deref(),
-                rdf.as_deref(),
+                file.as_deref(),
             )
             .await
         }
@@ -175,9 +175,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             workspace,
             id,
             definition,
-            rdf,
+            file,
             update_metadata,
-        } => update_definition(cli, client, workspace, id, definition.as_deref(), rdf.as_deref(), *update_metadata).await,
+        } => update_definition(cli, client, workspace, id, definition.as_deref(), file.as_deref(), *update_metadata).await,
     }
 }
 
@@ -218,7 +218,7 @@ async fn create(
     name: &str,
     description: Option<&str>,
     definition_path: Option<&str>,
-    rdf_path: Option<&str>,
+    file_path: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "displayName": name,
@@ -233,7 +233,7 @@ async fn create(
         let def: Value = serde_json::from_str(&content)
             .map_err(|e| anyhow::anyhow!("Invalid definition JSON: {e}"))?;
         body["definition"] = def;
-    } else if let Some(path) = rdf_path {
+    } else if let Some(path) = file_path {
         body["definition"] = build_definition_from_rdf(path)?;
     }
 
@@ -320,17 +320,17 @@ async fn update_definition(
     workspace: &str,
     id: &str,
     definition_path: Option<&str>,
-    rdf_path: Option<&str>,
+    file_path: Option<&str>,
     update_metadata: bool,
 ) -> Result<()> {
     let def = if let Some(path) = definition_path {
         let content = read_file_or_stdin(path)?;
         serde_json::from_str::<Value>(&content)
             .map_err(|e| anyhow::anyhow!("Invalid definition JSON: {e}"))?
-    } else if let Some(path) = rdf_path {
+    } else if let Some(path) = file_path {
         build_definition_from_rdf(path)?
     } else {
-        anyhow::bail!("Specify either --definition or --rdf");
+        anyhow::bail!("Specify either --definition or --file");
     };
 
     let body = serde_json::json!({"definition": def});

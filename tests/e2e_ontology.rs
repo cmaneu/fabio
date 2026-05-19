@@ -224,7 +224,7 @@ fn ontology_create_with_rdf_ttl() {
             &cfg.source_workspace,
             "--name",
             &name,
-            "--rdf",
+            "--file",
             ttl_path.to_str().unwrap(),
         ])
         .timeout(std::time::Duration::from_secs(120))
@@ -281,7 +281,7 @@ fn ontology_create_with_rdf_owl() {
             &cfg.source_workspace,
             "--name",
             &name,
-            "--rdf",
+            "--file",
             owl_path.to_str().unwrap(),
         ])
         .timeout(std::time::Duration::from_secs(120))
@@ -334,7 +334,7 @@ fn ontology_create_with_rdf_jsonld() {
             &cfg.source_workspace,
             "--name",
             &name,
-            "--rdf",
+            "--file",
             jsonld_path.to_str().unwrap(),
         ])
         .timeout(std::time::Duration::from_secs(120))
@@ -449,7 +449,7 @@ fn ontology_get_and_update_definition() {
             &cfg.source_workspace,
             "--name",
             &name,
-            "--rdf",
+            "--file",
             ttl_path.to_str().unwrap(),
         ])
         .timeout(std::time::Duration::from_secs(120))
@@ -495,7 +495,7 @@ fn ontology_get_and_update_definition() {
             &cfg.source_workspace,
             "--id",
             &ont_id,
-            "--rdf",
+            "--file",
             updated_path.to_str().unwrap(),
         ])
         .timeout(std::time::Duration::from_secs(120))
@@ -709,7 +709,7 @@ fn ontology_create_definition_and_rdf_conflict() {
             "test",
             "--definition",
             "def.json",
-            "--rdf",
+            "--file",
             "schema.ttl",
         ])
         .assert()
@@ -735,7 +735,7 @@ fn ontology_update_definition_and_rdf_conflict() {
             "fake-id",
             "--definition",
             "def.json",
-            "--rdf",
+            "--file",
             "schema.ttl",
         ])
         .assert()
@@ -816,7 +816,7 @@ fn ontology_create_with_rdf_unsupported_extension() {
             &cfg.source_workspace,
             "--name",
             "should_fail",
-            "--rdf",
+            "--file",
             bad_path.to_str().unwrap(),
         ])
         .assert()
@@ -932,7 +932,7 @@ fn ontology_update_definition_with_rdf() {
             &cfg.source_workspace,
             "--id",
             &ont_id,
-            "--rdf",
+            "--file",
             ttl_path.to_str().unwrap(),
         ])
         .timeout(std::time::Duration::from_secs(120))
