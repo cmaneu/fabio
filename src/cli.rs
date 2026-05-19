@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
-    auth, dataagent, feedback, item, jobs, lakehouse, notebook, profile, warehouse, workspace,
+    auth, dataagent, feedback, git, item, jobs, lakehouse, notebook, profile, warehouse, workspace,
 };
 
 /// Agent-first CLI for managing Microsoft Fabric artifacts and data.
@@ -103,6 +103,11 @@ pub enum Command {
     DataAgent {
         #[command(subcommand)]
         command: dataagent::DataAgentCommand,
+    },
+    /// Manage Git integration (connect, commit, pull, status)
+    Git {
+        #[command(subcommand)]
+        command: git::GitCommand,
     },
     /// Manage saved configuration profiles
     Profile {

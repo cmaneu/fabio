@@ -109,6 +109,75 @@ impl FabricClient {
         handle_response(resp).await
     }
 
+    /// POST request with configurable LRO wait and timeout.
+    pub async fn post_with_timeout(
+        &self,
+        path: &str,
+        body: &Value,
+        wait: bool,
+        timeout_secs: u64,
+    ) -> Result<Value> {
+        let token = self.require_auth().await?;
+        let url = format!("{FABRIC_BASE_URL}{path}");
+
+        let resp = self
+            .http
+            .post(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::ACCEPTED {
+            if wait {
+                return self
+                    .poll_lro_with_timeout(resp, Duration::from_secs(timeout_secs))
+                    .await;
+            }
+            // Return operation metadata without polling
+            let location = resp
+                .headers()
+                .get("location")
+                .or_else(|| resp.headers().get("Location"))
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
+            let operation_id = resp
+                .headers()
+                .get("x-ms-operation-id")
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
+
+            return Ok(serde_json::json!({
+                "status": "accepted",
+                "operationId": operation_id,
+                "location": location,
+            }));
+        }
+
+        handle_response(resp).await
+    }
+
+    /// GET request that handles LRO (202 Accepted) responses.
+    pub async fn get_with_lro(&self, path: &str) -> Result<Value> {
+        let token = self.require_auth().await?;
+        let url = format!("{FABRIC_BASE_URL}{path}");
+
+        let resp = self
+            .http
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::ACCEPTED {
+            return self.poll_lro(resp).await;
+        }
+
+        handle_response(resp).await
+    }
+
     /// PATCH request to Fabric REST API.
     pub async fn patch(&self, path: &str, body: &Value) -> Result<Value> {
         let token = self.require_auth().await?;
@@ -485,6 +554,109 @@ impl FabricClient {
                 }
             }
             // Unexpected status
+            let text = resp.text().await.unwrap_or_default();
+            return Err(FabioError::from_status(status.as_u16(), text).into());
+        }
+    }
+
+    /// Poll a long-running operation with a custom timeout.
+    async fn poll_lro_with_timeout(
+        &self,
+        initial_response: Response,
+        max_wait: Duration,
+    ) -> Result<Value> {
+        let location = initial_response
+            .headers()
+            .get("location")
+            .or_else(|| initial_response.headers().get("Location"))
+            .and_then(|v| v.to_str().ok())
+            .map(String::from);
+
+        let operation_id = initial_response
+            .headers()
+            .get("x-ms-operation-id")
+            .and_then(|v| v.to_str().ok())
+            .map(String::from);
+
+        let Some(poll_url) = location
+            .or_else(|| operation_id.map(|op_id| format!("{FABRIC_BASE_URL}/operations/{op_id}")))
+        else {
+            return handle_response(initial_response).await;
+        };
+
+        let token = self.require_auth().await?;
+        let start = std::time::Instant::now();
+
+        loop {
+            if start.elapsed() > max_wait {
+                return Err(FabioError::new(ErrorCode::Timeout, "LRO polling timed out").into());
+            }
+
+            sleep(LRO_POLL_INTERVAL).await;
+
+            let resp = self
+                .http
+                .get(&poll_url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+            let status = resp.status();
+            if status == StatusCode::OK
+                || status == StatusCode::CREATED
+                || status == StatusCode::ACCEPTED
+            {
+                let resource_location = resp
+                    .headers()
+                    .get("location")
+                    .or_else(|| resp.headers().get("Location"))
+                    .and_then(|v| v.to_str().ok())
+                    .map(String::from);
+
+                let body: Value = resp.json().await.unwrap_or(Value::Null);
+                let op_status = body.get("status").and_then(Value::as_str).unwrap_or("");
+
+                match op_status {
+                    "Succeeded" | "succeeded" => {
+                        if let Some(ref loc) = resource_location {
+                            let final_resp = self
+                                .http
+                                .get(loc)
+                                .header(AUTHORIZATION, format!("Bearer {token}"))
+                                .send()
+                                .await
+                                .map_err(|e| {
+                                    FabioError::new(ErrorCode::NetworkError, e.to_string())
+                                })?;
+                            if final_resp.status().is_success() {
+                                let final_body: Value =
+                                    final_resp.json().await.unwrap_or(Value::Null);
+                                if !final_body.is_null() {
+                                    return Ok(final_body);
+                                }
+                            }
+                        }
+                        return Ok(body);
+                    }
+                    "Failed" | "failed" => {
+                        let msg = body
+                            .get("error")
+                            .and_then(|e| e.get("message"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("LRO failed");
+                        return Err(FabioError::api_error(msg).into());
+                    }
+                    _ => {
+                        if op_status.is_empty()
+                            && (status == StatusCode::OK || status == StatusCode::CREATED)
+                        {
+                            return Ok(body);
+                        }
+                        continue;
+                    }
+                }
+            }
             let text = resp.text().await.unwrap_or_default();
             return Err(FabioError::from_status(status.as_u16(), text).into());
         }
