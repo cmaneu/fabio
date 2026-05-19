@@ -177,7 +177,18 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             definition,
             file,
             update_metadata,
-        } => update_definition(cli, client, workspace, id, definition.as_deref(), file.as_deref(), *update_metadata).await,
+        } => {
+            update_definition(
+                cli,
+                client,
+                workspace,
+                id,
+                definition.as_deref(),
+                file.as_deref(),
+                *update_metadata,
+            )
+            .await
+        }
     }
 }
 

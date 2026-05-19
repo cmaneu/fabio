@@ -178,10 +178,11 @@ fn git_connect_init_status_disconnect_lifecycle() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["gitConnectionState"], "Connected");
-    assert!(data
-        .get("gitProviderDetails")
-        .and_then(|d| d.get("repositoryName"))
-        .is_some());
+    assert!(
+        data.get("gitProviderDetails")
+            .and_then(|d| d.get("repositoryName"))
+            .is_some()
+    );
 
     // Initialize connection
     let assert = fabio()

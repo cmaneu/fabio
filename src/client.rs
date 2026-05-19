@@ -383,6 +383,56 @@ impl FabricClient {
         }))
     }
 
+    /// Get file properties from `OneLake` via DFS HEAD request.
+    /// Returns headers including `Content-MD5` and `ETag`.
+    pub async fn get_file_properties(
+        &self,
+        workspace: &str,
+        item: &str,
+        path: &str,
+    ) -> Result<Value> {
+        let token = self.require_storage_auth().await?;
+        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{path}");
+
+        let resp = self
+            .http
+            .head(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(FabioError::from_status(status, text).into());
+        }
+
+        let headers = resp.headers();
+        let content_md5 = headers
+            .get("Content-MD5")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let etag = headers
+            .get("ETag")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let content_length = headers
+            .get("Content-Length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        Ok(serde_json::json!({
+            "path": path,
+            "contentMD5": content_md5,
+            "eTag": etag,
+            "contentLength": content_length
+        }))
+    }
+
     /// Delete a directory recursively from `OneLake` via DFS.
     pub async fn delete_onelake_directory(
         &self,

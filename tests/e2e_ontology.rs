@@ -139,10 +139,8 @@ fn ontology_create_with_definition_json() {
         &base64::engine::general_purpose::STANDARD,
         ttl_content.as_bytes(),
     );
-    let def_json_encoded = base64::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        b"{}",
-    );
+    let def_json_encoded =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, b"{}");
 
     let def = serde_json::json!({
         "parts": [
@@ -505,14 +503,9 @@ fn ontology_get_and_update_definition() {
     // Update definition with JSON format (using --definition)
     let def_json_path = dir.path().join("def.json");
     let ttl_bytes = b"@prefix ex: <http://example.org/> .\nex:D a ex:Class .";
-    let ttl_encoded = base64::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        ttl_bytes,
-    );
-    let def_json_encoded = base64::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        b"{}",
-    );
+    let ttl_encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, ttl_bytes);
+    let def_json_encoded =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, b"{}");
     let def = serde_json::json!({
         "parts": [
             {
@@ -589,14 +582,9 @@ fn ontology_update_definition_from_stdin() {
 
     // Update definition from stdin (using - as path)
     let ttl_bytes = b"@prefix ex: <http://example.org/> .\nex:StdinTest a ex:Class .";
-    let ttl_encoded = base64::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        ttl_bytes,
-    );
-    let def_json_encoded = base64::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        b"{}",
-    );
+    let ttl_encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, ttl_bytes);
+    let def_json_encoded =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, b"{}");
     let def_json = serde_json::json!({
         "parts": [
             {

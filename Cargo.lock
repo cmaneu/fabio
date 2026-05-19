@@ -584,6 +584,7 @@ dependencies = [
  "comfy-table",
  "dirs",
  "fnmatch-regex",
+ "futures",
  "glob",
  "predicates",
  "reqwest",

@@ -3,6 +3,7 @@ mod client;
 mod commands;
 mod errors;
 mod output;
+mod parallel;
 
 use anyhow::Result;
 use clap::Parser;
