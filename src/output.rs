@@ -267,4 +267,39 @@ mod tests {
         assert_eq!(format_value(&Value::Null), "");
         assert_eq!(format_value(&serde_json::json!({"a": 1})), r#"{"a":1}"#);
     }
+
+    #[test]
+    fn effective_output_defaults_to_json() {
+        let cli = make_test_cli(&[]);
+        assert!(matches!(cli.effective_output(), OutputFormat::Json));
+    }
+
+    #[test]
+    fn effective_output_json_flag_overrides_table() {
+        let cli = make_test_cli(&["--output", "table", "--json"]);
+        assert!(matches!(cli.effective_output(), OutputFormat::Json));
+    }
+
+    #[test]
+    fn dry_run_guard_returns_false_when_inactive() {
+        let cli = make_test_cli(&[]);
+        let details = serde_json::json!({"name": "test"});
+        assert!(!dry_run_guard(&cli, "create", &details));
+    }
+
+    #[test]
+    fn dry_run_guard_returns_true_when_active() {
+        let cli = make_test_cli(&["--dry-run"]);
+        let details = serde_json::json!({"name": "test"});
+        assert!(dry_run_guard(&cli, "workspace.create", &details));
+    }
+
+    /// Helper to construct a Cli for testing (parses args after "fabio agent-context").
+    fn make_test_cli(extra_args: &[&str]) -> Cli {
+        use clap::Parser;
+        let mut args = vec!["fabio"];
+        args.extend_from_slice(extra_args);
+        args.push("agent-context");
+        Cli::parse_from(args)
+    }
 }

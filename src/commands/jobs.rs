@@ -55,7 +55,6 @@ pub struct JobEntry {
 }
 
 impl JobEntry {
-    #[allow(dead_code)]
     pub fn new(id: &str, kind: &str, workspace: &str, item_id: &str) -> Self {
         Self {
             id: id.to_string(),
@@ -81,7 +80,6 @@ impl JobLedger {
         home.join(".fabio").join("jobs.jsonl")
     }
 
-    #[allow(dead_code)]
     pub fn append(entry: &JobEntry) -> Result<()> {
         let path = Self::ledger_path();
         if let Some(parent) = path.parent() {
@@ -93,7 +91,6 @@ impl JobLedger {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub fn update(id: &str, status: &str, error: Option<&str>) -> Result<()> {
         let entries = Self::read_all()?;
         let updated: Vec<JobEntry> = entries

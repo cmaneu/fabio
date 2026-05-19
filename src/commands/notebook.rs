@@ -6,6 +6,7 @@ use tokio::time::sleep;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::commands::jobs::{JobEntry, JobLedger};
 use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
@@ -192,7 +193,19 @@ async fn run(
     wait: bool,
     timeout_secs: u64,
 ) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "notebook run",
+        &serde_json::json!({"workspace": workspace, "id": id, "wait": wait, "timeout": timeout_secs}),
+    ) {
+        return Ok(());
+    }
+
     let job_id = client.run_notebook(workspace, id).await?;
+
+    // Record job in local ledger
+    let entry = JobEntry::new(&job_id, "notebook-run", workspace, id);
+    let _ = JobLedger::append(&entry);
 
     if !wait {
         let obj = serde_json::json!({
@@ -211,6 +224,7 @@ async fn run(
 
     loop {
         if start.elapsed() > max_wait {
+            let _ = JobLedger::update(&job_id, "timeout", None);
             return Err(FabioError::new(
                 ErrorCode::Timeout,
                 format!(
@@ -235,6 +249,7 @@ async fn run(
 
         match status_str {
             "Completed" => {
+                let _ = JobLedger::update(&job_id, "completed", None);
                 let obj = serde_json::json!({
                     "itemId": id,
                     "jobId": job_id,
@@ -249,9 +264,11 @@ async fn run(
                     .and_then(|r| r.get("message"))
                     .and_then(|m| m.as_str())
                     .unwrap_or("Notebook run failed");
+                let _ = JobLedger::update(&job_id, "failed", Some(message));
                 return Err(FabioError::new(ErrorCode::ApiError, message).into());
             }
             "Cancelled" => {
+                let _ = JobLedger::update(&job_id, "cancelled", None);
                 return Err(
                     FabioError::new(ErrorCode::ApiError, "Notebook run was cancelled").into(),
                 );

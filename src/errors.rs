@@ -114,3 +114,62 @@ impl FabioError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_code_display() {
+        assert_eq!(ErrorCode::AuthRequired.to_string(), "AUTH_REQUIRED");
+        assert_eq!(ErrorCode::NotFound.to_string(), "NOT_FOUND");
+        assert_eq!(ErrorCode::RateLimited.to_string(), "RATE_LIMITED");
+    }
+
+    #[test]
+    fn fabio_error_new_has_no_hint() {
+        let err = FabioError::new(ErrorCode::NotFound, "item not found");
+        assert_eq!(err.code, ErrorCode::NotFound);
+        assert_eq!(err.message, "item not found");
+        assert!(err.hint.is_none());
+    }
+
+    #[test]
+    fn fabio_error_with_hint_carries_hint() {
+        let err = FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "invalid mode",
+            "Valid values: Overwrite, Append",
+        );
+        assert_eq!(err.code, ErrorCode::InvalidInput);
+        assert_eq!(err.hint.unwrap(), "Valid values: Overwrite, Append");
+    }
+
+    #[test]
+    fn from_status_401_maps_to_auth_required_with_hint() {
+        let err = FabioError::from_status(401, "unauthorized");
+        assert_eq!(err.code, ErrorCode::AuthRequired);
+        assert!(err.hint.is_some());
+        assert!(err.hint.unwrap().contains("fabio auth login"));
+    }
+
+    #[test]
+    fn from_status_429_maps_to_rate_limited_with_hint() {
+        let err = FabioError::from_status(429, "slow down");
+        assert_eq!(err.code, ErrorCode::RateLimited);
+        assert!(err.hint.unwrap().contains("backoff"));
+    }
+
+    #[test]
+    fn from_status_404_has_no_hint() {
+        let err = FabioError::from_status(404, "not found");
+        assert_eq!(err.code, ErrorCode::NotFound);
+        assert!(err.hint.is_none());
+    }
+
+    #[test]
+    fn from_status_500_maps_to_api_error() {
+        let err = FabioError::from_status(500, "server error");
+        assert_eq!(err.code, ErrorCode::ApiError);
+    }
+}
