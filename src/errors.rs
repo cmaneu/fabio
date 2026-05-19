@@ -43,6 +43,8 @@ impl fmt::Display for ErrorCode {
 pub struct FabioError {
     pub code: ErrorCode,
     pub message: String,
+    /// Optional hint with valid values or corrected command for agent self-correction.
+    pub hint: Option<String>,
 }
 
 impl FabioError {
@@ -50,6 +52,16 @@ impl FabioError {
         Self {
             code,
             message: message.into(),
+            hint: None,
+        }
+    }
+
+    /// Create an error with a hint for agent self-correction.
+    pub fn with_hint(code: ErrorCode, message: impl Into<String>, hint: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            hint: Some(hint.into()),
         }
     }
 
@@ -73,6 +85,7 @@ impl FabioError {
 /// Convert HTTP status codes to appropriate error codes.
 impl FabioError {
     pub fn from_status(status: u16, message: impl Into<String>) -> Self {
+        let msg = message.into();
         let code = match status {
             401 => ErrorCode::AuthRequired,
             403 => ErrorCode::AuthExpired,
@@ -82,6 +95,22 @@ impl FabioError {
             _ if (500..600).contains(&status) => ErrorCode::ApiError,
             _ => ErrorCode::ApiError,
         };
-        Self::new(code, message)
+        let hint = match code {
+            ErrorCode::AuthRequired => {
+                Some("Run 'fabio auth login' to authenticate.".to_string())
+            }
+            ErrorCode::AuthExpired => Some(
+                "Credentials expired or insufficient permissions. Run 'fabio auth login' to re-authenticate.".to_string(),
+            ),
+            ErrorCode::RateLimited => {
+                Some("Too many requests. Retry after a short backoff.".to_string())
+            }
+            _ => None,
+        };
+        Self {
+            code,
+            message: msg,
+            hint,
+        }
     }
 }

@@ -21,6 +21,8 @@ struct ErrorEnvelope {
 struct ErrorBody {
     code: String,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hint: Option<String>,
 }
 
 /// Render a list of items respecting --quiet, --query, and --limit flags.
@@ -147,6 +149,7 @@ pub fn render_error(err: &FabioError) {
         error: ErrorBody {
             code: err.code.to_string(),
             message: err.message.clone(),
+            hint: err.hint.clone(),
         },
     };
     eprintln!("{}", serde_json::to_string(&envelope).unwrap());

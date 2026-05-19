@@ -1,8 +1,10 @@
 pub mod auth;
 pub mod dataagent;
 pub mod item;
+pub mod jobs;
 pub mod lakehouse;
 pub mod notebook;
+pub mod profile;
 pub mod warehouse;
 pub mod workspace;
 
@@ -25,6 +27,8 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Notebook { command } => notebook::execute(&cli, &client, command).await,
         Command::Warehouse { command } => warehouse::execute(&cli, &client, command).await,
         Command::DataAgent { command } => dataagent::execute(&cli, &client, command).await,
+        Command::Profile { command } => profile::execute(&cli, command),
+        Command::Jobs { command } => jobs::execute(&cli, command),
         Command::AgentContext => agent_context::execute(&cli),
     }
 }

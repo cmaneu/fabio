@@ -95,6 +95,12 @@ fn global_flags() -> Vec<Flag> {
             description: "Maximum number of items to return in list commands",
             default: None,
         },
+        Flag {
+            name: "--profile",
+            kind: "string",
+            description: "Use a named profile for default settings",
+            default: None,
+        },
     ]
 }
 
@@ -584,6 +590,74 @@ fn commands_schema() -> serde_json::Value {
         "agent-context": {
             "description": "Machine-readable CLI schema for agent introspection",
             "mutates": false
+        },
+        "profile": {
+            "description": "Manage saved configuration profiles",
+            "subcommands": {
+                "save": {
+                    "description": "Save a named profile with default settings",
+                    "mutates": true,
+                    "flags": {
+                        "--name": {"type": "string", "required": true, "description": "Profile name"},
+                        "--workspace": {"type": "string", "description": "Default workspace ID"},
+                        "--capacity": {"type": "string", "description": "Default capacity ID"},
+                        "--default-output": {"type": "string", "description": "Default output format"}
+                    }
+                },
+                "use": {
+                    "description": "Set the active profile",
+                    "mutates": true,
+                    "flags": {
+                        "--name": {"type": "string", "required": true}
+                    }
+                },
+                "list": {
+                    "description": "List all saved profiles",
+                    "mutates": false
+                },
+                "show": {
+                    "description": "Show details of a profile",
+                    "mutates": false,
+                    "flags": {
+                        "--name": {"type": "string", "required": true}
+                    }
+                },
+                "delete": {
+                    "description": "Delete a profile",
+                    "mutates": true,
+                    "destructive": true,
+                    "flags": {
+                        "--name": {"type": "string", "required": true}
+                    }
+                }
+            }
+        },
+        "jobs": {
+            "description": "Inspect and manage async job history",
+            "subcommands": {
+                "list": {
+                    "description": "List recent jobs from local ledger",
+                    "mutates": false,
+                    "flags": {
+                        "--status": {"type": "string", "description": "Filter by status (running, completed, failed)"},
+                        "--limit": {"type": "integer", "default": "20"}
+                    }
+                },
+                "get": {
+                    "description": "Get details of a specific job",
+                    "mutates": false,
+                    "flags": {
+                        "--id": {"type": "string", "required": true}
+                    }
+                },
+                "prune": {
+                    "description": "Remove completed/failed jobs from the ledger",
+                    "mutates": true,
+                    "flags": {
+                        "--all": {"type": "bool", "description": "Remove all jobs including running"}
+                    }
+                }
+            }
         }
     })
 }

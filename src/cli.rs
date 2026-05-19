@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
-use crate::commands::{auth, dataagent, item, lakehouse, notebook, warehouse, workspace};
+use crate::commands::{
+    auth, dataagent, item, jobs, lakehouse, notebook, profile, warehouse, workspace,
+};
 
 /// Agent-first CLI for managing Microsoft Fabric artifacts and data.
 ///
@@ -37,6 +39,10 @@ pub struct Cli {
     /// Maximum number of items to return in list commands
     #[arg(long, global = true)]
     pub limit: Option<usize>,
+
+    /// Use a named profile for default settings
+    #[arg(long, global = true)]
+    pub profile: Option<String>,
 
     #[command(subcommand)]
     pub command: Command,
@@ -97,6 +103,16 @@ pub enum Command {
     DataAgent {
         #[command(subcommand)]
         command: dataagent::DataAgentCommand,
+    },
+    /// Manage saved configuration profiles
+    Profile {
+        #[command(subcommand)]
+        command: profile::ProfileCommand,
+    },
+    /// Inspect and manage async job history
+    Jobs {
+        #[command(subcommand)]
+        command: jobs::JobsCommand,
     },
     /// Machine-readable CLI schema for agent introspection
     #[command(name = "agent-context")]

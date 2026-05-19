@@ -530,6 +530,47 @@ async fn load_table(
     mode: &str,
     format: &str,
 ) -> Result<()> {
+    const VALID_MODES: &[&str] = &["Overwrite", "Append"];
+    const VALID_FORMATS: &[&str] = &["Csv", "Parquet", "Json"];
+
+    if !VALID_MODES.contains(&mode) {
+        return Err(crate::errors::FabioError::with_hint(
+            crate::errors::ErrorCode::InvalidInput,
+            format!("Invalid load mode: '{mode}'"),
+            format!(
+                "--mode must be one of: {} (got: '{mode}')",
+                VALID_MODES.join(", ")
+            ),
+        )
+        .into());
+    }
+    if !VALID_FORMATS.contains(&format) {
+        return Err(crate::errors::FabioError::with_hint(
+            crate::errors::ErrorCode::InvalidInput,
+            format!("Invalid format: '{format}'"),
+            format!(
+                "--format must be one of: {} (got: '{format}')",
+                VALID_FORMATS.join(", ")
+            ),
+        )
+        .into());
+    }
+
+    if output::dry_run_guard(
+        cli,
+        "lakehouse load-table",
+        &serde_json::json!({
+            "workspace": workspace,
+            "lakehouse": id,
+            "source_path": source_path,
+            "table": table,
+            "mode": mode,
+            "format": format
+        }),
+    ) {
+        return Ok(());
+    }
+
     let body = serde_json::json!({
         "relativePath": source_path,
         "pathType": "File",
