@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
-    auth, dataagent, item, jobs, lakehouse, notebook, profile, warehouse, workspace,
+    auth, dataagent, feedback, item, jobs, lakehouse, notebook, profile, warehouse, workspace,
 };
 
 /// Agent-first CLI for managing Microsoft Fabric artifacts and data.
@@ -113,6 +113,11 @@ pub enum Command {
     Jobs {
         #[command(subcommand)]
         command: jobs::JobsCommand,
+    },
+    /// Report CLI friction or issues for improvement
+    Feedback {
+        #[command(subcommand)]
+        command: feedback::FeedbackCommand,
     },
     /// Machine-readable CLI schema for agent introspection
     #[command(name = "agent-context")]
