@@ -8,10 +8,15 @@ use crate::commands::{auth, dataagent, item, lakehouse, notebook, warehouse, wor
 #[derive(Parser, Debug)]
 #[command(name = "fabio", version, about, long_about = None)]
 #[command(propagate_version = true)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Cli {
     /// Output format
     #[arg(short, long, global = true, default_value = "json")]
     pub output: OutputFormat,
+
+    /// Shorthand for --output json (agent-native convention)
+    #[arg(long, global = true)]
+    pub json: bool,
 
     /// Query projection (dot-notation field extraction)
     #[arg(short, long, global = true)]
@@ -21,8 +26,31 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub quiet: bool,
 
+    /// Skip confirmation prompts (for destructive operations)
+    #[arg(long, global = true)]
+    pub force: bool,
+
+    /// Preview what would happen without making changes
+    #[arg(long, global = true)]
+    pub dry_run: bool,
+
+    /// Maximum number of items to return in list commands
+    #[arg(long, global = true)]
+    pub limit: Option<usize>,
+
     #[command(subcommand)]
     pub command: Command,
+}
+
+impl Cli {
+    /// Returns the effective output format, considering --json shorthand.
+    pub const fn effective_output(&self) -> &OutputFormat {
+        if self.json {
+            &OutputFormat::Json
+        } else {
+            &self.output
+        }
+    }
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -70,4 +98,7 @@ pub enum Command {
         #[command(subcommand)]
         command: dataagent::DataAgentCommand,
     },
+    /// Machine-readable CLI schema for agent introspection
+    #[command(name = "agent-context")]
+    AgentContext,
 }

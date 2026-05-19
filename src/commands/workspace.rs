@@ -93,12 +93,20 @@ async fn create(
         body["description"] = Value::String(desc.to_string());
     }
 
+    if output::dry_run_guard(cli, "workspace create", &body) {
+        return Ok(());
+    }
+
     let data = client.post("/workspaces", &body, false).await?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
 
 async fn delete(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
+    if output::dry_run_guard(cli, "workspace delete", &serde_json::json!({ "id": id })) {
+        return Ok(());
+    }
+
     client.delete(&format!("/workspaces/{id}")).await?;
     let obj = serde_json::json!({ "id": id, "status": "deleted" });
     output::render_object(cli, &obj, "status");
@@ -107,6 +115,15 @@ async fn delete(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
 
 async fn assign_capacity(cli: &Cli, client: &FabricClient, id: &str, capacity: &str) -> Result<()> {
     let body = serde_json::json!({ "capacityId": capacity });
+
+    if output::dry_run_guard(
+        cli,
+        "workspace assign-capacity",
+        &serde_json::json!({ "workspaceId": id, "capacityId": capacity }),
+    ) {
+        return Ok(());
+    }
+
     client
         .post(&format!("/workspaces/{id}/assignToCapacity"), &body, false)
         .await?;

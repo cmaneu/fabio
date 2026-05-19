@@ -6,6 +6,8 @@ pub mod notebook;
 pub mod warehouse;
 pub mod workspace;
 
+mod agent_context;
+
 use anyhow::Result;
 
 use crate::cli::{Cli, Command};
@@ -23,5 +25,6 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Notebook { command } => notebook::execute(&cli, &client, command).await,
         Command::Warehouse { command } => warehouse::execute(&cli, &client, command).await,
         Command::DataAgent { command } => dataagent::execute(&cli, &client, command).await,
+        Command::AgentContext => agent_context::execute(&cli),
     }
 }

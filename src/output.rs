@@ -5,13 +5,6 @@ use serde_json::Value;
 use crate::cli::{Cli, OutputFormat};
 use crate::errors::FabioError;
 
-/// JSON envelope for list responses.
-#[derive(Serialize)]
-pub struct ListEnvelope {
-    pub data: Value,
-    pub count: usize,
-}
-
 /// JSON envelope for single-object responses.
 #[derive(Serialize)]
 pub struct ObjectEnvelope {
@@ -30,7 +23,7 @@ struct ErrorBody {
     message: String,
 }
 
-/// Render a list of items respecting --quiet and --query flags.
+/// Render a list of items respecting --quiet, --query, and --limit flags.
 pub fn render_list(
     cli: &Cli,
     items: &[Value],
@@ -42,44 +35,60 @@ pub fn render_list(
         return;
     }
 
-    let data = Value::Array(items.to_vec());
+    // Apply --limit before rendering
+    let limited_items: &[Value] = cli
+        .limit
+        .map_or(items, |limit| &items[..items.len().min(limit)]);
+    let truncated = cli.limit.is_some_and(|l| items.len() > l);
+
+    let data = Value::Array(limited_items.to_vec());
     let output_data = match cli.query {
         Some(ref q) => apply_query(&data, q),
         None => data,
     };
 
     #[allow(clippy::redundant_clone)]
-    match cli.output {
+    match cli.effective_output() {
         OutputFormat::Json => {
             let display_items = if let Value::Array(ref arr) = output_data {
                 arr.clone()
             } else {
                 vec![output_data.clone()]
             };
-            let envelope = ListEnvelope {
-                count: display_items.len(),
-                data: Value::Array(display_items),
-            };
+            let mut envelope = serde_json::json!({
+                "data": Value::Array(display_items.clone()),
+                "count": display_items.len()
+            });
+            if truncated {
+                envelope["truncated"] = Value::Bool(true);
+                envelope["total_available"] = serde_json::json!(items.len());
+            }
             println!("{}", serde_json::to_string(&envelope).unwrap());
         }
         OutputFormat::Table => {
             if let Value::Array(ref arr) = output_data {
                 render_table(arr, columns, headers);
             } else {
-                render_table(items, columns, headers);
+                render_table(limited_items, columns, headers);
+            }
+            if truncated {
+                println!(
+                    "... truncated ({} of {} items, use --limit to adjust)",
+                    limited_items.len(),
+                    items.len()
+                );
             }
         }
         OutputFormat::Plain => {
             let arr = if let Value::Array(ref a) = output_data {
                 a.as_slice()
             } else {
-                items
+                limited_items
             };
             for item in arr {
                 if let Some(val) = item.get(plain_key) {
                     println!("{}", format_value(val));
                 } else {
-                    // If query resolved to scalar values, print directly
                     println!("{}", format_value(item));
                 }
             }
@@ -98,7 +107,7 @@ pub fn render_object(cli: &Cli, obj: &Value, plain_key: &str) {
         .as_ref()
         .map_or_else(|| obj.clone(), |q| apply_query(obj, q));
 
-    match cli.output {
+    match cli.effective_output() {
         OutputFormat::Json => {
             let envelope = ObjectEnvelope { data: output_data };
             println!("{}", serde_json::to_string(&envelope).unwrap());
@@ -141,6 +150,21 @@ pub fn render_error(err: &FabioError) {
         },
     };
     eprintln!("{}", serde_json::to_string(&envelope).unwrap());
+}
+
+/// Check if dry-run is active and render a preview response.
+/// Returns `true` if dry-run is active (caller should skip the real operation).
+pub fn dry_run_guard(cli: &Cli, operation: &str, details: &Value) -> bool {
+    if !cli.dry_run {
+        return false;
+    }
+    let obj = serde_json::json!({
+        "dry_run": true,
+        "would_execute": operation,
+        "details": details
+    });
+    render_object(cli, &obj, "would_execute");
+    true
 }
 
 /// Render items as an ASCII table.

@@ -188,6 +188,18 @@ async fn create(
         "type": item_type,
     });
 
+    if output::dry_run_guard(
+        cli,
+        "item create",
+        &serde_json::json!({
+            "workspace": workspace,
+            "displayName": name,
+            "type": item_type
+        }),
+    ) {
+        return Ok(());
+    }
+
     let data = client
         .post(&format!("/workspaces/{workspace}/items"), &body, true)
         .await?;
@@ -196,6 +208,17 @@ async fn create(
 }
 
 async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "item delete",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id
+        }),
+    ) {
+        return Ok(());
+    }
+
     client
         .delete(&format!("/workspaces/{workspace}/items/{id}"))
         .await?;
@@ -213,6 +236,19 @@ async fn copy(
     dest_workspace: &str,
     name: Option<&str>,
 ) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "item copy",
+        &serde_json::json!({
+            "source_workspace": source_workspace,
+            "id": id,
+            "dest_workspace": dest_workspace,
+            "name": name
+        }),
+    ) {
+        return Ok(());
+    }
+
     let result = copy_item_impl(client, source_workspace, id, dest_workspace, name).await?;
     output::render_object(cli, &result, "id");
     Ok(())
@@ -226,6 +262,19 @@ async fn move_item(
     dest_workspace: &str,
     name: Option<&str>,
 ) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "item move",
+        &serde_json::json!({
+            "source_workspace": source_workspace,
+            "id": id,
+            "dest_workspace": dest_workspace,
+            "name": name
+        }),
+    ) {
+        return Ok(());
+    }
+
     let result = copy_item_impl(client, source_workspace, id, dest_workspace, name).await?;
 
     // Delete source after successful copy
