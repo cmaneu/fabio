@@ -6,6 +6,7 @@ pub mod item;
 pub mod jobs;
 pub mod lakehouse;
 pub mod notebook;
+pub mod ontology;
 pub mod profile;
 pub mod warehouse;
 pub mod workspace;
@@ -30,6 +31,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Warehouse { command } => warehouse::execute(&cli, &client, command).await,
         Command::DataAgent { command } => dataagent::execute(&cli, &client, command).await,
         Command::Git { command } => git::execute(&cli, &client, command).await,
+        Command::Ontology { command } => ontology::execute(&cli, &client, command).await,
         Command::Profile { command } => profile::execute(&cli, command),
         Command::Jobs { command } => jobs::execute(&cli, command),
         Command::Feedback { command } => feedback::execute(&cli, command),
