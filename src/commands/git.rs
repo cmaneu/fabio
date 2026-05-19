@@ -141,6 +141,7 @@ pub enum GitCommand {
         timeout: u64,
     },
     /// Switch to a different branch (disconnect + connect + init)
+    #[command(visible_alias = "switch")]
     Checkout {
         /// Workspace ID
         #[arg(long)]
