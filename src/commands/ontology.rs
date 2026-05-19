@@ -1,6 +1,9 @@
 use std::io::Read;
+use std::path::Path;
 
 use anyhow::Result;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -40,9 +43,14 @@ pub enum OntologyCommand {
         #[arg(long)]
         description: Option<String>,
 
-        /// Path to definition JSON file (base64-encoded parts)
-        #[arg(long)]
+        /// Path to definition JSON file (base64-encoded parts format)
+        #[arg(long, conflicts_with = "rdf")]
         definition: Option<String>,
+
+        /// Path to an RDF file (.ttl, .owl, .rdf, .jsonld, .nt, .n3, .trig)
+        /// Auto-detects format from extension and wraps into Fabric definition
+        #[arg(long, conflicts_with = "definition")]
+        rdf: Option<String>,
     },
     /// Update ontology properties (name and/or description)
     Update {
@@ -101,8 +109,13 @@ pub enum OntologyCommand {
         id: String,
 
         /// Path to definition JSON file, or - for stdin
-        #[arg(long)]
-        definition: String,
+        #[arg(long, conflicts_with = "rdf")]
+        definition: Option<String>,
+
+        /// Path to an RDF file (.ttl, .owl, .rdf, .jsonld, .nt, .n3, .trig)
+        /// Auto-detects format from extension and wraps into Fabric definition
+        #[arg(long, conflicts_with = "definition")]
+        rdf: Option<String>,
 
         /// Also update item metadata from .platform file
         #[arg(long)]
@@ -119,6 +132,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             name,
             description,
             definition,
+            rdf,
         } => {
             create(
                 cli,
@@ -127,6 +141,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
                 name,
                 description.as_deref(),
                 definition.as_deref(),
+                rdf.as_deref(),
             )
             .await
         }
@@ -160,8 +175,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             workspace,
             id,
             definition,
+            rdf,
             update_metadata,
-        } => update_definition(cli, client, workspace, id, definition, *update_metadata).await,
+        } => update_definition(cli, client, workspace, id, definition.as_deref(), rdf.as_deref(), *update_metadata).await,
     }
 }
 
@@ -202,6 +218,7 @@ async fn create(
     name: &str,
     description: Option<&str>,
     definition_path: Option<&str>,
+    rdf_path: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "displayName": name,
@@ -216,6 +233,8 @@ async fn create(
         let def: Value = serde_json::from_str(&content)
             .map_err(|e| anyhow::anyhow!("Invalid definition JSON: {e}"))?;
         body["definition"] = def;
+    } else if let Some(path) = rdf_path {
+        body["definition"] = build_definition_from_rdf(path)?;
     }
 
     let data = client
@@ -300,12 +319,19 @@ async fn update_definition(
     client: &FabricClient,
     workspace: &str,
     id: &str,
-    definition_path: &str,
+    definition_path: Option<&str>,
+    rdf_path: Option<&str>,
     update_metadata: bool,
 ) -> Result<()> {
-    let content = read_file_or_stdin(definition_path)?;
-    let def: Value = serde_json::from_str(&content)
-        .map_err(|e| anyhow::anyhow!("Invalid definition JSON: {e}"))?;
+    let def = if let Some(path) = definition_path {
+        let content = read_file_or_stdin(path)?;
+        serde_json::from_str::<Value>(&content)
+            .map_err(|e| anyhow::anyhow!("Invalid definition JSON: {e}"))?
+    } else if let Some(path) = rdf_path {
+        build_definition_from_rdf(path)?
+    } else {
+        anyhow::bail!("Specify either --definition or --rdf");
+    };
 
     let body = serde_json::json!({"definition": def});
 
@@ -321,6 +347,53 @@ async fn update_definition(
     Ok(())
 }
 
+/// Build a Fabric definition payload from a raw RDF file.
+/// Auto-detects format from file extension and wraps content as base64-encoded part.
+/// Includes the mandatory `definition.json` part that Fabric requires.
+fn build_definition_from_rdf(path: &str) -> Result<Value> {
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let part_path = match ext.as_str() {
+        "ttl" => "ontology.ttl",
+        "owl" => "ontology.owl",
+        "rdf" | "xml" => "ontology.rdf",
+        "jsonld" => "ontology.jsonld",
+        "nt" => "ontology.nt",
+        "n3" => "ontology.n3",
+        "trig" => "ontology.trig",
+        _ => anyhow::bail!(
+            "Unsupported RDF format '.{ext}'. Supported: .ttl, .owl, .rdf, .xml, .jsonld, .nt, .n3, .trig"
+        ),
+    };
+
+    let content = std::fs::read(path)
+        .map_err(|e| anyhow::anyhow!("Failed to read RDF file '{path}': {e}"))?;
+
+    let encoded = BASE64.encode(&content);
+
+    // Fabric requires a definition.json part to exist; include it as empty JSON
+    let def_json_payload = BASE64.encode(b"{}");
+
+    Ok(serde_json::json!({
+        "parts": [
+            {
+                "path": "definition.json",
+                "payload": def_json_payload,
+                "payloadType": "InlineBase64"
+            },
+            {
+                "path": part_path,
+                "payload": encoded,
+                "payloadType": "InlineBase64"
+            }
+        ]
+    }))
+}
+
 fn read_file_or_stdin(path: &str) -> Result<String> {
     if path == "-" {
         let mut buf = String::new();
@@ -331,5 +404,133 @@ fn read_file_or_stdin(path: &str) -> Result<String> {
     } else {
         std::fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_definition_from_rdf_ttl() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("schema.ttl");
+        std::fs::write(&file, "@prefix ex: <http://example.org/> .").unwrap();
+
+        let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
+        let parts = def["parts"].as_array().unwrap();
+        assert_eq!(parts.len(), 2);
+
+        // First part must be definition.json (Fabric requirement)
+        assert_eq!(parts[0]["path"], "definition.json");
+        assert_eq!(parts[0]["payloadType"], "InlineBase64");
+
+        // Second part is the RDF file
+        assert_eq!(parts[1]["path"], "ontology.ttl");
+        assert_eq!(parts[1]["payloadType"], "InlineBase64");
+
+        // Verify base64 decodes back to original content
+        let payload = parts[1]["payload"].as_str().unwrap();
+        let decoded = BASE64.decode(payload).unwrap();
+        assert_eq!(decoded, b"@prefix ex: <http://example.org/> .");
+    }
+
+    #[test]
+    fn build_definition_from_rdf_owl() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("ontology.owl");
+        std::fs::write(&file, "<owl:Ontology/>").unwrap();
+
+        let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
+        assert_eq!(def["parts"][1]["path"], "ontology.owl");
+    }
+
+    #[test]
+    fn build_definition_from_rdf_jsonld() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("graph.jsonld");
+        std::fs::write(&file, r#"{"@context":{}}"#).unwrap();
+
+        let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
+        assert_eq!(def["parts"][1]["path"], "ontology.jsonld");
+    }
+
+    #[test]
+    fn build_definition_from_rdf_rdf_xml() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("data.rdf");
+        std::fs::write(&file, "<rdf:RDF/>").unwrap();
+
+        let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
+        assert_eq!(def["parts"][1]["path"], "ontology.rdf");
+    }
+
+    #[test]
+    fn build_definition_from_rdf_xml_ext() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("data.xml");
+        std::fs::write(&file, "<rdf:RDF/>").unwrap();
+
+        let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
+        assert_eq!(def["parts"][1]["path"], "ontology.rdf");
+    }
+
+    #[test]
+    fn build_definition_from_rdf_ntriples() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("triples.nt");
+        std::fs::write(&file, "<s> <p> <o> .").unwrap();
+
+        let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
+        assert_eq!(def["parts"][1]["path"], "ontology.nt");
+    }
+
+    #[test]
+    fn build_definition_from_rdf_n3() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("notation.n3");
+        std::fs::write(&file, "@prefix : <#> .").unwrap();
+
+        let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
+        assert_eq!(def["parts"][1]["path"], "ontology.n3");
+    }
+
+    #[test]
+    fn build_definition_from_rdf_trig() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("named.trig");
+        std::fs::write(&file, "GRAPH <g> { <s> <p> <o> }").unwrap();
+
+        let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
+        assert_eq!(def["parts"][1]["path"], "ontology.trig");
+    }
+
+    #[test]
+    fn build_definition_from_rdf_unsupported_extension() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("data.csv");
+        std::fs::write(&file, "a,b,c").unwrap();
+
+        let err = build_definition_from_rdf(file.to_str().unwrap()).unwrap_err();
+        assert!(err.to_string().contains("Unsupported RDF format"));
+        assert!(err.to_string().contains(".csv"));
+    }
+
+    #[test]
+    fn build_definition_from_rdf_missing_file() {
+        let err = build_definition_from_rdf("/nonexistent/path.ttl").unwrap_err();
+        assert!(err.to_string().contains("Failed to read RDF file"));
+    }
+
+    #[test]
+    fn build_definition_from_rdf_binary_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("binary.ttl");
+        std::fs::write(&file, [0u8, 1, 2, 255, 254, 253]).unwrap();
+
+        let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
+        let payload = def["parts"][1]["payload"].as_str().unwrap();
+        let decoded = BASE64.decode(payload).unwrap();
+        assert_eq!(decoded, &[0u8, 1, 2, 255, 254, 253]);
     }
 }
