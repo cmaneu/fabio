@@ -3,6 +3,22 @@
 ## Goal
 - Design and implement an agent-first CLI (`fabio`) to manage Microsoft Fabric artifacts and data, inspired by AWS/gcloud/Azure CLI principles, with structured JSON output, composability via stdin/stdout, and machine-readable errors.
 
+## Agent-Native CLI Principles
+
+Fabio must always respect these 10 principles for agent-native CLIs:
+https://trevinsays.com/p/10-principles-for-agent-native-clis
+
+1. **Non-interactive by default** — No prompts; all inputs via flags/env/files. Non-TTY must fail fast.
+2. **Structured, parseable output** — `--json` on every command; stdout = data, stderr = diagnostics; stable exit codes.
+3. **Errors that teach and enumerate** — Errors include valid enum values, corrected command examples, and machine-readable codes with hints.
+4. **Safe retries and explicit mutation boundaries** — `--dry-run` for mutations; idempotency-safe; stable returned IDs.
+5. **Bounded responses** — `--limit` for list commands; default to concise output; truncation metadata in envelope.
+6. **Cross-CLI vocabulary consistency** — Canonical agent verbs: `list`, `show`, `create`, `delete`, `copy`, `move`.
+7. **Three-layer introspection** — `fabio agent-context` provides machine-readable command schema (flags, types, mutability, examples).
+8. **Async-aware execution** — `--wait` for async jobs; local job ledger (`fabio jobs list/get/prune`); status polling.
+9. **Persistent identity through profiles** — Named profiles (`fabio profile save/use/list/show/delete`); `--profile` flag.
+10. **Two-way I/O** — Feedback channel (`fabio feedback send/list`); artifact delivery via stdout/file.
+
 ## Constraints & Preferences
 - CLI designed for AI agents first (structured output, no interactive prompts, explicit params)
 - JSON output by default with `--output json|table|plain` flag
