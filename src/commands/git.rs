@@ -140,6 +140,28 @@ pub enum GitCommand {
         #[arg(long, default_value = "120")]
         timeout: u64,
     },
+    /// Switch to a different branch (disconnect + connect + init)
+    Checkout {
+        /// Workspace ID
+        #[arg(long)]
+        workspace: String,
+
+        /// Target branch name
+        #[arg(long)]
+        branch: String,
+
+        /// Initialization strategy when both sides have content
+        #[arg(long, value_parser = ["none", "prefer-remote", "prefer-workspace"])]
+        strategy: Option<String>,
+
+        /// Wait for initialization to complete
+        #[arg(long)]
+        wait: bool,
+
+        /// Timeout in seconds when --wait is used (default: 120)
+        #[arg(long, default_value = "120")]
+        timeout: u64,
+    },
     /// Show or manage Git connection and credentials
     #[command(subcommand)]
     Connection(ConnectionCommand),
@@ -265,6 +287,24 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             wait,
             timeout,
         } => init(cli, client, workspace, strategy.as_deref(), *wait, *timeout).await,
+        GitCommand::Checkout {
+            workspace,
+            branch,
+            strategy,
+            wait,
+            timeout,
+        } => {
+            checkout(
+                cli,
+                client,
+                workspace,
+                branch,
+                strategy.as_deref(),
+                *wait,
+                *timeout,
+            )
+            .await
+        }
         GitCommand::Connection(sub) => match sub {
             ConnectionCommand::Show { workspace } => connection_show(cli, client, workspace).await,
         },
@@ -564,6 +604,77 @@ async fn init(
         .post_with_timeout(
             &format!("/workspaces/{workspace}/git/initializeConnection"),
             &body,
+            wait,
+            timeout,
+        )
+        .await?;
+
+    output::render_object(cli, &data, "status");
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn checkout(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    branch: &str,
+    strategy: Option<&str>,
+    wait: bool,
+    timeout: u64,
+) -> Result<()> {
+    // Step 1: Get current connection details to preserve provider config
+    let connection = client
+        .get(&format!("/workspaces/{workspace}/git/connection"))
+        .await?;
+
+    let provider_details = connection
+        .get("gitProviderDetails")
+        .ok_or_else(|| anyhow::anyhow!("Workspace is not connected to Git"))?;
+
+    // Step 2: Disconnect from current branch
+    client
+        .post(
+            &format!("/workspaces/{workspace}/git/disconnect"),
+            &serde_json::json!({}),
+            false,
+        )
+        .await?;
+
+    // Step 3: Reconnect with the new branch
+    let mut new_provider_details = provider_details.clone();
+    new_provider_details["branchName"] = Value::String(branch.to_string());
+
+    let connect_body = serde_json::json!({
+        "gitProviderDetails": new_provider_details,
+    });
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/git/connect"),
+            &connect_body,
+            false,
+        )
+        .await?;
+
+    // Step 4: Initialize the connection
+    let init_body = strategy.map_or_else(
+        || serde_json::json!({}),
+        |s| {
+            let api_strategy = match s {
+                "prefer-remote" => "PreferRemote",
+                "prefer-workspace" => "PreferWorkspace",
+                "none" => "None",
+                _ => s,
+            };
+            serde_json::json!({"initializationStrategy": api_strategy})
+        },
+    );
+
+    let data = client
+        .post_with_timeout(
+            &format!("/workspaces/{workspace}/git/initializeConnection"),
+            &init_body,
             wait,
             timeout,
         )
