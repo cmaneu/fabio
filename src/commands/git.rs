@@ -4,6 +4,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -559,7 +560,8 @@ async fn connect(
             &body,
             false,
         )
-        .await?;
+        .await
+        .map_err(|e| enrich_git_connect_error(e, provider, repo, branch, owner, org))?;
 
     let result = serde_json::json!({"status": "connected"});
     output::render_object(cli, &result, "status");
@@ -664,13 +666,56 @@ async fn checkout(
         }
     }
 
-    client
+    let provider_type = provider_details
+        .get("gitProviderType")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let repo_name = provider_details
+        .get("repositoryName")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let owner_name = provider_details
+        .get("ownerName")
+        .and_then(Value::as_str);
+    let org_name = provider_details
+        .get("organizationName")
+        .and_then(Value::as_str);
+
+    let connect_result = client
         .post(
             &format!("/workspaces/{workspace}/git/connect"),
             &connect_body,
             false,
         )
-        .await?;
+        .await;
+
+    if let Err(e) = connect_result {
+        // Reconnect to original branch failed — try to restore previous connection
+        let mut rollback_body = serde_json::json!({
+            "gitProviderDetails": provider_details,
+        });
+        if let Some(ref creds) = credentials {
+            if creds.get("source").is_some() {
+                rollback_body["myGitCredentials"] = creds.clone();
+            }
+        }
+        let _ = client
+            .post(
+                &format!("/workspaces/{workspace}/git/connect"),
+                &rollback_body,
+                false,
+            )
+            .await;
+
+        return Err(enrich_git_connect_error(
+            e,
+            provider_type,
+            repo_name,
+            branch,
+            owner_name,
+            org_name,
+        ));
+    }
 
     // Step 5: Initialize the connection
     let init_body = strategy.map_or_else(
@@ -753,4 +798,67 @@ async fn credentials_update(
 
     output::render_object(cli, &data, "status");
     Ok(())
+}
+
+/// Enrich a git connect/checkout error with actionable hints for agents.
+///
+/// The Fabric API returns generic messages like "The requested operation can't
+/// be completed because the Git provider resource could not be found" — this
+/// function adds context about what likely went wrong and how to fix it.
+fn enrich_git_connect_error(
+    err: anyhow::Error,
+    provider: &str,
+    repo: &str,
+    branch: &str,
+    owner: Option<&str>,
+    org: Option<&str>,
+) -> anyhow::Error {
+    let Some(fabio_err) = err.downcast_ref::<FabioError>() else {
+        return err;
+    };
+
+    // Only enrich NOT_FOUND and API_ERROR (invalid input) codes
+    if fabio_err.code != ErrorCode::NotFound && fabio_err.code != ErrorCode::ApiError {
+        return err;
+    }
+
+    let msg = &fabio_err.message;
+    let provider_lower = provider.to_lowercase();
+
+    let hint = if msg.contains("could not be found") || msg.contains("not found") {
+        // Branch/repo/owner not found on the Git provider
+        if provider_lower.contains("github") {
+            let owner_str = owner.unwrap_or("OWNER");
+            format!(
+                "Verify the branch '{branch}' exists in the repository '{owner_str}/{repo}'. \
+                 List remote branches with: gh api repos/{owner_str}/{repo}/branches --jq '.[].name'"
+            )
+        } else {
+            let org_str = org.unwrap_or("ORG");
+            format!(
+                "Verify the branch '{branch}' exists in the repository '{org_str}/{repo}'. \
+                 Check in Azure DevOps or run: az repos ref list --repository {repo} --org https://dev.azure.com/{org_str}"
+            )
+        }
+    } else if msg.contains("invalid input") || msg.contains("Invalid input") {
+        // Generic "invalid input" — usually wrong branch, repo, or connection-id
+        if provider_lower.contains("github") {
+            let owner_str = owner.unwrap_or("OWNER");
+            format!(
+                "Check that --owner '{owner_str}', --repo '{repo}', and --branch '{branch}' are correct. \
+                 Verify the branch exists: gh api repos/{owner_str}/{repo}/branches --jq '.[].name'. \
+                 Also verify --connection-id points to a valid GitHubSourceControl connection."
+            )
+        } else {
+            let org_str = org.unwrap_or("ORG");
+            format!(
+                "Check that --org '{org_str}', --repo '{repo}', and --branch '{branch}' are correct. \
+                 Verify the branch exists and --connection-id is valid."
+            )
+        }
+    } else {
+        return err;
+    };
+
+    FabioError::with_hint(fabio_err.code, msg.clone(), hint).into()
 }

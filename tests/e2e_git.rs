@@ -1626,6 +1626,195 @@ fn git_pull_with_conflict_resolution() {
         .success();
 }
 
+// ---------------------------------------------------------------------------
+// Connect to non-existent branch: error with actionable hint
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_connect_nonexistent_branch_gives_hint() {
+    let cfg = TestConfig::from_env();
+    let workspace = &cfg.dest_workspace;
+
+    let Some(connection_id) = find_github_connection_id() else {
+        eprintln!("No GitHub connection found, skipping test.");
+        return;
+    };
+
+    // Ensure workspace is disconnected
+    let _ = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert();
+
+    // Try to connect to a branch that doesn't exist
+    let assert = fabio()
+        .args([
+            "git",
+            "connect",
+            "--workspace",
+            workspace,
+            "--provider",
+            "github",
+            "--owner",
+            "iemejia",
+            "--repo",
+            "fabio-test-connection",
+            "--branch",
+            "nonexistent-branch-xyz-999",
+            "--connection-id",
+            &connection_id,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .failure();
+
+    // Error should be on stderr with a helpful hint
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value =
+        serde_json::from_str(&stderr).expect("Expected JSON error on stderr");
+
+    let error = &err_json["error"];
+    assert_eq!(error["code"], "NOT_FOUND");
+    assert!(
+        error.get("hint").is_some(),
+        "Expected hint field in error: {error}"
+    );
+
+    let hint = error["hint"].as_str().unwrap();
+    // Hint should mention the branch name and how to list branches
+    assert!(
+        hint.contains("nonexistent-branch-xyz-999"),
+        "Hint should reference the bad branch: {hint}"
+    );
+    assert!(
+        hint.contains("gh api") || hint.contains("List remote branches"),
+        "Hint should suggest how to list valid branches: {hint}"
+    );
+    assert!(
+        hint.contains("iemejia/fabio-test-connection"),
+        "Hint should reference the repository: {hint}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Checkout/switch to non-existent branch: error with hint + rollback to original
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_checkout_nonexistent_branch_gives_hint_and_rollback() {
+    let cfg = TestConfig::from_env();
+    let workspace = &cfg.dest_workspace;
+
+    let Some(connection_id) = find_github_connection_id() else {
+        eprintln!("No GitHub connection found, skipping test.");
+        return;
+    };
+
+    // Ensure workspace is disconnected
+    let _ = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert();
+
+    // Connect to main and init
+    fabio()
+        .args([
+            "git",
+            "connect",
+            "--workspace",
+            workspace,
+            "--provider",
+            "github",
+            "--owner",
+            "iemejia",
+            "--repo",
+            "fabio-test-connection",
+            "--branch",
+            "main",
+            "--connection-id",
+            &connection_id,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "init",
+                "--workspace",
+                workspace,
+                "--strategy",
+                "prefer-workspace",
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    // Try to checkout to a non-existent branch
+    let assert = fabio()
+        .args([
+            "git",
+            "checkout",
+            "--workspace",
+            workspace,
+            "--branch",
+            "nonexistent-branch-xyz-999",
+            "--strategy",
+            "prefer-remote",
+            "--wait",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .failure();
+
+    // Verify error has hint
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value =
+        serde_json::from_str(&stderr).expect("Expected JSON error on stderr");
+
+    let error = &err_json["error"];
+    assert_eq!(error["code"], "NOT_FOUND");
+    let hint = error["hint"].as_str().expect("Expected hint in error");
+    assert!(
+        hint.contains("nonexistent-branch-xyz-999"),
+        "Hint should reference the bad branch: {hint}"
+    );
+
+    // Verify rollback: workspace should still be connected (to original branch)
+    let assert = fabio()
+        .args(["git", "connection", "show", "--workspace", workspace])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Should be Connected (rollback reconnected to main)
+    let state = data["gitConnectionState"].as_str().unwrap_or("");
+    assert!(
+        state == "Connected" || state == "ConnectedAndInitialized",
+        "Expected workspace still connected after failed checkout, got: {state}"
+    );
+    assert_eq!(
+        data["gitProviderDetails"]["branchName"], "main",
+        "Expected rollback to original branch 'main'"
+    );
+
+    // Disconnect
+    fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+}
+
 /// RAII guard to delete a remote branch on drop (cleanup even if test panics).
 struct BranchCleanup {
     branch: String,
