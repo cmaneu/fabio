@@ -2,7 +2,7 @@ use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use reqwest::header::AUTHORIZATION;
 use reqwest::{Client, Response, StatusCode};
 use serde_json::Value;
@@ -20,6 +20,9 @@ const STORAGE_SCOPE: &str = "https://storage.azure.com/.default";
 const LRO_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const LRO_MAX_WAIT: Duration = Duration::from_secs(120);
 
+/// Minimum remaining lifetime before a token is considered expired and re-acquired.
+const TOKEN_REFRESH_MARGIN: Duration = Duration::from_secs(300); // 5 minutes
+
 /// Response from a paginated list endpoint.
 pub struct PaginatedResponse {
     /// Collected items across all fetched pages.
@@ -28,12 +31,54 @@ pub struct PaginatedResponse {
     pub continuation_token: Option<String>,
 }
 
+/// Which credential source successfully provided a token.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CredentialSource {
+    /// Service principal via `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET` env vars.
+    Environment,
+    /// Azure Managed Identity (system-assigned or user-assigned).
+    ManagedIdentity,
+    /// Azure CLI (`az login`).
+    AzureCli,
+    /// Azure Developer CLI (`azd auth login`).
+    AzureDeveloperCli,
+}
+
+impl std::fmt::Display for CredentialSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Environment => write!(f, "environment (service principal)"),
+            Self::ManagedIdentity => write!(f, "managed identity"),
+            Self::AzureCli => write!(f, "Azure CLI"),
+            Self::AzureDeveloperCli => write!(f, "Azure Developer CLI"),
+        }
+    }
+}
+
+/// A cached token with its expiry time.
+#[derive(Clone)]
+struct CachedToken {
+    token: String,
+    expires_on: std::time::SystemTime,
+}
+
+impl CachedToken {
+    fn is_expired(&self) -> bool {
+        let now = std::time::SystemTime::now();
+        self.expires_on
+            .duration_since(now)
+            .map_or(true, |remaining| remaining < TOKEN_REFRESH_MARGIN)
+    }
+}
+
 /// Fabric API client with token management and LRO polling.
 #[derive(Clone)]
 pub struct FabricClient {
     http: Client,
-    token: Arc<tokio::sync::RwLock<Option<String>>>,
-    storage_token: Arc<tokio::sync::RwLock<Option<String>>>,
+    fabric_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
+    storage_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
+    credential_source: Arc<tokio::sync::RwLock<Option<CredentialSource>>>,
 }
 
 impl FabricClient {
@@ -45,42 +90,73 @@ impl FabricClient {
 
         Self {
             http,
-            token: Arc::new(tokio::sync::RwLock::new(None)),
+            fabric_token: Arc::new(tokio::sync::RwLock::new(None)),
             storage_token: Arc::new(tokio::sync::RwLock::new(None)),
+            credential_source: Arc::new(tokio::sync::RwLock::new(None)),
         }
     }
 
-    /// Ensure we have a valid Fabric API token.
+    /// Ensure we have a valid Fabric API token (auto-refreshes if near expiry).
     pub async fn require_auth(&self) -> Result<String> {
-        let guard = self.token.read().await;
-        if let Some(ref t) = *guard {
-            return Ok(t.clone());
+        {
+            let guard = self.fabric_token.read().await;
+            if let Some(ref cached) = *guard {
+                if !cached.is_expired() {
+                    return Ok(cached.token.clone());
+                }
+            }
         }
-        drop(guard);
 
-        let token = get_token(FABRIC_SCOPE).await?;
-        let mut guard = self.token.write().await;
+        let (token, source) = acquire_token(FABRIC_SCOPE).await?;
+        let mut guard = self.fabric_token.write().await;
         *guard = Some(token.clone());
         drop(guard);
-        Ok(token)
+
+        let mut src_guard = self.credential_source.write().await;
+        *src_guard = Some(source);
+        drop(src_guard);
+
+        Ok(token.token)
     }
 
-    /// Get a storage token for `OneLake` operations.
+    /// Get a storage token for `OneLake` operations (auto-refreshes if near expiry).
     pub async fn require_storage_auth(&self) -> Result<String> {
-        let guard = self.storage_token.read().await;
-        if let Some(ref t) = *guard {
-            return Ok(t.clone());
+        {
+            let guard = self.storage_token.read().await;
+            if let Some(ref cached) = *guard {
+                if !cached.is_expired() {
+                    return Ok(cached.token.clone());
+                }
+            }
         }
-        drop(guard);
 
-        let token = get_token(STORAGE_SCOPE).await?;
+        let (token, _source) = acquire_token(STORAGE_SCOPE).await?;
         let mut guard = self.storage_token.write().await;
         *guard = Some(token.clone());
         drop(guard);
-        Ok(token)
+        Ok(token.token)
     }
 
-    /// GET request to Fabric REST API.
+    /// Returns which credential source was used for the last successful authentication.
+    pub async fn credential_source(&self) -> Option<CredentialSource> {
+        let guard = self.credential_source.read().await;
+        *guard
+    }
+
+    /// Invalidate the cached Fabric API token (forces re-acquisition on next request).
+    async fn invalidate_fabric_token(&self) {
+        let mut guard = self.fabric_token.write().await;
+        *guard = None;
+    }
+
+    /// Invalidate the cached Storage token (forces re-acquisition on next request).
+    #[allow(dead_code)]
+    async fn invalidate_storage_token(&self) {
+        let mut guard = self.storage_token.write().await;
+        *guard = None;
+    }
+
+    /// GET request to Fabric REST API (retries once on 401 with fresh token).
     pub async fn get(&self, path: &str) -> Result<Value> {
         let token = self.require_auth().await?;
         let url = format!("{FABRIC_BASE_URL}{path}");
@@ -92,6 +168,20 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            // Token may have expired server-side; refresh and retry once
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .get(&url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return handle_response(resp).await;
+        }
 
         handle_response(resp).await
     }
@@ -164,6 +254,7 @@ impl FabricClient {
     }
 
     /// POST request to Fabric REST API, optionally polling for LRO completion.
+    /// Retries once on 401 with a fresh token.
     pub async fn post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
         let token = self.require_auth().await?;
         let url = format!("{FABRIC_BASE_URL}{path}");
@@ -177,6 +268,23 @@ impl FabricClient {
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .post(&url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .json(body)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            if poll && resp.status() == StatusCode::ACCEPTED {
+                return self.poll_lro(resp).await;
+            }
+            return handle_response(resp).await;
+        }
+
         if poll && resp.status() == StatusCode::ACCEPTED {
             return self.poll_lro(resp).await;
         }
@@ -184,7 +292,7 @@ impl FabricClient {
         handle_response(resp).await
     }
 
-    /// POST request with configurable LRO wait and timeout.
+    /// POST request with configurable LRO wait and timeout (retries once on 401).
     pub async fn post_with_timeout(
         &self,
         path: &str,
@@ -204,13 +312,39 @@ impl FabricClient {
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .post(&url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .json(body)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return self
+                .handle_post_with_timeout_response(resp, wait, timeout_secs)
+                .await;
+        }
+
+        self.handle_post_with_timeout_response(resp, wait, timeout_secs)
+            .await
+    }
+
+    /// Handle the response from `post_with_timeout` (factored out for retry).
+    async fn handle_post_with_timeout_response(
+        &self,
+        resp: Response,
+        wait: bool,
+        timeout_secs: u64,
+    ) -> Result<Value> {
         if resp.status() == StatusCode::ACCEPTED {
             if wait {
                 return self
                     .poll_lro_with_timeout(resp, Duration::from_secs(timeout_secs))
                     .await;
             }
-            // Return operation metadata without polling
             let location = resp
                 .headers()
                 .get("location")
@@ -233,7 +367,7 @@ impl FabricClient {
         handle_response(resp).await
     }
 
-    /// GET request that handles LRO (202 Accepted) responses.
+    /// GET request that handles LRO (202 Accepted) responses (retries once on 401).
     pub async fn get_with_lro(&self, path: &str) -> Result<Value> {
         let token = self.require_auth().await?;
         let url = format!("{FABRIC_BASE_URL}{path}");
@@ -246,6 +380,22 @@ impl FabricClient {
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .get(&url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            if resp.status() == StatusCode::ACCEPTED {
+                return self.poll_lro(resp).await;
+            }
+            return handle_response(resp).await;
+        }
+
         if resp.status() == StatusCode::ACCEPTED {
             return self.poll_lro(resp).await;
         }
@@ -253,7 +403,7 @@ impl FabricClient {
         handle_response(resp).await
     }
 
-    /// PATCH request to Fabric REST API.
+    /// PATCH request to Fabric REST API (retries once on 401).
     pub async fn patch(&self, path: &str, body: &Value) -> Result<Value> {
         let token = self.require_auth().await?;
         let url = format!("{FABRIC_BASE_URL}{path}");
@@ -267,10 +417,24 @@ impl FabricClient {
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .patch(&url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .json(body)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return handle_response(resp).await;
+        }
+
         handle_response(resp).await
     }
 
-    /// DELETE request to Fabric REST API.
+    /// DELETE request to Fabric REST API (retries once on 401).
     pub async fn delete(&self, path: &str) -> Result<Value> {
         let token = self.require_auth().await?;
         let url = format!("{FABRIC_BASE_URL}{path}");
@@ -282,6 +446,19 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .delete(&url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return handle_response(resp).await;
+        }
 
         handle_response(resp).await
     }
@@ -788,18 +965,147 @@ impl FabricClient {
     }
 }
 
-/// Get an access token using the default Azure credential chain.
-async fn get_token(scope: &str) -> Result<String> {
-    use azure_identity::DeveloperToolsCredential;
+/// Acquire an access token using the credential chain:
+/// 1. Environment (service principal via `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET`)
+/// 2. Managed Identity (for Azure-hosted workloads)
+/// 3. Developer Tools (Azure CLI, then Azure Developer CLI)
+///
+/// Returns the cached token and which credential source provided it.
+async fn acquire_token(scope: &str) -> Result<(CachedToken, CredentialSource)> {
+    // 1. Try environment credentials (service principal)
+    if let Some(result) = try_environment_credential(scope).await {
+        return result;
+    }
 
-    let credential = DeveloperToolsCredential::new(None)
-        .context("Failed to create Azure credential. Run 'az login' first.")?;
+    // 2. Try managed identity (only when running in Azure)
+    if let Some(result) = try_managed_identity_credential(scope).await {
+        return result;
+    }
 
-    let token = credential.get_token(&[scope], None).await.map_err(|e| {
-        FabioError::auth_required(format!("Authentication failed: {e}. Run 'az login' first."))
-    })?;
+    // 3. Fall back to developer tools (az cli, azd)
+    try_developer_tools_credential(scope).await
+}
 
-    Ok(token.token.secret().to_string())
+/// Try service principal authentication via environment variables.
+/// Returns None if env vars are not set (skip to next), Some(Ok/Err) if attempted.
+async fn try_environment_credential(
+    scope: &str,
+) -> Option<Result<(CachedToken, CredentialSource)>> {
+    let tenant_id = std::env::var("AZURE_TENANT_ID").ok()?;
+    let client_id = std::env::var("AZURE_CLIENT_ID").ok()?;
+    let client_secret = std::env::var("AZURE_CLIENT_SECRET").ok();
+
+    // Need at least tenant + client_id + secret for client credentials flow
+    let secret = client_secret?;
+
+    let credential = match azure_identity::ClientSecretCredential::new(
+        &tenant_id,
+        client_id,
+        azure_core::credentials::Secret::new(secret),
+        None,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            return Some(Err(FabioError::auth_required(format!(
+                "Failed to create service principal credential: {e}"
+            ))
+            .into()));
+        }
+    };
+
+    match credential.get_token(&[scope], None).await {
+        Ok(token) => {
+            let expires_on = std::time::SystemTime::from(token.expires_on);
+            Some(Ok((
+                CachedToken {
+                    token: token.token.secret().to_string(),
+                    expires_on,
+                },
+                CredentialSource::Environment,
+            )))
+        }
+        Err(e) => Some(Err(FabioError::with_hint(
+            ErrorCode::AuthRequired,
+            format!("Service principal authentication failed: {e}"),
+            "Check AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET environment variables.".to_string(),
+        )
+        .into())),
+    }
+}
+
+/// Try managed identity authentication.
+/// Returns None if not running in a managed identity environment (skip to next).
+async fn try_managed_identity_credential(
+    scope: &str,
+) -> Option<Result<(CachedToken, CredentialSource)>> {
+    // Only attempt managed identity if we detect an Azure hosting environment.
+    // Check for common managed identity indicators:
+    // - IDENTITY_ENDPOINT (App Service, Container Apps)
+    // - MSI_ENDPOINT (legacy App Service)
+    // - IMDS is always available on Azure VMs but we can't cheaply detect that without a network call
+    let has_identity_env = std::env::var("IDENTITY_ENDPOINT").is_ok()
+        || std::env::var("MSI_ENDPOINT").is_ok()
+        || std::env::var("AZURE_FEDERATED_TOKEN_FILE").is_ok();
+
+    if !has_identity_env {
+        return None;
+    }
+
+    let Ok(credential) = azure_identity::ManagedIdentityCredential::new(None) else {
+        return None;
+    };
+
+    match credential.get_token(&[scope], None).await {
+        Ok(token) => {
+            let expires_on = std::time::SystemTime::from(token.expires_on);
+            Some(Ok((
+                CachedToken {
+                    token: token.token.secret().to_string(),
+                    expires_on,
+                },
+                CredentialSource::ManagedIdentity,
+            )))
+        }
+        Err(_) => None, // Managed identity not available, fall through
+    }
+}
+
+/// Try developer tools credentials (Azure CLI, then Azure Developer CLI).
+async fn try_developer_tools_credential(scope: &str) -> Result<(CachedToken, CredentialSource)> {
+    // Try Azure CLI first
+    if let Ok(credential) = azure_identity::AzureCliCredential::new(None) {
+        if let Ok(token) = credential.get_token(&[scope], None).await {
+            let expires_on = std::time::SystemTime::from(token.expires_on);
+            return Ok((
+                CachedToken {
+                    token: token.token.secret().to_string(),
+                    expires_on,
+                },
+                CredentialSource::AzureCli,
+            ));
+        }
+    }
+
+    // Try Azure Developer CLI
+    if let Ok(credential) = azure_identity::AzureDeveloperCliCredential::new(None) {
+        if let Ok(token) = credential.get_token(&[scope], None).await {
+            let expires_on = std::time::SystemTime::from(token.expires_on);
+            return Ok((
+                CachedToken {
+                    token: token.token.secret().to_string(),
+                    expires_on,
+                },
+                CredentialSource::AzureDeveloperCli,
+            ));
+        }
+    }
+
+    Err(FabioError::with_hint(
+        ErrorCode::AuthRequired,
+        "No valid credentials found. Tried: environment variables, managed identity, Azure CLI, Azure Developer CLI.",
+        "Run 'az login' or set AZURE_TENANT_ID + AZURE_CLIENT_ID + AZURE_CLIENT_SECRET environment variables.".to_string(),
+    )
+    .into())
 }
 
 /// Handle an HTTP response, converting errors to `FabioError`.

@@ -16,7 +16,24 @@ fn auth_status_returns_authenticated() {
     let data = extract_data(&json);
 
     assert_eq!(data["status"], "authenticated");
-    assert_eq!(data["message"], "Token acquired successfully");
+    // Should report credential source
+    let source = data["credential_source"].as_str().unwrap_or("");
+    assert!(
+        [
+            "environment",
+            "managed_identity",
+            "azure_cli",
+            "azure_developer_cli"
+        ]
+        .contains(&source),
+        "Unexpected credential_source: {source}"
+    );
+    // Message should mention the source
+    let msg = data["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("Token acquired successfully via"),
+        "Expected token message, got: {msg}"
+    );
 }
 
 #[test]
@@ -48,19 +65,20 @@ fn auth_status_table_format() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn auth_login_shows_credential_chain() {
-    // Login is a no-op (relies on DefaultAzureCredential) but should succeed
+fn auth_login_validates_credentials() {
+    // Login now actually validates credentials (attempts token acquisition)
     let assert = fabio().args(["auth", "login"]).assert().success();
 
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["status"], "logged_in");
-    assert_eq!(data["method"], "browser");
-    // Should mention DefaultAzureCredential
+    // Should report credential source
+    assert!(data["credential_source"].is_string());
+    // Message should say successful
     let msg = data["message"].as_str().unwrap_or("");
     assert!(
-        msg.contains("DefaultAzureCredential"),
-        "Expected credential chain info: {msg}"
+        msg.contains("Successfully authenticated via"),
+        "Expected success message, got: {msg}"
     );
 }
 
@@ -68,6 +86,7 @@ fn auth_login_shows_credential_chain() {
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn auth_login_device_code_flag() {
+    // --device-code is accepted but doesn't change behavior (no interactive flow)
     let assert = fabio()
         .args(["auth", "login", "--device-code"])
         .assert()
@@ -76,7 +95,6 @@ fn auth_login_device_code_flag() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["status"], "logged_in");
-    assert_eq!(data["method"], "device_code");
 }
 
 #[test]
@@ -103,4 +121,29 @@ fn auth_status_with_query_extracts_field() {
     let data = extract_data(&json);
     // --query status should extract just the status string
     assert_eq!(data, "authenticated");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn auth_status_reports_credential_source() {
+    let assert = fabio()
+        .args(["auth", "status", "--query", "credential_source"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Should be one of the valid credential sources
+    let source = data.as_str().unwrap_or("");
+    assert!(
+        [
+            "environment",
+            "managed_identity",
+            "azure_cli",
+            "azure_developer_cli"
+        ]
+        .contains(&source),
+        "Unexpected credential_source: {source}"
+    );
 }
