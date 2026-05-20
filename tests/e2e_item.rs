@@ -622,3 +622,343 @@ fn item_delete_not_found() {
         "Expected NOT_FOUND or API_ERROR, got: {code}"
     );
 }
+
+// ===========================================================================
+// item update — rename/redescribe
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_update_name() {
+    let cfg = TestConfig::from_env();
+    let original_name = common::unique_name("upd_orig");
+    let updated_name = common::unique_name("upd_new");
+
+    // Create a Lakehouse
+    let assert = fabio()
+        .args([
+            "item",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &original_name,
+            "--type",
+            "Lakehouse",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let item_id = data["id"].as_str().unwrap().to_string();
+
+    // Update name
+    let assert = fabio()
+        .args([
+            "item",
+            "update",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &item_id,
+            "--name",
+            &updated_name,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["displayName"], updated_name);
+
+    // Cleanup
+    fabio()
+        .args([
+            "item",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &item_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_update_description() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("upd_desc");
+
+    // Create a Lakehouse
+    let assert = fabio()
+        .args([
+            "item",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--type",
+            "Lakehouse",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let item_id = data["id"].as_str().unwrap().to_string();
+
+    // Update description
+    let assert = fabio()
+        .args([
+            "item",
+            "update",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &item_id,
+            "--description",
+            "Test description from e2e",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["description"], "Test description from e2e");
+
+    // Cleanup
+    fabio()
+        .args([
+            "item",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &item_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_update_requires_at_least_one_field() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "update",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
+    let hint = err_json["error"]["hint"].as_str().unwrap();
+    assert!(
+        hint.contains("--name"),
+        "Hint should mention --name: {hint}"
+    );
+}
+
+// ===========================================================================
+// item get-definition
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_get_definition_notebook() {
+    let cfg = TestConfig::from_env();
+
+    // get-definition for a notebook (known to support definitions)
+    let assert = fabio()
+        .args([
+            "item",
+            "get-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.notebook_id,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    // Should have a definition with parts
+    let definition = &data["definition"];
+    assert!(
+        definition.get("parts").is_some(),
+        "Expected definition.parts: {data}"
+    );
+}
+
+// ===========================================================================
+// item list-connections
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_list_connections_returns_array() {
+    let cfg = TestConfig::from_env();
+
+    // list-connections for the lakehouse (may be empty but should succeed)
+    let assert = fabio()
+        .args([
+            "item",
+            "list-connections",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // data should be an array (possibly empty)
+    assert!(data.is_array(), "Expected array, got: {data}");
+}
+
+// ===========================================================================
+// item update-definition (create notebook, update definition, verify)
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_update_definition_inline() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("upd_def");
+
+    // Create a notebook
+    let assert = fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--content",
+            "print('original')",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let item_id = data["id"].as_str().unwrap().to_string();
+
+    // Build an updated .ipynb definition inline
+    let notebook_json = serde_json::json!({
+        "nbformat": 4,
+        "nbformat_minor": 5,
+        "metadata": {},
+        "cells": [{
+            "cell_type": "code",
+            "source": ["print('updated definition')"],
+            "metadata": {},
+            "outputs": []
+        }]
+    });
+    let encoded = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        serde_json::to_string(&notebook_json).unwrap().as_bytes(),
+    );
+
+    let definition_payload = serde_json::json!({
+        "definition": {
+            "parts": [{
+                "path": "notebook-content.py",
+                "payload": encoded,
+                "payloadType": "InlineBase64"
+            }]
+        }
+    });
+
+    let assert = fabio()
+        .args([
+            "item",
+            "update-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &item_id,
+            "--definition",
+            &serde_json::to_string(&definition_payload).unwrap(),
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "definition_updated");
+
+    // Cleanup
+    fabio()
+        .args([
+            "item",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &item_id,
+        ])
+        .assert()
+        .success();
+}
+
+// ===========================================================================
+// item update-definition requires file or definition
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_update_definition_requires_input() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "update-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.notebook_id,
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
+    let hint = err_json["error"]["hint"].as_str().unwrap();
+    assert!(
+        hint.contains("--file"),
+        "Hint should mention --file: {hint}"
+    );
+}

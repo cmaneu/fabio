@@ -248,13 +248,54 @@ fn commands_schema() -> serde_json::Value {
                         "--id": {"type": "string", "required": true, "description": "Item ID"}
                     }
                 },
+                "get-definition": {
+                    "description": "Get the definition (source code/content) of an item",
+                    "mutates": false,
+                    "async": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--id": {"type": "string", "required": true, "description": "Item ID"},
+                        "--format": {"type": "string", "description": "Definition format (optional, item-type dependent)"}
+                    }
+                },
+                "list-connections": {
+                    "description": "List connections used by an item",
+                    "mutates": false,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--id": {"type": "string", "required": true, "description": "Item ID"}
+                    }
+                },
                 "create": {
                     "description": "Create a new item",
                     "mutates": true,
                     "flags": {
                         "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
                         "--name": {"type": "string", "required": true, "description": "Item display name"},
-                        "--type": {"type": "string", "required": true, "description": "Item type (e.g., Lakehouse, Warehouse)"}
+                        "--type": {"type": "string", "required": true, "description": "Item type (e.g., Lakehouse, Warehouse)"},
+                        "--description": {"type": "string", "description": "Optional description"}
+                    }
+                },
+                "update": {
+                    "description": "Update item properties (name and/or description)",
+                    "mutates": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--id": {"type": "string", "required": true, "description": "Item ID"},
+                        "--name": {"type": "string", "description": "New display name"},
+                        "--description": {"type": "string", "description": "New description"}
+                    }
+                },
+                "update-definition": {
+                    "description": "Update (override) item definition from file or inline JSON",
+                    "mutates": true,
+                    "async": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--id": {"type": "string", "required": true, "description": "Item ID"},
+                        "--file": {"type": "string", "description": "Path to definition file (base64-encoded as single part)"},
+                        "--definition": {"type": "string", "description": "Inline JSON definition payload with parts array"},
+                        "--update-metadata": {"type": "bool", "description": "Also update item metadata from .platform file"}
                     }
                 },
                 "delete": {

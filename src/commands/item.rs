@@ -1,6 +1,10 @@
 use std::fmt::Write;
+use std::fs;
+use std::path::Path;
 
 use anyhow::Result;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -34,8 +38,34 @@ pub enum ItemCommand {
         #[arg(long)]
         id: String,
     },
+    /// Get the definition (source code/content) of an item
+    #[command(display_order = 3)]
+    GetDefinition {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
 
-    // ── Create/Delete ────────────────────────────────────────────────────
+        /// Item ID
+        #[arg(long)]
+        id: String,
+
+        /// Definition format (optional, item-type dependent)
+        #[arg(long)]
+        format: Option<String>,
+    },
+    /// List connections used by an item
+    #[command(display_order = 4)]
+    ListConnections {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+    },
+
+    // ── Create/Update/Delete ─────────────────────────────────────────────
     /// Create a new item
     #[command(display_order = 10)]
     Create {
@@ -50,9 +80,55 @@ pub enum ItemCommand {
         /// Item type (e.g., Lakehouse, Warehouse)
         #[arg(short = 't', long = "type")]
         item_type: String,
+
+        /// Optional description
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Update item properties (name and/or description)
+    #[command(display_order = 11)]
+    Update {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+
+        /// New display name
+        #[arg(long)]
+        name: Option<String>,
+
+        /// New description
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Update (override) item definition from file(s)
+    #[command(display_order = 12)]
+    UpdateDefinition {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+
+        /// Path to definition file (will be base64-encoded as a single part)
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON definition (full definition payload with parts array)
+        #[arg(long)]
+        definition: Option<String>,
+
+        /// When true, also update item metadata from .platform file
+        #[arg(long)]
+        update_metadata: bool,
     },
     /// Delete an item
-    #[command(display_order = 11)]
+    #[command(display_order = 13)]
     Delete {
         /// Workspace ID
         #[arg(short, long)]
@@ -111,11 +187,64 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             item_type,
         } => list(cli, client, workspace, item_type.as_deref()).await,
         ItemCommand::Show { workspace, id } => show(cli, client, workspace, id).await,
+        ItemCommand::GetDefinition {
+            workspace,
+            id,
+            format,
+        } => get_definition(cli, client, workspace, id, format.as_deref()).await,
+        ItemCommand::ListConnections { workspace, id } => {
+            list_connections(cli, client, workspace, id).await
+        }
         ItemCommand::Create {
             workspace,
             name,
             item_type,
-        } => create(cli, client, workspace, name, item_type).await,
+            description,
+        } => {
+            create(
+                cli,
+                client,
+                workspace,
+                name,
+                item_type,
+                description.as_deref(),
+            )
+            .await
+        }
+        ItemCommand::Update {
+            workspace,
+            id,
+            name,
+            description,
+        } => {
+            update(
+                cli,
+                client,
+                workspace,
+                id,
+                name.as_deref(),
+                description.as_deref(),
+            )
+            .await
+        }
+        ItemCommand::UpdateDefinition {
+            workspace,
+            id,
+            file,
+            definition,
+            update_metadata,
+        } => {
+            update_definition(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                definition.as_deref(),
+                *update_metadata,
+            )
+            .await
+        }
         ItemCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
         ItemCommand::Copy {
             source_workspace,
@@ -152,6 +281,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
     }
 }
 
+// ─── List ────────────────────────────────────────────────────────────────────
+
 async fn list(
     cli: &Cli,
     client: &FabricClient,
@@ -176,6 +307,8 @@ async fn list(
     Ok(())
 }
 
+// ─── Show ────────────────────────────────────────────────────────────────────
+
 async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
     let data = client
         .get(&format!("/workspaces/{workspace}/items/{id}"))
@@ -185,17 +318,73 @@ async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Re
     Ok(())
 }
 
+// ─── Get Definition ──────────────────────────────────────────────────────────
+
+async fn get_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    format: Option<&str>,
+) -> Result<()> {
+    let mut path = format!("/workspaces/{workspace}/items/{id}/getDefinition");
+    if let Some(f) = format {
+        let _ = write!(path, "?format={f}");
+    }
+
+    let data = client
+        .post(&path, &serde_json::json!({}), true)
+        .await
+        .map_err(|e| enrich_forbidden(e, "item get-definition", "ReadWrite"))?;
+    output::render_object(cli, &data, "definition");
+    Ok(())
+}
+
+// ─── List Connections ────────────────────────────────────────────────────────
+
+async fn list_connections(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/items/{id}/connections"),
+            "value",
+            cli.all,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "item list-connections", "ReadWrite"))?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["id", "connectivityType", "displayName"],
+        &["ID", "TYPE", "NAME"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+// ─── Create ──────────────────────────────────────────────────────────────────
+
 async fn create(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     name: &str,
     item_type: &str,
+    description: Option<&str>,
 ) -> Result<()> {
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "displayName": name,
         "type": item_type,
     });
+    if let Some(desc) = description {
+        body["description"] = Value::String(desc.to_string());
+    }
 
     if output::dry_run_guard(
         cli,
@@ -203,7 +392,8 @@ async fn create(
         &serde_json::json!({
             "workspace": workspace,
             "displayName": name,
-            "type": item_type
+            "type": item_type,
+            "description": description
         }),
     ) {
         return Ok(());
@@ -217,6 +407,130 @@ async fn create(
     output::render_object(cli, &data, "id");
     Ok(())
 }
+
+// ─── Update ──────────────────────────────────────────────────────────────────
+
+async fn update(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    name: Option<&str>,
+    description: Option<&str>,
+) -> Result<()> {
+    if name.is_none() && description.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one of --name or --description must be provided".to_string(),
+            "Example: fabio item update --workspace <WS> --id <ID> --name \"New Name\"".to_string(),
+        )
+        .into());
+    }
+
+    let mut body = serde_json::json!({});
+    if let Some(n) = name {
+        body["displayName"] = Value::String(n.to_string());
+    }
+    if let Some(d) = description {
+        body["description"] = Value::String(d.to_string());
+    }
+
+    if output::dry_run_guard(cli, "item update", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(&format!("/workspaces/{workspace}/items/{id}"), &body)
+        .await
+        .map_err(|e| enrich_forbidden(e, "item update", "ReadWrite"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+// ─── Update Definition ───────────────────────────────────────────────────────
+
+async fn update_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    definition: Option<&str>,
+    update_metadata: bool,
+) -> Result<()> {
+    if file.is_none() && definition.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Either --file or --definition must be provided".to_string(),
+            "Example: fabio item update-definition --workspace <WS> --id <ID> --file ./notebook.ipynb"
+                .to_string(),
+        )
+        .into());
+    }
+
+    let body = if let Some(def_json) = definition {
+        // Inline JSON definition payload
+        serde_json::from_str::<Value>(def_json).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid JSON in --definition: {e}"),
+                "Provide valid JSON: {\"definition\":{\"parts\":[{\"path\":\"...\",\"payload\":\"base64...\",\"payloadType\":\"InlineBase64\"}]}}"
+                    .to_string(),
+            )
+        })?
+    } else if let Some(file_path) = file {
+        // Read file and encode as base64
+        let path = Path::new(file_path);
+        let content = fs::read(path).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Failed to read file '{file_path}': {e}"),
+                "Provide a valid file path.".to_string(),
+            )
+        })?;
+
+        let encoded = BASE64.encode(&content);
+        let filename = path
+            .file_name()
+            .map_or("definition", |f| f.to_str().unwrap_or("definition"));
+
+        serde_json::json!({
+            "definition": {
+                "parts": [{
+                    "path": filename,
+                    "payload": encoded,
+                    "payloadType": "InlineBase64"
+                }]
+            }
+        })
+    } else {
+        unreachable!()
+    };
+
+    if output::dry_run_guard(cli, "item update-definition", &body) {
+        return Ok(());
+    }
+
+    let mut path = format!("/workspaces/{workspace}/items/{id}/updateDefinition");
+    if update_metadata {
+        path.push_str("?updateMetadata=true");
+    }
+
+    client
+        .post(&path, &body, true)
+        .await
+        .map_err(|e| enrich_forbidden(e, "item update-definition", "ReadWrite"))?;
+
+    let obj = serde_json::json!({
+        "id": id,
+        "workspace": workspace,
+        "status": "definition_updated"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Delete ──────────────────────────────────────────────────────────────────
 
 async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
     if output::dry_run_guard(
@@ -239,6 +553,8 @@ async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> 
     output::render_object(cli, &obj, "status");
     Ok(())
 }
+
+// ─── Copy ────────────────────────────────────────────────────────────────────
 
 async fn copy(
     cli: &Cli,
@@ -267,6 +583,8 @@ async fn copy(
     output::render_object(cli, &result, "id");
     Ok(())
 }
+
+// ─── Move ────────────────────────────────────────────────────────────────────
 
 async fn move_item(
     cli: &Cli,
@@ -304,6 +622,8 @@ async fn move_item(
     output::render_object(cli, &obj, "id");
     Ok(())
 }
+
+// ─── Shared Copy Implementation ──────────────────────────────────────────────
 
 /// Shared implementation for item copy (used by both copy and move).
 async fn copy_item_impl(
@@ -357,9 +677,12 @@ async fn copy_item_impl(
     Ok(result)
 }
 
+// ─── Error Enrichment ────────────────────────────────────────────────────────
+
 /// Known Fabric item types for error hints.
 const KNOWN_ITEM_TYPES: &[&str] = &[
     "Dashboard",
+    "DataAgent",
     "DataPipeline",
     "Datamart",
     "Environment",
@@ -370,8 +693,10 @@ const KNOWN_ITEM_TYPES: &[&str] = &[
     "Lakehouse",
     "MLExperiment",
     "MLModel",
+    "MirroredDatabase",
     "MirroredWarehouse",
     "Notebook",
+    "Ontology",
     "PaginatedReport",
     "Report",
     "SQLEndpoint",
@@ -413,4 +738,59 @@ fn enrich_item_not_found_error(err: anyhow::Error, workspace: &str, id: &str) ->
     }
 
     err
+}
+
+// ─── Unit Tests ──────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn known_item_types_are_sorted() {
+        let mut sorted = KNOWN_ITEM_TYPES.to_vec();
+        sorted.sort_unstable();
+        assert_eq!(KNOWN_ITEM_TYPES, sorted.as_slice());
+    }
+
+    #[test]
+    fn known_item_types_are_pascal_case() {
+        for t in KNOWN_ITEM_TYPES {
+            let first = t.chars().next().unwrap();
+            assert!(first.is_uppercase(), "Type '{t}' should be PascalCase");
+        }
+    }
+
+    #[test]
+    fn enrich_create_error_adds_hint_for_invalid_type() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::ApiError,
+            "The request is invalid. Item type FakeType is not supported.".to_string(),
+        )
+        .into();
+        let enriched = enrich_item_create_error(err, "FakeType");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(fabio_err.code, ErrorCode::InvalidInput);
+        assert!(fabio_err.hint.as_ref().unwrap().contains("Lakehouse"));
+    }
+
+    #[test]
+    fn enrich_not_found_adds_hint() {
+        let err: anyhow::Error =
+            FabioError::new(ErrorCode::NotFound, "item not found".to_string()).into();
+        let enriched = enrich_item_not_found_error(err, "ws-123", "item-456");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert!(fabio_err.hint.as_ref().unwrap().contains("item-456"));
+        assert!(fabio_err.hint.as_ref().unwrap().contains("ws-123"));
+    }
+
+    #[test]
+    fn enrich_preserves_non_matching_errors() {
+        let err: anyhow::Error =
+            FabioError::new(ErrorCode::ApiError, "something else".to_string()).into();
+        let enriched = enrich_item_create_error(err, "Notebook");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        // Should NOT be INVALID_INPUT since message doesn't contain "invalid" + type
+        assert_eq!(fabio_err.code, ErrorCode::ApiError);
+    }
 }
