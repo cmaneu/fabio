@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
-    auth, dataagent, feedback, git, item, jobs, lakehouse, notebook, ontology, profile, warehouse,
-    workspace,
+    auth, connection, dataagent, feedback, git, item, jobs, lakehouse, notebook, ontology, profile,
+    warehouse, workspace,
 };
 
 /// Agent-first CLI for managing Microsoft Fabric artifacts and data.
@@ -114,6 +114,11 @@ pub enum Command {
     Ontology {
         #[command(subcommand)]
         command: ontology::OntologyCommand,
+    },
+    /// Manage connections (cloud, on-premises, virtual network)
+    Connection {
+        #[command(subcommand)]
+        command: connection::ConnectionCommand,
     },
     /// Manage saved configuration profiles
     Profile {

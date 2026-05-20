@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod connection;
 pub mod dataagent;
 pub mod feedback;
 pub mod git;
@@ -32,6 +33,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::DataAgent { command } => dataagent::execute(&cli, &client, command).await,
         Command::Git { command } => git::execute(&cli, &client, command).await,
         Command::Ontology { command } => ontology::execute(&cli, &client, command).await,
+        Command::Connection { command } => connection::execute(&cli, &client, command).await,
         Command::Profile { command } => profile::execute(&cli, command),
         Command::Jobs { command } => jobs::execute(&cli, command),
         Command::Feedback { command } => feedback::execute(&cli, command),
