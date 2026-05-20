@@ -477,3 +477,148 @@ fn item_move_without_name() {
         .assert()
         .success();
 }
+
+// ---------------------------------------------------------------------------
+// item list with --limit
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_list_with_limit() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+            "--limit",
+            "2",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let arr = data.as_array().expect("Expected array");
+    assert!(
+        arr.len() <= 2,
+        "Expected at most 2 items with --limit 2, got {}",
+        arr.len()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// item show not found — error with hint
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_show_not_found_with_hint() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "show",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let error = &err_json["error"];
+    assert_eq!(error["code"], "NOT_FOUND");
+    // Should have a hint telling you how to list items
+    let hint = error["hint"].as_str().expect("Expected hint field");
+    assert!(
+        hint.contains("fabio item list"),
+        "Hint should suggest listing items: {hint}"
+    );
+    assert!(
+        hint.contains(&cfg.source_workspace),
+        "Hint should include workspace ID: {hint}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// item create with invalid type — error with valid types hint
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_create_invalid_type_with_hint() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test_invalid",
+            "--type",
+            "FakeItemType",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let error = &err_json["error"];
+    assert_eq!(error["code"], "INVALID_INPUT");
+    // Should have a hint with valid item types
+    let hint = error["hint"].as_str().expect("Expected hint field");
+    assert!(
+        hint.contains("Lakehouse"),
+        "Hint should list valid types: {hint}"
+    );
+    assert!(
+        hint.contains("Notebook"),
+        "Hint should list valid types: {hint}"
+    );
+    assert!(
+        hint.contains("Warehouse"),
+        "Hint should list valid types: {hint}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// item delete not found — error
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_delete_not_found() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR",
+        "Expected NOT_FOUND or API_ERROR, got: {code}"
+    );
+}

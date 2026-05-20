@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -171,7 +172,8 @@ async fn list(
 async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
     let data = client
         .get(&format!("/workspaces/{workspace}/items/{id}"))
-        .await?;
+        .await
+        .map_err(|e| enrich_item_not_found_error(e, workspace, id))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -202,7 +204,8 @@ async fn create(
 
     let data = client
         .post(&format!("/workspaces/{workspace}/items"), &body, true)
-        .await?;
+        .await
+        .map_err(|e| enrich_item_create_error(e, item_type))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -338,4 +341,66 @@ async fn copy_item_impl(
         .await?;
 
     Ok(result)
+}
+
+/// Known Fabric item types for error hints.
+const KNOWN_ITEM_TYPES: &[&str] = &[
+    "Dashboard",
+    "DataPipeline",
+    "Datamart",
+    "Environment",
+    "Eventhouse",
+    "Eventstream",
+    "KQLDatabase",
+    "KQLQueryset",
+    "Lakehouse",
+    "MLExperiment",
+    "MLModel",
+    "MirroredWarehouse",
+    "Notebook",
+    "PaginatedReport",
+    "Report",
+    "SQLEndpoint",
+    "SemanticModel",
+    "SparkJobDefinition",
+    "Warehouse",
+];
+
+/// Enrich item create errors with valid type hints.
+fn enrich_item_create_error(err: anyhow::Error, item_type: &str) -> anyhow::Error {
+    let Some(fabio_err) = err.downcast_ref::<FabioError>() else {
+        return err;
+    };
+
+    if fabio_err.message.contains("invalid") && fabio_err.message.contains(item_type) {
+        let valid_types = KNOWN_ITEM_TYPES.join(", ");
+        let hint = format!(
+            "'{item_type}' is not a valid Fabric item type. Valid types: {valid_types}. \
+             List items to see types in your workspace: fabio item list --workspace <ID>"
+        );
+        return FabioError::with_hint(ErrorCode::InvalidInput, &fabio_err.message, hint).into();
+    }
+
+    err
+}
+
+/// Enrich item not-found errors with guidance.
+fn enrich_item_not_found_error(
+    err: anyhow::Error,
+    workspace: &str,
+    id: &str,
+) -> anyhow::Error {
+    let Some(fabio_err) = err.downcast_ref::<FabioError>() else {
+        return err;
+    };
+
+    if fabio_err.code == ErrorCode::NotFound {
+        let hint = format!(
+            "Item '{id}' not found in workspace '{workspace}'. \
+             List available items: fabio item list --workspace {workspace}"
+        );
+        return FabioError::with_hint(ErrorCode::NotFound, &fabio_err.message, hint).into();
+    }
+
+    err
 }
