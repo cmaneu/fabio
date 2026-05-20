@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
-    auth, connection, dataagent, feedback, git, item, jobs, lakehouse, notebook, ontology, profile,
-    warehouse, workspace,
+    auth, connection, data_pipeline, dataagent, environment, eventhouse, feedback, git, item, jobs,
+    lakehouse, notebook, ontology, profile, warehouse, workspace,
 };
 
 /// Agent-first CLI for managing Microsoft Fabric artifacts and data.
@@ -117,6 +117,24 @@ pub enum Command {
     Ontology {
         #[command(subcommand)]
         command: ontology::OntologyCommand,
+    },
+    /// Manage environments (Spark compute, libraries, publish)
+    #[command(display_order = 14)]
+    Environment {
+        #[command(subcommand)]
+        command: environment::EnvironmentCommand,
+    },
+    /// Manage data pipelines (orchestration, scheduling)
+    #[command(display_order = 15)]
+    DataPipeline {
+        #[command(subcommand)]
+        command: data_pipeline::DataPipelineCommand,
+    },
+    /// Manage eventhouses (real-time analytics)
+    #[command(display_order = 16)]
+    Eventhouse {
+        #[command(subcommand)]
+        command: eventhouse::EventhouseCommand,
     },
 
     // ── Integration ──────────────────────────────────────────────────────

@@ -1,6 +1,9 @@
 pub mod auth;
 pub mod connection;
+pub mod data_pipeline;
 pub mod dataagent;
+pub mod environment;
+pub mod eventhouse;
 pub mod feedback;
 pub mod git;
 pub mod item;
@@ -33,6 +36,9 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Warehouse { command } => warehouse::execute(&cli, &client, command).await,
         Command::DataAgent { command } => dataagent::execute(&cli, &client, command).await,
         Command::Ontology { command } => ontology::execute(&cli, &client, command).await,
+        Command::Environment { command } => environment::execute(&cli, &client, command).await,
+        Command::DataPipeline { command } => data_pipeline::execute(&cli, &client, command).await,
+        Command::Eventhouse { command } => eventhouse::execute(&cli, &client, command).await,
         // Integration
         Command::Git { command } => git::execute(&cli, &client, command).await,
         Command::Connection { command } => connection::execute(&cli, &client, command).await,
