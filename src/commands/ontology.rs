@@ -426,7 +426,28 @@ mod tests {
     fn build_definition_from_rdf_ttl() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("schema.ttl");
-        std::fs::write(&file, "@prefix ex: <http://example.org/> .").unwrap();
+        std::fs::write(
+            &file,
+            r#"@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix sales: <http://example.org/sales#> .
+
+sales:SalesOntology a owl:Ontology ;
+    rdfs:label "Sales Domain Ontology" .
+
+sales:Customer a owl:Class ;
+    rdfs:label "Customer" .
+
+sales:Order a owl:Class ;
+    rdfs:label "Order" .
+
+sales:placedBy a owl:ObjectProperty ;
+    rdfs:domain sales:Order ;
+    rdfs:range sales:Customer .
+"#,
+        )
+        .unwrap();
 
         let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
         let parts = def["parts"].as_array().unwrap();
@@ -443,14 +464,30 @@ mod tests {
         // Verify base64 decodes back to original content
         let payload = parts[1]["payload"].as_str().unwrap();
         let decoded = BASE64.decode(payload).unwrap();
-        assert_eq!(decoded, b"@prefix ex: <http://example.org/> .");
+        let content = String::from_utf8(decoded).unwrap();
+        assert!(content.contains("sales:Customer a owl:Class"));
+        assert!(content.contains("sales:placedBy a owl:ObjectProperty"));
     }
 
     #[test]
     fn build_definition_from_rdf_owl() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("ontology.owl");
-        std::fs::write(&file, "<owl:Ontology/>").unwrap();
+        std::fs::write(
+            &file,
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#">
+  <owl:Ontology rdf:about="http://example.org/inventory">
+    <rdfs:label>Inventory Ontology</rdfs:label>
+  </owl:Ontology>
+  <owl:Class rdf:about="http://example.org/inventory#Warehouse">
+    <rdfs:label>Warehouse</rdfs:label>
+  </owl:Class>
+</rdf:RDF>"#,
+        )
+        .unwrap();
 
         let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
         assert_eq!(def["parts"][1]["path"], "ontology.owl");
@@ -460,7 +497,22 @@ mod tests {
     fn build_definition_from_rdf_jsonld() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("graph.jsonld");
-        std::fs::write(&file, r#"{"@context":{}}"#).unwrap();
+        std::fs::write(
+            &file,
+            r#"{
+  "@context": {
+    "owl": "http://www.w3.org/2002/07/owl#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "hr": "http://example.org/hr#"
+  },
+  "@graph": [
+    {"@id": "hr:HROntology", "@type": "owl:Ontology", "rdfs:label": "HR Ontology"},
+    {"@id": "hr:Employee", "@type": "owl:Class", "rdfs:label": "Employee"},
+    {"@id": "hr:Department", "@type": "owl:Class", "rdfs:label": "Department"}
+  ]
+}"#,
+        )
+        .unwrap();
 
         let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
         assert_eq!(def["parts"][1]["path"], "ontology.jsonld");
@@ -470,7 +522,17 @@ mod tests {
     fn build_definition_from_rdf_rdf_xml() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("data.rdf");
-        std::fs::write(&file, "<rdf:RDF/>").unwrap();
+        std::fs::write(
+            &file,
+            r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#">
+  <rdf:Description rdf:about="http://example.org/Resource">
+    <rdfs:label>Example Resource</rdfs:label>
+  </rdf:Description>
+</rdf:RDF>"#,
+        )
+        .unwrap();
 
         let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
         assert_eq!(def["parts"][1]["path"], "ontology.rdf");
@@ -480,7 +542,15 @@ mod tests {
     fn build_definition_from_rdf_xml_ext() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("data.xml");
-        std::fs::write(&file, "<rdf:RDF/>").unwrap();
+        std::fs::write(
+            &file,
+            r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Ontology rdf:about="http://example.org/test"/>
+</rdf:RDF>"#,
+        )
+        .unwrap();
 
         let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
         assert_eq!(def["parts"][1]["path"], "ontology.rdf");
@@ -490,7 +560,14 @@ mod tests {
     fn build_definition_from_rdf_ntriples() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("triples.nt");
-        std::fs::write(&file, "<s> <p> <o> .").unwrap();
+        std::fs::write(
+            &file,
+            r#"<http://example.org/Employee> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> .
+<http://example.org/Employee> <http://www.w3.org/2000/01/rdf-schema#label> "Employee" .
+<http://example.org/name> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#DatatypeProperty> .
+"#,
+        )
+        .unwrap();
 
         let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
         assert_eq!(def["parts"][1]["path"], "ontology.nt");
@@ -500,7 +577,27 @@ mod tests {
     fn build_definition_from_rdf_n3() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("notation.n3");
-        std::fs::write(&file, "@prefix : <#> .").unwrap();
+        std::fs::write(
+            &file,
+            r#"@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix : <http://example.org/geo#> .
+
+:GeoOntology a owl:Ontology ;
+    rdfs:label "Geography Ontology" .
+
+:Country a owl:Class ;
+    rdfs:label "Country" .
+
+:City a owl:Class ;
+    rdfs:label "City" .
+
+:locatedIn a owl:ObjectProperty ;
+    rdfs:domain :City ;
+    rdfs:range :Country .
+"#,
+        )
+        .unwrap();
 
         let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
         assert_eq!(def["parts"][1]["path"], "ontology.n3");
@@ -510,7 +607,24 @@ mod tests {
     fn build_definition_from_rdf_trig() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("named.trig");
-        std::fs::write(&file, "GRAPH <g> { <s> <p> <o> }").unwrap();
+        std::fs::write(
+            &file,
+            r#"@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix : <http://example.org/events#> .
+
+GRAPH :EventGraph {
+    :Event a owl:Class ;
+        rdfs:label "Event" .
+    :Venue a owl:Class ;
+        rdfs:label "Venue" .
+    :hostedAt a owl:ObjectProperty ;
+        rdfs:domain :Event ;
+        rdfs:range :Venue .
+}
+"#,
+        )
+        .unwrap();
 
         let def = build_definition_from_rdf(file.to_str().unwrap()).unwrap();
         assert_eq!(def["parts"][1]["path"], "ontology.trig");

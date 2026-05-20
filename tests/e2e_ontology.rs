@@ -210,7 +210,58 @@ fn ontology_create_with_rdf_ttl() {
     let ttl_path = dir.path().join("schema.ttl");
     std::fs::write(
         &ttl_path,
-        "@prefix ex: <http://example.org/> .\nex:Thing a ex:Class .",
+        r#"@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix sales: <http://example.org/sales#> .
+
+sales:SalesOntology a owl:Ontology ;
+    rdfs:label "Sales Domain Ontology" ;
+    rdfs:comment "Models customers, products, and orders for a retail domain." .
+
+sales:Customer a owl:Class ;
+    rdfs:label "Customer" ;
+    rdfs:comment "A person or organization that purchases products." .
+
+sales:Product a owl:Class ;
+    rdfs:label "Product" ;
+    rdfs:comment "An item available for sale." .
+
+sales:Order a owl:Class ;
+    rdfs:label "Order" ;
+    rdfs:comment "A purchase transaction linking a customer to products." .
+
+sales:hasName a owl:DatatypeProperty ;
+    rdfs:domain sales:Customer ;
+    rdfs:range xsd:string ;
+    rdfs:label "name" .
+
+sales:hasEmail a owl:DatatypeProperty ;
+    rdfs:domain sales:Customer ;
+    rdfs:range xsd:string ;
+    rdfs:label "email" .
+
+sales:hasPrice a owl:DatatypeProperty ;
+    rdfs:domain sales:Product ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "price" .
+
+sales:placedBy a owl:ObjectProperty ;
+    rdfs:domain sales:Order ;
+    rdfs:range sales:Customer ;
+    rdfs:label "placed by" .
+
+sales:containsProduct a owl:ObjectProperty ;
+    rdfs:domain sales:Order ;
+    rdfs:range sales:Product ;
+    rdfs:label "contains product" .
+
+sales:orderDate a owl:DatatypeProperty ;
+    rdfs:domain sales:Order ;
+    rdfs:range xsd:date ;
+    rdfs:label "order date" .
+"#,
     )
     .unwrap();
 
@@ -263,10 +314,57 @@ fn ontology_create_with_rdf_owl() {
     let owl_path = dir.path().join("ontology.owl");
     std::fs::write(
         &owl_path,
-        r#"<?xml version="1.0"?>
+        r#"<?xml version="1.0" encoding="UTF-8"?>
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-         xmlns:owl="http://www.w3.org/2002/07/owl#">
-  <owl:Ontology rdf:about="http://example.org/test"/>
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+         xmlns:inv="http://example.org/inventory#">
+
+  <owl:Ontology rdf:about="http://example.org/inventory">
+    <rdfs:label>Inventory Management Ontology</rdfs:label>
+    <rdfs:comment>Models warehouses, stock items, and supply chain relationships.</rdfs:comment>
+  </owl:Ontology>
+
+  <owl:Class rdf:about="http://example.org/inventory#Warehouse">
+    <rdfs:label>Warehouse</rdfs:label>
+    <rdfs:comment>A physical location where inventory is stored.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://example.org/inventory#StockItem">
+    <rdfs:label>Stock Item</rdfs:label>
+    <rdfs:comment>A product unit held in inventory.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://example.org/inventory#Supplier">
+    <rdfs:label>Supplier</rdfs:label>
+    <rdfs:comment>An entity that provides stock items.</rdfs:comment>
+  </owl:Class>
+
+  <owl:DatatypeProperty rdf:about="http://example.org/inventory#sku">
+    <rdfs:domain rdf:resource="http://example.org/inventory#StockItem"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <rdfs:label>SKU</rdfs:label>
+  </owl:DatatypeProperty>
+
+  <owl:DatatypeProperty rdf:about="http://example.org/inventory#quantity">
+    <rdfs:domain rdf:resource="http://example.org/inventory#StockItem"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#integer"/>
+    <rdfs:label>quantity on hand</rdfs:label>
+  </owl:DatatypeProperty>
+
+  <owl:ObjectProperty rdf:about="http://example.org/inventory#storedIn">
+    <rdfs:domain rdf:resource="http://example.org/inventory#StockItem"/>
+    <rdfs:range rdf:resource="http://example.org/inventory#Warehouse"/>
+    <rdfs:label>stored in</rdfs:label>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://example.org/inventory#suppliedBy">
+    <rdfs:domain rdf:resource="http://example.org/inventory#StockItem"/>
+    <rdfs:range rdf:resource="http://example.org/inventory#Supplier"/>
+    <rdfs:label>supplied by</rdfs:label>
+  </owl:ObjectProperty>
+
 </rdf:RDF>"#,
     )
     .unwrap();
@@ -320,7 +418,69 @@ fn ontology_create_with_rdf_jsonld() {
     let jsonld_path = dir.path().join("ontology.jsonld");
     std::fs::write(
         &jsonld_path,
-        r#"{"@context": {"@vocab": "http://example.org/"}, "@type": "Ontology"}"#,
+        r#"{
+  "@context": {
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "owl": "http://www.w3.org/2002/07/owl#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "hr": "http://example.org/hr#"
+  },
+  "@graph": [
+    {
+      "@id": "hr:HROntology",
+      "@type": "owl:Ontology",
+      "rdfs:label": "Human Resources Ontology",
+      "rdfs:comment": "Models employees, departments, and organizational structure."
+    },
+    {
+      "@id": "hr:Employee",
+      "@type": "owl:Class",
+      "rdfs:label": "Employee",
+      "rdfs:comment": "A person employed by the organization."
+    },
+    {
+      "@id": "hr:Department",
+      "@type": "owl:Class",
+      "rdfs:label": "Department",
+      "rdfs:comment": "An organizational unit within the company."
+    },
+    {
+      "@id": "hr:Role",
+      "@type": "owl:Class",
+      "rdfs:label": "Role",
+      "rdfs:comment": "A job function or position title."
+    },
+    {
+      "@id": "hr:employeeId",
+      "@type": "owl:DatatypeProperty",
+      "rdfs:domain": {"@id": "hr:Employee"},
+      "rdfs:range": {"@id": "xsd:string"},
+      "rdfs:label": "employee ID"
+    },
+    {
+      "@id": "hr:belongsToDepartment",
+      "@type": "owl:ObjectProperty",
+      "rdfs:domain": {"@id": "hr:Employee"},
+      "rdfs:range": {"@id": "hr:Department"},
+      "rdfs:label": "belongs to department"
+    },
+    {
+      "@id": "hr:hasRole",
+      "@type": "owl:ObjectProperty",
+      "rdfs:domain": {"@id": "hr:Employee"},
+      "rdfs:range": {"@id": "hr:Role"},
+      "rdfs:label": "has role"
+    },
+    {
+      "@id": "hr:reportsTo",
+      "@type": "owl:ObjectProperty",
+      "rdfs:domain": {"@id": "hr:Employee"},
+      "rdfs:range": {"@id": "hr:Employee"},
+      "rdfs:label": "reports to"
+    }
+  ]
+}"#,
     )
     .unwrap();
 
