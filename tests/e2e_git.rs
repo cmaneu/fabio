@@ -49,10 +49,12 @@ fn find_github_connection_id() -> Option<String> {
     connections
         .iter()
         .find(|c| {
-            c.get("connectionDetails")
+            let conn_type = c
+                .get("connectionDetails")
                 .and_then(|d| d.get("type"))
                 .and_then(|t| t.as_str())
-                == Some("GitHub")
+                .unwrap_or("");
+            conn_type == "GitHubSourceControl" || conn_type == "GitHub"
         })
         .and_then(|c| c.get("id"))
         .and_then(|id| id.as_str())
@@ -259,10 +261,12 @@ fn git_connect_init_status_disconnect_lifecycle() {
 
     let json = parse_json(&assert);
     let data = extract_data(&json);
-    // Should have workspaceHead or changes array
+    // Status renders as list (array of changes) or object (with workspaceHead)
     assert!(
-        data.get("workspaceHead").is_some() || data.get("changes").is_some(),
-        "Status should contain workspaceHead or changes: {data}"
+        data.is_array()
+            || data.get("workspaceHead").is_some()
+            || data.get("changes").is_some(),
+        "Status should contain workspaceHead, changes, or be a changes array: {data}"
     );
 
     // Disconnect

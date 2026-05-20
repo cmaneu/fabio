@@ -512,30 +512,28 @@ async fn connect(
             let project_name = project.ok_or_else(|| {
                 anyhow::anyhow!("--project is required for Azure DevOps provider")
             })?;
-            let mut details = serde_json::json!({
+            let dir_name = directory.unwrap_or("/");
+            let details = serde_json::json!({
                 "gitProviderType": "AzureDevOps",
                 "organizationName": org_name,
                 "projectName": project_name,
                 "repositoryName": repo,
                 "branchName": branch,
+                "directoryName": dir_name,
             });
-            if let Some(dir) = directory {
-                details["directoryName"] = Value::String(dir.to_string());
-            }
             details
         }
         "github" => {
             let owner_name =
                 owner.ok_or_else(|| anyhow::anyhow!("--owner is required for GitHub provider"))?;
+            let dir_name = directory.unwrap_or("/");
             let mut details = serde_json::json!({
                 "gitProviderType": "GitHub",
                 "ownerName": owner_name,
                 "repositoryName": repo,
                 "branchName": branch,
+                "directoryName": dir_name,
             });
-            if let Some(dir) = directory {
-                details["directoryName"] = Value::String(dir.to_string());
-            }
             if let Some(domain) = custom_domain {
                 details["customDomainName"] = Value::String(domain.to_string());
             }
@@ -555,7 +553,7 @@ async fn connect(
         });
     }
 
-    let data = client
+    let _data = client
         .post(
             &format!("/workspaces/{workspace}/git/connect"),
             &body,
@@ -563,12 +561,13 @@ async fn connect(
         )
         .await?;
 
-    output::render_object(cli, &data, "status");
+    let result = serde_json::json!({"status": "connected"});
+    output::render_object(cli, &result, "status");
     Ok(())
 }
 
 async fn disconnect(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
-    let data = client
+    let _data = client
         .post(
             &format!("/workspaces/{workspace}/git/disconnect"),
             &serde_json::json!({}),
@@ -576,7 +575,8 @@ async fn disconnect(cli: &Cli, client: &FabricClient, workspace: &str) -> Result
         )
         .await?;
 
-    output::render_object(cli, &data, "status");
+    let result = serde_json::json!({"status": "disconnected"});
+    output::render_object(cli, &result, "status");
     Ok(())
 }
 
@@ -601,7 +601,7 @@ async fn init(
         },
     );
 
-    let data = client
+    let _data = client
         .post_with_timeout(
             &format!("/workspaces/{workspace}/git/initializeConnection"),
             &body,
@@ -610,7 +610,8 @@ async fn init(
         )
         .await?;
 
-    output::render_object(cli, &data, "status");
+    let result = serde_json::json!({"status": "initialized"});
+    output::render_object(cli, &result, "status");
     Ok(())
 }
 
