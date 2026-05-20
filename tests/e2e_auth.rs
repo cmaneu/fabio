@@ -32,3 +32,75 @@ fn auth_status_json_envelope() {
     let json = parse_json(&assert);
     assert!(json.get("data").is_some());
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn auth_status_table_format() {
+    // auth status with --output table should produce human-readable output
+    fabio()
+        .args(["auth", "status", "-o", "table"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("authenticated"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn auth_login_shows_credential_chain() {
+    // Login is a no-op (relies on DefaultAzureCredential) but should succeed
+    let assert = fabio().args(["auth", "login"]).assert().success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "logged_in");
+    assert_eq!(data["method"], "browser");
+    // Should mention DefaultAzureCredential
+    let msg = data["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("DefaultAzureCredential"),
+        "Expected credential chain info: {msg}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn auth_login_device_code_flag() {
+    let assert = fabio()
+        .args(["auth", "login", "--device-code"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "logged_in");
+    assert_eq!(data["method"], "device_code");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn auth_logout_succeeds() {
+    let assert = fabio().args(["auth", "logout"]).assert().success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "logged_out");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn auth_status_with_query_extracts_field() {
+    let assert = fabio()
+        .args(["auth", "status", "--query", "status"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // --query status should extract just the status string
+    assert_eq!(data, "authenticated");
+}
