@@ -617,7 +617,7 @@ async fn init(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn checkout(
     cli: &Cli,
     client: &FabricClient,
@@ -627,6 +627,35 @@ async fn checkout(
     wait: bool,
     timeout: u64,
 ) -> Result<()> {
+    // Pre-flight: check for uncommitted workspace changes
+    if !cli.force {
+        let status_data = client
+            .get_with_lro(&format!("/workspaces/{workspace}/git/status"))
+            .await?;
+
+        let has_workspace_changes = status_data
+            .get("changes")
+            .and_then(Value::as_array)
+            .is_some_and(|changes| {
+                changes.iter().any(|c| {
+                    c.get("workspaceChange")
+                        .and_then(Value::as_str)
+                        .is_some_and(|s| s != "None")
+                })
+            });
+
+        if has_workspace_changes {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Workspace has uncommitted changes that would be lost by switching branches.",
+                "Commit first with 'fabio git commit --commit-all -w <workspace>', \
+                 or use --force to discard uncommitted changes."
+                    .to_string(),
+            )
+            .into());
+        }
+    }
+
     // Step 1: Get current connection details to preserve provider config
     let connection = client
         .get(&format!("/workspaces/{workspace}/git/connection"))

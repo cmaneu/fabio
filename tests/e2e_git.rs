@@ -329,6 +329,7 @@ fn git_checkout_unconnected_fails() {
 
     fabio()
         .args([
+            "--force",
             "git",
             "checkout",
             "--workspace",
@@ -808,8 +809,9 @@ fn git_feature_branch_workflow() {
     // Ignore the earlier placeholder attempt
     drop(gh_output);
 
-    // Step 3: Switch workspace to feature branch
+    // Step 3: Switch workspace to feature branch (--force to bypass uncommitted check)
     let checkout_args = [
+        "--force",
         "git",
         "checkout",
         "--workspace",
@@ -903,8 +905,9 @@ fn git_feature_branch_workflow() {
         String::from_utf8_lossy(&merge_output.stderr)
     );
 
-    // Step 7: Switch back to main
+    // Step 7: Switch back to main (--force to bypass uncommitted check)
     let switch_args = [
+        "--force",
         "git",
         "checkout",
         "--workspace",
@@ -1752,9 +1755,10 @@ fn git_checkout_nonexistent_branch_gives_hint_and_rollback() {
     })
     .success();
 
-    // Try to checkout to a non-existent branch
+    // Try to checkout to a non-existent branch (--force to skip uncommitted changes check)
     let assert = fabio()
         .args([
+            "--force",
             "git",
             "checkout",
             "--workspace",
@@ -1828,4 +1832,141 @@ impl Drop for BranchCleanup {
             ])
             .output();
     }
+}
+
+/// Test: checkout blocks when workspace has uncommitted changes (unless --force).
+///
+/// Flow:
+/// 1. Connect to main, init
+/// 2. Create a notebook (creates uncommitted workspace change)
+/// 3. Attempt checkout without --force → `INVALID_INPUT` error with hint
+/// 4. Cleanup: delete notebook, disconnect
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_checkout_blocked_by_uncommitted_changes() {
+    let cfg = TestConfig::from_env();
+    let workspace = &cfg.dest_workspace;
+
+    let Some(connection_id) = find_github_connection_id() else {
+        eprintln!("No GitHub connection found, skipping test.");
+        return;
+    };
+
+    // Ensure workspace is disconnected
+    let _ = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert();
+
+    // Connect to main and init
+    fabio()
+        .args([
+            "git",
+            "connect",
+            "--workspace",
+            workspace,
+            "--provider",
+            "github",
+            "--owner",
+            "iemejia",
+            "--repo",
+            "fabio-test-connection",
+            "--branch",
+            "main",
+            "--connection-id",
+            &connection_id,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "init",
+                "--workspace",
+                workspace,
+                "--strategy",
+                "prefer-remote",
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    // Create a notebook to produce an uncommitted workspace change
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let nb_name = format!("guard_test_{ts}");
+
+    let create_assert = fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            workspace,
+            "--name",
+            &nb_name,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    // Extract notebook ID for cleanup
+    let create_json = parse_json(&create_assert);
+    let create_data = extract_data(&create_json);
+    let nb_id = create_data["id"].as_str().unwrap_or("").to_string();
+
+    // Wait a moment for workspace change to register
+    std::thread::sleep(std::time::Duration::from_secs(5));
+
+    // Attempt checkout WITHOUT --force → should fail with INVALID_INPUT
+    let assert = fabio()
+        .args([
+            "git",
+            "checkout",
+            "--workspace",
+            workspace,
+            "--branch",
+            "main",
+            "--strategy",
+            "prefer-remote",
+            "--wait",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value =
+        serde_json::from_str(&stderr).expect("Expected JSON error on stderr");
+    let error = &err_json["error"];
+    assert_eq!(
+        error["code"], "INVALID_INPUT",
+        "Expected INVALID_INPUT error for uncommitted changes"
+    );
+    let hint = error["hint"].as_str().expect("Expected hint in error");
+    assert!(
+        hint.contains("--force") || hint.contains("commit"),
+        "Hint should mention --force or commit: {hint}"
+    );
+
+    // Cleanup: delete the notebook
+    if !nb_id.is_empty() {
+        let _ = fabio()
+            .args(["notebook", "delete", "--workspace", workspace, "--id", &nb_id])
+            .timeout(std::time::Duration::from_secs(60))
+            .assert();
+    }
+
+    // Disconnect
+    let _ = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert();
 }
