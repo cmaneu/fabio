@@ -291,3 +291,188 @@ fn lakehouse_download_nonexistent_source_errors() {
     // File should not have been created
     assert!(!local_path.exists());
 }
+
+// ---------------------------------------------------------------------------
+// lakehouse tables with --limit
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_tables_with_limit() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "tables",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--limit",
+            "1",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let arr = data.as_array().expect("Expected array");
+    assert_eq!(arr.len(), 1, "Expected exactly 1 table with --limit 1");
+}
+
+// ---------------------------------------------------------------------------
+// lakehouse files with --limit
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_files_with_limit() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "files",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--limit",
+            "2",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let arr = data.as_array().expect("Expected array");
+    assert!(
+        arr.len() <= 2,
+        "Expected at most 2 items with --limit 2, got {}",
+        arr.len()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// lakehouse upload overwrite (upload same path twice — should succeed)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_upload_overwrite() {
+    let cfg = TestConfig::from_env();
+    let tmp_dir = TempDir::new().unwrap();
+    let file_name = common::unique_name("overwrite_test");
+    let remote_path = format!("Files/{file_name}.txt");
+
+    // Upload first version
+    let upload_path = tmp_dir.path().join("v1.txt");
+    fs::write(&upload_path, "version 1").unwrap();
+
+    fabio()
+        .args([
+            "lakehouse",
+            "upload",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            upload_path.to_str().unwrap(),
+            "--dest-path",
+            &remote_path,
+        ])
+        .assert()
+        .success();
+
+    // Upload second version to same path (overwrite)
+    let upload_path_v2 = tmp_dir.path().join("v2.txt");
+    fs::write(&upload_path_v2, "version 2 updated content").unwrap();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "upload",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            upload_path_v2.to_str().unwrap(),
+            "--dest-path",
+            &remote_path,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "uploaded");
+    assert_eq!(data["size"], "version 2 updated content".len());
+
+    // Download and verify content is v2
+    let download_path = tmp_dir.path().join("downloaded.txt");
+    fabio()
+        .args([
+            "lakehouse",
+            "download",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &remote_path,
+            "--dest-path",
+            download_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(&download_path).unwrap();
+    assert_eq!(content, "version 2 updated content");
+
+    // Cleanup
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-file",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--path",
+            &remote_path,
+        ])
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// lakehouse tables table output format has headers
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_files_table_output() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "--output",
+            "table",
+            "lakehouse",
+            "files",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("NAME"));
+}
