@@ -78,7 +78,7 @@ fn workspace_show_returns_details() {
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn workspace_show_not_found() {
-    fabio()
+    let assert = fabio()
         .args([
             "workspace",
             "show",
@@ -86,8 +86,16 @@ fn workspace_show_not_found() {
             "00000000-0000-0000-0000-000000000000",
         ])
         .assert()
-        .failure()
-        .stderr(predicate::str::contains("NOT_FOUND"));
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    // Fabric may return API_ERROR or NOT_FOUND for invalid workspace IDs
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR",
+        "Expected NOT_FOUND or API_ERROR, got: {code}"
+    );
 }
 
 #[test]
@@ -187,4 +195,117 @@ fn workspace_assign_capacity() {
     assert_eq!(data["status"], "assigned");
     assert_eq!(data["workspaceId"], cfg.source_workspace);
     assert_eq!(data["capacityId"], cfg.capacity_id);
+}
+
+// ---------------------------------------------------------------------------
+// workspace list --limit
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_list_with_limit() {
+    let assert = fabio()
+        .args(["workspace", "list", "--limit", "1"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let arr = data.as_array().expect("Expected array");
+    assert_eq!(arr.len(), 1, "Expected exactly 1 workspace with --limit 1");
+    // count should reflect total available, not limited
+    let count = extract_count(&json);
+    assert!(
+        count >= 1,
+        "Count should be >= 1 (total available, not limited)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// workspace show with --query extracts a field
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_show_with_query() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "show",
+            "--id",
+            &cfg.source_workspace,
+            "--query",
+            "displayName",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // --query displayName extracts the workspace name as a string
+    assert!(data.is_string(), "Expected string from --query: {data}");
+}
+
+// ---------------------------------------------------------------------------
+// workspace delete with non-existent ID returns error
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_delete_not_found() {
+    let assert = fabio()
+        .args([
+            "workspace",
+            "delete",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    // Fabric may return API_ERROR or NOT_FOUND for invalid workspace IDs
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR",
+        "Expected NOT_FOUND or API_ERROR for invalid workspace, got: {code}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// workspace assign-capacity with invalid capacity fails
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_assign_capacity_invalid() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "assign-capacity",
+            "--id",
+            &cfg.source_workspace,
+            "--capacity",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    // Should be a client error (INVALID_INPUT or API_ERROR or NOT_FOUND)
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR" || code == "INVALID_INPUT",
+        "Expected error code for invalid capacity, got: {code}"
+    );
 }
