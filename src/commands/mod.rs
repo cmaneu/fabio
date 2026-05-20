@@ -1,8 +1,10 @@
 pub mod auth;
 pub mod capacity;
 pub mod connection;
+pub mod copy_job;
 pub mod data_pipeline;
 pub mod dataagent;
+pub mod dataflow;
 pub mod deployment_pipeline;
 pub mod domain;
 pub mod environment;
@@ -10,18 +12,23 @@ pub mod eventhouse;
 pub mod eventstream;
 pub mod feedback;
 pub mod git;
+pub mod graphql_api;
 pub mod item;
 pub mod job_scheduler;
 pub mod jobs;
+pub mod kql_dashboard;
 pub mod kql_database;
 pub mod kql_queryset;
 pub mod lakehouse;
 pub mod managed_private_endpoint;
 pub mod mirrored_database;
+pub mod ml_experiment;
+pub mod ml_model;
 pub mod notebook;
 pub mod onelake_security;
 pub mod ontology;
 pub mod profile;
+pub mod reflex;
 pub mod report;
 pub mod semantic_model;
 pub mod spark;
@@ -53,19 +60,26 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Ontology { command } => ontology::execute(&cli, &client, command).await,
         Command::Environment { command } => environment::execute(&cli, &client, command).await,
         Command::DataPipeline { command } => data_pipeline::execute(&cli, &client, command).await,
+        Command::CopyJob { command } => copy_job::execute(&cli, &client, command).await,
+        Command::Dataflow { command } => dataflow::execute(&cli, &client, command).await,
         Command::Report { command } => report::execute(&cli, &client, command).await,
         Command::SemanticModel { command } => semantic_model::execute(&cli, &client, command).await,
         Command::Eventhouse { command } => eventhouse::execute(&cli, &client, command).await,
         Command::Eventstream { command } => eventstream::execute(&cli, &client, command).await,
         Command::KqlDatabase { command } => kql_database::execute(&cli, &client, command).await,
         Command::KqlQueryset { command } => kql_queryset::execute(&cli, &client, command).await,
+        Command::KqlDashboard { command } => kql_dashboard::execute(&cli, &client, command).await,
         Command::MirroredDatabase { command } => {
             mirrored_database::execute(&cli, &client, command).await
         }
+        Command::Reflex { command } => reflex::execute(&cli, &client, command).await,
+        Command::MlModel { command } => ml_model::execute(&cli, &client, command).await,
+        Command::MlExperiment { command } => ml_experiment::execute(&cli, &client, command).await,
         Command::Spark { command } => spark::execute(&cli, &client, command).await,
         Command::SparkJobDefinition { command } => {
             spark_job_definition::execute(&cli, &client, command).await
         }
+        Command::GraphqlApi { command } => graphql_api::execute(&cli, &client, command).await,
         // Integration
         Command::Git { command } => git::execute(&cli, &client, command).await,
         Command::Connection { command } => connection::execute(&cli, &client, command).await,

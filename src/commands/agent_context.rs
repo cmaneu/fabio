@@ -929,6 +929,86 @@ fn commands_schema() -> serde_json::Value {
                 "get-definition": {"description": "Get semantic model definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "update-definition": {"description": "Update semantic model definition from file", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string", "required": true}}}
             }
+        },
+        "copy-job": {
+            "description": "Manage copy jobs (data movement)",
+            "subcommands": {
+                "list": {"description": "List copy jobs", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show copy job details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a copy job", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update copy job properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a copy job", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get copy job definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update copy job definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "dataflow": {
+            "description": "Manage dataflows (Power BI data transformation)",
+            "subcommands": {
+                "list": {"description": "List dataflows", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show dataflow details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a dataflow", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update dataflow properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a dataflow", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get dataflow definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update dataflow definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "kql-dashboard": {
+            "description": "Manage KQL dashboards (real-time dashboards)",
+            "subcommands": {
+                "list": {"description": "List KQL dashboards", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show KQL dashboard details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a KQL dashboard", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update KQL dashboard properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a KQL dashboard", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get KQL dashboard definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update KQL dashboard definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "reflex": {
+            "description": "Manage Reflex items (Data Activator triggers and alerts)",
+            "subcommands": {
+                "list": {"description": "List reflexes", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show reflex details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a reflex", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update reflex properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a reflex", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get reflex definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update reflex definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "graphql-api": {
+            "description": "Manage GraphQL APIs",
+            "subcommands": {
+                "list": {"description": "List GraphQL APIs", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show GraphQL API details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a GraphQL API", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update GraphQL API properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a GraphQL API", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get GraphQL API definition (schema.graphql)", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update GraphQL API definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "ml-model": {
+            "description": "Manage ML models (data science)",
+            "subcommands": {
+                "list": {"description": "List ML models", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show ML model details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create an ML model", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update ML model properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete an ML model", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+            }
+        },
+        "ml-experiment": {
+            "description": "Manage ML experiments (data science)",
+            "subcommands": {
+                "list": {"description": "List ML experiments", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show ML experiment details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create an ML experiment", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update ML experiment properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete an ML experiment", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+            }
         }
     })
 }

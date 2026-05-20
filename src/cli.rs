@@ -1,10 +1,11 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
-    auth, capacity, connection, data_pipeline, dataagent, deployment_pipeline, domain, environment,
-    eventhouse, eventstream, feedback, git, item, job_scheduler, jobs, kql_database, kql_queryset,
-    lakehouse, managed_private_endpoint, mirrored_database, notebook, onelake_security, ontology,
-    profile, report, semantic_model, spark, spark_job_definition, warehouse, workspace,
+    auth, capacity, connection, copy_job, data_pipeline, dataagent, dataflow, deployment_pipeline,
+    domain, environment, eventhouse, eventstream, feedback, git, graphql_api, item, job_scheduler,
+    jobs, kql_dashboard, kql_database, kql_queryset, lakehouse, managed_private_endpoint,
+    mirrored_database, ml_experiment, ml_model, notebook, onelake_security, ontology, profile,
+    reflex, report, semantic_model, spark, spark_job_definition, warehouse, workspace,
 };
 
 /// Agent-first CLI for managing Microsoft Fabric artifacts and data.
@@ -142,88 +143,130 @@ pub enum Command {
         #[command(subcommand)]
         command: data_pipeline::DataPipelineCommand,
     },
-    /// Manage reports (Power BI)
+    /// Manage copy jobs (data movement)
     #[command(display_order = 16)]
+    CopyJob {
+        #[command(subcommand)]
+        command: copy_job::CopyJobCommand,
+    },
+    /// Manage dataflows (Power BI data transformation)
+    #[command(display_order = 17)]
+    Dataflow {
+        #[command(subcommand)]
+        command: dataflow::DataflowCommand,
+    },
+    /// Manage reports (Power BI)
+    #[command(display_order = 18)]
     Report {
         #[command(subcommand)]
         command: report::ReportCommand,
     },
     /// Manage semantic models (Power BI datasets)
-    #[command(display_order = 17)]
+    #[command(display_order = 19)]
     SemanticModel {
         #[command(subcommand)]
         command: semantic_model::SemanticModelCommand,
     },
     /// Manage eventhouses (real-time analytics)
-    #[command(display_order = 18)]
+    #[command(display_order = 20)]
     Eventhouse {
         #[command(subcommand)]
         command: eventhouse::EventhouseCommand,
     },
     /// Manage eventstreams (real-time data ingestion)
-    #[command(display_order = 19)]
+    #[command(display_order = 21)]
     Eventstream {
         #[command(subcommand)]
         command: eventstream::EventstreamCommand,
     },
     /// Manage KQL databases (within eventhouses)
-    #[command(display_order = 20)]
+    #[command(display_order = 22)]
     KqlDatabase {
         #[command(subcommand)]
         command: kql_database::KqlDatabaseCommand,
     },
     /// Manage KQL querysets (saved KQL queries)
-    #[command(display_order = 21)]
+    #[command(display_order = 23)]
     KqlQueryset {
         #[command(subcommand)]
         command: kql_queryset::KqlQuerysetCommand,
     },
+    /// Manage KQL dashboards (real-time dashboards)
+    #[command(display_order = 24)]
+    KqlDashboard {
+        #[command(subcommand)]
+        command: kql_dashboard::KqlDashboardCommand,
+    },
     /// Manage mirrored databases (real-time replication)
-    #[command(display_order = 22)]
+    #[command(display_order = 25)]
     MirroredDatabase {
         #[command(subcommand)]
         command: mirrored_database::MirroredDatabaseCommand,
     },
+    /// Manage Reflex items (Data Activator triggers and alerts)
+    #[command(display_order = 26)]
+    Reflex {
+        #[command(subcommand)]
+        command: reflex::ReflexCommand,
+    },
+    /// Manage ML models (data science)
+    #[command(display_order = 27)]
+    MlModel {
+        #[command(subcommand)]
+        command: ml_model::MlModelCommand,
+    },
+    /// Manage ML experiments (data science)
+    #[command(display_order = 28)]
+    MlExperiment {
+        #[command(subcommand)]
+        command: ml_experiment::MlExperimentCommand,
+    },
     /// Manage Spark compute (settings, custom pools)
-    #[command(display_order = 23)]
+    #[command(display_order = 29)]
     Spark {
         #[command(subcommand)]
         command: spark::SparkCommand,
     },
     /// Manage Spark job definitions (batch Spark jobs)
-    #[command(display_order = 24)]
+    #[command(display_order = 30)]
     SparkJobDefinition {
         #[command(subcommand)]
         command: spark_job_definition::SparkJobDefinitionCommand,
     },
+    /// Manage GraphQL APIs
+    #[command(display_order = 31)]
+    GraphqlApi {
+        #[command(subcommand)]
+        command: graphql_api::GraphqlApiCommand,
+    },
 
     // ── Integration ──────────────────────────────────────────────────────
     /// Manage Git integration (connect, commit, pull, status)
-    #[command(display_order = 30)]
+    #[command(display_order = 40)]
     Git {
         #[command(subcommand)]
         command: git::GitCommand,
     },
     /// Manage connections (cloud, on-premises, virtual network)
-    #[command(display_order = 31)]
+    #[command(display_order = 41)]
     Connection {
         #[command(subcommand)]
         command: connection::ConnectionCommand,
     },
     /// Manage deployment pipelines (CI/CD stages, deploy items)
-    #[command(display_order = 32)]
+    #[command(display_order = 42)]
     DeploymentPipeline {
         #[command(subcommand)]
         command: deployment_pipeline::DeploymentPipelineCommand,
     },
     /// Manage domains (organize workspaces into business domains)
-    #[command(display_order = 33)]
+    #[command(display_order = 43)]
     Domain {
         #[command(subcommand)]
         command: domain::DomainCommand,
     },
     /// Manage item job scheduling (run, cancel, schedules)
-    #[command(display_order = 34)]
+    #[command(display_order = 44)]
     JobScheduler {
         #[command(subcommand)]
         command: job_scheduler::JobSchedulerCommand,
@@ -231,13 +274,13 @@ pub enum Command {
 
     // ── Security & Governance ────────────────────────────────────────────
     /// Manage `OneLake` data access roles (row/column-level security)
-    #[command(display_order = 40)]
+    #[command(display_order = 50)]
     OnelakeSecurity {
         #[command(subcommand)]
         command: onelake_security::OnelakeSecurityCommand,
     },
     /// Manage workspace managed private endpoints
-    #[command(display_order = 41)]
+    #[command(display_order = 51)]
     ManagedPrivateEndpoint {
         #[command(subcommand)]
         command: managed_private_endpoint::ManagedPrivateEndpointCommand,
@@ -245,30 +288,30 @@ pub enum Command {
 
     // ── Configuration ────────────────────────────────────────────────────
     /// Manage authentication
-    #[command(display_order = 50)]
+    #[command(display_order = 60)]
     Auth {
         #[command(subcommand)]
         command: auth::AuthCommand,
     },
     /// Manage saved configuration profiles
-    #[command(display_order = 51)]
+    #[command(display_order = 61)]
     Profile {
         #[command(subcommand)]
         command: profile::ProfileCommand,
     },
     /// Inspect and manage async job history
-    #[command(display_order = 52)]
+    #[command(display_order = 62)]
     Jobs {
         #[command(subcommand)]
         command: jobs::JobsCommand,
     },
     /// Report CLI friction or issues for improvement
-    #[command(display_order = 53)]
+    #[command(display_order = 63)]
     Feedback {
         #[command(subcommand)]
         command: feedback::FeedbackCommand,
     },
     /// Machine-readable CLI schema for agent introspection
-    #[command(name = "agent-context", display_order = 54)]
+    #[command(name = "agent-context", display_order = 64)]
     AgentContext,
 }
