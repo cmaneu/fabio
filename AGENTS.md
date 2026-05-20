@@ -31,10 +31,10 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (130+ commands across 25 groups): auth, workspace, item, lakehouse, capacity, notebook, warehouse, data-agent, ontology, environment, data-pipeline, eventhouse, kql-database, mirrored-database, spark, git, connection, deployment-pipeline, domain, job-scheduler, onelake-security, managed-private-endpoint, profile, jobs, feedback + agent-context
+- **Full Rust implementation** (220 subcommands across 30 groups): auth, workspace, item, lakehouse, capacity, notebook, warehouse, data-agent, ontology, environment, data-pipeline, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, mirrored-database, spark, spark-job-definition, git, connection, deployment-pipeline, domain, job-scheduler, onelake-security, managed-private-endpoint, profile, jobs, feedback + agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
-- Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`
+- Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`
 - HTTP client: async get/post/put/patch/delete with LRO polling (`Location` + `x-ms-operation-id` + resource follow)
 - OneLake operations: DFS upload (create+append+flush), download, file listing; Blob API copy (server-side async)
 - **Parallel file/table operations**: Upload, copy, move support glob patterns with concurrent execution and rate-limit retry
@@ -52,8 +52,13 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Environment**: list, show, create, update, delete, publish, cancel-publish, get-spark-settings, get-staging-spark-settings
 - **Data Pipeline**: list, show, create, update, delete, run (triggers Pipeline job)
 - **Eventhouse**: list, show, create, update, delete
+- **Eventstream**: list, show, create, update, delete, get-definition, update-definition
 - **KQL Database**: list, show, create, update, delete, get-definition, update-definition (ReadWrite/ReadOnlyFollowing)
+- **KQL Queryset**: list, show, create, update, delete, get-definition, update-definition
 - **Mirrored Database**: list, show, create, update, delete, get/update-definition, start, stop, status, table-status
+- **Report**: list, show, create (from definition file), update, delete, get-definition, update-definition
+- **Semantic Model**: list, show, create (from model.bim), update, delete, get-definition, update-definition
+- **Spark Job Definition**: list, show, create, update, delete, get-definition, update-definition, run
 - **Capacity**: list, show (inspect available capacities)
 - **Connection**: list, show, create, update, delete, list-supported-types
 - **Deployment Pipeline**: list, show, create, update, delete, list-stages, list-stage-items, assign-workspace, unassign-workspace, deploy
@@ -62,18 +67,19 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Spark**: get-settings, update-settings, list-pools, get-pool, create-pool, update-pool, delete-pool
 - **OneLake Security**: list, show, upsert, delete (data access roles for row/column-level security)
 - **Managed Private Endpoint**: list, show, create, delete (workspace private networking)
+- **Pagination**: `--all` fetches all pages, `--continuation-token` resumes from a specific token, `--limit` truncates client-side
 - **Agent-native compliance** (all 10 principles implemented):
   - Principle 1: Non-interactive by default
   - Principle 2: Structured parseable output
   - Principle 3: Errors that teach and enumerate
   - Principle 4: Safe retries (`--dry-run`)
-  - Principle 5: Bounded responses (`--limit`)
+  - Principle 5: Bounded responses (`--limit`, `--continuation-token`, truncation metadata)
   - Principle 6: Consistent vocabulary (list/show/create/delete/copy/move)
   - Principle 7: `fabio agent-context` machine-readable schema
   - Principle 8: Async-aware (`--wait`, jobs ledger)
   - Principle 9: Named profiles (`fabio profile save/use/list/show/delete`)
   - Principle 10: Two-way I/O (`fabio feedback send/list`)
-- **310 Rust tests** (54 unit + 256 E2E integration), zero clippy warnings, rustfmt clean
+- **332 Rust tests** (54 unit + 278 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~5 MB, stripped, LTO-optimized
@@ -121,7 +127,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `Cargo.toml`: Project config, dependencies, clippy/lints config, release profile (LTO+strip)
 - `rust-toolchain.toml`: stable channel, rustfmt+clippy components
 - `src/main.rs`: Entry point, tokio async main, error handling dispatch
-- `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 25 subcommand groups
+- `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 30 subcommand groups
 - `src/errors.rs`: ErrorCode enum + FabioError struct with thiserror
 - `src/output.rs`: render_list, render_object, render_error (respects --quiet/--query), apply_query, unit tests
 - `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, run_notebook
@@ -137,15 +143,20 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/ontology.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings
 - `src/commands/data_pipeline.rs`: list/show/create/update/delete/run
+- `src/commands/report.rs`: list/show/create/update/delete/get-definition/update-definition
+- `src/commands/semantic_model.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/eventhouse.rs`: list/show/create/update/delete
+- `src/commands/eventstream.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/kql_database.rs`: list/show/create/update/delete/get-definition/update-definition
+- `src/commands/kql_queryset.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/mirrored_database.rs`: list/show/create/update/delete/get-definition/update-definition/start/stop/status/table-status
+- `src/commands/spark.rs`: get-settings/update-settings/list-pools/get-pool/create-pool/update-pool/delete-pool
+- `src/commands/spark_job_definition.rs`: list/show/create/update/delete/get-definition/update-definition/run
 - `src/commands/capacity.rs`: list/show
 - `src/commands/connection.rs`: list/show/create/update/delete/list-supported-types
 - `src/commands/deployment_pipeline.rs`: list/show/create/update/delete/list-stages/list-stage-items/assign-workspace/unassign-workspace/deploy
 - `src/commands/domain.rs`: list/show/create/update/delete/list-workspaces/assign-workspaces/unassign-workspaces/assign-by-capacity/assign-by-principal
 - `src/commands/job_scheduler.rs`: list-instances/get-instance/run-on-demand/cancel-instance/list-schedules/get-schedule/create-schedule/update-schedule/delete-schedule
-- `src/commands/spark.rs`: get-settings/update-settings/list-pools/get-pool/create-pool/update-pool/delete-pool
 - `src/commands/onelake_security.rs`: list/show/upsert/delete (data access roles)
 - `src/commands/managed_private_endpoint.rs`: list/show/create/delete
 - `src/commands/profile.rs`: save/use/list/show/delete (named profiles with defaults)
@@ -172,8 +183,13 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_environment.rs`: Environment CRUD tests
 - `tests/e2e_data_pipeline.rs`: Data pipeline CRUD + run tests
 - `tests/e2e_eventhouse.rs`: Eventhouse CRUD tests
+- `tests/e2e_eventstream.rs`: Eventstream CRUD tests
 - `tests/e2e_kql_database.rs`: KQL database tests
+- `tests/e2e_kql_queryset.rs`: KQL queryset tests
 - `tests/e2e_mirrored_database.rs`: Mirrored database tests
+- `tests/e2e_report.rs`: Report CRUD tests
+- `tests/e2e_semantic_model.rs`: Semantic model CRUD tests
+- `tests/e2e_spark_job_definition.rs`: Spark job definition tests
 - `tests/e2e_deployment_pipeline.rs`: Deployment pipeline tests
 - `tests/e2e_domain.rs`: Domain management tests
 - `tests/e2e_job_scheduler.rs`: Job scheduler tests
@@ -199,5 +215,4 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Next Steps
 - Add ODBC support to warehouse query (`odbc-api` crate)
-- Add pagination support for list commands (continuationToken)
 - Consider adding `--filter` flag for list commands
