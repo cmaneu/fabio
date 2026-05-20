@@ -1,8 +1,9 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
-    auth, connection, data_pipeline, dataagent, deployment_pipeline, domain, environment,
-    eventhouse, feedback, git, item, job_scheduler, jobs, lakehouse, notebook, ontology, profile,
+    auth, capacity, connection, data_pipeline, dataagent, deployment_pipeline, domain, environment,
+    eventhouse, feedback, git, item, job_scheduler, jobs, kql_database, lakehouse,
+    managed_private_endpoint, mirrored_database, notebook, onelake_security, ontology, profile,
     spark, warehouse, workspace,
 };
 
@@ -93,6 +94,12 @@ pub enum Command {
         #[command(subcommand)]
         command: lakehouse::LakehouseCommand,
     },
+    /// List and inspect Fabric capacities
+    #[command(display_order = 4)]
+    Capacity {
+        #[command(subcommand)]
+        command: capacity::CapacityCommand,
+    },
 
     // ── Data & Compute ───────────────────────────────────────────────────
     /// Manage notebooks
@@ -137,8 +144,20 @@ pub enum Command {
         #[command(subcommand)]
         command: eventhouse::EventhouseCommand,
     },
-    /// Manage Spark compute (settings, custom pools)
+    /// Manage KQL databases (within eventhouses)
     #[command(display_order = 17)]
+    KqlDatabase {
+        #[command(subcommand)]
+        command: kql_database::KqlDatabaseCommand,
+    },
+    /// Manage mirrored databases (real-time replication)
+    #[command(display_order = 18)]
+    MirroredDatabase {
+        #[command(subcommand)]
+        command: mirrored_database::MirroredDatabaseCommand,
+    },
+    /// Manage Spark compute (settings, custom pools)
+    #[command(display_order = 19)]
     Spark {
         #[command(subcommand)]
         command: spark::SparkCommand,
@@ -174,6 +193,20 @@ pub enum Command {
     JobScheduler {
         #[command(subcommand)]
         command: job_scheduler::JobSchedulerCommand,
+    },
+
+    // ── Security & Governance ────────────────────────────────────────────
+    /// Manage `OneLake` data access roles (row/column-level security)
+    #[command(display_order = 25)]
+    OnelakeSecurity {
+        #[command(subcommand)]
+        command: onelake_security::OnelakeSecurityCommand,
+    },
+    /// Manage workspace managed private endpoints
+    #[command(display_order = 26)]
+    ManagedPrivateEndpoint {
+        #[command(subcommand)]
+        command: managed_private_endpoint::ManagedPrivateEndpointCommand,
     },
 
     // ── Configuration ────────────────────────────────────────────────────

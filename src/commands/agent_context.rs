@@ -809,6 +809,59 @@ fn commands_schema() -> serde_json::Value {
                 "update-pool": {"description": "Update a custom pool", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--pool-id": {"type": "string", "required": true}, "--config": {"type": "string", "required": true, "description": "JSON"}}},
                 "delete-pool": {"description": "Delete a custom pool", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--pool-id": {"type": "string", "required": true}}}
             }
+        },
+        "kql-database": {
+            "description": "Manage KQL databases within eventhouses",
+            "subcommands": {
+                "list": {"description": "List KQL databases", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show KQL database details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a KQL database", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--eventhouse-id": {"type": "string", "required": true}, "--database-type": {"type": "enum", "values": ["ReadWrite", "ReadOnlyFollowing"]}}},
+                "update": {"description": "Update KQL database properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a KQL database", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get KQL database definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update KQL database definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "mirrored-database": {
+            "description": "Manage mirrored databases (real-time replication)",
+            "subcommands": {
+                "list": {"description": "List mirrored databases", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show mirrored database details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a mirrored database", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update mirrored database", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a mirrored database", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "start": {"description": "Start mirroring", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "stop": {"description": "Stop mirroring", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "status": {"description": "Get mirroring status", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "table-status": {"description": "Get tables mirroring status", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+            }
+        },
+        "capacity": {
+            "description": "List and inspect Fabric capacities",
+            "subcommands": {
+                "list": {"description": "List available capacities", "mutates": false},
+                "show": {"description": "Show capacity details", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}}
+            }
+        },
+        "onelake-security": {
+            "description": "Manage OneLake data access roles (row/column-level security)",
+            "subcommands": {
+                "list": {"description": "List data access roles for an item", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "show": {"description": "Show a data access role", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--role-name": {"type": "string", "required": true}}},
+                "upsert": {"description": "Create or replace all data access roles", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--roles": {"type": "string", "required": true, "description": "JSON array or @file"}}},
+                "delete": {"description": "Delete a data access role", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--role-name": {"type": "string", "required": true}}}
+            }
+        },
+        "managed-private-endpoint": {
+            "description": "Manage workspace managed private endpoints",
+            "subcommands": {
+                "list": {"description": "List managed private endpoints", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show endpoint details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a managed private endpoint", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--target-resource-id": {"type": "string", "required": true}, "--target-subresource-type": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete a managed private endpoint", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+            }
         }
     })
 }

@@ -434,6 +434,37 @@ impl FabricClient {
         handle_response(resp).await
     }
 
+    /// PUT request to Fabric REST API (retries once on 401).
+    pub async fn put(&self, path: &str, body: &Value) -> Result<Value> {
+        let token = self.require_auth().await?;
+        let url = format!("{FABRIC_BASE_URL}{path}");
+
+        let resp = self
+            .http
+            .put(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .put(&url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .json(body)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return handle_response(resp).await;
+        }
+
+        handle_response(resp).await
+    }
+
     /// DELETE request to Fabric REST API (retries once on 401).
     pub async fn delete(&self, path: &str) -> Result<Value> {
         let token = self.require_auth().await?;
