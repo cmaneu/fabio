@@ -45,6 +45,10 @@ pub enum ConnectionCommand {
         /// Privacy level
         #[arg(long, default_value = "Organizational", value_parser = ["None", "Public", "Organizational", "Private"])]
         privacy_level: String,
+
+        /// Skip connection test during creation
+        #[arg(long, default_value_t = false)]
+        skip_test_connection: bool,
     },
     /// Delete a connection
     Delete {
@@ -66,6 +70,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ConnectionComma
             credential_type,
             credentials,
             privacy_level,
+            skip_test_connection,
         } => {
             create(
                 cli,
@@ -77,6 +82,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ConnectionComma
                 credential_type,
                 credentials.as_deref(),
                 privacy_level,
+                *skip_test_connection,
             )
             .await
         }
@@ -119,6 +125,7 @@ async fn create(
     credential_type: &str,
     credentials: Option<&str>,
     privacy_level: &str,
+    skip_test_connection: bool,
 ) -> Result<()> {
     if cli.dry_run {
         let preview = json!({
@@ -136,24 +143,36 @@ async fn create(
     })?;
 
     let cred_details = if let Some(creds) = credentials {
-        let cred_value: Value = serde_json::from_str(creds).map_err(|e| {
-            anyhow::anyhow!("Invalid --credentials JSON: {e}")
-        })?;
-        json!({
-            "credentialType": credential_type,
+        let cred_value: Value = serde_json::from_str(creds)
+            .map_err(|e| anyhow::anyhow!("Invalid --credentials JSON: {e}"))?;
+        let mut details = json!({
+            "singleSignOnType": "None",
+            "connectionEncryption": "NotEncrypted",
+            "skipTestConnection": skip_test_connection,
             "credentials": cred_value,
-        })
+        });
+        // Ensure credentialType is set inside credentials
+        if details["credentials"]["credentialType"].is_null() {
+            details["credentials"]["credentialType"] = json!(credential_type);
+        }
+        details
     } else {
         json!({
-            "credentialType": credential_type,
+            "singleSignOnType": "None",
+            "connectionEncryption": "NotEncrypted",
+            "skipTestConnection": skip_test_connection,
+            "credentials": {
+                "credentialType": credential_type,
+            },
         })
     };
 
-    // Build connection parameters in the API format
+    // Build connection parameters in the API array format
     let connection_params: Vec<Value> = if let Some(obj) = params.as_object() {
         obj.iter()
             .map(|(k, v)| {
                 json!({
+                    "dataType": "Text",
                     "name": k,
                     "value": v.as_str().unwrap_or(&v.to_string()),
                 })
@@ -168,6 +187,7 @@ async fn create(
         "connectivityType": connectivity_type,
         "connectionDetails": {
             "type": connection_type,
+            "creationMethod": connection_type,
             "parameters": connection_params,
         },
         "credentialDetails": cred_details,
