@@ -24,16 +24,20 @@ pub async fn execute(cli: Cli) -> Result<()> {
     let client = FabricClient::new();
 
     match &cli.command {
-        Command::Auth { command } => auth::execute(&cli, command).await,
+        // Core
         Command::Workspace { command } => workspace::execute(&cli, &client, command).await,
         Command::Item { command } => item::execute(&cli, &client, command).await,
         Command::Lakehouse { command } => lakehouse::execute(&cli, &client, command).await,
+        // Data & Compute
         Command::Notebook { command } => notebook::execute(&cli, &client, command).await,
         Command::Warehouse { command } => warehouse::execute(&cli, &client, command).await,
         Command::DataAgent { command } => dataagent::execute(&cli, &client, command).await,
-        Command::Git { command } => git::execute(&cli, &client, command).await,
         Command::Ontology { command } => ontology::execute(&cli, &client, command).await,
+        // Integration
+        Command::Git { command } => git::execute(&cli, &client, command).await,
         Command::Connection { command } => connection::execute(&cli, &client, command).await,
+        // Configuration
+        Command::Auth { command } => auth::execute(&cli, command).await,
         Command::Profile { command } => profile::execute(&cli, command),
         Command::Jobs { command } => jobs::execute(&cli, command),
         Command::Feedback { command } => feedback::execute(&cli, command),

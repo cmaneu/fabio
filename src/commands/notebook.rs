@@ -12,7 +12,9 @@ use crate::output;
 
 #[derive(Debug, Subcommand)]
 pub enum NotebookCommand {
+    // ── Lifecycle ────────────────────────────────────────────────────────
     /// Create a new notebook
+    #[command(display_order = 1)]
     Create {
         /// Workspace ID
         #[arg(short, long)]
@@ -27,6 +29,7 @@ pub enum NotebookCommand {
         content: Option<String>,
     },
     /// Get the definition (source code) of a notebook
+    #[command(display_order = 2)]
     GetDefinition {
         /// Workspace ID
         #[arg(short, long)]
@@ -36,7 +39,21 @@ pub enum NotebookCommand {
         #[arg(long)]
         id: String,
     },
+    /// Delete a notebook
+    #[command(display_order = 3)]
+    Delete {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Notebook item ID
+        #[arg(long)]
+        id: String,
+    },
+
+    // ── Execution ────────────────────────────────────────────────────────
     /// Run a notebook
+    #[command(display_order = 10)]
     Run {
         /// Workspace ID
         #[arg(short, long)]
@@ -55,6 +72,7 @@ pub enum NotebookCommand {
         timeout: u64,
     },
     /// Check the status of a notebook run
+    #[command(display_order = 11)]
     Status {
         /// Workspace ID
         #[arg(short, long)]
@@ -69,6 +87,7 @@ pub enum NotebookCommand {
         job_id: String,
     },
     /// Stop a running notebook
+    #[command(display_order = 12)]
     Stop {
         /// Workspace ID
         #[arg(short, long)]
@@ -81,16 +100,6 @@ pub enum NotebookCommand {
         /// Job instance ID
         #[arg(long)]
         job_id: String,
-    },
-    /// Delete a notebook
-    Delete {
-        /// Workspace ID
-        #[arg(short, long)]
-        workspace: String,
-
-        /// Notebook item ID
-        #[arg(long)]
-        id: String,
     },
 }
 

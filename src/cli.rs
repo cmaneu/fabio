@@ -73,73 +73,92 @@ pub enum OutputFormat {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Manage authentication
-    Auth {
-        #[command(subcommand)]
-        command: auth::AuthCommand,
-    },
+    // ── Core ─────────────────────────────────────────────────────────────
     /// Manage workspaces
+    #[command(display_order = 1)]
     Workspace {
         #[command(subcommand)]
         command: workspace::WorkspaceCommand,
     },
     /// Manage items (datasets, reports, notebooks, etc.)
+    #[command(display_order = 2)]
     Item {
         #[command(subcommand)]
         command: item::ItemCommand,
     },
     /// Manage lakehouses (tables, files, shortcuts)
+    #[command(display_order = 3)]
     Lakehouse {
         #[command(subcommand)]
         command: lakehouse::LakehouseCommand,
     },
+
+    // ── Data & Compute ───────────────────────────────────────────────────
     /// Manage notebooks
+    #[command(display_order = 10)]
     Notebook {
         #[command(subcommand)]
         command: notebook::NotebookCommand,
     },
     /// Manage warehouses and run SQL queries
+    #[command(display_order = 11)]
     Warehouse {
         #[command(subcommand)]
         command: warehouse::WarehouseCommand,
     },
     /// Manage data agents (create, query, and interact with AI agents)
-    #[command(visible_alias = "da")]
+    #[command(visible_alias = "da", display_order = 12)]
     DataAgent {
         #[command(subcommand)]
         command: dataagent::DataAgentCommand,
     },
-    /// Manage Git integration (connect, commit, pull, status)
-    Git {
-        #[command(subcommand)]
-        command: git::GitCommand,
-    },
     /// Manage ontologies (entity types, data bindings)
+    #[command(display_order = 13)]
     Ontology {
         #[command(subcommand)]
         command: ontology::OntologyCommand,
     },
+
+    // ── Integration ──────────────────────────────────────────────────────
+    /// Manage Git integration (connect, commit, pull, status)
+    #[command(display_order = 20)]
+    Git {
+        #[command(subcommand)]
+        command: git::GitCommand,
+    },
     /// Manage connections (cloud, on-premises, virtual network)
+    #[command(display_order = 21)]
     Connection {
         #[command(subcommand)]
         command: connection::ConnectionCommand,
     },
+
+    // ── Configuration ────────────────────────────────────────────────────
+    /// Manage authentication
+    #[command(display_order = 30)]
+    Auth {
+        #[command(subcommand)]
+        command: auth::AuthCommand,
+    },
     /// Manage saved configuration profiles
+    #[command(display_order = 31)]
     Profile {
         #[command(subcommand)]
         command: profile::ProfileCommand,
     },
     /// Inspect and manage async job history
+    #[command(display_order = 32)]
     Jobs {
         #[command(subcommand)]
         command: jobs::JobsCommand,
     },
     /// Report CLI friction or issues for improvement
+    #[command(display_order = 33)]
     Feedback {
         #[command(subcommand)]
         command: feedback::FeedbackCommand,
     },
     /// Machine-readable CLI schema for agent introspection
-    #[command(name = "agent-context")]
+    #[command(name = "agent-context", display_order = 34)]
     AgentContext,
 }

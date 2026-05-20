@@ -9,13 +9,16 @@ use crate::output;
 
 #[derive(Debug, Subcommand)]
 pub enum GitCommand {
+    // ── Daily Operations ─────────────────────────────────────────────────
     /// Show workspace Git status (changes, conflicts)
+    #[command(display_order = 1)]
     Status {
         /// Workspace ID
         #[arg(short, long)]
         workspace: String,
     },
     /// Commit workspace changes to the connected remote branch
+    #[command(display_order = 2)]
     Commit {
         /// Workspace ID
         #[arg(short, long)]
@@ -46,6 +49,7 @@ pub enum GitCommand {
         timeout: u64,
     },
     /// Pull remote changes into the workspace (update from Git)
+    #[command(display_order = 3)]
     Pull {
         /// Workspace ID
         #[arg(short, long)]
@@ -75,7 +79,9 @@ pub enum GitCommand {
         #[arg(long, default_value = "120")]
         timeout: u64,
     },
+    // ── Setup ─────────────────────────────────────────────────────────────
     /// Connect a workspace to a Git repository
+    #[command(display_order = 10)]
     Connect {
         /// Workspace ID
         #[arg(short, long)]
@@ -118,12 +124,14 @@ pub enum GitCommand {
         connection_id: Option<String>,
     },
     /// Disconnect a workspace from Git
+    #[command(display_order = 11)]
     Disconnect {
         /// Workspace ID
         #[arg(short, long)]
         workspace: String,
     },
     /// Initialize a workspace Git connection (required after connect)
+    #[command(display_order = 12)]
     Init {
         /// Workspace ID
         #[arg(short, long)]
@@ -142,7 +150,7 @@ pub enum GitCommand {
         timeout: u64,
     },
     /// Switch to a different branch (disconnect + connect + init)
-    #[command(visible_alias = "switch")]
+    #[command(visible_alias = "switch", display_order = 13)]
     Checkout {
         /// Workspace ID
         #[arg(short, long)]
@@ -164,11 +172,12 @@ pub enum GitCommand {
         #[arg(long, default_value = "120")]
         timeout: u64,
     },
+    // ── Configuration ─────────────────────────────────────────────────────
     /// Show or manage Git connection and credentials
-    #[command(subcommand)]
+    #[command(subcommand, display_order = 20)]
     Connection(ConnectionCommand),
     /// Manage Git credentials
-    #[command(subcommand)]
+    #[command(subcommand, display_order = 21)]
     Credentials(CredentialsCommand),
 }
 

@@ -11,7 +11,9 @@ use crate::output;
 
 #[derive(Debug, Subcommand)]
 pub enum ItemCommand {
+    // ── Read ─────────────────────────────────────────────────────────────
     /// List items in a workspace
+    #[command(display_order = 1)]
     List {
         /// Workspace ID
         #[arg(short, long)]
@@ -22,6 +24,7 @@ pub enum ItemCommand {
         item_type: Option<String>,
     },
     /// Show details of an item
+    #[command(display_order = 2)]
     Show {
         /// Workspace ID
         #[arg(short, long)]
@@ -31,7 +34,10 @@ pub enum ItemCommand {
         #[arg(long)]
         id: String,
     },
+
+    // ── Create/Delete ────────────────────────────────────────────────────
     /// Create a new item
+    #[command(display_order = 10)]
     Create {
         /// Workspace ID
         #[arg(short, long)]
@@ -46,6 +52,7 @@ pub enum ItemCommand {
         item_type: String,
     },
     /// Delete an item
+    #[command(display_order = 11)]
     Delete {
         /// Workspace ID
         #[arg(short, long)]
@@ -55,7 +62,10 @@ pub enum ItemCommand {
         #[arg(long)]
         id: String,
     },
+
+    // ── Copy/Move ────────────────────────────────────────────────────────
     /// Copy an item to another workspace
+    #[command(display_order = 20)]
     Copy {
         /// Source workspace ID
         #[arg(long)]
@@ -74,6 +84,7 @@ pub enum ItemCommand {
         name: Option<String>,
     },
     /// Move an item to another workspace (copy + delete source)
+    #[command(display_order = 21)]
     Move {
         /// Source workspace ID
         #[arg(long)]
