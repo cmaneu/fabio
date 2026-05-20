@@ -31,11 +31,11 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (70+ commands across 12 groups): auth, workspace, item, lakehouse, notebook, warehouse, data-agent, git, ontology, profile, jobs, feedback + agent-context
+- **Full Rust implementation** (130+ commands across 25 groups): auth, workspace, item, lakehouse, capacity, notebook, warehouse, data-agent, ontology, environment, data-pipeline, eventhouse, kql-database, mirrored-database, spark, git, connection, deployment-pipeline, domain, job-scheduler, onelake-security, managed-private-endpoint, profile, jobs, feedback + agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`
-- HTTP client: async get/post/delete with LRO polling (`Location` + `x-ms-operation-id` + resource follow)
+- HTTP client: async get/post/put/patch/delete with LRO polling (`Location` + `x-ms-operation-id` + resource follow)
 - OneLake operations: DFS upload (create+append+flush), download, file listing; Blob API copy (server-side async)
 - **Parallel file/table operations**: Upload, copy, move support glob patterns with concurrent execution and rate-limit retry
 - **Sync command**: `lakehouse sync` copies new/modified files between lakehouses using ETag/MD5 comparison
@@ -46,10 +46,22 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Notebook run**: Captures job instance ID from Location header, status/stop via Jobs API
 - **Notebook `--wait` flag**: Polls job status every 5s until Completed/Failed/Cancelled, with configurable `--timeout` (default 600s)
 - **Item copy/move**: getDefinition LRO + create in dest workspace LRO; move = copy + delete source
-- **Warehouse show**: Shows warehouse details including connection string and properties
-- **Warehouse query stdin**: SQL can be provided via `--sql`, `@file`, or piped from stdin
+- **Warehouse**: list/show/create/update/delete/query (endpoint resolved, stdin/file/flag SQL input)
 - **Git integration**: status, commit, pull, connect, disconnect, initialize, switch (branch), connection/credentials management
 - **Ontology management**: list, show, create, update, delete, get-definition, update-definition (RDF file support)
+- **Environment**: list, show, create, update, delete, publish, cancel-publish, get-spark-settings, get-staging-spark-settings
+- **Data Pipeline**: list, show, create, update, delete, run (triggers Pipeline job)
+- **Eventhouse**: list, show, create, update, delete
+- **KQL Database**: list, show, create, update, delete, get-definition, update-definition (ReadWrite/ReadOnlyFollowing)
+- **Mirrored Database**: list, show, create, update, delete, get/update-definition, start, stop, status, table-status
+- **Capacity**: list, show (inspect available capacities)
+- **Connection**: list, show, create, update, delete, list-supported-types
+- **Deployment Pipeline**: list, show, create, update, delete, list-stages, list-stage-items, assign-workspace, unassign-workspace, deploy
+- **Domain**: list, show, create, update, delete, list-workspaces, assign-workspaces, unassign-workspaces, assign-by-capacity, assign-by-principal
+- **Job Scheduler**: list-instances, get-instance, run-on-demand, cancel-instance, list-schedules, get-schedule, create-schedule, update-schedule, delete-schedule
+- **Spark**: get-settings, update-settings, list-pools, get-pool, create-pool, update-pool, delete-pool
+- **OneLake Security**: list, show, upsert, delete (data access roles for row/column-level security)
+- **Managed Private Endpoint**: list, show, create, delete (workspace private networking)
 - **Agent-native compliance** (all 10 principles implemented):
   - Principle 1: Non-interactive by default
   - Principle 2: Structured parseable output
@@ -61,10 +73,10 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
   - Principle 8: Async-aware (`--wait`, jobs ledger)
   - Principle 9: Named profiles (`fabio profile save/use/list/show/delete`)
   - Principle 10: Two-way I/O (`fabio feedback send/list`)
-- **132 Rust tests** (unit + E2E integration), zero clippy warnings, rustfmt clean
+- **310 Rust tests** (54 unit + 256 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
-- Release binary: 4.4 MB, stripped, LTO-optimized
+- Release binary: ~5 MB, stripped, LTO-optimized
 
 ### Blocked
 - (none)
@@ -109,20 +121,33 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `Cargo.toml`: Project config, dependencies, clippy/lints config, release profile (LTO+strip)
 - `rust-toolchain.toml`: stable channel, rustfmt+clippy components
 - `src/main.rs`: Entry point, tokio async main, error handling dispatch
-- `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 12 subcommand groups
+- `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 25 subcommand groups
 - `src/errors.rs`: ErrorCode enum + FabioError struct with thiserror
 - `src/output.rs`: render_list, render_object, render_error (respects --quiet/--query), apply_query, unit tests
-- `src/client.rs`: FabricClient with async HTTP, LRO polling, OneLake DFS/Blob ops, run_notebook
+- `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, run_notebook
 - `src/commands/mod.rs`: Command dispatch
 - `src/commands/auth.rs`: login/logout/status (DefaultAzureCredential chain)
 - `src/commands/workspace.rs`: list/show/create/delete/assign-capacity
 - `src/commands/item.rs`: list/show/create/delete/copy/move
 - `src/commands/lakehouse.rs`: 15 subcommands (tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut)
 - `src/commands/notebook.rs`: create/get-definition/run (with --wait/--timeout)/status/stop/delete
-- `src/commands/warehouse.rs`: list/show/query (endpoint resolved, stdin/file/flag SQL input)
+- `src/commands/warehouse.rs`: list/show/create/update/delete/query (endpoint resolved, stdin/file/flag SQL input)
 - `src/commands/dataagent.rs`: list/show/create/update/delete/query
 - `src/commands/git.rs`: status/commit/pull/connect/disconnect/initialize/switch/connection/credentials
 - `src/commands/ontology.rs`: list/show/create/update/delete/get-definition/update-definition
+- `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings
+- `src/commands/data_pipeline.rs`: list/show/create/update/delete/run
+- `src/commands/eventhouse.rs`: list/show/create/update/delete
+- `src/commands/kql_database.rs`: list/show/create/update/delete/get-definition/update-definition
+- `src/commands/mirrored_database.rs`: list/show/create/update/delete/get-definition/update-definition/start/stop/status/table-status
+- `src/commands/capacity.rs`: list/show
+- `src/commands/connection.rs`: list/show/create/update/delete/list-supported-types
+- `src/commands/deployment_pipeline.rs`: list/show/create/update/delete/list-stages/list-stage-items/assign-workspace/unassign-workspace/deploy
+- `src/commands/domain.rs`: list/show/create/update/delete/list-workspaces/assign-workspaces/unassign-workspaces/assign-by-capacity/assign-by-principal
+- `src/commands/job_scheduler.rs`: list-instances/get-instance/run-on-demand/cancel-instance/list-schedules/get-schedule/create-schedule/update-schedule/delete-schedule
+- `src/commands/spark.rs`: get-settings/update-settings/list-pools/get-pool/create-pool/update-pool/delete-pool
+- `src/commands/onelake_security.rs`: list/show/upsert/delete (data access roles)
+- `src/commands/managed_private_endpoint.rs`: list/show/create/delete
 - `src/commands/profile.rs`: save/use/list/show/delete (named profiles with defaults)
 - `src/commands/jobs.rs`: list/get/prune (local async job ledger)
 - `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
@@ -143,6 +168,19 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_ontology.rs`: Ontology CRUD + definition tests
 - `tests/e2e_agent_native.rs`: Agent-native compliance tests (principles 1-10)
 - `tests/e2e_sync.rs`: Lakehouse sync tests
+- `tests/e2e_connection.rs`: Connection CRUD + list-supported-types tests
+- `tests/e2e_environment.rs`: Environment CRUD tests
+- `tests/e2e_data_pipeline.rs`: Data pipeline CRUD + run tests
+- `tests/e2e_eventhouse.rs`: Eventhouse CRUD tests
+- `tests/e2e_kql_database.rs`: KQL database tests
+- `tests/e2e_mirrored_database.rs`: Mirrored database tests
+- `tests/e2e_deployment_pipeline.rs`: Deployment pipeline tests
+- `tests/e2e_domain.rs`: Domain management tests
+- `tests/e2e_job_scheduler.rs`: Job scheduler tests
+- `tests/e2e_spark.rs`: Spark settings and pool tests
+- `tests/e2e_capacity.rs`: Capacity list/show tests
+- `tests/e2e_onelake_security.rs`: OneLake security tests
+- `tests/e2e_managed_private_endpoint.rs`: Managed private endpoint tests
 - `.github/workflows/ci.yml`: Rust CI (fmt, clippy, test, build) on 6 targets (x64+arm64 x linux/macos/windows)
 - `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
 - `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
