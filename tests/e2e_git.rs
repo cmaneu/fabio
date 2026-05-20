@@ -17,18 +17,18 @@ mod common;
 use common::{TestConfig, extract_data, fabio, parse_json};
 use serial_test::serial;
 
-/// Retry a fabio command up to 3 times with a 10-second delay between attempts.
+/// Retry a fabio command up to 5 times with a 15-second delay between attempts.
 /// Returns the last assertion result. Used for transient "Git provider failed" errors.
 fn retry_on_failure<F>(f: F) -> assert_cmd::assert::Assert
 where
     F: Fn() -> assert_cmd::assert::Assert,
 {
     let mut last_assert = f();
-    for _ in 0..2 {
+    for _ in 0..4 {
         if last_assert.get_output().status.success() {
             return last_assert;
         }
-        std::thread::sleep(std::time::Duration::from_secs(10));
+        std::thread::sleep(std::time::Duration::from_secs(15));
         last_assert = f();
     }
     last_assert
@@ -674,4 +674,334 @@ fn git_commit_pull_lifecycle() {
         .timeout(std::time::Duration::from_secs(60))
         .assert()
         .success();
+}
+
+// ---------------------------------------------------------------------------
+// Feature branch workflow: create branch, commit, merge, pull to main
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_feature_branch_workflow() {
+    let cfg = TestConfig::from_env();
+    let workspace = &cfg.dest_workspace;
+
+    // Auto-discover GitHub connection
+    let Some(connection_id) = find_github_connection_id() else {
+        eprintln!("No GitHub connection found, skipping test.");
+        return;
+    };
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let branch_name = format!("feature/test-{ts}");
+    let notebook_name = format!("feature_nb_{ts}");
+
+    // Ensure workspace is disconnected
+    let _ = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert();
+
+    // Step 1: Connect to main and initialize
+    fabio()
+        .args([
+            "git",
+            "connect",
+            "--workspace",
+            workspace,
+            "--provider",
+            "github",
+            "--owner",
+            "iemejia",
+            "--repo",
+            "fabio-test-connection",
+            "--branch",
+            "main",
+            "--connection-id",
+            &connection_id,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "init",
+                "--workspace",
+                workspace,
+                "--strategy",
+                "prefer-workspace",
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    // Step 2: Create a feature branch on the remote via gh CLI
+    let gh_output = std::process::Command::new("gh")
+        .args([
+            "api",
+            "repos/iemejia/fabio-test-connection/git/refs",
+            "-X",
+            "POST",
+            "-f",
+            "ref=refs/heads/placeholder",
+            "-f",
+            "sha=placeholder",
+        ])
+        .output();
+
+    // Get the current main SHA first
+    let sha_output = std::process::Command::new("gh")
+        .args([
+            "api",
+            "repos/iemejia/fabio-test-connection/git/ref/heads/main",
+            "--jq",
+            ".object.sha",
+        ])
+        .output()
+        .expect("failed to get main SHA");
+    let main_sha = String::from_utf8_lossy(&sha_output.stdout)
+        .trim()
+        .to_string();
+    assert!(!main_sha.is_empty(), "Failed to get main SHA");
+
+    // Create the feature branch
+    let create_ref = std::process::Command::new("gh")
+        .args([
+            "api",
+            "repos/iemejia/fabio-test-connection/git/refs",
+            "-X",
+            "POST",
+            "-f",
+            &format!("ref=refs/heads/{branch_name}"),
+            "-f",
+            &format!("sha={main_sha}"),
+        ])
+        .output()
+        .expect("failed to create branch");
+    assert!(
+        create_ref.status.success(),
+        "Failed to create branch: {}",
+        String::from_utf8_lossy(&create_ref.stderr)
+    );
+    // Ensure cleanup runs even if test fails
+    let _branch_cleanup = BranchCleanup {
+        branch: branch_name.clone(),
+    };
+
+    // Ignore the earlier placeholder attempt
+    drop(gh_output);
+
+    // Step 3: Switch workspace to feature branch
+    let checkout_args = [
+        "git",
+        "checkout",
+        "--workspace",
+        workspace,
+        "--branch",
+        &branch_name,
+        "--strategy",
+        "prefer-workspace",
+        "--wait",
+    ];
+    retry_on_failure(|| {
+        fabio()
+            .args(checkout_args)
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    // Verify we're on the feature branch
+    let assert = fabio()
+        .args(["git", "connection", "show", "--workspace", workspace])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(
+        data["gitProviderDetails"]["branchName"],
+        branch_name.as_str()
+    );
+
+    // Step 4: Create a notebook on the feature branch
+    fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            workspace,
+            "--name",
+            &notebook_name,
+            "--content",
+            "# Feature branch notebook\nprint('hello from feature branch')",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    // Step 5: Commit the change to the feature branch
+    let commit_msg = format!("feat: add {notebook_name}");
+    let commit_args = [
+        "git",
+        "commit",
+        "--workspace",
+        workspace,
+        "--all",
+        "--message",
+        &commit_msg,
+        "--wait",
+    ];
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args(commit_args)
+            .timeout(std::time::Duration::from_secs(180))
+            .assert()
+    })
+    .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "Succeeded");
+
+    // Step 6: Merge the feature branch into main via gh CLI
+    let merge_output = std::process::Command::new("gh")
+        .args([
+            "api",
+            "repos/iemejia/fabio-test-connection/merges",
+            "-X",
+            "POST",
+            "-f",
+            "base=main",
+            "-f",
+            &format!("head={branch_name}"),
+            "-f",
+            &format!("commit_message=Merge {branch_name}: add {notebook_name}"),
+        ])
+        .output()
+        .expect("failed to merge branch");
+    assert!(
+        merge_output.status.success(),
+        "Failed to merge: {}",
+        String::from_utf8_lossy(&merge_output.stderr)
+    );
+
+    // Step 7: Switch back to main
+    let switch_args = [
+        "git",
+        "checkout",
+        "--workspace",
+        workspace,
+        "--branch",
+        "main",
+        "--strategy",
+        "prefer-remote",
+        "--wait",
+    ];
+    retry_on_failure(|| {
+        fabio()
+            .args(switch_args)
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    // Verify we're on main
+    let assert = fabio()
+        .args(["git", "connection", "show", "--workspace", workspace])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["gitProviderDetails"]["branchName"], "main");
+
+    // Step 8: Verify the notebook from the feature branch exists in workspace
+    let assert = fabio()
+        .args(["item", "list", "--workspace", workspace, "-o", "json"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let items = json["data"].as_array().unwrap();
+    let has_feature_notebook = items
+        .iter()
+        .any(|i| i.get("displayName").and_then(|n| n.as_str()) == Some(notebook_name.as_str()));
+    assert!(
+        has_feature_notebook,
+        "Expected notebook '{notebook_name}' in workspace after merge, got: {:?}",
+        items
+            .iter()
+            .filter_map(|i| i.get("displayName").and_then(|n| n.as_str()))
+            .collect::<Vec<_>>()
+    );
+
+    // Step 9: Clean up - delete the notebook and commit
+    if let Some(nb) = items
+        .iter()
+        .find(|i| i.get("displayName").and_then(|n| n.as_str()) == Some(notebook_name.as_str()))
+    {
+        let nb_id = nb["id"].as_str().unwrap();
+        fabio()
+            .args(["item", "delete", "--workspace", workspace, "--id", nb_id])
+            .timeout(std::time::Duration::from_secs(30))
+            .assert()
+            .success();
+
+        // Commit cleanup (best-effort, may fail transiently)
+        let cleanup_msg = format!("cleanup: delete {notebook_name}");
+        let cleanup_args = [
+            "git",
+            "commit",
+            "--workspace",
+            workspace,
+            "--all",
+            "--message",
+            &cleanup_msg,
+            "--wait",
+        ];
+        let _ = retry_on_failure(|| {
+            fabio()
+                .args(cleanup_args)
+                .timeout(std::time::Duration::from_secs(180))
+                .assert()
+        });
+    }
+
+    // Disconnect
+    fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+}
+
+/// RAII guard to delete a remote branch on drop (cleanup even if test panics).
+struct BranchCleanup {
+    branch: String,
+}
+
+impl Drop for BranchCleanup {
+    fn drop(&mut self) {
+        let _ = std::process::Command::new("gh")
+            .args([
+                "api",
+                &format!(
+                    "repos/iemejia/fabio-test-connection/git/refs/heads/{}",
+                    self.branch
+                ),
+                "-X",
+                "DELETE",
+            ])
+            .output();
+    }
 }

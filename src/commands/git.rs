@@ -634,7 +634,13 @@ async fn checkout(
         .get("gitProviderDetails")
         .ok_or_else(|| anyhow::anyhow!("Workspace is not connected to Git"))?;
 
-    // Step 2: Disconnect from current branch
+    // Step 2: Get current credentials (needed for GitHub reconnect)
+    let credentials = client
+        .get(&format!("/workspaces/{workspace}/git/myGitCredentials"))
+        .await
+        .ok();
+
+    // Step 3: Disconnect from current branch
     client
         .post(
             &format!("/workspaces/{workspace}/git/disconnect"),
@@ -643,13 +649,20 @@ async fn checkout(
         )
         .await?;
 
-    // Step 3: Reconnect with the new branch
+    // Step 4: Reconnect with the new branch
     let mut new_provider_details = provider_details.clone();
     new_provider_details["branchName"] = Value::String(branch.to_string());
 
-    let connect_body = serde_json::json!({
+    let mut connect_body = serde_json::json!({
         "gitProviderDetails": new_provider_details,
     });
+
+    // Include credentials if available (required for GitHub)
+    if let Some(ref creds) = credentials {
+        if creds.get("source").is_some() {
+            connect_body["myGitCredentials"] = creds.clone();
+        }
+    }
 
     client
         .post(
@@ -659,7 +672,7 @@ async fn checkout(
         )
         .await?;
 
-    // Step 4: Initialize the connection
+    // Step 5: Initialize the connection
     let init_body = strategy.map_or_else(
         || serde_json::json!({}),
         |s| {
@@ -673,7 +686,7 @@ async fn checkout(
         },
     );
 
-    let data = client
+    let _data = client
         .post_with_timeout(
             &format!("/workspaces/{workspace}/git/initializeConnection"),
             &init_body,
@@ -682,7 +695,8 @@ async fn checkout(
         )
         .await?;
 
-    output::render_object(cli, &data, "status");
+    let result = serde_json::json!({"status": "switched", "branch": branch});
+    output::render_object(cli, &result, "status");
     Ok(())
 }
 
