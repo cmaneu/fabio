@@ -4,6 +4,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::errors::FabioError;
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -120,9 +121,12 @@ async fn assign_capacity(cli: &Cli, client: &FabricClient, id: &str, capacity: &
         return Ok(());
     }
 
-    client
+    if let Err(e) = client
         .post(&format!("/workspaces/{id}/assignToCapacity"), &body, false)
-        .await?;
+        .await
+    {
+        return Err(enrich_assign_capacity_error(e, capacity));
+    }
 
     let obj = serde_json::json!({
         "workspaceId": id,
@@ -131,4 +135,19 @@ async fn assign_capacity(cli: &Cli, client: &FabricClient, id: &str, capacity: &
     });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+/// Enrich capacity assignment errors with actionable hints.
+fn enrich_assign_capacity_error(err: anyhow::Error, capacity: &str) -> anyhow::Error {
+    let Some(fabio_err) = err.downcast_ref::<FabioError>() else {
+        return err;
+    };
+
+    let hint = format!(
+        "Capacity '{capacity}' was not found or is not accessible. \
+         List available capacities with: az fabric capacity list --query '[].{{name:name, id:id, state:properties.state}}' -o table. \
+         Create one with: az fabric capacity create --name <name> --resource-group <rg> --location <region> --sku F2 --administration-members <email>"
+    );
+
+    FabioError::with_hint(fabio_err.code, fabio_err.message.clone(), hint).into()
 }

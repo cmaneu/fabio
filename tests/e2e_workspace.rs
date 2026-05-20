@@ -279,7 +279,7 @@ fn workspace_delete_not_found() {
 }
 
 // ---------------------------------------------------------------------------
-// workspace assign-capacity with invalid capacity fails
+// workspace assign-capacity with invalid capacity fails with hint
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -307,5 +307,12 @@ fn workspace_assign_capacity_invalid() {
     assert!(
         code == "NOT_FOUND" || code == "API_ERROR" || code == "INVALID_INPUT",
         "Expected error code for invalid capacity, got: {code}"
+    );
+
+    // Should have a hint about creating the capacity
+    let hint = err_json["error"]["hint"].as_str().unwrap_or("");
+    assert!(
+        hint.contains("az fabric capacity"),
+        "Expected hint with az CLI command, got: {hint}"
     );
 }
