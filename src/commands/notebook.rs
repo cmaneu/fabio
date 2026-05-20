@@ -7,7 +7,7 @@ use tokio::time::sleep;
 use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::commands::jobs::{JobEntry, JobLedger};
-use crate::errors::{enrich_forbidden, ErrorCode, FabioError};
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]

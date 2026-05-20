@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{enrich_forbidden, ErrorCode, FabioError};
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]

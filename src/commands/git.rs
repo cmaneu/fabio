@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{enrich_forbidden, ErrorCode, FabioError};
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -227,21 +227,19 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             workspace_head,
             wait,
             timeout,
-        } => {
-            commit(
-                cli,
-                client,
-                workspace,
-                message.as_deref(),
-                *all,
-                items.as_deref(),
-                workspace_head.as_deref(),
-                *wait,
-                *timeout,
-            )
-            .await
-            .map_err(|e| enrich_forbidden(e, "git commit", "Member"))
-        }
+        } => commit(
+            cli,
+            client,
+            workspace,
+            message.as_deref(),
+            *all,
+            items.as_deref(),
+            workspace_head.as_deref(),
+            *wait,
+            *timeout,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "git commit", "Member")),
         GitCommand::Pull {
             workspace,
             conflict_resolution,
@@ -250,21 +248,19 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             remote_commit_hash,
             wait,
             timeout,
-        } => {
-            pull(
-                cli,
-                client,
-                workspace,
-                conflict_resolution.as_deref(),
-                *allow_override,
-                workspace_head.as_deref(),
-                remote_commit_hash.as_deref(),
-                *wait,
-                *timeout,
-            )
-            .await
-            .map_err(|e| enrich_forbidden(e, "git pull", "Member"))
-        }
+        } => pull(
+            cli,
+            client,
+            workspace,
+            conflict_resolution.as_deref(),
+            *allow_override,
+            workspace_head.as_deref(),
+            remote_commit_hash.as_deref(),
+            *wait,
+            *timeout,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "git pull", "Member")),
         GitCommand::Connect {
             workspace,
             provider,
@@ -276,58 +272,50 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             directory,
             custom_domain,
             connection_id,
-        } => {
-            connect(
-                cli,
-                client,
-                workspace,
-                provider,
-                repo,
-                branch,
-                org.as_deref(),
-                project.as_deref(),
-                owner.as_deref(),
-                directory.as_deref(),
-                custom_domain.as_deref(),
-                connection_id.as_deref(),
-            )
+        } => connect(
+            cli,
+            client,
+            workspace,
+            provider,
+            repo,
+            branch,
+            org.as_deref(),
+            project.as_deref(),
+            owner.as_deref(),
+            directory.as_deref(),
+            custom_domain.as_deref(),
+            connection_id.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "git connect", "Admin")),
+        GitCommand::Disconnect { workspace } => disconnect(cli, client, workspace)
             .await
-            .map_err(|e| enrich_forbidden(e, "git connect", "Admin"))
-        }
-        GitCommand::Disconnect { workspace } => {
-            disconnect(cli, client, workspace)
-                .await
-                .map_err(|e| enrich_forbidden(e, "git disconnect", "Admin"))
-        }
+            .map_err(|e| enrich_forbidden(e, "git disconnect", "Admin")),
         GitCommand::Init {
             workspace,
             strategy,
             wait,
             timeout,
-        } => {
-            init(cli, client, workspace, strategy.as_deref(), *wait, *timeout)
-                .await
-                .map_err(|e| enrich_forbidden(e, "git init", "Admin"))
-        }
+        } => init(cli, client, workspace, strategy.as_deref(), *wait, *timeout)
+            .await
+            .map_err(|e| enrich_forbidden(e, "git init", "Admin")),
         GitCommand::Checkout {
             workspace,
             branch,
             strategy,
             wait,
             timeout,
-        } => {
-            checkout(
-                cli,
-                client,
-                workspace,
-                branch,
-                strategy.as_deref(),
-                *wait,
-                *timeout,
-            )
-            .await
-            .map_err(|e| enrich_forbidden(e, "git checkout", "Admin"))
-        }
+        } => checkout(
+            cli,
+            client,
+            workspace,
+            branch,
+            strategy.as_deref(),
+            *wait,
+            *timeout,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "git checkout", "Admin")),
         GitCommand::Connection(sub) => match sub {
             ConnectionCommand::Show { workspace } => connection_show(cli, client, workspace).await,
         },
@@ -339,11 +327,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
                 workspace,
                 source,
                 connection_id,
-            } => {
-                credentials_update(cli, client, workspace, source, connection_id.as_deref())
-                    .await
-                    .map_err(|e| enrich_forbidden(e, "git credentials update", "Admin"))
-            }
+            } => credentials_update(cli, client, workspace, source, connection_id.as_deref())
+                .await
+                .map_err(|e| enrich_forbidden(e, "git credentials update", "Admin")),
         },
     }
 }

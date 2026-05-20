@@ -134,45 +134,39 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             description,
             definition,
             file,
-        } => {
-            create(
-                cli,
-                client,
-                workspace,
-                name,
-                description.as_deref(),
-                definition.as_deref(),
-                file.as_deref(),
-            )
-            .await
-            .map_err(|e| enrich_forbidden(e, "ontology create", "Member"))
-        }
+        } => create(
+            cli,
+            client,
+            workspace,
+            name,
+            description.as_deref(),
+            definition.as_deref(),
+            file.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "ontology create", "Member")),
         OntologyCommand::Update {
             workspace,
             id,
             name,
             description,
-        } => {
-            update(
-                cli,
-                client,
-                workspace,
-                id,
-                name.as_deref(),
-                description.as_deref(),
-            )
-            .await
-            .map_err(|e| enrich_forbidden(e, "ontology update", "Contributor"))
-        }
+        } => update(
+            cli,
+            client,
+            workspace,
+            id,
+            name.as_deref(),
+            description.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "ontology update", "Contributor")),
         OntologyCommand::Delete {
             workspace,
             id,
             hard,
-        } => {
-            delete(cli, client, workspace, id, *hard)
-                .await
-                .map_err(|e| enrich_forbidden(e, "ontology delete", "Member"))
-        }
+        } => delete(cli, client, workspace, id, *hard)
+            .await
+            .map_err(|e| enrich_forbidden(e, "ontology delete", "Member")),
         OntologyCommand::GetDefinition {
             workspace,
             id,
@@ -184,19 +178,17 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             definition,
             file,
             update_metadata,
-        } => {
-            update_definition(
-                cli,
-                client,
-                workspace,
-                id,
-                definition.as_deref(),
-                file.as_deref(),
-                *update_metadata,
-            )
-            .await
-            .map_err(|e| enrich_forbidden(e, "ontology update-definition", "Contributor"))
-        }
+        } => update_definition(
+            cli,
+            client,
+            workspace,
+            id,
+            definition.as_deref(),
+            file.as_deref(),
+            *update_metadata,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "ontology update-definition", "Contributor")),
     }
 }
 

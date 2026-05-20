@@ -1959,7 +1959,14 @@ fn git_checkout_blocked_by_uncommitted_changes() {
     // Cleanup: delete the notebook
     if !nb_id.is_empty() {
         let _ = fabio()
-            .args(["notebook", "delete", "--workspace", workspace, "--id", &nb_id])
+            .args([
+                "notebook",
+                "delete",
+                "--workspace",
+                workspace,
+                "--id",
+                &nb_id,
+            ])
             .timeout(std::time::Duration::from_secs(60))
             .assert();
     }

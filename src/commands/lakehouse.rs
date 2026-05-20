@@ -365,11 +365,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             id,
             source_path,
             dest_path,
-        } => {
-            upload(cli, client, workspace, id, source_path, dest_path)
-                .await
-                .map_err(|e| enrich_forbidden(e, "lakehouse upload", "Contributor"))
-        }
+        } => upload(cli, client, workspace, id, source_path, dest_path)
+            .await
+            .map_err(|e| enrich_forbidden(e, "lakehouse upload", "Contributor")),
         LakehouseCommand::Download {
             workspace,
             id,
@@ -383,11 +381,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             table,
             mode,
             format,
-        } => {
-            load_table(cli, client, workspace, id, source_path, table, mode, format)
-                .await
-                .map_err(|e| enrich_forbidden(e, "lakehouse load-table", "Contributor"))
-        }
+        } => load_table(cli, client, workspace, id, source_path, table, mode, format)
+            .await
+            .map_err(|e| enrich_forbidden(e, "lakehouse load-table", "Contributor")),
         LakehouseCommand::CopyFile {
             source_workspace,
             source_id,
@@ -395,29 +391,25 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             dest_workspace,
             dest_id,
             dest_path,
-        } => {
-            copy_file(
-                cli,
-                client,
-                source_workspace,
-                source_id,
-                source_path,
-                dest_workspace,
-                dest_id,
-                dest_path,
-            )
-            .await
-            .map_err(|e| enrich_forbidden(e, "lakehouse copy-file", "Contributor"))
-        }
+        } => copy_file(
+            cli,
+            client,
+            source_workspace,
+            source_id,
+            source_path,
+            dest_workspace,
+            dest_id,
+            dest_path,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse copy-file", "Contributor")),
         LakehouseCommand::DeleteFile {
             workspace,
             id,
             path,
-        } => {
-            delete_file(cli, client, workspace, id, path)
-                .await
-                .map_err(|e| enrich_forbidden(e, "lakehouse delete-file", "Contributor"))
-        }
+        } => delete_file(cli, client, workspace, id, path)
+            .await
+            .map_err(|e| enrich_forbidden(e, "lakehouse delete-file", "Contributor")),
         LakehouseCommand::MoveFile {
             source_workspace,
             source_id,
@@ -425,29 +417,25 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             dest_workspace,
             dest_id,
             dest_path,
-        } => {
-            move_file(
-                cli,
-                client,
-                source_workspace,
-                source_id,
-                source_path,
-                dest_workspace,
-                dest_id,
-                dest_path,
-            )
-            .await
-            .map_err(|e| enrich_forbidden(e, "lakehouse move-file", "Contributor"))
-        }
+        } => move_file(
+            cli,
+            client,
+            source_workspace,
+            source_id,
+            source_path,
+            dest_workspace,
+            dest_id,
+            dest_path,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse move-file", "Contributor")),
         LakehouseCommand::DeleteTable {
             workspace,
             id,
             table,
-        } => {
-            delete_table(cli, client, workspace, id, table)
-                .await
-                .map_err(|e| enrich_forbidden(e, "lakehouse delete-table", "Contributor"))
-        }
+        } => delete_table(cli, client, workspace, id, table)
+            .await
+            .map_err(|e| enrich_forbidden(e, "lakehouse delete-table", "Contributor")),
         LakehouseCommand::CopyTable {
             source_workspace,
             source_id,
@@ -455,20 +443,18 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             dest_workspace,
             dest_id,
             dest_table,
-        } => {
-            copy_table(
-                cli,
-                client,
-                source_workspace,
-                source_id,
-                source_table,
-                dest_workspace,
-                dest_id,
-                dest_table.as_deref(),
-            )
-            .await
-            .map_err(|e| enrich_forbidden(e, "lakehouse copy-table", "Contributor"))
-        }
+        } => copy_table(
+            cli,
+            client,
+            source_workspace,
+            source_id,
+            source_table,
+            dest_workspace,
+            dest_id,
+            dest_table.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse copy-table", "Contributor")),
         LakehouseCommand::MoveTable {
             source_workspace,
             source_id,
@@ -476,20 +462,18 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             dest_workspace,
             dest_id,
             dest_table,
-        } => {
-            move_table(
-                cli,
-                client,
-                source_workspace,
-                source_id,
-                source_table,
-                dest_workspace,
-                dest_id,
-                dest_table.as_deref(),
-            )
-            .await
-            .map_err(|e| enrich_forbidden(e, "lakehouse move-table", "Contributor"))
-        }
+        } => move_table(
+            cli,
+            client,
+            source_workspace,
+            source_id,
+            source_table,
+            dest_workspace,
+            dest_id,
+            dest_table.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse move-table", "Contributor")),
         LakehouseCommand::Sync {
             source_workspace,
             source_id,
@@ -499,22 +483,20 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             dest_path,
             delete,
             checksum,
-        } => {
-            sync_files(
-                cli,
-                client,
-                source_workspace,
-                source_id,
-                source_path,
-                dest_workspace,
-                dest_id,
-                dest_path,
-                *delete,
-                *checksum,
-            )
-            .await
-            .map_err(|e| enrich_forbidden(e, "lakehouse sync", "Contributor"))
-        }
+        } => sync_files(
+            cli,
+            client,
+            source_workspace,
+            source_id,
+            source_path,
+            dest_workspace,
+            dest_id,
+            dest_path,
+            *delete,
+            *checksum,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse sync", "Contributor")),
         LakehouseCommand::CreateShortcut {
             workspace,
             id,
@@ -522,11 +504,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             path,
             target_type,
             target,
-        } => {
-            create_shortcut(cli, client, workspace, id, name, path, target_type, target)
-                .await
-                .map_err(|e| enrich_forbidden(e, "lakehouse create-shortcut", "Contributor"))
-        }
+        } => create_shortcut(cli, client, workspace, id, name, path, target_type, target)
+            .await
+            .map_err(|e| enrich_forbidden(e, "lakehouse create-shortcut", "Contributor")),
         LakehouseCommand::GetShortcut {
             workspace,
             id,
@@ -538,11 +518,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             id,
             name,
             path,
-        } => {
-            delete_shortcut(cli, client, workspace, id, name, path)
-                .await
-                .map_err(|e| enrich_forbidden(e, "lakehouse delete-shortcut", "Contributor"))
-        }
+        } => delete_shortcut(cli, client, workspace, id, name, path)
+            .await
+            .map_err(|e| enrich_forbidden(e, "lakehouse delete-shortcut", "Contributor")),
     }
 }
 

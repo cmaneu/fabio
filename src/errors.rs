@@ -89,11 +89,7 @@ impl FabioError {
     }
 
     /// Create an error from HTTP status with the full response body for context-aware hints.
-    pub fn from_status_with_body(
-        status: u16,
-        message: impl Into<String>,
-        body: &str,
-    ) -> Self {
+    pub fn from_status_with_body(status: u16, message: impl Into<String>, body: &str) -> Self {
         let msg = message.into();
         let code = match status {
             401 => ErrorCode::AuthRequired,
@@ -105,9 +101,7 @@ impl FabioError {
             _ => ErrorCode::ApiError,
         };
         let hint = match code {
-            ErrorCode::AuthRequired => {
-                Some("Run 'fabio auth login' to authenticate.".to_string())
-            }
+            ErrorCode::AuthRequired => Some("Run 'fabio auth login' to authenticate.".to_string()),
             ErrorCode::Forbidden => Some(forbidden_hint(&msg, body)),
             ErrorCode::RateLimited => {
                 Some("Too many requests. Retry after a short backoff.".to_string())
@@ -256,7 +250,10 @@ mod tests {
         let err = FabioError::from_status(403, "insufficient privileges for this action");
         assert_eq!(err.code, ErrorCode::Forbidden);
         let hint = err.hint.unwrap();
-        assert!(hint.contains("workspace role"), "Hint should mention workspace roles: {hint}");
+        assert!(
+            hint.contains("workspace role"),
+            "Hint should mention workspace roles: {hint}"
+        );
     }
 
     #[test]
@@ -264,7 +261,10 @@ mod tests {
         let err = FabioError::from_status(403, "some error");
         assert_eq!(err.code, ErrorCode::Forbidden);
         let hint = err.hint.unwrap();
-        assert!(hint.contains("Insufficient permissions"), "Hint should be generic: {hint}");
+        assert!(
+            hint.contains("Insufficient permissions"),
+            "Hint should be generic: {hint}"
+        );
     }
 
     #[test]
@@ -276,7 +276,10 @@ mod tests {
         );
         assert_eq!(err.code, ErrorCode::Forbidden);
         let hint = err.hint.unwrap();
-        assert!(hint.contains("OneLake"), "Hint should mention OneLake: {hint}");
+        assert!(
+            hint.contains("OneLake"),
+            "Hint should mention OneLake: {hint}"
+        );
     }
 
     #[test]
@@ -288,6 +291,9 @@ mod tests {
         );
         assert_eq!(err.code, ErrorCode::Forbidden);
         let hint = err.hint.unwrap();
-        assert!(hint.contains("git operations"), "Hint should mention git: {hint}");
+        assert!(
+            hint.contains("git operations"),
+            "Hint should mention git: {hint}"
+        );
     }
 }

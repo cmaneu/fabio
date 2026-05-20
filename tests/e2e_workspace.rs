@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{TestConfig, extract_count, extract_data, fabio, parse_json};
+use common::{TestConfig, extract_count, extract_data, fabio, parse_json, unique_name};
 use predicates::prelude::*;
 use serial_test::serial;
 
@@ -314,5 +314,322 @@ fn workspace_assign_capacity_invalid() {
     assert!(
         hint.contains("az fabric capacity"),
         "Expected hint with az CLI command, got: {hint}"
+    );
+}
+
+// ===========================================================================
+// workspace update
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_update_name_and_description() {
+    let name = unique_name("ws_upd");
+
+    // Create workspace
+    let assert = fabio()
+        .args(["workspace", "create", "--name", &name])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let ws_id = extract_data(&json)["id"].as_str().unwrap().to_string();
+
+    // Update both name and description
+    let new_name = format!("{name}_renamed");
+    let assert = fabio()
+        .args([
+            "workspace",
+            "update",
+            "--id",
+            &ws_id,
+            "--name",
+            &new_name,
+            "--description",
+            "Updated description",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["displayName"], new_name);
+    assert_eq!(data["id"], ws_id);
+
+    // Cleanup
+    fabio()
+        .args(["workspace", "delete", "--id", &ws_id])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_update_requires_at_least_one_field() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args(["workspace", "update", "--id", &cfg.source_workspace])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert_eq!(code, "INVALID_INPUT");
+}
+
+// ===========================================================================
+// workspace unassign-capacity
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_unassign_capacity_on_nonexistent() {
+    let assert = fabio()
+        .args([
+            "workspace",
+            "unassign-capacity",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR" || code == "FORBIDDEN",
+        "Expected error for invalid workspace, got: {code}"
+    );
+}
+
+// ===========================================================================
+// workspace role-assignments
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_list_role_assignments() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "list-role-assignments",
+            "--id",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let count = extract_count(&json);
+
+    assert!(
+        count >= 1,
+        "Expected at least one role assignment (the admin)"
+    );
+    let arr = data.as_array().unwrap();
+    assert!(!arr.is_empty());
+
+    // Each assignment should have id and role
+    let first = &arr[0];
+    assert!(first.get("id").is_some());
+    assert!(first.get("role").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_add_role_assignment_invalid_role() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "add-role-assignment",
+            "--id",
+            &cfg.source_workspace,
+            "--principal-id",
+            "00000000-0000-0000-0000-000000000000",
+            "--principal-type",
+            "User",
+            "--role",
+            "SuperAdmin",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert_eq!(code, "INVALID_INPUT");
+
+    let hint = err_json["error"]["hint"].as_str().unwrap_or("");
+    assert!(
+        hint.contains("Admin") && hint.contains("Member"),
+        "Expected hint with valid roles, got: {hint}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_add_role_assignment_invalid_principal_type() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "add-role-assignment",
+            "--id",
+            &cfg.source_workspace,
+            "--principal-id",
+            "00000000-0000-0000-0000-000000000000",
+            "--principal-type",
+            "Application",
+            "--role",
+            "Viewer",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert_eq!(code, "INVALID_INPUT");
+
+    let hint = err_json["error"]["hint"].as_str().unwrap_or("");
+    assert!(
+        hint.contains("ServicePrincipal"),
+        "Expected hint with valid principal types, got: {hint}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_update_role_assignment_invalid_role() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "update-role-assignment",
+            "--id",
+            &cfg.source_workspace,
+            "--assignment-id",
+            "00000000-0000-0000-0000-000000000000",
+            "--role",
+            "Owner",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert_eq!(code, "INVALID_INPUT");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_delete_role_assignment_not_found() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "delete-role-assignment",
+            "--id",
+            &cfg.source_workspace,
+            "--assignment-id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR",
+        "Expected NOT_FOUND or API_ERROR, got: {code}"
+    );
+}
+
+// ===========================================================================
+// workspace provision/deprovision identity
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_provision_identity_on_nonexistent() {
+    let assert = fabio()
+        .args([
+            "workspace",
+            "provision-identity",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR" || code == "FORBIDDEN",
+        "Expected error for invalid workspace, got: {code}"
+    );
+}
+
+// ===========================================================================
+// workspace update with --dry-run
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_update_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "update",
+            "--id",
+            &cfg.source_workspace,
+            "--name",
+            "Should Not Change",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("dry_run"),
+        "Expected dry_run indicator in output"
+    );
+
+    // Verify workspace name did NOT change
+    let assert = fabio()
+        .args(["workspace", "show", "--id", &cfg.source_workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_ne!(
+        data["displayName"].as_str().unwrap_or(""),
+        "Should Not Change"
     );
 }

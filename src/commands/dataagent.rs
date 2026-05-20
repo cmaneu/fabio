@@ -8,7 +8,7 @@ use tokio::time::sleep;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{enrich_forbidden, ErrorCode, FabioError};
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 /// Polling interval for data agent query runs.
@@ -100,42 +100,34 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             workspace,
             name,
             description,
-        } => {
-            create(cli, client, workspace, name, description.as_deref())
-                .await
-                .map_err(|e| enrich_forbidden(e, "data-agent create", "Member"))
-        }
+        } => create(cli, client, workspace, name, description.as_deref())
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent create", "Member")),
         DataAgentCommand::Update {
             workspace,
             id,
             name,
             description,
-        } => {
-            update(
-                cli,
-                client,
-                workspace,
-                id,
-                name.as_deref(),
-                description.as_deref(),
-            )
+        } => update(
+            cli,
+            client,
+            workspace,
+            id,
+            name.as_deref(),
+            description.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-agent update", "Contributor")),
+        DataAgentCommand::Delete { workspace, id } => delete(cli, client, workspace, id)
             .await
-            .map_err(|e| enrich_forbidden(e, "data-agent update", "Contributor"))
-        }
-        DataAgentCommand::Delete { workspace, id } => {
-            delete(cli, client, workspace, id)
-                .await
-                .map_err(|e| enrich_forbidden(e, "data-agent delete", "Member"))
-        }
+            .map_err(|e| enrich_forbidden(e, "data-agent delete", "Member")),
         DataAgentCommand::Query {
             workspace,
             id,
             prompt,
-        } => {
-            query(cli, client, workspace, id, prompt.as_deref())
-                .await
-                .map_err(|e| enrich_forbidden(e, "data-agent query", "Viewer"))
-        }
+        } => query(cli, client, workspace, id, prompt.as_deref())
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent query", "Viewer")),
     }
 }
 
