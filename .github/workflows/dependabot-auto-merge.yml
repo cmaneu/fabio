@@ -1,11 +1,6 @@
 name: Dependabot Auto Merge
 
-on:
-  workflow_run:
-    workflows:
-      - CI
-    types:
-      - completed
+on: pull_request
 
 permissions:
   contents: write
@@ -13,69 +8,12 @@ permissions:
 
 jobs:
   enable-automerge:
-    if: >
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'success'
+    if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
 
     steps:
-      - name: Enable auto-merge for clean Dependabot PRs
-        uses: actions/github-script@v8
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const { owner, repo } = context.repo;
-            const pullRequests = context.payload.workflow_run.pull_requests;
-
-            if (pullRequests.length === 0) {
-              core.info('No pull requests are associated with this workflow run.');
-              return;
-            }
-
-            for (const pullRequestRef of pullRequests) {
-              const pull_number = pullRequestRef.number;
-              const { data: pullRequest } = await github.rest.pulls.get({
-                owner,
-                repo,
-                pull_number,
-              });
-
-              if (pullRequest.user.login !== 'dependabot[bot]') {
-                core.info(`Skipping pull request #${pull_number}; author is ${pullRequest.user.login}.`);
-                continue;
-              }
-
-              if (pullRequest.draft) {
-                core.info(`Skipping draft Dependabot pull request #${pull_number}.`);
-                continue;
-              }
-
-              if (pullRequest.mergeable_state !== 'clean') {
-                core.info(
-                  `Skipping pull request #${pull_number}; mergeable_state=${pullRequest.mergeable_state}.`
-                );
-                continue;
-              }
-
-              try {
-                await github.graphql(
-                  `
-                    mutation EnableAutoMerge($pullRequestId: ID!) {
-                      enablePullRequestAutoMerge(
-                        input: { pullRequestId: $pullRequestId, mergeMethod: REBASE }
-                      ) {
-                        clientMutationId
-                      }
-                    }
-                  `,
-                  {
-                    pullRequestId: pullRequest.node_id,
-                  }
-                );
-                core.info(`Enabled auto-merge for pull request #${pull_number}.`);
-              } catch (error) {
-                core.info(
-                  `Skipping pull request #${pull_number}; could not enable auto-merge: ${error.message}`
-                );
-              }
-            }
+      - name: Enable auto-merge for Dependabot PRs
+        run: gh pr merge --auto --rebase "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
