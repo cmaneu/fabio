@@ -868,6 +868,67 @@ fn commands_schema() -> serde_json::Value {
                 "create": {"description": "Create a managed private endpoint", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--target-resource-id": {"type": "string", "required": true}, "--target-subresource-type": {"type": "string", "required": true}}},
                 "delete": {"description": "Delete a managed private endpoint", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
             }
+        },
+        "eventstream": {
+            "description": "Manage eventstreams (real-time data ingestion)",
+            "subcommands": {
+                "list": {"description": "List eventstreams", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show eventstream details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create an eventstream", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update eventstream properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete an eventstream", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get eventstream definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update eventstream definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "kql-queryset": {
+            "description": "Manage KQL querysets (saved KQL queries)",
+            "subcommands": {
+                "list": {"description": "List KQL querysets", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show KQL queryset details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a KQL queryset", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update KQL queryset properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a KQL queryset", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get KQL queryset definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update KQL queryset definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "spark-job-definition": {
+            "description": "Manage Spark job definitions (batch Spark jobs)",
+            "subcommands": {
+                "list": {"description": "List Spark job definitions", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show Spark job definition details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a Spark job definition", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update Spark job definition properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a Spark job definition", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get Spark job definition content", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update Spark job definition content", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "run": {"description": "Run a Spark job definition", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+            }
+        },
+        "report": {
+            "description": "Manage reports (Power BI)",
+            "subcommands": {
+                "list": {"description": "List reports", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show report details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a report from definition file", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}, "--file": {"type": "string", "required": true}}},
+                "update": {"description": "Update report properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a report", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get report definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update report definition from file", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string", "required": true}}}
+            }
+        },
+        "semantic-model": {
+            "description": "Manage semantic models (Power BI datasets)",
+            "subcommands": {
+                "list": {"description": "List semantic models", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show semantic model details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a semantic model from definition file (model.bim)", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}, "--file": {"type": "string", "required": true}}},
+                "update": {"description": "Update semantic model properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a semantic model", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get semantic model definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update semantic model definition from file", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string", "required": true}}}
+            }
         }
     })
 }
