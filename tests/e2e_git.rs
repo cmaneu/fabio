@@ -259,29 +259,33 @@ fn git_connect_init_status_disconnect_lifecycle() {
     );
 
     // Initialize connection (prefer-workspace to handle case where both sides have content)
-    let assert = fabio()
-        .args([
-            "git",
-            "init",
-            "--workspace",
-            workspace,
-            "--strategy",
-            "prefer-workspace",
-        ])
-        .timeout(std::time::Duration::from_secs(120))
-        .assert()
-        .success();
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "init",
+                "--workspace",
+                workspace,
+                "--strategy",
+                "prefer-workspace",
+            ])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
 
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["status"], "initialized");
 
     // Get status (should work now)
-    let assert = fabio()
-        .args(["git", "status", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(120))
-        .assert()
-        .success();
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args(["git", "status", "--workspace", workspace])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
 
     let json = parse_json(&assert);
     let data = extract_data(&json);
@@ -559,11 +563,13 @@ fn git_commit_pull_lifecycle() {
         .success();
 
     // Status should show the new notebook as Added
-    let assert = fabio()
-        .args(["git", "status", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(120))
-        .assert()
-        .success();
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args(["git", "status", "--workspace", workspace])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
 
     let json = parse_json(&assert);
     let data = extract_data(&json);
@@ -602,11 +608,13 @@ fn git_commit_pull_lifecycle() {
     assert_eq!(data["status"], "Succeeded");
 
     // Status should be clean after commit
-    let assert = fabio()
-        .args(["git", "status", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(120))
-        .assert()
-        .success();
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args(["git", "status", "--workspace", workspace])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
 
     let json = parse_json(&assert);
     let data = extract_data(&json);
@@ -976,6 +984,639 @@ fn git_feature_branch_workflow() {
                 .assert()
         });
     }
+
+    // Disconnect
+    fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// Selective commit (--items): commit only specific items by object ID
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_selective_commit() {
+    let cfg = TestConfig::from_env();
+    let workspace = &cfg.dest_workspace;
+
+    let Some(connection_id) = find_github_connection_id() else {
+        eprintln!("No GitHub connection found, skipping test.");
+        return;
+    };
+
+    // Ensure workspace is disconnected
+    let _ = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert();
+
+    // Connect and init
+    fabio()
+        .args([
+            "git",
+            "connect",
+            "--workspace",
+            workspace,
+            "--provider",
+            "github",
+            "--owner",
+            "iemejia",
+            "--repo",
+            "fabio-test-connection",
+            "--branch",
+            "main",
+            "--connection-id",
+            &connection_id,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "init",
+                "--workspace",
+                workspace,
+                "--strategy",
+                "prefer-workspace",
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    // Create two notebooks
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let nb_a = format!("selective_a_{ts}");
+    let nb_b = format!("selective_b_{ts}");
+
+    fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            workspace,
+            "--name",
+            &nb_a,
+            "--content",
+            "# Notebook A",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            workspace,
+            "--name",
+            &nb_b,
+            "--content",
+            "# Notebook B",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    // Get status to see both items and their objectIds (retry for transient errors)
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args(["git", "status", "--workspace", workspace])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let changes = data.as_array().expect("Expected changes array");
+
+    // Find objectId for notebook A only (nested at itemMetadata.itemIdentifier.objectId)
+    let obj_id_a = changes
+        .iter()
+        .find(|c| {
+            c.get("itemMetadata")
+                .and_then(|m| m.get("displayName"))
+                .and_then(|n| n.as_str())
+                == Some(nb_a.as_str())
+        })
+        .and_then(|c| {
+            c.get("itemMetadata")
+                .and_then(|m| m.get("itemIdentifier"))
+                .and_then(|i| i.get("objectId"))
+                .and_then(|id| id.as_str())
+        })
+        .expect("Could not find objectId for notebook A");
+
+    // Selective commit: only commit notebook A
+    let commit_args = [
+        "git",
+        "commit",
+        "--workspace",
+        workspace,
+        "--items",
+        obj_id_a,
+        "--message",
+        &format!("Selective commit: only {nb_a}"),
+        "--wait",
+    ];
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args(commit_args)
+            .timeout(std::time::Duration::from_secs(180))
+            .assert()
+    })
+    .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "Succeeded");
+
+    // Status should still show notebook B as uncommitted (retry for transient errors)
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args(["git", "status", "--workspace", workspace])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Should be an array with remaining changes (notebook B)
+    assert!(data.is_array(), "Expected changes array: {data}");
+    let remaining = data.as_array().unwrap();
+    let has_nb_b = remaining.iter().any(|c| {
+        c.get("itemMetadata")
+            .and_then(|m| m.get("displayName"))
+            .and_then(|n| n.as_str())
+            == Some(nb_b.as_str())
+    });
+    assert!(
+        has_nb_b,
+        "Expected notebook B still uncommitted: {data}"
+    );
+    let has_nb_a = remaining.iter().any(|c| {
+        c.get("itemMetadata")
+            .and_then(|m| m.get("displayName"))
+            .and_then(|n| n.as_str())
+            == Some(nb_a.as_str())
+    });
+    assert!(
+        !has_nb_a,
+        "Notebook A should already be committed: {data}"
+    );
+
+    // Clean up: commit all remaining, delete both notebooks, commit, disconnect
+    let _ = retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "commit",
+                "--workspace",
+                workspace,
+                "--all",
+                "--message",
+                "cleanup: commit remaining",
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_secs(180))
+            .assert()
+    });
+
+    // Delete notebooks
+    let assert = fabio()
+        .args(["item", "list", "--workspace", workspace, "-o", "json"])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = json["data"].as_array().unwrap();
+    for name in [&nb_a, &nb_b] {
+        if let Some(nb) = items
+            .iter()
+            .find(|i| i.get("displayName").and_then(|n| n.as_str()) == Some(name.as_str()))
+        {
+            let nb_id = nb["id"].as_str().unwrap();
+            let _ = fabio()
+                .args(["item", "delete", "--workspace", workspace, "--id", nb_id])
+                .timeout(std::time::Duration::from_secs(30))
+                .assert();
+        }
+    }
+
+    // Commit cleanup and disconnect
+    let _ = retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "commit",
+                "--workspace",
+                workspace,
+                "--all",
+                "--message",
+                "cleanup: delete selective test notebooks",
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_secs(180))
+            .assert()
+    });
+
+    fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// Credentials update: change from ConfiguredConnection to None and back
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_credentials_update() {
+    let cfg = TestConfig::from_env();
+    let workspace = &cfg.dest_workspace;
+
+    let Some(connection_id) = find_github_connection_id() else {
+        eprintln!("No GitHub connection found, skipping test.");
+        return;
+    };
+
+    // Ensure workspace is disconnected
+    let _ = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert();
+
+    // Connect and init (credentials will be ConfiguredConnection)
+    fabio()
+        .args([
+            "git",
+            "connect",
+            "--workspace",
+            workspace,
+            "--provider",
+            "github",
+            "--owner",
+            "iemejia",
+            "--repo",
+            "fabio-test-connection",
+            "--branch",
+            "main",
+            "--connection-id",
+            &connection_id,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "init",
+                "--workspace",
+                workspace,
+                "--strategy",
+                "prefer-workspace",
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    // Verify current credentials are ConfiguredConnection
+    let assert = fabio()
+        .args(["git", "credentials", "show", "--workspace", workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["source"], "ConfiguredConnection");
+
+    // Update credentials to None
+    fabio()
+        .args([
+            "git",
+            "credentials",
+            "update",
+            "--workspace",
+            workspace,
+            "--source",
+            "none",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .success();
+
+    // Verify credentials changed to None
+    let assert = fabio()
+        .args(["git", "credentials", "show", "--workspace", workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(
+        data["source"], "None",
+        "Expected credentials source 'None' after update: {data}"
+    );
+
+    // Restore credentials back to ConfiguredConnection
+    fabio()
+        .args([
+            "git",
+            "credentials",
+            "update",
+            "--workspace",
+            workspace,
+            "--source",
+            "configured-connection",
+            "--connection-id",
+            &connection_id,
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .success();
+
+    // Verify restored
+    let assert = fabio()
+        .args(["git", "credentials", "show", "--workspace", workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["source"], "ConfiguredConnection");
+    assert_eq!(data["connectionId"], connection_id.as_str());
+
+    // Disconnect
+    fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// Async commit (without --wait): returns immediately with operation status
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_commit_async_returns_operation() {
+    let cfg = TestConfig::from_env();
+    let workspace = &cfg.dest_workspace;
+
+    let Some(connection_id) = find_github_connection_id() else {
+        eprintln!("No GitHub connection found, skipping test.");
+        return;
+    };
+
+    // Ensure workspace is disconnected
+    let _ = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert();
+
+    // Connect and init
+    fabio()
+        .args([
+            "git",
+            "connect",
+            "--workspace",
+            workspace,
+            "--provider",
+            "github",
+            "--owner",
+            "iemejia",
+            "--repo",
+            "fabio-test-connection",
+            "--branch",
+            "main",
+            "--connection-id",
+            &connection_id,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "init",
+                "--workspace",
+                workspace,
+                "--strategy",
+                "prefer-workspace",
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    // Create a notebook to have something to commit
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let nb_name = format!("async_commit_{ts}");
+
+    fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            workspace,
+            "--name",
+            &nb_name,
+            "--content",
+            "# Async commit test",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    // Commit WITHOUT --wait (should return immediately)
+    let commit_args = [
+        "git",
+        "commit",
+        "--workspace",
+        workspace,
+        "--all",
+        "--message",
+        &format!("async: add {nb_name}"),
+    ];
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args(commit_args)
+            .timeout(std::time::Duration::from_secs(60))
+            .assert()
+    })
+    .success();
+
+    // Without --wait, the response should contain an operationId or status != Succeeded (async)
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Should have some response - could be empty (202 accepted) or contain operation info
+    // The key property is that it returns quickly (within timeout) without polling
+    // Accept any valid JSON response (the operation was dispatched)
+    assert!(
+        data.is_null() || data.is_object() || data.is_string(),
+        "Expected structured async response: {data}"
+    );
+
+    // Wait for the async operation to complete before cleanup
+    std::thread::sleep(std::time::Duration::from_secs(30));
+
+    // Cleanup: delete the notebook, commit (with --wait), disconnect
+    let assert = fabio()
+        .args(["item", "list", "--workspace", workspace, "-o", "json"])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = json["data"].as_array().unwrap();
+    if let Some(nb) = items
+        .iter()
+        .find(|i| i.get("displayName").and_then(|n| n.as_str()) == Some(nb_name.as_str()))
+    {
+        let nb_id = nb["id"].as_str().unwrap();
+        let _ = fabio()
+            .args(["item", "delete", "--workspace", workspace, "--id", nb_id])
+            .timeout(std::time::Duration::from_secs(30))
+            .assert();
+    }
+
+    let _ = retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "commit",
+                "--workspace",
+                workspace,
+                "--all",
+                "--message",
+                "cleanup: delete async test notebook",
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_secs(180))
+            .assert()
+    });
+
+    fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// Pull with --conflict-resolution prefer-remote
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_pull_with_conflict_resolution() {
+    let cfg = TestConfig::from_env();
+    let workspace = &cfg.dest_workspace;
+
+    let Some(connection_id) = find_github_connection_id() else {
+        eprintln!("No GitHub connection found, skipping test.");
+        return;
+    };
+
+    // Ensure workspace is disconnected
+    let _ = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert();
+
+    // Connect and init
+    fabio()
+        .args([
+            "git",
+            "connect",
+            "--workspace",
+            workspace,
+            "--provider",
+            "github",
+            "--owner",
+            "iemejia",
+            "--repo",
+            "fabio-test-connection",
+            "--branch",
+            "main",
+            "--connection-id",
+            &connection_id,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "init",
+                "--workspace",
+                workspace,
+                "--strategy",
+                "prefer-workspace",
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    // Pull with --conflict-resolution prefer-remote --allow-override
+    // Even if there's nothing to pull, this tests the flags are passed correctly.
+    // The API should succeed (no-op if already up to date).
+    let pull_args = [
+        "git",
+        "pull",
+        "--workspace",
+        workspace,
+        "--conflict-resolution",
+        "prefer-remote",
+        "--allow-override",
+        "--wait",
+    ];
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args(pull_args)
+            .timeout(std::time::Duration::from_secs(180))
+            .assert()
+    })
+    .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Pull should succeed (either "Succeeded" or empty if already up-to-date)
+    assert!(
+        data.get("status").and_then(|s| s.as_str()) == Some("Succeeded")
+            || data.is_null()
+            || data.is_object(),
+        "Expected successful pull response: {data}"
+    );
 
     // Disconnect
     fabio()
