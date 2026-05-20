@@ -294,7 +294,9 @@ async fn list(
         let _ = write!(path, "?type={t}");
     }
 
-    let resp = client.get_list(&path, "value", cli.all).await?;
+    let resp = client
+        .get_list(&path, "value", cli.all, cli.continuation_token.as_deref())
+        .await?;
 
     output::render_list_with_token(
         cli,
@@ -353,6 +355,7 @@ async fn list_connections(
             &format!("/workspaces/{workspace}/items/{id}/connections"),
             "value",
             cli.all,
+            cli.continuation_token.as_deref(),
         )
         .await
         .map_err(|e| enrich_forbidden(e, "item list-connections", "ReadWrite"))?;

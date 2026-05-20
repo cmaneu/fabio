@@ -232,6 +232,7 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
             &format!("/workspaces/{workspace}/notebooks"),
             "value",
             cli.all,
+            cli.continuation_token.as_deref(),
         )
         .await?;
 

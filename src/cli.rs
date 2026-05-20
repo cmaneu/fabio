@@ -47,6 +47,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub all: bool,
 
+    /// Resume pagination from a specific continuation token (returned by a previous list call)
+    #[arg(long, global = true)]
+    pub continuation_token: Option<String>,
+
     /// Use a named profile for default settings
     #[arg(long, global = true)]
     pub profile: Option<String>,

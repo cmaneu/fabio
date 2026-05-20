@@ -200,7 +200,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
 // ─── List ────────────────────────────────────────────────────────────────────
 
 async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
-    let resp = client.get_list("/workspaces", "value", cli.all).await?;
+    let resp = client
+        .get_list(
+            "/workspaces",
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await?;
 
     output::render_list_with_token(
         cli,
@@ -416,6 +423,7 @@ async fn list_role_assignments(cli: &Cli, client: &FabricClient, id: &str) -> Re
             &format!("/workspaces/{id}/roleAssignments"),
             "value",
             cli.all,
+            cli.continuation_token.as_deref(),
         )
         .await
         .map_err(|e| enrich_forbidden(e, "workspace list-role-assignments", "Member"))?;

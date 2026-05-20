@@ -285,6 +285,7 @@ async fn list_instances(
             &format!("/workspaces/{workspace}/items/{item_id}/jobs/instances"),
             "value",
             cli.all,
+            cli.continuation_token.as_deref(),
         )
         .await?;
 
@@ -418,6 +419,7 @@ async fn list_schedules(
             &format!("/workspaces/{workspace}/items/{item_id}/jobs/{job_type}/schedules"),
             "value",
             cli.all,
+            cli.continuation_token.as_deref(),
         )
         .await?;
 

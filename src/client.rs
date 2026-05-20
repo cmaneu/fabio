@@ -189,16 +189,18 @@ impl FabricClient {
     /// GET a paginated list from Fabric REST API.
     ///
     /// When `paginate` is true, follows `continuationToken` until all pages are fetched.
+    /// When `start_token` is provided, begins pagination from that token.
     /// Returns a `PaginatedResponse` with all collected items and optional continuation token.
     pub async fn get_list(
         &self,
         path: &str,
         array_field: &str,
         paginate: bool,
+        start_token: Option<&str>,
     ) -> Result<PaginatedResponse> {
         let token = self.require_auth().await?;
         let mut all_items: Vec<Value> = Vec::new();
-        let mut continuation_token: Option<String> = None;
+        let mut continuation_token: Option<String> = start_token.map(String::from);
 
         loop {
             let url = continuation_token.as_ref().map_or_else(

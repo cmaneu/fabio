@@ -162,7 +162,12 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DomainCommand) 
 
 async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
     let resp = client
-        .get_list("/admin/domains", "domains", cli.all)
+        .get_list(
+            "/admin/domains",
+            "domains",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
         .await?;
 
     output::render_list_with_token(
@@ -264,7 +269,12 @@ async fn delete(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
 
 async fn list_workspaces(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
     let resp = client
-        .get_list(&format!("/admin/domains/{id}/workspaces"), "value", cli.all)
+        .get_list(
+            &format!("/admin/domains/{id}/workspaces"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
         .await?;
 
     output::render_list_with_token(

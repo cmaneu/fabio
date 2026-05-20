@@ -99,6 +99,7 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str, item_id: &str) 
             &format!("/workspaces/{workspace}/items/{item_id}/dataAccessRoles"),
             "value",
             cli.all,
+            cli.continuation_token.as_deref(),
         )
         .await?;
 
@@ -126,6 +127,7 @@ async fn show(
             &format!("/workspaces/{workspace}/items/{item_id}/dataAccessRoles"),
             "value",
             true,
+            None,
         )
         .await?;
 
@@ -212,6 +214,7 @@ async fn delete(
             &format!("/workspaces/{workspace}/items/{item_id}/dataAccessRoles"),
             "value",
             true,
+            None,
         )
         .await?;
 

@@ -181,7 +181,12 @@ pub async fn execute(
 
 async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
     let resp = client
-        .get_list("/deploymentPipelines", "value", cli.all)
+        .get_list(
+            "/deploymentPipelines",
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
         .await?;
 
     output::render_list_with_token(
@@ -287,6 +292,7 @@ async fn list_stages(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
             &format!("/deploymentPipelines/{id}/stages"),
             "value",
             cli.all,
+            cli.continuation_token.as_deref(),
         )
         .await?;
 
@@ -312,6 +318,7 @@ async fn list_stage_items(
             &format!("/deploymentPipelines/{id}/stages/{stage_id}/items"),
             "value",
             cli.all,
+            cli.continuation_token.as_deref(),
         )
         .await?;
 

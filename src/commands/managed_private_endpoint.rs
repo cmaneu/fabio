@@ -103,6 +103,7 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
             &format!("/workspaces/{workspace}/managedPrivateEndpoints"),
             "value",
             cli.all,
+            cli.continuation_token.as_deref(),
         )
         .await?;
 

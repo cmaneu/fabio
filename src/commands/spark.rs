@@ -208,6 +208,7 @@ async fn list_pools(cli: &Cli, client: &FabricClient, workspace: &str) -> Result
             &format!("/workspaces/{workspace}/spark/pools"),
             "value",
             cli.all,
+            cli.continuation_token.as_deref(),
         )
         .await?;
 

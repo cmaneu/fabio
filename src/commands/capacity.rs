@@ -27,7 +27,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CapacityCommand
 }
 
 async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
-    let resp = client.get_list("/capacities", "value", cli.all).await?;
+    let resp = client
+        .get_list(
+            "/capacities",
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await?;
 
     output::render_list_with_token(
         cli,

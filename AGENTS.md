@@ -199,7 +199,5 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Next Steps
 - Add ODBC support to warehouse query (`odbc-api` crate)
-- Add `warehouse create`/`warehouse delete` commands
-- Add `notebook update` command (update definition)
 - Add pagination support for list commands (continuationToken)
 - Consider adding `--filter` flag for list commands

@@ -102,6 +102,12 @@ fn global_flags() -> Vec<Flag> {
             default: Some("false"),
         },
         Flag {
+            name: "--continuation-token",
+            kind: "string",
+            description: "Resume pagination from a specific continuation token (returned by a previous list call)",
+            default: None,
+        },
+        Flag {
             name: "--profile",
             kind: "string",
             description: "Use a named profile for default settings",

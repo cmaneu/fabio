@@ -640,6 +640,7 @@ async fn list_lakehouses(cli: &Cli, client: &FabricClient, workspace: &str) -> R
             &format!("/workspaces/{workspace}/lakehouses"),
             "value",
             cli.all,
+            cli.continuation_token.as_deref(),
         )
         .await?;
 
@@ -776,6 +777,7 @@ async fn tables(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> 
             &format!("/workspaces/{workspace}/lakehouses/{id}/tables"),
             "data",
             cli.all,
+            cli.continuation_token.as_deref(),
         )
         .await?;
 
@@ -1310,6 +1312,7 @@ async fn expand_table_glob(
             &format!("/workspaces/{workspace}/lakehouses/{lakehouse_id}/tables"),
             "data",
             true, // Always paginate for glob expansion
+            None,
         )
         .await?;
 
