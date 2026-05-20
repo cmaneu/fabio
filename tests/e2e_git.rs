@@ -7,11 +7,57 @@
 //! - Connection show (always works)
 //! - Status on unconnected workspace (expected error)
 //! - Connect → Init → Status → Disconnect lifecycle
+//!
+//! The lifecycle test uses `iemejia/fabio-test-connection` on GitHub.
+//! It auto-discovers a GitHub connection from the tenant (via `fabio connection list`)
+//! or falls back to `FABIO_TEST_GIT_CONNECTION_ID` env var.
 
 mod common;
 
 use common::{TestConfig, extract_data, fabio, parse_json};
 use serial_test::serial;
+
+/// Discover a GitHub connection ID from the tenant.
+///
+/// Tries (in order):
+/// 1. `FABIO_TEST_GIT_CONNECTION_ID` environment variable
+/// 2. First connection with type "GitHub" from `fabio connection list`
+///
+/// Returns `None` if no GitHub connection is available.
+fn find_github_connection_id() -> Option<String> {
+    // Check env var first
+    if let Ok(id) = std::env::var("FABIO_TEST_GIT_CONNECTION_ID") {
+        if !id.is_empty() {
+            return Some(id);
+        }
+    }
+
+    // Auto-discover from tenant
+    let output = fabio()
+        .args(["connection", "list", "-o", "json"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).ok()?;
+    let connections = json.get("data")?.as_array()?;
+
+    connections
+        .iter()
+        .find(|c| {
+            c.get("connectionDetails")
+                .and_then(|d| d.get("type"))
+                .and_then(|t| t.as_str())
+                == Some("GitHub")
+        })
+        .and_then(|c| c.get("id"))
+        .and_then(|id| id.as_str())
+        .map(String::from)
+}
 
 // ---------------------------------------------------------------------------
 // Connection show (works regardless of connection state)
@@ -108,7 +154,8 @@ fn git_pull_unconnected_workspace_fails() {
 // ---------------------------------------------------------------------------
 // Connect → Init → Status → Disconnect lifecycle
 // Uses the dest workspace (to avoid disrupting source workspace)
-// Requires FABIO_TEST_GIT_CONNECTION_ID env var for GitHub OAuth connection
+// Auto-discovers GitHub connection from tenant or uses FABIO_TEST_GIT_CONNECTION_ID
+// Target repo: iemejia/fabio-test-connection
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -118,9 +165,13 @@ fn git_connect_init_status_disconnect_lifecycle() {
     let cfg = TestConfig::from_env();
     let workspace = &cfg.dest_workspace;
 
-    // This test requires a pre-configured GitHub connection ID
-    let Ok(connection_id) = std::env::var("FABIO_TEST_GIT_CONNECTION_ID") else {
-        eprintln!("FABIO_TEST_GIT_CONNECTION_ID not set, skipping lifecycle test");
+    // Auto-discover or use env var for GitHub connection
+    let Some(connection_id) = find_github_connection_id() else {
+        eprintln!(
+            "No GitHub connection found in tenant and FABIO_TEST_GIT_CONNECTION_ID not set.\n\
+             Create a GitHub connection in the Fabric UI (Settings > Manage connections) \
+             or set FABIO_TEST_GIT_CONNECTION_ID to skip this test."
+        );
         return;
     };
 
@@ -143,7 +194,7 @@ fn git_connect_init_status_disconnect_lifecycle() {
         "Workspace should be disconnected before test"
     );
 
-    // Connect to GitHub repo
+    // Connect to GitHub repo (iemejia/fabio-test-connection)
     let assert = fabio()
         .args([
             "git",
@@ -155,7 +206,7 @@ fn git_connect_init_status_disconnect_lifecycle() {
             "--owner",
             "iemejia",
             "--repo",
-            "fabio",
+            "fabio-test-connection",
             "--branch",
             "main",
             "--connection-id",
@@ -182,6 +233,10 @@ fn git_connect_init_status_disconnect_lifecycle() {
         data.get("gitProviderDetails")
             .and_then(|d| d.get("repositoryName"))
             .is_some()
+    );
+    assert_eq!(
+        data["gitProviderDetails"]["repositoryName"],
+        "fabio-test-connection"
     );
 
     // Initialize connection
@@ -255,7 +310,7 @@ fn git_checkout_unconnected_fails() {
             "--owner",
             "iemejia",
             "--repo",
-            "fabio",
+            "fabio-test-connection",
         ])
         .timeout(std::time::Duration::from_secs(60))
         .assert()
@@ -286,7 +341,7 @@ fn git_switch_alias_works() {
             "--owner",
             "iemejia",
             "--repo",
-            "fabio",
+            "fabio-test-connection",
         ])
         .timeout(std::time::Duration::from_secs(60))
         .assert()
