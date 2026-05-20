@@ -6,11 +6,80 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::enrich_forbidden;
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
 pub enum LakehouseCommand {
+    // ── CRUD ─────────────────────────────────────────────────────────────
+    /// List lakehouses in a workspace
+    #[command(display_order = 0)]
+    List {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+    },
+    /// Show details of a lakehouse
+    #[command(display_order = 0)]
+    Show {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Create a new lakehouse
+    #[command(display_order = 0)]
+    Create {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse display name
+        #[arg(long)]
+        name: String,
+
+        /// Optional description
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Enable schemas (multi-schema lakehouse)
+        #[arg(long)]
+        enable_schemas: bool,
+    },
+    /// Update a lakehouse (rename/redescribe)
+    #[command(display_order = 0)]
+    Update {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long)]
+        id: String,
+
+        /// New display name
+        #[arg(long)]
+        name: Option<String>,
+
+        /// New description
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Delete a lakehouse
+    #[command(display_order = 0)]
+    Delete {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long)]
+        id: String,
+    },
+
     // ── List ─────────────────────────────────────────────────────────────
     /// List tables in a lakehouse
     #[command(visible_alias = "tables", display_order = 1)]
@@ -354,6 +423,45 @@ pub enum LakehouseCommand {
 #[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseCommand) -> Result<()> {
     match command {
+        LakehouseCommand::List { workspace } => list_lakehouses(cli, client, workspace).await,
+        LakehouseCommand::Show { workspace, id } => {
+            show_lakehouse(cli, client, workspace, id).await
+        }
+        LakehouseCommand::Create {
+            workspace,
+            name,
+            description,
+            enable_schemas,
+        } => {
+            create_lakehouse(
+                cli,
+                client,
+                workspace,
+                name,
+                description.as_deref(),
+                *enable_schemas,
+            )
+            .await
+        }
+        LakehouseCommand::Update {
+            workspace,
+            id,
+            name,
+            description,
+        } => {
+            update_lakehouse(
+                cli,
+                client,
+                workspace,
+                id,
+                name.as_deref(),
+                description.as_deref(),
+            )
+            .await
+        }
+        LakehouseCommand::Delete { workspace, id } => {
+            delete_lakehouse(cli, client, workspace, id).await
+        }
         LakehouseCommand::ListTables { workspace, id } => tables(cli, client, workspace, id).await,
         LakehouseCommand::ListFiles {
             workspace,
@@ -523,6 +631,144 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             .map_err(|e| enrich_forbidden(e, "lakehouse delete-shortcut", "Contributor")),
     }
 }
+
+// ─── CRUD Operations ─────────────────────────────────────────────────────────
+
+async fn list_lakehouses(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/lakehouses"),
+            "value",
+            cli.all,
+        )
+        .await?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["displayName", "id", "description"],
+        &["NAME", "ID", "DESCRIPTION"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn show_lakehouse(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let data = client
+        .get(&format!("/workspaces/{workspace}/lakehouses/{id}"))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn create_lakehouse(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    name: &str,
+    description: Option<&str>,
+    enable_schemas: bool,
+) -> Result<()> {
+    let mut body = serde_json::json!({
+        "displayName": name,
+    });
+    if let Some(desc) = description {
+        body["description"] = Value::String(desc.to_string());
+    }
+    if enable_schemas {
+        body["creationPayload"] = serde_json::json!({
+            "enableSchemas": true
+        });
+    }
+
+    if output::dry_run_guard(
+        cli,
+        "lakehouse create",
+        &serde_json::json!({
+            "workspace": workspace,
+            "displayName": name,
+            "description": description,
+            "enableSchemas": enable_schemas
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(&format!("/workspaces/{workspace}/lakehouses"), &body, true)
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse create", "Member"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn update_lakehouse(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    name: Option<&str>,
+    description: Option<&str>,
+) -> Result<()> {
+    if name.is_none() && description.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one of --name or --description must be provided".to_string(),
+            "Example: fabio lakehouse update --workspace <WS> --id <ID> --name \"New Name\""
+                .to_string(),
+        )
+        .into());
+    }
+
+    let mut body = serde_json::json!({});
+    if let Some(n) = name {
+        body["displayName"] = Value::String(n.to_string());
+    }
+    if let Some(d) = description {
+        body["description"] = Value::String(d.to_string());
+    }
+
+    if output::dry_run_guard(cli, "lakehouse update", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(&format!("/workspaces/{workspace}/lakehouses/{id}"), &body)
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse update", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn delete_lakehouse(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "lakehouse delete",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id
+        }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .delete(&format!("/workspaces/{workspace}/lakehouses/{id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse delete", "Member"))?;
+
+    let obj = serde_json::json!({ "id": id, "status": "deleted" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Data Operations ─────────────────────────────────────────────────────────
 
 async fn tables(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
     let resp = client

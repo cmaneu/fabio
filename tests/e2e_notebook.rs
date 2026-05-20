@@ -450,3 +450,225 @@ fn notebook_get_definition_not_found() {
         "Expected error for non-existent notebook, got: {code}"
     );
 }
+
+// ===========================================================================
+// notebook list / show / update / update-definition
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn notebook_list_returns_notebooks() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args(["notebook", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let arr = data.as_array().unwrap();
+    assert!(!arr.is_empty(), "expected at least one notebook");
+
+    let first = &arr[0];
+    assert!(first.get("id").is_some());
+    assert!(first.get("displayName").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn notebook_show_returns_details() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "notebook",
+            "show",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.notebook_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["id"], cfg.notebook_id);
+    assert!(data.get("displayName").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn notebook_update_name() {
+    let cfg = TestConfig::from_env();
+    let original = common::unique_name("nb_upd_o");
+    let updated = common::unique_name("nb_upd_n");
+
+    // Create
+    fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &original,
+            "--content",
+            "print('update test')",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    // Find ID
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--type",
+            "Notebook",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    let nb = items.iter().find(|i| i["displayName"] == original).unwrap();
+    let nb_id = nb["id"].as_str().unwrap().to_string();
+
+    // Update
+    let assert = fabio()
+        .args([
+            "notebook",
+            "update",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+            "--name",
+            &updated,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["displayName"], updated);
+
+    // Cleanup
+    fabio()
+        .args([
+            "notebook",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn notebook_update_definition_with_content() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("nb_upddef");
+
+    // Create
+    fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--content",
+            "print('original')",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    // Find ID
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--type",
+            "Notebook",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    let nb = items.iter().find(|i| i["displayName"] == name).unwrap();
+    let nb_id = nb["id"].as_str().unwrap().to_string();
+
+    // Update definition
+    let assert = fabio()
+        .args([
+            "notebook",
+            "update-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+            "--content",
+            "print('updated content')",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "definition_updated");
+
+    // Cleanup
+    fabio()
+        .args([
+            "notebook",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn notebook_update_definition_requires_input() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "notebook",
+            "update-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.notebook_id,
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
+}

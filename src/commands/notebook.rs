@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use clap::Subcommand;
+use serde_json::Value;
 use tokio::time::sleep;
 
 use crate::cli::Cli;
@@ -13,6 +14,24 @@ use crate::output;
 #[derive(Debug, Subcommand)]
 pub enum NotebookCommand {
     // ── Lifecycle ────────────────────────────────────────────────────────
+    /// List notebooks in a workspace
+    #[command(display_order = 0)]
+    List {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+    },
+    /// Show details of a notebook
+    #[command(display_order = 0)]
+    Show {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Notebook item ID
+        #[arg(long)]
+        id: String,
+    },
     /// Create a new notebook
     #[command(display_order = 1)]
     Create {
@@ -28,8 +47,27 @@ pub enum NotebookCommand {
         #[arg(long)]
         content: Option<String>,
     },
-    /// Get the definition (source code) of a notebook
+    /// Update notebook properties (name and/or description)
     #[command(display_order = 2)]
+    Update {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Notebook item ID
+        #[arg(long)]
+        id: String,
+
+        /// New display name
+        #[arg(long)]
+        name: Option<String>,
+
+        /// New description
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Get the definition (source code) of a notebook
+    #[command(display_order = 3)]
     GetDefinition {
         /// Workspace ID
         #[arg(short, long)]
@@ -39,8 +77,27 @@ pub enum NotebookCommand {
         #[arg(long)]
         id: String,
     },
+    /// Update the definition (source code) of a notebook
+    #[command(display_order = 4)]
+    UpdateDefinition {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Notebook item ID
+        #[arg(long)]
+        id: String,
+
+        /// Python/PySpark code content (replaces entire notebook)
+        #[arg(long)]
+        content: Option<String>,
+
+        /// Path to .ipynb or .py file
+        #[arg(long)]
+        file: Option<String>,
+    },
     /// Delete a notebook
-    #[command(display_order = 3)]
+    #[command(display_order = 5)]
     Delete {
         /// Workspace ID
         #[arg(short, long)]
@@ -105,13 +162,47 @@ pub enum NotebookCommand {
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand) -> Result<()> {
     match command {
+        NotebookCommand::List { workspace } => list(cli, client, workspace).await,
+        NotebookCommand::Show { workspace, id } => show(cli, client, workspace, id).await,
         NotebookCommand::Create {
             workspace,
             name,
             content,
         } => create(cli, client, workspace, name, content.as_deref()).await,
+        NotebookCommand::Update {
+            workspace,
+            id,
+            name,
+            description,
+        } => {
+            update(
+                cli,
+                client,
+                workspace,
+                id,
+                name.as_deref(),
+                description.as_deref(),
+            )
+            .await
+        }
         NotebookCommand::GetDefinition { workspace, id } => {
             get_definition(cli, client, workspace, id).await
+        }
+        NotebookCommand::UpdateDefinition {
+            workspace,
+            id,
+            content,
+            file,
+        } => {
+            update_definition(
+                cli,
+                client,
+                workspace,
+                id,
+                content.as_deref(),
+                file.as_deref(),
+            )
+            .await
         }
         NotebookCommand::Run {
             workspace,
@@ -132,6 +223,159 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
         NotebookCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
     }
 }
+
+// ─── CRUD ────────────────────────────────────────────────────────────────────
+
+async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/notebooks"),
+            "value",
+            cli.all,
+        )
+        .await?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["displayName", "id", "description"],
+        &["NAME", "ID", "DESCRIPTION"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let data = client
+        .get(&format!("/workspaces/{workspace}/notebooks/{id}"))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn update(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    name: Option<&str>,
+    description: Option<&str>,
+) -> Result<()> {
+    if name.is_none() && description.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one of --name or --description must be provided".to_string(),
+            "Example: fabio notebook update --workspace <WS> --id <ID> --name \"New Name\""
+                .to_string(),
+        )
+        .into());
+    }
+
+    let mut body = serde_json::json!({});
+    if let Some(n) = name {
+        body["displayName"] = Value::String(n.to_string());
+    }
+    if let Some(d) = description {
+        body["description"] = Value::String(d.to_string());
+    }
+
+    if output::dry_run_guard(cli, "notebook update", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(&format!("/workspaces/{workspace}/notebooks/{id}"), &body)
+        .await
+        .map_err(|e| enrich_forbidden(e, "notebook update", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn update_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    content: Option<&str>,
+    file: Option<&str>,
+) -> Result<()> {
+    if content.is_none() && file.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Either --content or --file must be provided".to_string(),
+            "Example: fabio notebook update-definition --workspace <WS> --id <ID> --content \"print('hello')\""
+                .to_string(),
+        )
+        .into());
+    }
+
+    // Build the definition payload
+    let encoded = if let Some(file_path) = file {
+        let file_content = std::fs::read(file_path).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Failed to read file '{file_path}': {e}"),
+                "Provide a valid .py or .ipynb file path.".to_string(),
+            )
+        })?;
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &file_content)
+    } else {
+        // Build ipynb from content
+        let code = content.unwrap();
+        let notebook_json = serde_json::json!({
+            "nbformat": 4,
+            "nbformat_minor": 5,
+            "metadata": {
+                "language_info": { "name": "python" }
+            },
+            "cells": [{
+                "cell_type": "code",
+                "metadata": {},
+                "source": code.lines().map(|l| format!("{l}\n")).collect::<Vec<_>>(),
+                "outputs": []
+            }]
+        });
+        base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            serde_json::to_string(&notebook_json)?,
+        )
+    };
+
+    let body = serde_json::json!({
+        "definition": {
+            "format": "ipynb",
+            "parts": [{
+                "path": "notebook-content.py",
+                "payload": encoded,
+                "payloadType": "InlineBase64"
+            }]
+        }
+    });
+
+    if output::dry_run_guard(cli, "notebook update-definition", &body) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/items/{id}/updateDefinition"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "notebook update-definition", "Contributor"))?;
+
+    let obj = serde_json::json!({
+        "id": id,
+        "workspace": workspace,
+        "status": "definition_updated"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Create ──────────────────────────────────────────────────────────────────
 
 async fn create(
     cli: &Cli,

@@ -476,3 +476,252 @@ fn lakehouse_files_table_output() {
         .success()
         .stdout(predicate::str::contains("NAME"));
 }
+
+// ===========================================================================
+// Lakehouse CRUD (list, show, create, update, delete)
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_list_returns_lakehouses() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args(["lakehouse", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let arr = data.as_array().unwrap();
+    assert!(!arr.is_empty(), "expected at least one lakehouse");
+
+    let first = &arr[0];
+    assert!(first.get("id").is_some());
+    assert!(first.get("displayName").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_show_returns_details() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "show",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["id"], cfg.source_lakehouse);
+    assert!(data.get("displayName").is_some());
+    // Lakehouse-specific properties
+    assert!(
+        data.get("properties").is_some(),
+        "Expected properties: {data}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_create_and_delete() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("lh_crud");
+
+    // Create
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["displayName"], name);
+    let lh_id = data["id"].as_str().unwrap().to_string();
+
+    // Delete
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &lh_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "deleted");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_create_with_description() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("lh_desc");
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--description",
+            "Test lakehouse with description",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["displayName"], name);
+    assert_eq!(data["description"], "Test lakehouse with description");
+    let lh_id = data["id"].as_str().unwrap().to_string();
+
+    // Cleanup
+    fabio()
+        .args([
+            "lakehouse",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &lh_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_update_name() {
+    let cfg = TestConfig::from_env();
+    let original = common::unique_name("lh_upd_orig");
+    let updated = common::unique_name("lh_upd_new");
+
+    // Create
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &original,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let lh_id = data["id"].as_str().unwrap().to_string();
+
+    // Update name
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "update",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &lh_id,
+            "--name",
+            &updated,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["displayName"], updated);
+
+    // Cleanup
+    fabio()
+        .args([
+            "lakehouse",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &lh_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_update_requires_field() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "update",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_delete_not_found() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR",
+        "Expected NOT_FOUND or API_ERROR, got: {code}"
+    );
+}

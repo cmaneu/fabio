@@ -12,12 +12,14 @@ use crate::output;
 #[derive(Debug, Subcommand)]
 pub enum WarehouseCommand {
     /// List warehouses in a workspace
+    #[command(display_order = 1)]
     List {
         /// Workspace ID
         #[arg(short, long)]
         workspace: String,
     },
     /// Show details of a warehouse
+    #[command(display_order = 2)]
     Show {
         /// Workspace ID
         #[arg(short, long)]
@@ -27,7 +29,53 @@ pub enum WarehouseCommand {
         #[arg(long)]
         id: String,
     },
+    /// Create a new warehouse
+    #[command(display_order = 3)]
+    Create {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Warehouse display name
+        #[arg(long)]
+        name: String,
+
+        /// Optional description
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Update warehouse properties (name and/or description)
+    #[command(display_order = 4)]
+    Update {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Warehouse item ID
+        #[arg(long)]
+        id: String,
+
+        /// New display name
+        #[arg(long)]
+        name: Option<String>,
+
+        /// New description
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Delete a warehouse
+    #[command(display_order = 5)]
+    Delete {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Warehouse item ID
+        #[arg(long)]
+        id: String,
+    },
     /// Execute a SQL query against a warehouse or SQL endpoint
+    #[command(display_order = 10)]
     Query {
         /// Workspace ID
         #[arg(short, long)]
@@ -47,6 +95,30 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
     match command {
         WarehouseCommand::List { workspace } => list(cli, client, workspace).await,
         WarehouseCommand::Show { workspace, id } => show(cli, client, workspace, id).await,
+        WarehouseCommand::Create {
+            workspace,
+            name,
+            description,
+        } => create(cli, client, workspace, name, description.as_deref()).await,
+        WarehouseCommand::Update {
+            workspace,
+            id,
+            name,
+            description,
+        } => {
+            update(
+                cli,
+                client,
+                workspace,
+                id,
+                name.as_deref(),
+                description.as_deref(),
+            )
+            .await
+        }
+        WarehouseCommand::Delete { workspace, id } => {
+            delete_warehouse(cli, client, workspace, id).await
+        }
         WarehouseCommand::Query { workspace, id, sql } => {
             query(cli, client, workspace, id, sql.as_deref())
                 .await
@@ -80,6 +152,105 @@ async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Re
         .get(&format!("/workspaces/{workspace}/warehouses/{id}"))
         .await?;
     output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn create(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    name: &str,
+    description: Option<&str>,
+) -> Result<()> {
+    let mut body = serde_json::json!({
+        "displayName": name,
+    });
+    if let Some(desc) = description {
+        body["description"] = Value::String(desc.to_string());
+    }
+
+    if output::dry_run_guard(
+        cli,
+        "warehouse create",
+        &serde_json::json!({
+            "workspace": workspace,
+            "displayName": name,
+            "description": description
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(&format!("/workspaces/{workspace}/warehouses"), &body, true)
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse create", "Member"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn update(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    name: Option<&str>,
+    description: Option<&str>,
+) -> Result<()> {
+    if name.is_none() && description.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one of --name or --description must be provided".to_string(),
+            "Example: fabio warehouse update --workspace <WS> --id <ID> --name \"New Name\""
+                .to_string(),
+        )
+        .into());
+    }
+
+    let mut body = serde_json::json!({});
+    if let Some(n) = name {
+        body["displayName"] = Value::String(n.to_string());
+    }
+    if let Some(d) = description {
+        body["description"] = Value::String(d.to_string());
+    }
+
+    if output::dry_run_guard(cli, "warehouse update", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(&format!("/workspaces/{workspace}/warehouses/{id}"), &body)
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse update", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn delete_warehouse(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "warehouse delete",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id
+        }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .delete(&format!("/workspaces/{workspace}/warehouses/{id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse delete", "Member"))?;
+
+    let obj = serde_json::json!({ "id": id, "status": "deleted" });
+    output::render_object(cli, &obj, "status");
     Ok(())
 }
 
