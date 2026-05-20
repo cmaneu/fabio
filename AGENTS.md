@@ -31,12 +31,14 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (40 commands across 6 groups): auth, workspace, item, lakehouse, notebook, warehouse
+- **Full Rust implementation** (70+ commands across 12 groups): auth, workspace, item, lakehouse, notebook, warehouse, data-agent, git, ontology, profile, jobs, feedback + agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
-- Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout)
+- Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`
 - HTTP client: async get/post/delete with LRO polling (`Location` + `x-ms-operation-id` + resource follow)
 - OneLake operations: DFS upload (create+append+flush), download, file listing; Blob API copy (server-side async)
+- **Parallel file/table operations**: Upload, copy, move support glob patterns with concurrent execution and rate-limit retry
+- **Sync command**: `lakehouse sync` copies new/modified files between lakehouses using ETag/MD5 comparison
 - **LRO polling**: 2s interval, 120s max, handles 200/202, checks `status` field until Succeeded/Failed
 - **Server-side file copy/move**: Blob API `PUT` with `x-ms-copy-source`, move = copy + delete
 - **Server-side table copy/move/delete**: Root listing + prefix filter, per-file Blob copy, recursive DFS delete
@@ -46,9 +48,21 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Item copy/move**: getDefinition LRO + create in dest workspace LRO; move = copy + delete source
 - **Warehouse show**: Shows warehouse details including connection string and properties
 - **Warehouse query stdin**: SQL can be provided via `--sql`, `@file`, or piped from stdin
-- **E2E verified** against live Fabric tenant: all 40 commands tested
-- **65 Rust tests** (6 unit + 59 E2E integration), zero clippy warnings, rustfmt clean
-- **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot for cargo + github-actions
+- **Git integration**: status, commit, pull, connect, disconnect, initialize, switch (branch), connection/credentials management
+- **Ontology management**: list, show, create, update, delete, get-definition, update-definition (RDF file support)
+- **Agent-native compliance** (all 10 principles implemented):
+  - Principle 1: Non-interactive by default
+  - Principle 2: Structured parseable output
+  - Principle 3: Errors that teach and enumerate
+  - Principle 4: Safe retries (`--dry-run`)
+  - Principle 5: Bounded responses (`--limit`)
+  - Principle 6: Consistent vocabulary (list/show/create/delete/copy/move)
+  - Principle 7: `fabio agent-context` machine-readable schema
+  - Principle 8: Async-aware (`--wait`, jobs ledger)
+  - Principle 9: Named profiles (`fabio profile save/use/list/show/delete`)
+  - Principle 10: Two-way I/O (`fabio feedback send/list`)
+- **132 Rust tests** (unit + E2E integration), zero clippy warnings, rustfmt clean
+- **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: 4.4 MB, stripped, LTO-optimized
 
@@ -95,7 +109,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `Cargo.toml`: Project config, dependencies, clippy/lints config, release profile (LTO+strip)
 - `rust-toolchain.toml`: stable channel, rustfmt+clippy components
 - `src/main.rs`: Entry point, tokio async main, error handling dispatch
-- `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 6 subcommand groups
+- `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 12 subcommand groups
 - `src/errors.rs`: ErrorCode enum + FabioError struct with thiserror
 - `src/output.rs`: render_list, render_object, render_error (respects --quiet/--query), apply_query, unit tests
 - `src/client.rs`: FabricClient with async HTTP, LRO polling, OneLake DFS/Blob ops, run_notebook
@@ -103,9 +117,16 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/auth.rs`: login/logout/status (DefaultAzureCredential chain)
 - `src/commands/workspace.rs`: list/show/create/delete/assign-capacity
 - `src/commands/item.rs`: list/show/create/delete/copy/move
-- `src/commands/lakehouse.rs`: 14 subcommands (tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, create-shortcut, get-shortcut, delete-shortcut)
+- `src/commands/lakehouse.rs`: 15 subcommands (tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut)
 - `src/commands/notebook.rs`: create/get-definition/run (with --wait/--timeout)/status/stop/delete
-- `src/commands/warehouse.rs`: list/show/query (endpoint resolved, stdin/file/flag SQL input, ODBC execution TODO)
+- `src/commands/warehouse.rs`: list/show/query (endpoint resolved, stdin/file/flag SQL input)
+- `src/commands/dataagent.rs`: list/show/create/update/delete/query
+- `src/commands/git.rs`: status/commit/pull/connect/disconnect/initialize/switch/connection/credentials
+- `src/commands/ontology.rs`: list/show/create/update/delete/get-definition/update-definition
+- `src/commands/profile.rs`: save/use/list/show/delete (named profiles with defaults)
+- `src/commands/jobs.rs`: list/get/prune (local async job ledger)
+- `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
+- `src/commands/agent_context.rs`: Machine-readable command schema for AI agents
 - `tests/common/mod.rs`: Shared E2E test harness (TestConfig, helpers)
 - `tests/e2e_auth.rs`: Auth integration tests
 - `tests/e2e_workspace.rs`: Workspace CRUD + assign-capacity tests
@@ -117,8 +138,14 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_lakehouse_shortcuts.rs`: Shortcut create/get/delete tests
 - `tests/e2e_notebook.rs`: Notebook create/get-definition/run/run --wait/status/stop/delete tests
 - `tests/e2e_warehouse.rs`: Warehouse list/show/query/query-stdin tests
+- `tests/e2e_dataagent.rs`: Data agent tests
+- `tests/e2e_git.rs`: Git command group tests
+- `tests/e2e_ontology.rs`: Ontology CRUD + definition tests
+- `tests/e2e_agent_native.rs`: Agent-native compliance tests (principles 1-10)
+- `tests/e2e_sync.rs`: Lakehouse sync tests
 - `.github/workflows/ci.yml`: Rust CI (fmt, clippy, test, build) on 6 targets (x64+arm64 x linux/macos/windows)
 - `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
+- `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
 - `.github/dependabot.yml`: Cargo + GitHub Actions dependency updates
 
 ## OneLake API Behaviors Discovered

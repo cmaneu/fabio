@@ -196,7 +196,7 @@ fn ontology_create_with_definition_json() {
 }
 
 // ---------------------------------------------------------------------------
-// Create with --rdf (auto-wraps TTL into definition)
+// Create with --file (auto-wraps TTL into definition)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -249,7 +249,7 @@ fn ontology_create_with_rdf_ttl() {
 }
 
 // ---------------------------------------------------------------------------
-// Create with --rdf OWL format
+// Create with --file OWL format
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -306,7 +306,7 @@ fn ontology_create_with_rdf_owl() {
 }
 
 // ---------------------------------------------------------------------------
-// Create with --rdf JSON-LD format
+// Create with --file JSON-LD format
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -477,7 +477,7 @@ fn ontology_get_and_update_definition() {
     // Should contain a definition field or parts
     assert!(data.get("definition").is_some() || data.get("parts").is_some());
 
-    // Update definition with new RDF via --rdf
+    // Update definition with new RDF via --file
     let updated_path = dir.path().join("updated.ttl");
     std::fs::write(
         &updated_path,
@@ -656,7 +656,7 @@ fn ontology_update_requires_field() {
 }
 
 // ---------------------------------------------------------------------------
-// Update-definition requires --definition or --rdf
+// Update-definition requires --definition or --file
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -665,7 +665,7 @@ fn ontology_update_requires_field() {
 fn ontology_update_definition_requires_source() {
     let cfg = TestConfig::from_env();
 
-    // update-definition without --definition or --rdf should fail
+    // update-definition without --definition or --file should fail
     fabio()
         .args([
             "ontology",
@@ -680,7 +680,7 @@ fn ontology_update_definition_requires_source() {
 }
 
 // ---------------------------------------------------------------------------
-// --definition and --rdf are mutually exclusive (create)
+// --definition and --file are mutually exclusive (create)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -706,7 +706,7 @@ fn ontology_create_definition_and_rdf_conflict() {
 }
 
 // ---------------------------------------------------------------------------
-// --definition and --rdf are mutually exclusive (update-definition)
+// --definition and --file are mutually exclusive (update-definition)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -783,7 +783,7 @@ fn ontology_list_table_format() {
 }
 
 // ---------------------------------------------------------------------------
-// Create with --rdf unsupported extension
+// Create with --file unsupported extension
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -875,7 +875,7 @@ fn ontology_update_description_only() {
 }
 
 // ---------------------------------------------------------------------------
-// Update definition with --rdf (no --update-metadata to avoid needing .platform)
+// Update definition with --file (no --update-metadata to avoid needing .platform)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -903,7 +903,7 @@ fn ontology_update_definition_with_rdf() {
     let data = extract_data(&json);
     let ont_id = data["id"].as_str().unwrap().to_string();
 
-    // Update definition with --rdf
+    // Update definition with --file
     let dir = tempfile::tempdir().unwrap();
     let ttl_path = dir.path().join("meta.ttl");
     std::fs::write(
