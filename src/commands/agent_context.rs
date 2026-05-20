@@ -640,6 +640,52 @@ fn commands_schema() -> serde_json::Value {
             "description": "Machine-readable CLI schema for agent introspection",
             "mutates": false
         },
+        "environment": {
+            "description": "Manage environments (Spark compute, libraries, publish)",
+            "subcommands": {
+                "list": {"description": "List environments in a workspace", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details of an environment", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a new environment", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update environment properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete an environment", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "publish": {"description": "Publish staged changes", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "cancel-publish": {"description": "Cancel a pending publish", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-spark-settings": {"description": "Get published Spark settings", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-staging-spark-settings": {"description": "Get staging Spark settings", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+            }
+        },
+        "data-pipeline": {
+            "description": "Manage data pipelines (orchestration, scheduling)",
+            "subcommands": {
+                "list": {"description": "List data pipelines in a workspace", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details of a data pipeline", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a new data pipeline", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update data pipeline properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a data pipeline", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "run": {"description": "Run a data pipeline", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+            }
+        },
+        "eventhouse": {
+            "description": "Manage eventhouses (real-time analytics)",
+            "subcommands": {
+                "list": {"description": "List eventhouses in a workspace", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details of an eventhouse", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a new eventhouse", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update eventhouse properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete an eventhouse", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+            }
+        },
+        "connection": {
+            "description": "Manage connections (cloud, on-premises, virtual network)",
+            "subcommands": {
+                "list": {"description": "List all connections", "mutates": false},
+                "show": {"description": "Show details of a connection", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a new connection", "mutates": true, "flags": {"--name": {"type": "string", "required": true}, "--connectivity-type": {"type": "enum", "values": ["ShareableCloud", "OnPremises", "VirtualNetworkGateway", "PersonalCloud"]}, "--connection-type": {"type": "string", "required": true}, "--parameters": {"type": "string", "required": true, "description": "JSON object"}, "--credential-type": {"type": "enum", "values": ["Basic", "OAuth2", "Key", "Anonymous", "ServicePrincipal", "SharedAccessSignature"]}}},
+                "update": {"description": "Update a connection", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--privacy-level": {"type": "enum", "values": ["None", "Public", "Organizational", "Private"]}, "--credential-type": {"type": "string"}, "--credentials": {"type": "string", "description": "JSON"}}},
+                "delete": {"description": "Delete a connection", "mutates": true, "destructive": true, "flags": {"--id": {"type": "string", "required": true}}},
+                "list-supported-types": {"description": "List supported connection types catalog", "mutates": false}
+            }
+        },
         "profile": {
             "description": "Manage saved configuration profiles",
             "subcommands": {
@@ -706,6 +752,62 @@ fn commands_schema() -> serde_json::Value {
                         "--include-running": {"type": "bool", "description": "Remove all jobs including currently running ones"}
                     }
                 }
+            }
+        },
+        "job-scheduler": {
+            "description": "Manage item job scheduling (run on demand, cancel, CRUD schedules)",
+            "subcommands": {
+                "list-instances": {"description": "List job instances for an item", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-instance": {"description": "Get details of a job instance", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--job-instance-id": {"type": "string", "required": true}}},
+                "run-on-demand": {"description": "Run an on-demand job", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--job-type": {"type": "string", "default": "DefaultJob"}, "--execution-data": {"type": "string", "description": "JSON"}}},
+                "cancel-instance": {"description": "Cancel a running job instance", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--job-instance-id": {"type": "string", "required": true}}},
+                "list-schedules": {"description": "List schedules for an item job type", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--job-type": {"type": "string", "default": "DefaultJob"}}},
+                "get-schedule": {"description": "Get schedule details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--job-type": {"type": "string"}, "--schedule-id": {"type": "string", "required": true}}},
+                "create-schedule": {"description": "Create a schedule", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--job-type": {"type": "string"}, "--enabled": {"type": "bool"}, "--config": {"type": "string", "required": true, "description": "JSON schedule config"}}},
+                "update-schedule": {"description": "Update a schedule", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--job-type": {"type": "string"}, "--schedule-id": {"type": "string", "required": true}, "--enabled": {"type": "bool"}, "--config": {"type": "string"}}},
+                "delete-schedule": {"description": "Delete a schedule", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--job-type": {"type": "string"}, "--schedule-id": {"type": "string", "required": true}}}
+            }
+        },
+        "deployment-pipeline": {
+            "description": "Manage deployment pipelines (CI/CD stages, deploy items between stages)",
+            "subcommands": {
+                "list": {"description": "List deployment pipelines", "mutates": false},
+                "show": {"description": "Show deployment pipeline details", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a deployment pipeline", "mutates": true, "flags": {"--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update a deployment pipeline", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a deployment pipeline", "mutates": true, "destructive": true, "flags": {"--id": {"type": "string", "required": true}}},
+                "list-stages": {"description": "List stages in a pipeline", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}},
+                "list-stage-items": {"description": "List items in a stage", "mutates": false, "flags": {"--id": {"type": "string", "required": true}, "--stage-id": {"type": "string", "required": true}}},
+                "assign-workspace": {"description": "Assign workspace to a stage", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--stage-id": {"type": "string", "required": true}, "--workspace": {"type": "string", "required": true}}},
+                "unassign-workspace": {"description": "Unassign workspace from a stage", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--stage-id": {"type": "string", "required": true}}},
+                "deploy": {"description": "Deploy items between stages", "mutates": true, "async": true, "flags": {"--id": {"type": "string", "required": true}, "--source-stage-id": {"type": "string", "required": true}, "--target-stage-id": {"type": "string"}, "--items": {"type": "string", "description": "JSON array"}, "--note": {"type": "string"}}}
+            }
+        },
+        "domain": {
+            "description": "Manage domains (organize workspaces into business domains)",
+            "subcommands": {
+                "list": {"description": "List domains in the tenant", "mutates": false},
+                "show": {"description": "Show domain details", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a domain", "mutates": true, "flags": {"--name": {"type": "string", "required": true}, "--description": {"type": "string"}, "--parent-domain-id": {"type": "string"}}},
+                "update": {"description": "Update a domain", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a domain", "mutates": true, "destructive": true, "flags": {"--id": {"type": "string", "required": true}}},
+                "list-workspaces": {"description": "List workspaces in a domain", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}},
+                "assign-workspaces": {"description": "Assign workspaces to a domain", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--workspaces": {"type": "string", "required": true, "description": "Comma-separated workspace IDs"}}},
+                "unassign-workspaces": {"description": "Unassign workspaces from a domain", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--workspaces": {"type": "string", "required": true}}},
+                "assign-by-capacity": {"description": "Bulk-assign workspaces by capacity", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--capacities": {"type": "string", "required": true}}},
+                "assign-by-principal": {"description": "Bulk-assign workspaces by principal", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--principals": {"type": "string", "required": true}, "--principal-type": {"type": "enum", "values": ["User", "Group", "ServicePrincipal"]}}}
+            }
+        },
+        "spark": {
+            "description": "Manage Spark compute (workspace settings, custom pools)",
+            "subcommands": {
+                "get-settings": {"description": "Get workspace Spark settings", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "update-settings": {"description": "Update workspace Spark settings", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--settings": {"type": "string", "required": true, "description": "JSON"}}},
+                "list-pools": {"description": "List custom Spark pools", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "get-pool": {"description": "Get custom pool details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--pool-id": {"type": "string", "required": true}}},
+                "create-pool": {"description": "Create a custom Spark pool", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--node-family": {"type": "string"}, "--node-size": {"type": "enum", "values": ["Small", "Medium", "Large", "XLarge", "XXLarge"]}}},
+                "update-pool": {"description": "Update a custom pool", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--pool-id": {"type": "string", "required": true}, "--config": {"type": "string", "required": true, "description": "JSON"}}},
+                "delete-pool": {"description": "Delete a custom pool", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--pool-id": {"type": "string", "required": true}}}
             }
         }
     })

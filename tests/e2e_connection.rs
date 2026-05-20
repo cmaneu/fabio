@@ -188,3 +188,39 @@ fn connection_create_dry_run() {
         .any(|c| c["displayName"].as_str() == Some(&name));
     assert!(!found, "dry run should not actually create the connection");
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn connection_update_requires_at_least_one_field() {
+    // Should fail when no --name, --privacy-level, or --credential-type provided
+    fabio()
+        .args([
+            "connection",
+            "update",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn connection_list_supported_types() {
+    let assert = fabio()
+        .args(["connection", "list-supported-types"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = json
+        .get("data")
+        .and_then(|d| d.as_array())
+        .expect("data should be an array");
+    assert!(
+        !data.is_empty(),
+        "expected at least one supported connection type"
+    );
+}

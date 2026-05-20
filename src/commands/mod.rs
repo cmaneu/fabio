@@ -2,16 +2,20 @@ pub mod auth;
 pub mod connection;
 pub mod data_pipeline;
 pub mod dataagent;
+pub mod deployment_pipeline;
+pub mod domain;
 pub mod environment;
 pub mod eventhouse;
 pub mod feedback;
 pub mod git;
 pub mod item;
+pub mod job_scheduler;
 pub mod jobs;
 pub mod lakehouse;
 pub mod notebook;
 pub mod ontology;
 pub mod profile;
+pub mod spark;
 pub mod warehouse;
 pub mod workspace;
 
@@ -39,9 +43,15 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Environment { command } => environment::execute(&cli, &client, command).await,
         Command::DataPipeline { command } => data_pipeline::execute(&cli, &client, command).await,
         Command::Eventhouse { command } => eventhouse::execute(&cli, &client, command).await,
+        Command::Spark { command } => spark::execute(&cli, &client, command).await,
         // Integration
         Command::Git { command } => git::execute(&cli, &client, command).await,
         Command::Connection { command } => connection::execute(&cli, &client, command).await,
+        Command::DeploymentPipeline { command } => {
+            deployment_pipeline::execute(&cli, &client, command).await
+        }
+        Command::Domain { command } => domain::execute(&cli, &client, command).await,
+        Command::JobScheduler { command } => job_scheduler::execute(&cli, &client, command).await,
         // Configuration
         Command::Auth { command } => auth::execute(&cli, command).await,
         Command::Profile { command } => profile::execute(&cli, command),

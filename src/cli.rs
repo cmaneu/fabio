@@ -1,8 +1,9 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
-    auth, connection, data_pipeline, dataagent, environment, eventhouse, feedback, git, item, jobs,
-    lakehouse, notebook, ontology, profile, warehouse, workspace,
+    auth, connection, data_pipeline, dataagent, deployment_pipeline, domain, environment,
+    eventhouse, feedback, git, item, job_scheduler, jobs, lakehouse, notebook, ontology, profile,
+    spark, warehouse, workspace,
 };
 
 /// Agent-first CLI for managing Microsoft Fabric artifacts and data.
@@ -136,6 +137,12 @@ pub enum Command {
         #[command(subcommand)]
         command: eventhouse::EventhouseCommand,
     },
+    /// Manage Spark compute (settings, custom pools)
+    #[command(display_order = 17)]
+    Spark {
+        #[command(subcommand)]
+        command: spark::SparkCommand,
+    },
 
     // ── Integration ──────────────────────────────────────────────────────
     /// Manage Git integration (connect, commit, pull, status)
@@ -149,6 +156,24 @@ pub enum Command {
     Connection {
         #[command(subcommand)]
         command: connection::ConnectionCommand,
+    },
+    /// Manage deployment pipelines (CI/CD stages, deploy items)
+    #[command(display_order = 22)]
+    DeploymentPipeline {
+        #[command(subcommand)]
+        command: deployment_pipeline::DeploymentPipelineCommand,
+    },
+    /// Manage domains (organize workspaces into business domains)
+    #[command(display_order = 23)]
+    Domain {
+        #[command(subcommand)]
+        command: domain::DomainCommand,
+    },
+    /// Manage item job scheduling (run, cancel, schedules)
+    #[command(display_order = 24)]
+    JobScheduler {
+        #[command(subcommand)]
+        command: job_scheduler::JobSchedulerCommand,
     },
 
     // ── Configuration ────────────────────────────────────────────────────
