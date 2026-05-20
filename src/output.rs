@@ -179,7 +179,7 @@ fn render_table(items: &[Value], columns: &[&str], headers: &[&str]) {
         let row: Vec<Cell> = columns
             .iter()
             .map(|col| {
-                let val = item.get(*col).unwrap_or(&Value::Null);
+                let val = resolve_nested(item, col);
                 Cell::new(format_value(val))
             })
             .collect();
@@ -187,6 +187,18 @@ fn render_table(items: &[Value], columns: &[&str], headers: &[&str]) {
     }
 
     println!("{table}");
+}
+
+/// Resolve a dot-notation path to a nested JSON value.
+fn resolve_nested<'a>(value: &'a Value, path: &str) -> &'a Value {
+    let mut current = value;
+    for part in path.split('.') {
+        match current.get(part) {
+            Some(v) => current = v,
+            None => return &Value::Null,
+        }
+    }
+    current
 }
 
 /// Format a JSON value for display.

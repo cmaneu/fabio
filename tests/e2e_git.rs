@@ -17,6 +17,23 @@ mod common;
 use common::{TestConfig, extract_data, fabio, parse_json};
 use serial_test::serial;
 
+/// Retry a fabio command up to 3 times with a 10-second delay between attempts.
+/// Returns the last assertion result. Used for transient "Git provider failed" errors.
+fn retry_on_failure<F>(f: F) -> assert_cmd::assert::Assert
+where
+    F: Fn() -> assert_cmd::assert::Assert,
+{
+    let mut last_assert = f();
+    for _ in 0..2 {
+        if last_assert.get_output().status.success() {
+            return last_assert;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(10));
+        last_assert = f();
+    }
+    last_assert
+}
+
 /// Discover a GitHub connection ID from the tenant.
 ///
 /// Tries (in order):
@@ -241,9 +258,16 @@ fn git_connect_init_status_disconnect_lifecycle() {
         "fabio-test-connection"
     );
 
-    // Initialize connection
+    // Initialize connection (prefer-workspace to handle case where both sides have content)
     let assert = fabio()
-        .args(["git", "init", "--workspace", workspace])
+        .args([
+            "git",
+            "init",
+            "--workspace",
+            workspace,
+            "--strategy",
+            "prefer-workspace",
+        ])
         .timeout(std::time::Duration::from_secs(120))
         .assert()
         .success();
@@ -263,9 +287,7 @@ fn git_connect_init_status_disconnect_lifecycle() {
     let data = extract_data(&json);
     // Status renders as list (array of changes) or object (with workspaceHead)
     assert!(
-        data.is_array()
-            || data.get("workspaceHead").is_some()
-            || data.get("changes").is_some(),
+        data.is_array() || data.get("workspaceHead").is_some() || data.get("changes").is_some(),
         "Status should contain workspaceHead, changes, or be a changes array: {data}"
     );
 
@@ -443,4 +465,213 @@ fn git_connect_github_requires_owner() {
         .timeout(std::time::Duration::from_secs(30))
         .assert()
         .failure();
+}
+
+// ---------------------------------------------------------------------------
+// Full commit/pull lifecycle with real workspace changes
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_commit_pull_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let workspace = &cfg.dest_workspace;
+
+    // Auto-discover GitHub connection
+    let Some(connection_id) = find_github_connection_id() else {
+        eprintln!("No GitHub connection found, skipping test.");
+        return;
+    };
+
+    // Ensure workspace is disconnected
+    let _ = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert();
+
+    // Connect
+    let assert = fabio()
+        .args([
+            "git",
+            "connect",
+            "--workspace",
+            workspace,
+            "--provider",
+            "github",
+            "--owner",
+            "iemejia",
+            "--repo",
+            "fabio-test-connection",
+            "--branch",
+            "main",
+            "--connection-id",
+            &connection_id,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "connected");
+
+    // Initialize with prefer-workspace strategy (retry for transient errors)
+    let init_args = [
+        "git",
+        "init",
+        "--workspace",
+        workspace,
+        "--strategy",
+        "prefer-workspace",
+        "--wait",
+    ];
+    retry_on_failure(|| {
+        fabio()
+            .args(init_args)
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    // Create a notebook (to generate a workspace change)
+    let test_name = format!(
+        "git_test_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+    );
+
+    fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            workspace,
+            "--name",
+            &test_name,
+            "--content",
+            "# Test notebook for git commit test",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    // Status should show the new notebook as Added
+    let assert = fabio()
+        .args(["git", "status", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Should be an array with at least one Added item
+    assert!(data.is_array(), "Expected changes array: {data}");
+    let changes = data.as_array().unwrap();
+    let has_our_notebook = changes.iter().any(|c| {
+        c.get("itemMetadata")
+            .and_then(|m| m.get("displayName"))
+            .and_then(|n| n.as_str())
+            == Some(test_name.as_str())
+    });
+    assert!(has_our_notebook, "Expected our notebook in changes: {data}");
+
+    // Commit the change (with retry for transient "Git provider failed" errors)
+    let commit_args = [
+        "git",
+        "commit",
+        "--workspace",
+        workspace,
+        "--all",
+        "--message",
+        &format!("Add {test_name} notebook"),
+        "--wait",
+    ];
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args(commit_args)
+            .timeout(std::time::Duration::from_secs(180))
+            .assert()
+    });
+    let assert = assert.success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "Succeeded");
+
+    // Status should be clean after commit
+    let assert = fabio()
+        .args(["git", "status", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Clean status: object with workspaceHead and empty changes
+    assert!(
+        data.get("workspaceHead").is_some(),
+        "Expected clean status with workspaceHead: {data}"
+    );
+    let changes = data.get("changes").and_then(|c| c.as_array());
+    assert!(
+        changes.is_none() || changes.unwrap().is_empty(),
+        "Expected empty changes after commit: {data}"
+    );
+
+    // Credentials should show configured connection
+    let assert = fabio()
+        .args(["git", "credentials", "show", "--workspace", workspace])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["source"], "ConfiguredConnection");
+    assert_eq!(data["connectionId"], connection_id.as_str());
+
+    // Clean up: delete the test notebook
+    // First, find its ID from workspace items
+    let assert = fabio()
+        .args(["item", "list", "--workspace", workspace, "-o", "json"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let items = json["data"].as_array().unwrap();
+    if let Some(nb) = items
+        .iter()
+        .find(|i| i.get("displayName").and_then(|n| n.as_str()) == Some(test_name.as_str()))
+    {
+        let nb_id = nb["id"].as_str().unwrap();
+        fabio()
+            .args(["item", "delete", "--workspace", workspace, "--id", nb_id])
+            .timeout(std::time::Duration::from_secs(30))
+            .assert()
+            .success();
+
+        // Commit the deletion (may fail transiently - don't assert)
+        let _ = fabio()
+            .args([
+                "git",
+                "commit",
+                "--workspace",
+                workspace,
+                "--all",
+                "--message",
+                &format!("Clean up: delete {test_name}"),
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_secs(180))
+            .assert();
+    }
+
+    // Disconnect
+    fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
 }
