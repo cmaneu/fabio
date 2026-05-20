@@ -136,7 +136,7 @@ fn lakehouse_load_table_succeeds() {
     let assert = fabio()
         .args([
             "lakehouse",
-            "tables",
+            "list-tables",
             "--workspace",
             &cfg.source_workspace,
             "--id",

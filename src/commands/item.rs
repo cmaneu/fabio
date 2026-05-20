@@ -58,7 +58,7 @@ pub enum ItemCommand {
     /// Copy an item to another workspace
     Copy {
         /// Source workspace ID
-        #[arg(short = 's', long)]
+        #[arg(long)]
         source_workspace: String,
 
         /// Item ID to copy
@@ -66,7 +66,7 @@ pub enum ItemCommand {
         id: String,
 
         /// Destination workspace ID
-        #[arg(short = 'd', long)]
+        #[arg(long)]
         dest_workspace: String,
 
         /// New name for the copy (optional, defaults to source name)
@@ -76,7 +76,7 @@ pub enum ItemCommand {
     /// Move an item to another workspace (copy + delete source)
     Move {
         /// Source workspace ID
-        #[arg(short = 's', long)]
+        #[arg(long)]
         source_workspace: String,
 
         /// Item ID to move
@@ -84,7 +84,7 @@ pub enum ItemCommand {
         id: String,
 
         /// Destination workspace ID
-        #[arg(short = 'd', long)]
+        #[arg(long)]
         dest_workspace: String,
 
         /// New name (optional, defaults to source name)

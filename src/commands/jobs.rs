@@ -19,10 +19,6 @@ pub enum JobsCommand {
         /// Filter by status (e.g., running, completed, failed)
         #[arg(long)]
         status: Option<String>,
-
-        /// Maximum number of jobs to show
-        #[arg(long, default_value = "20")]
-        limit: usize,
     },
     /// Get details of a specific job
     Get {
@@ -32,9 +28,9 @@ pub enum JobsCommand {
     },
     /// Remove completed/failed jobs from the ledger
     Prune {
-        /// Remove all jobs (including running)
+        /// Remove all jobs including currently running ones
         #[arg(long)]
-        all: bool,
+        include_running: bool,
     },
 }
 
@@ -152,14 +148,16 @@ impl JobLedger {
 
 pub fn execute(cli: &Cli, command: &JobsCommand) -> Result<()> {
     match command {
-        JobsCommand::List { status, limit } => list(cli, status.as_deref(), *limit),
+        JobsCommand::List { status } => list(cli, status.as_deref()),
         JobsCommand::Get { id } => get(cli, id),
-        JobsCommand::Prune { all } => prune(cli, *all),
+        JobsCommand::Prune { include_running } => prune(cli, *include_running),
     }
 }
 
-fn list(cli: &Cli, status_filter: Option<&str>, limit: usize) -> Result<()> {
+fn list(cli: &Cli, status_filter: Option<&str>) -> Result<()> {
     let entries = JobLedger::read_all()?;
+    // Use global --limit with a default of 20 for jobs
+    let limit = cli.limit.unwrap_or(20);
     let filtered: Vec<Value> = entries
         .iter()
         .rev()
@@ -193,14 +191,18 @@ fn get(cli: &Cli, id: &str) -> Result<()> {
     Ok(())
 }
 
-fn prune(cli: &Cli, all: bool) -> Result<()> {
-    if output::dry_run_guard(cli, "jobs prune", &serde_json::json!({ "all": all })) {
+fn prune(cli: &Cli, include_running: bool) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "jobs prune",
+        &serde_json::json!({ "include_running": include_running }),
+    ) {
         return Ok(());
     }
 
     let entries = JobLedger::read_all()?;
     let before_count = entries.len();
-    let remaining: Vec<JobEntry> = if all {
+    let remaining: Vec<JobEntry> = if include_running {
         Vec::new()
     } else {
         entries

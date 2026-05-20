@@ -11,7 +11,8 @@ use crate::output;
 #[derive(Debug, Subcommand)]
 pub enum LakehouseCommand {
     /// List tables in a lakehouse
-    Tables {
+    #[command(visible_alias = "tables")]
+    ListTables {
         /// Workspace ID
         #[arg(short, long)]
         workspace: String,
@@ -21,7 +22,8 @@ pub enum LakehouseCommand {
         id: String,
     },
     /// List files in a lakehouse
-    Files {
+    #[command(visible_alias = "files")]
+    ListFiles {
         /// Workspace ID
         #[arg(short, long)]
         workspace: String,
@@ -329,8 +331,8 @@ pub enum LakehouseCommand {
 #[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseCommand) -> Result<()> {
     match command {
-        LakehouseCommand::Tables { workspace, id } => tables(cli, client, workspace, id).await,
-        LakehouseCommand::Files {
+        LakehouseCommand::ListTables { workspace, id } => tables(cli, client, workspace, id).await,
+        LakehouseCommand::ListFiles {
             workspace,
             id,
             path,

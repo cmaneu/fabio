@@ -12,13 +12,13 @@ pub enum GitCommand {
     /// Show workspace Git status (changes, conflicts)
     Status {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
     },
     /// Commit workspace changes to the connected remote branch
     Commit {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// Commit message (max 300 characters)
@@ -26,7 +26,7 @@ pub enum GitCommand {
         message: Option<String>,
 
         /// Commit all pending changes
-        #[arg(long, conflicts_with = "items")]
+        #[arg(long = "commit-all", conflicts_with = "items")]
         all: bool,
 
         /// Selective commit: comma-separated item object IDs
@@ -48,7 +48,7 @@ pub enum GitCommand {
     /// Pull remote changes into the workspace (update from Git)
     Pull {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// Conflict resolution policy
@@ -78,7 +78,7 @@ pub enum GitCommand {
     /// Connect a workspace to a Git repository
     Connect {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// Git provider type
@@ -120,13 +120,13 @@ pub enum GitCommand {
     /// Disconnect a workspace from Git
     Disconnect {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
     },
     /// Initialize a workspace Git connection (required after connect)
     Init {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// Initialization strategy when both sides have content
@@ -145,7 +145,7 @@ pub enum GitCommand {
     #[command(visible_alias = "switch")]
     Checkout {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// Target branch name
@@ -177,7 +177,7 @@ pub enum ConnectionCommand {
     /// Show Git connection details for the workspace
     Show {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
     },
 }
@@ -187,13 +187,13 @@ pub enum CredentialsCommand {
     /// Show your Git credentials configuration
     Show {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
     },
     /// Update your Git credentials configuration
     Update {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// Credentials source

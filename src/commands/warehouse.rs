@@ -38,7 +38,7 @@ pub enum WarehouseCommand {
         id: String,
 
         /// SQL query to execute (prefix with @ to read from file, omit to read from stdin)
-        #[arg(short, long)]
+        #[arg(long)]
         sql: Option<String>,
     },
 }

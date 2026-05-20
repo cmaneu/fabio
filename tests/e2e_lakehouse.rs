@@ -18,7 +18,7 @@ fn lakehouse_tables_returns_list() {
     let assert = fabio()
         .args([
             "lakehouse",
-            "tables",
+            "list-tables",
             "--workspace",
             &cfg.source_workspace,
             "--id",
@@ -51,7 +51,7 @@ fn lakehouse_tables_table_format() {
             "--output",
             "table",
             "lakehouse",
-            "tables",
+            "list-tables",
             "--workspace",
             &cfg.source_workspace,
             "--id",
@@ -70,7 +70,7 @@ fn lakehouse_files_returns_entries() {
     let assert = fabio()
         .args([
             "lakehouse",
-            "files",
+            "list-files",
             "--workspace",
             &cfg.source_workspace,
             "--id",
@@ -123,7 +123,7 @@ fn lakehouse_files_with_path_filter() {
     let assert = fabio()
         .args([
             "lakehouse",
-            "files",
+            "list-files",
             "--workspace",
             &cfg.source_workspace,
             "--id",
@@ -305,7 +305,7 @@ fn lakehouse_tables_with_limit() {
     let assert = fabio()
         .args([
             "lakehouse",
-            "tables",
+            "list-tables",
             "--workspace",
             &cfg.source_workspace,
             "--id",
@@ -335,7 +335,7 @@ fn lakehouse_files_with_limit() {
     let assert = fabio()
         .args([
             "lakehouse",
-            "files",
+            "list-files",
             "--workspace",
             &cfg.source_workspace,
             "--id",
@@ -466,7 +466,7 @@ fn lakehouse_files_table_output() {
             "--output",
             "table",
             "lakehouse",
-            "files",
+            "list-files",
             "--workspace",
             &cfg.source_workspace,
             "--id",

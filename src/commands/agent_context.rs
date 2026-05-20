@@ -292,16 +292,18 @@ fn commands_schema() -> serde_json::Value {
         "lakehouse": {
             "description": "Manage lakehouses (tables, files, shortcuts)",
             "subcommands": {
-                "tables": {
+                "list-tables": {
                     "description": "List tables in a lakehouse",
+                    "aliases": ["tables"],
                     "mutates": false,
                     "flags": {
                         "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
                         "--id": {"type": "string", "required": true, "description": "Lakehouse ID"}
                     }
                 },
-                "files": {
+                "list-files": {
                     "description": "List files in a lakehouse",
+                    "aliases": ["files"],
                     "mutates": false,
                     "flags": {
                         "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
@@ -645,9 +647,9 @@ fn commands_schema() -> serde_json::Value {
                     "description": "List recent jobs from local ledger",
                     "mutates": false,
                     "flags": {
-                        "--status": {"type": "string", "description": "Filter by status (running, completed, failed)"},
-                        "--limit": {"type": "integer", "default": "20"}
-                    }
+                        "--status": {"type": "string", "description": "Filter by status (running, completed, failed)"}
+                    },
+                    "notes": "Uses global --limit (default 20 if unset)"
                 },
                 "get": {
                     "description": "Get details of a specific job",
@@ -660,7 +662,7 @@ fn commands_schema() -> serde_json::Value {
                     "description": "Remove completed/failed jobs from the ledger",
                     "mutates": true,
                     "flags": {
-                        "--all": {"type": "bool", "description": "Remove all jobs including running"}
+                        "--include-running": {"type": "bool", "description": "Remove all jobs including currently running ones"}
                     }
                 }
             }
