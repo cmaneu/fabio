@@ -1165,20 +1165,14 @@ fn git_selective_commit() {
             .and_then(|n| n.as_str())
             == Some(nb_b.as_str())
     });
-    assert!(
-        has_nb_b,
-        "Expected notebook B still uncommitted: {data}"
-    );
+    assert!(has_nb_b, "Expected notebook B still uncommitted: {data}");
     let has_nb_a = remaining.iter().any(|c| {
         c.get("itemMetadata")
             .and_then(|m| m.get("displayName"))
             .and_then(|n| n.as_str())
             == Some(nb_a.as_str())
     });
-    assert!(
-        !has_nb_a,
-        "Notebook A should already be committed: {data}"
-    );
+    assert!(!has_nb_a, "Notebook A should already be committed: {data}");
 
     // Clean up: commit all remaining, delete both notebooks, commit, disconnect
     let _ = retry_on_failure(|| {

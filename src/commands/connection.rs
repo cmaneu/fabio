@@ -91,19 +91,15 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ConnectionComma
 }
 
 async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
-    let data = client.get("/connections").await?;
-    let items = data
-        .get("value")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let resp = client.get_list("/connections", "value", cli.all).await?;
 
-    output::render_list(
+    output::render_list_with_token(
         cli,
-        &items,
+        &resp.items,
         &["displayName", "id", "connectivityType"],
         &["NAME", "ID", "CONNECTIVITY TYPE"],
         "id",
+        resp.continuation_token.as_deref(),
     );
     Ok(())
 }

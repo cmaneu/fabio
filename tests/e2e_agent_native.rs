@@ -197,6 +197,41 @@ fn limit_flag_truncates_list() {
     }
 }
 
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn all_flag_fetches_all_pages() {
+    // --all should return all items without a continuationToken
+    let assert = fabio()
+        .args(["--all", "workspace", "list"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let count = json["count"].as_u64().unwrap();
+    assert!(count >= 1, "should return at least 1 workspace");
+    // With --all, no continuationToken should be present (all pages fetched)
+    assert!(
+        json.get("continuationToken").is_none(),
+        "should not have continuationToken when --all is used"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn all_flag_with_limit_truncates_after_fetching_all() {
+    // --all --limit 1: fetches all pages, then truncates to 1
+    let assert = fabio()
+        .args(["--all", "--limit", "1", "workspace", "list"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let count = json["count"].as_u64().unwrap();
+    assert_eq!(count, 1, "should return exactly 1 item with --limit 1");
+}
+
 // =============================================================================
 // profile command (Principle 9: Persistent identity)
 // =============================================================================

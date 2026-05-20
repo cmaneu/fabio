@@ -493,22 +493,21 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
 }
 
 async fn tables(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
-    let data = client
-        .get(&format!("/workspaces/{workspace}/lakehouses/{id}/tables"))
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/lakehouses/{id}/tables"),
+            "data",
+            cli.all,
+        )
         .await?;
-    let items = data
-        .get("data")
-        .and_then(Value::as_array)
-        .or_else(|| data.get("value").and_then(Value::as_array))
-        .cloned()
-        .unwrap_or_default();
 
-    output::render_list(
+    output::render_list_with_token(
         cli,
-        &items,
+        &resp.items,
         &["name", "type", "format"],
         &["NAME", "TYPE", "FORMAT"],
         "name",
+        resp.continuation_token.as_deref(),
     );
     Ok(())
 }
@@ -1028,22 +1027,19 @@ async fn expand_table_glob(
         return Ok(vec![pattern.to_string()]);
     }
 
-    let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/lakehouses/{lakehouse_id}/tables"
-        ))
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/lakehouses/{lakehouse_id}/tables"),
+            "data",
+            true, // Always paginate for glob expansion
+        )
         .await?;
-    let tables = data
-        .get("data")
-        .and_then(Value::as_array)
-        .or_else(|| data.get("value").and_then(Value::as_array))
-        .cloned()
-        .unwrap_or_default();
 
     let regex = fnmatch_regex::glob_to_regex(pattern)
         .map_err(|e| crate::errors::FabioError::invalid_input(format!("Invalid pattern: {e}")))?;
 
-    let matched: Vec<String> = tables
+    let matched: Vec<String> = resp
+        .items
         .iter()
         .filter_map(|t| {
             let name = t.get("name").and_then(Value::as_str)?;

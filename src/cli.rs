@@ -41,6 +41,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub limit: Option<usize>,
 
+    /// Fetch all pages (auto-paginate). Without this, only the first page is returned.
+    #[arg(long, global = true)]
+    pub all: bool,
+
     /// Use a named profile for default settings
     #[arg(long, global = true)]
     pub profile: Option<String>,

@@ -26,12 +26,25 @@ struct ErrorBody {
 }
 
 /// Render a list of items respecting --quiet, --query, and --limit flags.
+/// Includes `continuationToken` in JSON envelope when more pages are available.
 pub fn render_list(
     cli: &Cli,
     items: &[Value],
     columns: &[&str],
     headers: &[&str],
     plain_key: &str,
+) {
+    render_list_with_token(cli, items, columns, headers, plain_key, None);
+}
+
+/// Render a list of items with optional pagination continuation token.
+pub fn render_list_with_token(
+    cli: &Cli,
+    items: &[Value],
+    columns: &[&str],
+    headers: &[&str],
+    plain_key: &str,
+    continuation_token: Option<&str>,
 ) {
     if cli.quiet {
         return;
@@ -65,6 +78,9 @@ pub fn render_list(
                 envelope["truncated"] = Value::Bool(true);
                 envelope["total_available"] = serde_json::json!(items.len());
             }
+            if let Some(token) = continuation_token {
+                envelope["continuationToken"] = Value::String(token.to_string());
+            }
             println!("{}", serde_json::to_string(&envelope).unwrap());
         }
         OutputFormat::Table => {
@@ -79,6 +95,9 @@ pub fn render_list(
                     limited_items.len(),
                     items.len()
                 );
+            }
+            if continuation_token.is_some() {
+                println!("... more pages available (use --all to fetch all)");
             }
         }
         OutputFormat::Plain => {

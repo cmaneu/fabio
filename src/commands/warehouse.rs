@@ -54,16 +54,22 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
 }
 
 async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
-    let data = client
-        .get(&format!("/workspaces/{workspace}/warehouses"))
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/warehouses"),
+            "value",
+            cli.all,
+        )
         .await?;
-    let items = data
-        .get("value")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
 
-    output::render_list(cli, &items, &["displayName", "id"], &["NAME", "ID"], "id");
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["displayName", "id"],
+        &["NAME", "ID"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
     Ok(())
 }
 

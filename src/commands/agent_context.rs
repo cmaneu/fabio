@@ -96,6 +96,12 @@ fn global_flags() -> Vec<Flag> {
             default: None,
         },
         Flag {
+            name: "--all",
+            kind: "bool",
+            description: "Fetch all pages (auto-paginate). Without this, only the first page is returned with a continuationToken for manual pagination.",
+            default: Some("false"),
+        },
+        Flag {
             name: "--profile",
             kind: "string",
             description: "Use a named profile for default settings",

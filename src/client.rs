@@ -20,6 +20,14 @@ const STORAGE_SCOPE: &str = "https://storage.azure.com/.default";
 const LRO_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const LRO_MAX_WAIT: Duration = Duration::from_secs(120);
 
+/// Response from a paginated list endpoint.
+pub struct PaginatedResponse {
+    /// Collected items across all fetched pages.
+    pub items: Vec<Value>,
+    /// If present, there are more pages available. Pass this token to fetch the next page.
+    pub continuation_token: Option<String>,
+}
+
 /// Fabric API client with token management and LRO polling.
 #[derive(Clone)]
 pub struct FabricClient {
@@ -86,6 +94,73 @@ impl FabricClient {
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
         handle_response(resp).await
+    }
+
+    /// GET a paginated list from Fabric REST API.
+    ///
+    /// When `paginate` is true, follows `continuationToken` until all pages are fetched.
+    /// Returns a `PaginatedResponse` with all collected items and optional continuation token.
+    pub async fn get_list(
+        &self,
+        path: &str,
+        array_field: &str,
+        paginate: bool,
+    ) -> Result<PaginatedResponse> {
+        let token = self.require_auth().await?;
+        let mut all_items: Vec<Value> = Vec::new();
+        let mut continuation_token: Option<String> = None;
+
+        loop {
+            let url = continuation_token.as_ref().map_or_else(
+                || format!("{FABRIC_BASE_URL}{path}"),
+                |ct| {
+                    let separator = if path.contains('?') { '&' } else { '?' };
+                    format!("{FABRIC_BASE_URL}{path}{separator}continuationToken={ct}")
+                },
+            );
+
+            let resp = self
+                .http
+                .get(&url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+            let body = handle_response(resp).await?;
+
+            // Extract items from the specified array field (try primary, then fallback to "value")
+            let items = body
+                .get(array_field)
+                .and_then(Value::as_array)
+                .or_else(|| {
+                    if array_field == "value" {
+                        None
+                    } else {
+                        body.get("value").and_then(Value::as_array)
+                    }
+                })
+                .cloned()
+                .unwrap_or_default();
+
+            all_items.extend(items);
+
+            // Check for continuation token
+            let next_token = body
+                .get("continuationToken")
+                .and_then(Value::as_str)
+                .map(String::from);
+
+            if !paginate || next_token.is_none() {
+                // Return with the token if we're not paginating (so caller can expose it)
+                return Ok(PaginatedResponse {
+                    items: all_items,
+                    continuation_token: next_token,
+                });
+            }
+
+            continuation_token = next_token;
+        }
     }
 
     /// POST request to Fabric REST API, optionally polling for LRO completion.

@@ -152,19 +152,15 @@ async fn list(
         let _ = write!(path, "?type={t}");
     }
 
-    let data = client.get(&path).await?;
-    let items = data
-        .get("value")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let resp = client.get_list(&path, "value", cli.all).await?;
 
-    output::render_list(
+    output::render_list_with_token(
         cli,
-        &items,
+        &resp.items,
         &["displayName", "id", "type"],
         &["NAME", "ID", "TYPE"],
         "id",
+        resp.continuation_token.as_deref(),
     );
     Ok(())
 }
@@ -385,11 +381,7 @@ fn enrich_item_create_error(err: anyhow::Error, item_type: &str) -> anyhow::Erro
 }
 
 /// Enrich item not-found errors with guidance.
-fn enrich_item_not_found_error(
-    err: anyhow::Error,
-    workspace: &str,
-    id: &str,
-) -> anyhow::Error {
+fn enrich_item_not_found_error(err: anyhow::Error, workspace: &str, id: &str) -> anyhow::Error {
     let Some(fabio_err) = err.downcast_ref::<FabioError>() else {
         return err;
     };

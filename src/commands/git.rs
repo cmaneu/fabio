@@ -674,9 +674,7 @@ async fn checkout(
         .get("repositoryName")
         .and_then(Value::as_str)
         .unwrap_or("unknown");
-    let owner_name = provider_details
-        .get("ownerName")
-        .and_then(Value::as_str);
+    let owner_name = provider_details.get("ownerName").and_then(Value::as_str);
     let org_name = provider_details
         .get("organizationName")
         .and_then(Value::as_str);

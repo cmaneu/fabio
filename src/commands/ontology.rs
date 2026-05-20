@@ -193,22 +193,21 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
 }
 
 async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
-    let data = client
-        .get(&format!("/workspaces/{workspace}/ontologies"))
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/ontologies"),
+            "value",
+            cli.all,
+        )
         .await?;
 
-    let items = data
-        .get("value")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-
-    output::render_list(
+    output::render_list_with_token(
         cli,
-        &items,
+        &resp.items,
         &["displayName", "id", "description"],
         &["NAME", "ID", "DESCRIPTION"],
         "displayName",
+        resp.continuation_token.as_deref(),
     );
     Ok(())
 }
