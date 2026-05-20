@@ -99,7 +99,7 @@ fn lakehouse_shortcut_create_get_delete() {
 fn lakehouse_get_shortcut_not_found() {
     let cfg = TestConfig::from_env();
 
-    fabio()
+    let assert = fabio()
         .args([
             "lakehouse",
             "get-shortcut",
@@ -114,4 +114,99 @@ fn lakehouse_get_shortcut_not_found() {
         ])
         .assert()
         .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR",
+        "Expected NOT_FOUND or API_ERROR, got: {code}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_delete_shortcut_not_found() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "delete-shortcut",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &cfg.dest_lakehouse,
+            "--name",
+            "nonexistent_shortcut_abc",
+            "--path",
+            "Files",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR",
+        "Expected NOT_FOUND or API_ERROR, got: {code}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_shortcut_create_in_tables_path() {
+    let cfg = TestConfig::from_env();
+    let shortcut_name = common::unique_name("sc_tbl");
+
+    let target_json = format!(
+        r#"{{"workspaceId":"{}","itemId":"{}","path":"Tables"}}"#,
+        cfg.source_workspace, cfg.source_lakehouse
+    );
+
+    // Create shortcut in Tables path
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "create-shortcut",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &cfg.dest_lakehouse,
+            "--name",
+            &shortcut_name,
+            "--path",
+            "Tables",
+            "--target-type",
+            "oneLake",
+            "--target",
+            &target_json,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["name"], shortcut_name);
+    assert_eq!(data["path"], "Tables");
+
+    // Delete shortcut
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-shortcut",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &cfg.dest_lakehouse,
+            "--name",
+            &shortcut_name,
+            "--path",
+            "Tables",
+        ])
+        .assert()
+        .success();
 }

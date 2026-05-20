@@ -354,6 +354,39 @@ fn lakehouse_move_table_across_workspaces() {
         .success();
 }
 
+// ---------------------------------------------------------------------------
+// Delete non-existent table returns error
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_delete_table_nonexistent_returns_error() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "delete-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            "nonexistent_table_xyz_12345",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR",
+        "Expected NOT_FOUND or API_ERROR, got: {code}"
+    );
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]

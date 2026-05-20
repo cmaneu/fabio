@@ -289,3 +289,164 @@ fn notebook_run_with_wait() {
         .assert()
         .success();
 }
+
+// ---------------------------------------------------------------------------
+// notebook run --wait with a failing notebook (exception → Failed status)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn notebook_run_with_wait_fails() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("nb_fail");
+
+    // Create a notebook that raises an exception
+    fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--content",
+            "raise Exception('intentional failure for test')",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    // Find notebook ID
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--type",
+            "Notebook",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    let nb = items
+        .iter()
+        .find(|i| i["displayName"] == name)
+        .expect("notebook not found");
+    let nb_id = nb["id"].as_str().unwrap().to_string();
+
+    // Run with --wait — should complete but with Failed status
+    let assert = fabio()
+        .args([
+            "notebook",
+            "run",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+            "--wait",
+            "--timeout",
+            "600",
+        ])
+        .timeout(std::time::Duration::from_secs(660))
+        .assert();
+
+    // The command may succeed (reporting status=Failed) or fail outright
+    let output = assert.get_output();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if output.status.success() {
+        let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        let data = &json["data"];
+        assert_eq!(
+            data["status"], "Failed",
+            "Expected Failed status for error notebook: {data}"
+        );
+    } else {
+        // If command failed, error should mention failure
+        assert!(
+            stderr.contains("Failed") || stderr.contains("error"),
+            "Expected failure indication in stderr: {stderr}"
+        );
+    }
+
+    // Delete notebook
+    fabio()
+        .args([
+            "notebook",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+        ])
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// notebook delete non-existent returns error
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn notebook_delete_not_found() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "notebook",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR",
+        "Expected NOT_FOUND or API_ERROR, got: {code}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// notebook get-definition for non-existent notebook returns error
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn notebook_get_definition_not_found() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "notebook",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR",
+        "Expected error for non-existent notebook, got: {code}"
+    );
+}

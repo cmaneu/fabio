@@ -168,3 +168,176 @@ fn lakehouse_delete_file_nonexistent_returns_error() {
         .assert()
         .failure();
 }
+
+// ---------------------------------------------------------------------------
+// Copy file within same workspace/lakehouse
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_copy_file_within_same_lakehouse() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("samecopy");
+    let src_path = upload_test_file(&cfg, &format!("{name}.txt"), "same lakehouse copy");
+    let dst_path = format!("Files/{name}_dup.txt");
+
+    // Copy within same workspace/lakehouse
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "copy-file",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &src_path,
+            "--dest-workspace",
+            &cfg.source_workspace,
+            "--dest-id",
+            &cfg.source_lakehouse,
+            "--dest-path",
+            &dst_path,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "copied");
+
+    // Both files should exist — download the copy to verify
+    let tmp_dir = TempDir::new().unwrap();
+    let dl_path = tmp_dir.path().join("downloaded.txt");
+    fabio()
+        .args([
+            "lakehouse",
+            "download",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &dst_path,
+            "--dest-path",
+            dl_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(&dl_path).unwrap();
+    assert_eq!(content, "same lakehouse copy");
+
+    // Cleanup both
+    for path in [&src_path, &dst_path] {
+        fabio()
+            .args([
+                "lakehouse",
+                "delete-file",
+                "--workspace",
+                &cfg.source_workspace,
+                "--id",
+                &cfg.source_lakehouse,
+                "--path",
+                path,
+            ])
+            .assert()
+            .success();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Move file across workspaces (verify source is gone, dest has content)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_move_file_across_workspaces() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("xmove");
+    let content = "cross workspace move content";
+    let src_path = upload_test_file(&cfg, &format!("{name}.txt"), content);
+    let dst_path = format!("Files/{name}_moved.txt");
+
+    // Move from source to dest lakehouse
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "move-file",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &src_path,
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "--dest-path",
+            &dst_path,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "moved");
+
+    // Verify source is gone (download should fail)
+    let tmp_dir = TempDir::new().unwrap();
+    let dl_path = tmp_dir.path().join("should_fail.txt");
+    fabio()
+        .args([
+            "lakehouse",
+            "download",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &src_path,
+            "--dest-path",
+            dl_path.to_str().unwrap(),
+        ])
+        .assert()
+        .failure();
+
+    // Verify dest has the content
+    let dl_dest_path = tmp_dir.path().join("dest_content.txt");
+    fabio()
+        .args([
+            "lakehouse",
+            "download",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &cfg.dest_lakehouse,
+            "--source-path",
+            &dst_path,
+            "--dest-path",
+            dl_dest_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let downloaded = fs::read_to_string(&dl_dest_path).unwrap();
+    assert_eq!(downloaded, content);
+
+    // Cleanup dest
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-file",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &cfg.dest_lakehouse,
+            "--path",
+            &dst_path,
+        ])
+        .assert()
+        .success();
+}

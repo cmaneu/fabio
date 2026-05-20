@@ -151,3 +151,67 @@ fn warehouse_query_table_output() {
         .success()
         .stdout(predicate::str::is_empty().not());
 }
+
+// ---------------------------------------------------------------------------
+// warehouse show for non-existent ID returns error
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_show_not_found() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "show",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR",
+        "Expected NOT_FOUND or API_ERROR, got: {code}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// warehouse query with --sql from @file
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_query_from_file() {
+    let cfg = TestConfig::from_env();
+    let tmp_dir = tempfile::TempDir::new().unwrap();
+    let sql_file = tmp_dir.path().join("query.sql");
+    std::fs::write(&sql_file, "SELECT 42 AS answer").unwrap();
+
+    let sql_arg = format!("@{}", sql_file.to_str().unwrap());
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--sql",
+            &sql_arg,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["sql"], "SELECT 42 AS answer");
+}
