@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{ErrorCode, FabioError};
+use crate::errors::{enrich_forbidden, ErrorCode, FabioError};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -48,7 +48,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
         WarehouseCommand::List { workspace } => list(cli, client, workspace).await,
         WarehouseCommand::Show { workspace, id } => show(cli, client, workspace, id).await,
         WarehouseCommand::Query { workspace, id, sql } => {
-            query(cli, client, workspace, id, sql.as_deref()).await
+            query(cli, client, workspace, id, sql.as_deref())
+                .await
+                .map_err(|e| enrich_forbidden(e, "warehouse query", "Viewer"))
         }
     }
 }

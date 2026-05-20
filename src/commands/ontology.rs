@@ -9,6 +9,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::errors::enrich_forbidden;
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -144,6 +145,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
                 file.as_deref(),
             )
             .await
+            .map_err(|e| enrich_forbidden(e, "ontology create", "Member"))
         }
         OntologyCommand::Update {
             workspace,
@@ -160,12 +162,17 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
                 description.as_deref(),
             )
             .await
+            .map_err(|e| enrich_forbidden(e, "ontology update", "Contributor"))
         }
         OntologyCommand::Delete {
             workspace,
             id,
             hard,
-        } => delete(cli, client, workspace, id, *hard).await,
+        } => {
+            delete(cli, client, workspace, id, *hard)
+                .await
+                .map_err(|e| enrich_forbidden(e, "ontology delete", "Member"))
+        }
         OntologyCommand::GetDefinition {
             workspace,
             id,
@@ -188,6 +195,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
                 *update_metadata,
             )
             .await
+            .map_err(|e| enrich_forbidden(e, "ontology update-definition", "Contributor"))
         }
     }
 }

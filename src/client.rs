@@ -1146,5 +1146,5 @@ async fn handle_response(resp: Response) -> Result<Value> {
         })
         .unwrap_or_else(|| format!("HTTP {status_code}: {text}"));
 
-    Err(FabioError::from_status(status_code, message).into())
+    Err(FabioError::from_status_with_body(status_code, message, &text).into())
 }

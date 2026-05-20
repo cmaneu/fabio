@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::FabioError;
+use crate::errors::{enrich_forbidden, FabioError};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -94,7 +94,10 @@ async fn create(
         return Ok(());
     }
 
-    let data = client.post("/workspaces", &body, false).await?;
+    let data = client
+        .post("/workspaces", &body, false)
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace create", "Fabric user (tenant-level)"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -104,7 +107,10 @@ async fn delete(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
         return Ok(());
     }
 
-    client.delete(&format!("/workspaces/{id}")).await?;
+    client
+        .delete(&format!("/workspaces/{id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace delete", "Admin"))?;
     let obj = serde_json::json!({ "id": id, "status": "deleted" });
     output::render_object(cli, &obj, "status");
     Ok(())

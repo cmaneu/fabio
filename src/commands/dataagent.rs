@@ -8,7 +8,7 @@ use tokio::time::sleep;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{ErrorCode, FabioError};
+use crate::errors::{enrich_forbidden, ErrorCode, FabioError};
 use crate::output;
 
 /// Polling interval for data agent query runs.
@@ -100,7 +100,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             workspace,
             name,
             description,
-        } => create(cli, client, workspace, name, description.as_deref()).await,
+        } => {
+            create(cli, client, workspace, name, description.as_deref())
+                .await
+                .map_err(|e| enrich_forbidden(e, "data-agent create", "Member"))
+        }
         DataAgentCommand::Update {
             workspace,
             id,
@@ -116,13 +120,22 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
                 description.as_deref(),
             )
             .await
+            .map_err(|e| enrich_forbidden(e, "data-agent update", "Contributor"))
         }
-        DataAgentCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
+        DataAgentCommand::Delete { workspace, id } => {
+            delete(cli, client, workspace, id)
+                .await
+                .map_err(|e| enrich_forbidden(e, "data-agent delete", "Member"))
+        }
         DataAgentCommand::Query {
             workspace,
             id,
             prompt,
-        } => query(cli, client, workspace, id, prompt.as_deref()).await,
+        } => {
+            query(cli, client, workspace, id, prompt.as_deref())
+                .await
+                .map_err(|e| enrich_forbidden(e, "data-agent query", "Viewer"))
+        }
     }
 }
 

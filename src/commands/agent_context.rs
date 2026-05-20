@@ -118,8 +118,8 @@ fn error_codes() -> Vec<ErrorCodeInfo> {
             exit_code: 1,
         },
         ErrorCodeInfo {
-            code: "AUTH_EXPIRED",
-            description: "Credentials expired or insufficient permissions.",
+            code: "FORBIDDEN",
+            description: "Insufficient permissions. Check workspace role (Admin/Member/Contributor/Viewer) and API scopes.",
             exit_code: 1,
         },
         ErrorCodeInfo {

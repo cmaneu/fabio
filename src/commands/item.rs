@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{ErrorCode, FabioError};
+use crate::errors::{enrich_forbidden, ErrorCode, FabioError};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -201,7 +201,8 @@ async fn create(
     let data = client
         .post(&format!("/workspaces/{workspace}/items"), &body, true)
         .await
-        .map_err(|e| enrich_item_create_error(e, item_type))?;
+        .map_err(|e| enrich_item_create_error(e, item_type))
+        .map_err(|e| enrich_forbidden(e, "item create", "Member"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -220,7 +221,8 @@ async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> 
 
     client
         .delete(&format!("/workspaces/{workspace}/items/{id}"))
-        .await?;
+        .await
+        .map_err(|e| enrich_forbidden(e, "item delete", "Member"))?;
 
     let obj = serde_json::json!({ "id": id, "status": "deleted" });
     output::render_object(cli, &obj, "status");
@@ -248,7 +250,9 @@ async fn copy(
         return Ok(());
     }
 
-    let result = copy_item_impl(client, source_workspace, id, dest_workspace, name).await?;
+    let result = copy_item_impl(client, source_workspace, id, dest_workspace, name)
+        .await
+        .map_err(|e| enrich_forbidden(e, "item copy", "Member"))?;
     output::render_object(cli, &result, "id");
     Ok(())
 }
@@ -274,12 +278,15 @@ async fn move_item(
         return Ok(());
     }
 
-    let result = copy_item_impl(client, source_workspace, id, dest_workspace, name).await?;
+    let result = copy_item_impl(client, source_workspace, id, dest_workspace, name)
+        .await
+        .map_err(|e| enrich_forbidden(e, "item move", "Member"))?;
 
     // Delete source after successful copy
     client
         .delete(&format!("/workspaces/{source_workspace}/items/{id}"))
-        .await?;
+        .await
+        .map_err(|e| enrich_forbidden(e, "item move (delete source)", "Member"))?;
 
     let mut obj = result;
     obj["status"] = Value::String("moved".to_string());

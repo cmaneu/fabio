@@ -7,7 +7,7 @@ use tokio::time::sleep;
 use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::commands::jobs::{JobEntry, JobLedger};
-use crate::errors::{ErrorCode, FabioError};
+use crate::errors::{enrich_forbidden, ErrorCode, FabioError};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -168,7 +168,8 @@ async fn create(
 
     let data = client
         .post(&format!("/workspaces/{workspace}/items"), &body, true)
-        .await?;
+        .await
+        .map_err(|e| enrich_forbidden(e, "notebook create", "Member"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -201,7 +202,10 @@ async fn run(
         return Ok(());
     }
 
-    let job_id = client.run_notebook(workspace, id).await?;
+    let job_id = client
+        .run_notebook(workspace, id)
+        .await
+        .map_err(|e| enrich_forbidden(e, "notebook run", "Contributor"))?;
 
     // Record job in local ledger
     let entry = JobEntry::new(&job_id, "notebook-run", workspace, id);
@@ -321,7 +325,8 @@ async fn stop(
 async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
     client
         .delete(&format!("/workspaces/{workspace}/items/{id}"))
-        .await?;
+        .await
+        .map_err(|e| enrich_forbidden(e, "notebook delete", "Member"))?;
 
     let obj = serde_json::json!({ "id": id, "status": "deleted" });
     output::render_object(cli, &obj, "status");
