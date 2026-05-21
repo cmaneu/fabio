@@ -14,7 +14,12 @@ fn fabio() -> Command {
 fn mounted_data_factory_list_returns_array() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["mounted-data-factory", "list", "--workspace", &cfg.source_workspace])
+        .args([
+            "mounted-data-factory",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
@@ -28,7 +33,15 @@ fn mounted_data_factory_list_returns_array() {
 fn mounted_data_factory_dry_run_create() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["mounted-data-factory", "create", "--workspace", &cfg.source_workspace, "--name", "test-mdf", "--dry-run"])
+        .args([
+            "mounted-data-factory",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-mdf",
+            "--dry-run",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);

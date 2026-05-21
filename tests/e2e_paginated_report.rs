@@ -14,7 +14,12 @@ fn fabio() -> Command {
 fn paginated_report_list_returns_array() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["paginated-report", "list", "--workspace", &cfg.source_workspace])
+        .args([
+            "paginated-report",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);

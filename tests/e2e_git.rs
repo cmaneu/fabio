@@ -1977,3 +1977,351 @@ fn git_checkout_blocked_by_uncommitted_changes() {
         .timeout(std::time::Duration::from_secs(60))
         .assert();
 }
+
+// ===========================================================================
+// Azure DevOps Tests
+// ===========================================================================
+// These tests validate Azure DevOps provider integration.
+// Requires:
+//   FABIO_TEST_AZDO_ORG - Azure DevOps organization name
+//   FABIO_TEST_AZDO_PROJECT - Azure DevOps project name
+//   FABIO_TEST_AZDO_REPO - Azure DevOps repository name
+//   FABIO_TEST_AZDO_CONNECTION_ID - Fabric connection ID of type AzureDevOpsSourceControl (optional)
+// ===========================================================================
+
+/// Configuration for Azure DevOps tests.
+struct AzdoConfig {
+    org: String,
+    project: String,
+    repo: String,
+    connection_id: Option<String>,
+}
+
+impl AzdoConfig {
+    /// Load Azure DevOps test configuration from environment variables.
+    /// Returns None if required env vars are not set.
+    fn from_env() -> Option<Self> {
+        let org = std::env::var("FABIO_TEST_AZDO_ORG").ok()?;
+        let project = std::env::var("FABIO_TEST_AZDO_PROJECT").ok()?;
+        let repo = std::env::var("FABIO_TEST_AZDO_REPO").ok()?;
+        let connection_id = std::env::var("FABIO_TEST_AZDO_CONNECTION_ID").ok();
+
+        if org.is_empty() || project.is_empty() || repo.is_empty() {
+            return None;
+        }
+        Some(Self {
+            org,
+            project,
+            repo,
+            connection_id,
+        })
+    }
+
+    /// Discover or return the Azure DevOps connection ID.
+    /// Tries (in order):
+    /// 1. `FABIO_TEST_AZDO_CONNECTION_ID` env var
+    /// 2. Auto-discover from `fabio connection list` (type `AzureDevOpsSourceControl`)
+    fn find_connection_id(&self) -> Option<String> {
+        if let Some(ref id) = self.connection_id {
+            if !id.is_empty() {
+                return Some(id.clone());
+            }
+        }
+
+        // Auto-discover Azure DevOps connection from tenant
+        let output = fabio()
+            .args(["connection", "list", "-o", "json"])
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let json: serde_json::Value = serde_json::from_str(&stdout).ok()?;
+        let connections = json.get("data")?.as_array()?;
+
+        connections
+            .iter()
+            .find(|c| {
+                let conn_type = c
+                    .get("connectionDetails")
+                    .and_then(|d| d.get("type"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("");
+                conn_type == "AzureDevOpsSourceControl" || conn_type == "AzureDevOps"
+            })
+            .and_then(|c| c.get("id"))
+            .and_then(|id| id.as_str())
+            .map(String::from)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Azure DevOps: connect validates --org and --project are required
+// ---------------------------------------------------------------------------
+
+#[test]
+#[serial]
+fn git_connect_azdo_missing_org_fails_with_error() {
+    let assert = fabio()
+        .args([
+            "git",
+            "connect",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--provider",
+            "azure-devops",
+            "--repo",
+            "test-repo",
+            "--branch",
+            "main",
+            "--project",
+            "my-project",
+            // Missing --org
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    // Should fail with "org is required" error
+    assert!(
+        stderr.contains("--org") || stderr.contains("org"),
+        "Expected error mentioning --org, got: {stderr}"
+    );
+}
+
+#[test]
+#[serial]
+fn git_connect_azdo_missing_project_fails_with_error() {
+    let assert = fabio()
+        .args([
+            "git",
+            "connect",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--provider",
+            "azure-devops",
+            "--repo",
+            "test-repo",
+            "--branch",
+            "main",
+            "--org",
+            "my-org",
+            // Missing --project
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    // Should fail with "project is required" error
+    assert!(
+        stderr.contains("--project") || stderr.contains("project"),
+        "Expected error mentioning --project, got: {stderr}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Azure DevOps: connect → init → status → disconnect lifecycle
+// Requires FABIO_TEST_AZDO_* env vars and a Fabric AzureDevOpsSourceControl connection
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_azdo_connect_init_status_disconnect_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let workspace = &cfg.dest_workspace;
+
+    let Some(azdo) = AzdoConfig::from_env() else {
+        eprintln!(
+            "Azure DevOps test skipped: set FABIO_TEST_AZDO_ORG, \
+             FABIO_TEST_AZDO_PROJECT, FABIO_TEST_AZDO_REPO to enable."
+        );
+        return;
+    };
+
+    // For Azure DevOps, credentials are optional (automatic by default)
+    // But if a connection_id is configured, we'll use it
+    let connection_id = azdo.find_connection_id();
+
+    // Ensure workspace is disconnected
+    let _ = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert();
+
+    // Verify disconnected state
+    let assert = fabio()
+        .args(["git", "connection", "show", "--workspace", workspace])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(
+        data["gitConnectionState"], "NotConnected",
+        "Workspace should be disconnected before test"
+    );
+
+    // Connect to Azure DevOps repo
+    let mut connect_args = vec![
+        "git",
+        "connect",
+        "--workspace",
+        workspace,
+        "--provider",
+        "azure-devops",
+        "--org",
+        &azdo.org,
+        "--project",
+        &azdo.project,
+        "--repo",
+        &azdo.repo,
+        "--branch",
+        "main",
+    ];
+
+    let conn_id_str;
+    if let Some(ref id) = connection_id {
+        conn_id_str = id.clone();
+        connect_args.push("--connection-id");
+        connect_args.push(&conn_id_str);
+    }
+
+    let assert = fabio()
+        .args(&connect_args)
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "connected");
+
+    // Verify connected state
+    let assert = fabio()
+        .args(["git", "connection", "show", "--workspace", workspace])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["gitConnectionState"], "Connected");
+    assert_eq!(data["gitProviderDetails"]["gitProviderType"], "AzureDevOps");
+    assert_eq!(data["gitProviderDetails"]["organizationName"], azdo.org);
+    assert_eq!(data["gitProviderDetails"]["projectName"], azdo.project);
+    assert_eq!(data["gitProviderDetails"]["repositoryName"], azdo.repo);
+    assert_eq!(data["gitProviderDetails"]["branchName"], "main");
+
+    // Initialize connection
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "init",
+                "--workspace",
+                workspace,
+                "--strategy",
+                "prefer-workspace",
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "initialized");
+
+    // Get status (should work now)
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args(["git", "status", "--workspace", workspace])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(
+        data.is_array() || data.get("workspaceHead").is_some() || data.get("changes").is_some(),
+        "Status should contain workspaceHead, changes, or be a changes array: {data}"
+    );
+
+    // Disconnect
+    let assert = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "disconnected");
+}
+
+// ---------------------------------------------------------------------------
+// Azure DevOps: connect to non-existent org/project gives error with hint
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_azdo_connect_invalid_org_gives_hint() {
+    let cfg = TestConfig::from_env();
+    let workspace = &cfg.dest_workspace;
+
+    // Ensure workspace is disconnected
+    let _ = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert();
+
+    // Try to connect to a non-existent Azure DevOps org/project/repo
+    let assert = fabio()
+        .args([
+            "git",
+            "connect",
+            "--workspace",
+            workspace,
+            "--provider",
+            "azure-devops",
+            "--org",
+            "nonexistent-org-xyz-999",
+            "--project",
+            "nonexistent-project",
+            "--repo",
+            "nonexistent-repo",
+            "--branch",
+            "main",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .failure();
+
+    // Error should be on stderr with a helpful hint
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value =
+        serde_json::from_str(&stderr).expect("Expected JSON error on stderr");
+
+    let error = &err_json["error"];
+    let code = error["code"].as_str().unwrap_or("");
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR",
+        "Expected NOT_FOUND or API_ERROR, got: {code}"
+    );
+
+    // The hint should reference Azure DevOps
+    if let Some(hint) = error.get("hint").and_then(|h| h.as_str()) {
+        assert!(
+            hint.contains("Azure DevOps") || hint.contains("az repos"),
+            "Hint should reference Azure DevOps: {hint}"
+        );
+    }
+}

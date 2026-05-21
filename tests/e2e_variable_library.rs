@@ -14,7 +14,12 @@ fn fabio() -> Command {
 fn variable_library_list_returns_array() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["variable-library", "list", "--workspace", &cfg.source_workspace])
+        .args([
+            "variable-library",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
@@ -28,7 +33,15 @@ fn variable_library_list_returns_array() {
 fn variable_library_dry_run_create() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["variable-library", "create", "--workspace", &cfg.source_workspace, "--name", "test-varlib", "--dry-run"])
+        .args([
+            "variable-library",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-varlib",
+            "--dry-run",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);

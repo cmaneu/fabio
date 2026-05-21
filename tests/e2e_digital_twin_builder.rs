@@ -14,7 +14,12 @@ fn fabio() -> Command {
 fn digital_twin_builder_list_returns_array() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["digital-twin-builder", "list", "--workspace", &cfg.source_workspace])
+        .args([
+            "digital-twin-builder",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
@@ -28,7 +33,15 @@ fn digital_twin_builder_list_returns_array() {
 fn digital_twin_builder_dry_run_create() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["digital-twin-builder", "create", "--workspace", &cfg.source_workspace, "--name", "test-dtb", "--dry-run"])
+        .args([
+            "digital-twin-builder",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-dtb",
+            "--dry-run",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);

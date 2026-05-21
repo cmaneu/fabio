@@ -810,19 +810,17 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             file,
             content,
             conflict_policy,
-        } => {
-            bulk_create_shortcuts(
-                cli,
-                client,
-                workspace,
-                id,
-                file.as_deref(),
-                content.as_deref(),
-                conflict_policy.as_deref(),
-            )
-            .await
-            .map_err(|e| enrich_forbidden(e, "lakehouse bulk-create-shortcuts", "Contributor"))
-        }
+        } => bulk_create_shortcuts(
+            cli,
+            client,
+            workspace,
+            id,
+            file.as_deref(),
+            content.as_deref(),
+            conflict_policy.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse bulk-create-shortcuts", "Contributor")),
         LakehouseCommand::GetDefinition { workspace, id } => {
             get_definition(cli, client, workspace, id).await
         }
@@ -2318,8 +2316,7 @@ async fn bulk_create_shortcuts(
         return Ok(());
     }
 
-    let mut url =
-        format!("/workspaces/{workspace}/items/{id}/shortcuts/bulkCreate");
+    let mut url = format!("/workspaces/{workspace}/items/{id}/shortcuts/bulkCreate");
     if let Some(policy) = conflict_policy {
         use std::fmt::Write;
         let _ = write!(url, "?shortcutConflictPolicy={policy}");

@@ -10,7 +10,16 @@ fn fabio() -> Command {
 fn profile_save_and_show() {
     // Save a test profile
     fabio()
-        .args(["profile", "save", "--name", "test-profile-e2e", "--workspace", "ws-123", "--capacity", "cap-456"])
+        .args([
+            "profile",
+            "save",
+            "--name",
+            "test-profile-e2e",
+            "--workspace",
+            "ws-123",
+            "--capacity",
+            "cap-456",
+        ])
         .assert()
         .success();
 
@@ -36,14 +45,18 @@ fn profile_save_and_show() {
 fn profile_list_returns_array() {
     // Save a profile to ensure list isn't empty
     fabio()
-        .args(["profile", "save", "--name", "test-list-e2e", "--workspace", "ws-abc"])
+        .args([
+            "profile",
+            "save",
+            "--name",
+            "test-list-e2e",
+            "--workspace",
+            "ws-abc",
+        ])
         .assert()
         .success();
 
-    let assert = fabio()
-        .args(["profile", "list"])
-        .assert()
-        .success();
+    let assert = fabio().args(["profile", "list"]).assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert!(json["data"].is_array());
@@ -61,7 +74,14 @@ fn profile_list_returns_array() {
 fn profile_use_sets_active() {
     // Save and activate
     fabio()
-        .args(["profile", "save", "--name", "test-use-e2e", "--workspace", "ws-use"])
+        .args([
+            "profile",
+            "save",
+            "--name",
+            "test-use-e2e",
+            "--workspace",
+            "ws-use",
+        ])
         .assert()
         .success();
 

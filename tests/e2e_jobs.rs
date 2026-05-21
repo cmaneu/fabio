@@ -8,10 +8,7 @@ fn fabio() -> Command {
 #[test]
 #[serial]
 fn jobs_list_returns_array() {
-    let assert = fabio()
-        .args(["jobs", "list"])
-        .assert()
-        .success();
+    let assert = fabio().args(["jobs", "list"]).assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert!(json["data"].is_array());
@@ -45,10 +42,7 @@ fn jobs_get_nonexistent_fails() {
 #[serial]
 fn jobs_prune_succeeds() {
     // Prune should always succeed (even with empty ledger)
-    let assert = fabio()
-        .args(["jobs", "prune"])
-        .assert()
-        .success();
+    let assert = fabio().args(["jobs", "prune"]).assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert!(json["data"]["pruned"].is_number());

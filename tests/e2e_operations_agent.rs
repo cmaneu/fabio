@@ -14,7 +14,12 @@ fn fabio() -> Command {
 fn operations_agent_list_returns_array() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["operations-agent", "list", "--workspace", &cfg.source_workspace])
+        .args([
+            "operations-agent",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
@@ -28,7 +33,15 @@ fn operations_agent_list_returns_array() {
 fn operations_agent_dry_run_create() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["operations-agent", "create", "--workspace", &cfg.source_workspace, "--name", "test-agent", "--dry-run"])
+        .args([
+            "operations-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-agent",
+            "--dry-run",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);

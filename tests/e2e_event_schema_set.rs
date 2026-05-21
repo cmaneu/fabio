@@ -14,7 +14,12 @@ fn fabio() -> Command {
 fn event_schema_set_list_returns_array() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["event-schema-set", "list", "--workspace", &cfg.source_workspace])
+        .args([
+            "event-schema-set",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
@@ -28,7 +33,15 @@ fn event_schema_set_list_returns_array() {
 fn event_schema_set_dry_run_create() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["event-schema-set", "create", "--workspace", &cfg.source_workspace, "--name", "test-ess", "--dry-run"])
+        .args([
+            "event-schema-set",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-ess",
+            "--dry-run",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);

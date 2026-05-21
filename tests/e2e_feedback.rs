@@ -9,7 +9,11 @@ fn fabio() -> Command {
 #[serial]
 fn feedback_send_records_message() {
     let assert = fabio()
-        .args(["feedback", "send", "This is a test feedback message from E2E"])
+        .args([
+            "feedback",
+            "send",
+            "This is a test feedback message from E2E",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
@@ -26,10 +30,7 @@ fn feedback_list_returns_array() {
         .assert()
         .success();
 
-    let assert = fabio()
-        .args(["feedback", "list"])
-        .assert()
-        .success();
+    let assert = fabio().args(["feedback", "list"]).assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert!(json["data"].is_array());

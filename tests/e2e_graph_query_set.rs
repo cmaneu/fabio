@@ -14,7 +14,12 @@ fn fabio() -> Command {
 fn graph_query_set_list_returns_array() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["graph-query-set", "list", "--workspace", &cfg.source_workspace])
+        .args([
+            "graph-query-set",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
@@ -28,7 +33,15 @@ fn graph_query_set_list_returns_array() {
 fn graph_query_set_dry_run_create() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["graph-query-set", "create", "--workspace", &cfg.source_workspace, "--name", "test-gqs", "--dry-run"])
+        .args([
+            "graph-query-set",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-gqs",
+            "--dry-run",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);

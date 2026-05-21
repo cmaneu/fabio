@@ -14,7 +14,12 @@ fn fabio() -> Command {
 fn user_data_function_list_returns_array() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["user-data-function", "list", "--workspace", &cfg.source_workspace])
+        .args([
+            "user-data-function",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
@@ -28,7 +33,15 @@ fn user_data_function_list_returns_array() {
 fn user_data_function_dry_run_create() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["user-data-function", "create", "--workspace", &cfg.source_workspace, "--name", "test-udf", "--dry-run"])
+        .args([
+            "user-data-function",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-udf",
+            "--dry-run",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);

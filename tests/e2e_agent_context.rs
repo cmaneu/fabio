@@ -6,10 +6,7 @@ fn fabio() -> Command {
 
 #[test]
 fn agent_context_returns_schema() {
-    let assert = fabio()
-        .args(["agent-context"])
-        .assert()
-        .success();
+    let assert = fabio().args(["agent-context"]).assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     // Should have commands object
@@ -20,14 +17,14 @@ fn agent_context_returns_schema() {
 
 #[test]
 fn agent_context_includes_workspace_command() {
-    let assert = fabio()
-        .args(["agent-context"])
-        .assert()
-        .success();
+    let assert = fabio().args(["agent-context"]).assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     let commands = json["data"]["commands"].as_object().unwrap();
-    assert!(commands.contains_key("workspace"), "agent-context should include 'workspace' command");
+    assert!(
+        commands.contains_key("workspace"),
+        "agent-context should include 'workspace' command"
+    );
 }
 
 #[test]
