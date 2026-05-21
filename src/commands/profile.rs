@@ -96,9 +96,7 @@ impl ProfileStore {
 }
 
 fn dirs_or_home() -> PathBuf {
-    std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .map_or_else(|_| PathBuf::from("."), PathBuf::from)
+    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
 }
 
 pub fn execute(cli: &Cli, command: &ProfileCommand) -> Result<()> {

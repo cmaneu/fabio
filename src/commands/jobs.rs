@@ -70,9 +70,7 @@ pub struct JobLedger;
 
 impl JobLedger {
     fn ledger_path() -> PathBuf {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .map_or_else(|_| PathBuf::from("."), PathBuf::from);
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
         home.join(".fabio").join("jobs.jsonl")
     }
 

@@ -1,0 +1,14 @@
+# Normalize line endings to LF on checkout (prevents CRLF issues on Windows)
+* text=auto eol=lf
+
+# Ensure Rust source always uses LF
+*.rs text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+
+# Binary files
+*.tar.gz binary
+*.zip binary
