@@ -1,0 +1,139 @@
+name: Sync Fabric REST API specs
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run daily at 7:00 AM UTC
+    - cron: '0 7 * * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync-specs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fabio
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Checkout fabric-rest-api-specs
+        uses: actions/checkout@v6
+        with:
+          repository: microsoft/fabric-rest-api-specs
+          path: fabric-rest-api-specs
+          fetch-depth: 0
+
+      - name: Check for recent spec changes
+        id: check-changes
+        run: |
+          cd fabric-rest-api-specs
+          # Get commits from the last 24 hours
+          SINCE=$(date -u -d '24 hours ago' '+%Y-%m-%dT%H:%M:%SZ')
+          CHANGES=$(git log --since="$SINCE" --oneline)
+          if [ -z "$CHANGES" ]; then
+            echo "No changes in the last 24 hours"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Found recent changes:"
+            echo "$CHANGES"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            # Save detailed diff for Copilot to analyze
+            git log --since="$SINCE" -p > /tmp/spec-changes.diff
+            git log --since="$SINCE" --stat > /tmp/spec-changes-summary.txt
+          fi
+
+      - name: Set up Node.js
+        if: steps.check-changes.outputs.has_changes == 'true'
+        uses: actions/setup-node@v4
+
+      - name: Install Copilot CLI
+        if: steps.check-changes.outputs.has_changes == 'true'
+        run: npm install -g @github/copilot
+
+      - name: Generate improvements with Copilot
+        if: steps.check-changes.outputs.has_changes == 'true'
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+        run: |
+          copilot -p "You are working on fabio, a Rust CLI for Microsoft Fabric.
+
+          The Microsoft Fabric REST API specs (github.com/microsoft/fabric-rest-api-specs) have been updated.
+          Here is a summary of recent changes:
+
+          $(cat /tmp/spec-changes-summary.txt)
+
+          The full diff is available at /tmp/spec-changes.diff and the full spec repo is at ./fabric-rest-api-specs/.
+
+          Your task:
+          1. Analyze the spec changes to identify new endpoints, modified request/response schemas, new API versions, or deprecated fields.
+          2. Compare against the current fabio implementation in src/commands/ and src/client.rs.
+          3. Make targeted improvements to fabio: add new subcommands, update existing request/response handling, fix field names, or add support for new parameters.
+          4. Update relevant tests in tests/ if you add or modify commands.
+          5. Ensure the code compiles (run 'cargo check') and passes clippy ('cargo clippy').
+          6. Write a file called /tmp/pr-body.md describing what was changed and why, referencing the spec commits.
+
+          Focus on high-impact changes: new endpoints that map to fabio command groups, breaking schema changes, and new required fields. Skip cosmetic or documentation-only spec changes.
+
+          Important constraints:
+          - Rust edition 2024, rust-version 1.85
+          - clippy pedantic+nursery with zero warnings
+          - All output uses the JSON envelope pattern (see src/output.rs)
+          - Follow existing code patterns in src/commands/ for new subcommands
+          - Use Path::new().join() for filesystem paths (Windows compatibility)" \
+            --allow-tool='shell(git:*)' \
+            --allow-tool='shell(cargo:*)' \
+            --allow-tool='shell(cat:*)' \
+            --allow-tool='shell(ls:*)' \
+            --allow-tool='shell(find:*)' \
+            --allow-tool='shell(head:*)' \
+            --allow-tool='shell(tail:*)' \
+            --allow-tool='shell(grep:*)' \
+            --allow-tool=read \
+            --allow-tool=write \
+            --allow-tool=edit \
+            --no-ask-user
+
+      - name: Check for code changes
+        if: steps.check-changes.outputs.has_changes == 'true'
+        id: code-changes
+        run: |
+          if git diff --quiet; then
+            echo "No code changes were made"
+            echo "has_code_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Code changes detected"
+            echo "has_code_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify build
+        if: steps.code-changes.outputs.has_code_changes == 'true'
+        run: |
+          cargo check
+          cargo clippy -- -D warnings
+
+      - name: Create pull request
+        if: steps.code-changes.outputs.has_code_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="sync/fabric-api-specs-$(date +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add -A
+          git reset -- fabric-rest-api-specs
+          git commit -m "feat: sync with latest Fabric REST API spec changes"
+          git push origin "$BRANCH"
+
+          PR_BODY="/tmp/pr-body.md"
+          if [ ! -f "$PR_BODY" ]; then
+            echo "Automated sync with microsoft/fabric-rest-api-specs changes." > "$PR_BODY"
+          fi
+
+          gh pr create \
+            --title "feat: sync with Fabric REST API spec $(date +%Y-%m-%d)" \
+            --body-file "$PR_BODY" \
+            --label "automated,api-sync"

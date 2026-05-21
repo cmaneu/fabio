@@ -1,0 +1,109 @@
+# Pull Request Labeler configuration: https://github.com/actions/labeler
+# Auto-applies labels based on changed files in PRs.
+
+ci:
+  - changed-files:
+    - any-glob-to-any-file: ".github/**/*"
+
+auth:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/auth.rs"
+    - any-glob-to-any-file: "tests/e2e_auth.rs"
+
+workspace:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/workspace.rs"
+    - any-glob-to-any-file: "tests/e2e_workspace.rs"
+
+lakehouse:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/lakehouse.rs"
+    - any-glob-to-any-file: "tests/e2e_lakehouse*.rs"
+
+notebook:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/notebook.rs"
+    - any-glob-to-any-file: "tests/e2e_notebook.rs"
+
+warehouse:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/warehouse.rs"
+    - any-glob-to-any-file: "tests/e2e_warehouse.rs"
+
+eventhouse:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/eventhouse.rs"
+    - any-glob-to-any-file: "src/commands/eventstream.rs"
+    - any-glob-to-any-file: "src/commands/kql_database.rs"
+    - any-glob-to-any-file: "src/commands/kql_queryset.rs"
+    - any-glob-to-any-file: "src/commands/kql_dashboard.rs"
+    - any-glob-to-any-file: "tests/e2e_eventhouse.rs"
+    - any-glob-to-any-file: "tests/e2e_eventstream.rs"
+    - any-glob-to-any-file: "tests/e2e_kql_*.rs"
+
+data-pipeline:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/data_pipeline.rs"
+    - any-glob-to-any-file: "tests/e2e_data_pipeline.rs"
+
+spark:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/spark.rs"
+    - any-glob-to-any-file: "src/commands/spark_job_definition.rs"
+    - any-glob-to-any-file: "tests/e2e_spark*.rs"
+
+git-integration:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/git.rs"
+    - any-glob-to-any-file: "tests/e2e_git.rs"
+
+semantic-model:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/semantic_model.rs"
+    - any-glob-to-any-file: "src/commands/report.rs"
+    - any-glob-to-any-file: "src/commands/dataflow.rs"
+    - any-glob-to-any-file: "tests/e2e_semantic_model.rs"
+    - any-glob-to-any-file: "tests/e2e_report.rs"
+    - any-glob-to-any-file: "tests/e2e_dataflow.rs"
+
+deployment-pipeline:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/deployment_pipeline.rs"
+    - any-glob-to-any-file: "tests/e2e_deployment_pipeline.rs"
+
+networking:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/managed_private_endpoint.rs"
+    - any-glob-to-any-file: "src/commands/connection.rs"
+    - any-glob-to-any-file: "tests/e2e_managed_private_endpoint.rs"
+    - any-glob-to-any-file: "tests/e2e_connection.rs"
+
+security:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/onelake_security.rs"
+    - any-glob-to-any-file: "tests/e2e_onelake_security.rs"
+
+domain:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/domain.rs"
+    - any-glob-to-any-file: "tests/e2e_domain.rs"
+
+ml:
+  - changed-files:
+    - any-glob-to-any-file: "src/commands/ml_model.rs"
+    - any-glob-to-any-file: "src/commands/ml_experiment.rs"
+    - any-glob-to-any-file: "tests/e2e_ml_*.rs"
+
+core:
+  - changed-files:
+    - any-glob-to-any-file: "src/main.rs"
+    - any-glob-to-any-file: "src/cli.rs"
+    - any-glob-to-any-file: "src/client.rs"
+    - any-glob-to-any-file: "src/output.rs"
+    - any-glob-to-any-file: "src/errors.rs"
+    - any-glob-to-any-file: "src/parallel.rs"
+
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file: "Cargo.toml"
+    - any-glob-to-any-file: "Cargo.lock"

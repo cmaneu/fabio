@@ -1,0 +1,91 @@
+# Repository labels — managed as code
+# Apply with: npx github-label-sync --labels .github/labels.yml iemejia/fabio
+# Or manually: yq -r '.[] | "\(.name)\t\(.color)\t\(.description)"' .github/labels.yml | while IFS=$'\t' read -r n c d; do gh label create "$n" --color "$c" --description "$d" --force; done
+- name: bug
+  color: "d73a4a"
+  description: "Something isn't working"
+- name: documentation
+  color: "0075ca"
+  description: "Improvements or additions to documentation"
+- name: duplicate
+  color: "cfd3d7"
+  description: "This issue or pull request already exists"
+- name: enhancement
+  color: "a2eeef"
+  description: "New feature or request"
+- name: help wanted
+  color: "008672"
+  description: "Extra attention is needed"
+- name: good first issue
+  color: "7057ff"
+  description: "Good for newcomers"
+- name: invalid
+  color: "e4e669"
+  description: "This doesn't seem right"
+- name: question
+  color: "d876e3"
+  description: "Further information is requested"
+- name: wontfix
+  color: "ffffff"
+  description: "This will not be worked on"
+- name: api-sync
+  color: "1D76DB"
+  description: "Synced from Fabric REST API specs"
+- name: automated
+  color: "0E8A16"
+  description: "Automated by GitHub Actions"
+# Auto-applied by labeler workflow based on file paths
+- name: ci
+  color: "FBCA04"
+  description: "CI/CD and GitHub Actions changes"
+- name: auth
+  color: "B60205"
+  description: "Authentication and credentials"
+- name: workspace
+  color: "5319E7"
+  description: "Workspace management commands"
+- name: lakehouse
+  color: "0E8A16"
+  description: "Lakehouse files, tables, shortcuts, sync"
+- name: notebook
+  color: "D93F0B"
+  description: "Notebook create, run, definitions"
+- name: warehouse
+  color: "006B75"
+  description: "Warehouse and SQL query commands"
+- name: eventhouse
+  color: "1D76DB"
+  description: "Eventhouse, eventstream, KQL commands"
+- name: data-pipeline
+  color: "C2E0C6"
+  description: "Data pipeline orchestration"
+- name: spark
+  color: "E99695"
+  description: "Spark settings, pools, job definitions"
+- name: git-integration
+  color: "F9D0C4"
+  description: "Git connect, commit, pull, branch"
+- name: semantic-model
+  color: "BFD4F2"
+  description: "Semantic models, reports, dataflows"
+- name: deployment-pipeline
+  color: "C5DEF5"
+  description: "Deployment pipeline stages and deploy"
+- name: networking
+  color: "D4C5F9"
+  description: "Connections and private endpoints"
+- name: security
+  color: "B60205"
+  description: "OneLake security and access roles"
+- name: domain
+  color: "0075CA"
+  description: "Domain management and assignments"
+- name: ml
+  color: "BFDADC"
+  description: "ML models and experiments"
+- name: core
+  color: "EDEDED"
+  description: "Core CLI, client, output, errors"
+- name: dependencies
+  color: "0366D6"
+  description: "Cargo dependency updates"
