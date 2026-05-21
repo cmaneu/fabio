@@ -14,7 +14,12 @@ fn fabio() -> Command {
 fn cosmos_db_database_list_returns_array() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["cosmos-db-database", "list", "--workspace", &cfg.source_workspace])
+        .args([
+            "cosmos-db-database",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
@@ -28,7 +33,15 @@ fn cosmos_db_database_list_returns_array() {
 fn cosmos_db_database_dry_run_create() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["cosmos-db-database", "create", "--workspace", &cfg.source_workspace, "--name", "test-cosmos", "--dry-run"])
+        .args([
+            "cosmos-db-database",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-cosmos",
+            "--dry-run",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);

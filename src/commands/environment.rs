@@ -1,4 +1,5 @@
 use anyhow::Result;
+use base64::Engine;
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -119,8 +120,159 @@ pub enum EnvironmentCommand {
         #[arg(long)]
         id: String,
     },
+
+    // ── Definitions ──────────────────────────────────────────────────────
+    /// Get the definition of an environment
+    #[command(display_order = 20)]
+    GetDefinition {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Update the definition of an environment
+    #[command(display_order = 21)]
+    UpdateDefinition {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+
+        /// Path to definition file
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline definition content
+        #[arg(long)]
+        content: Option<String>,
+    },
+
+    // ── Published Libraries ──────────────────────────────────────────────
+    /// List published libraries of an environment
+    #[command(display_order = 30)]
+    ListLibraries {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Export external libraries configuration (published)
+    #[command(display_order = 31)]
+    ExportLibraries {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+    },
+
+    // ── Staging Libraries ────────────────────────────────────────────────
+    /// List staging libraries of an environment
+    #[command(display_order = 40)]
+    ListStagingLibraries {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Delete a staging library by name
+    #[command(display_order = 41)]
+    DeleteStagingLibrary {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+
+        /// Library filename to delete
+        #[arg(long)]
+        library_name: String,
+    },
+    /// Export external libraries configuration (staging)
+    #[command(display_order = 42)]
+    ExportStagingLibraries {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Import external libraries configuration into staging
+    #[command(display_order = 43)]
+    ImportStagingLibraries {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+
+        /// Path to JSON file with external libraries config
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON content with external libraries config
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Remove an external library from staging
+    #[command(display_order = 44)]
+    RemoveStagingLibrary {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+
+        /// Library name to remove
+        #[arg(long)]
+        library_name: String,
+    },
+
+    // ── Staging Spark Compute ────────────────────────────────────────────
+    /// Update staging Spark compute configuration
+    #[command(display_order = 50)]
+    UpdateStagingSparkCompute {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+
+        /// Path to JSON file with spark compute config
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON content with spark compute config
+        #[arg(long)]
+        content: Option<String>,
+    },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentCommand) -> Result<()> {
     match command {
         EnvironmentCommand::List { workspace } => list(cli, client, workspace).await,
@@ -156,6 +308,79 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
         }
         EnvironmentCommand::GetStagingSparkSettings { workspace, id } => {
             get_staging_spark_settings(cli, client, workspace, id).await
+        }
+        EnvironmentCommand::GetDefinition { workspace, id } => {
+            get_definition(cli, client, workspace, id).await
+        }
+        EnvironmentCommand::UpdateDefinition {
+            workspace,
+            id,
+            file,
+            content,
+        } => {
+            update_definition(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        EnvironmentCommand::ListLibraries { workspace, id } => {
+            list_libraries(cli, client, workspace, id).await
+        }
+        EnvironmentCommand::ExportLibraries { workspace, id } => {
+            export_libraries(cli, client, workspace, id).await
+        }
+        EnvironmentCommand::ListStagingLibraries { workspace, id } => {
+            list_staging_libraries(cli, client, workspace, id).await
+        }
+        EnvironmentCommand::DeleteStagingLibrary {
+            workspace,
+            id,
+            library_name,
+        } => delete_staging_library(cli, client, workspace, id, library_name).await,
+        EnvironmentCommand::ExportStagingLibraries { workspace, id } => {
+            export_staging_libraries(cli, client, workspace, id).await
+        }
+        EnvironmentCommand::ImportStagingLibraries {
+            workspace,
+            id,
+            file,
+            content,
+        } => {
+            import_staging_libraries(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        EnvironmentCommand::RemoveStagingLibrary {
+            workspace,
+            id,
+            library_name,
+        } => remove_staging_library(cli, client, workspace, id, library_name).await,
+        EnvironmentCommand::UpdateStagingSparkCompute {
+            workspace,
+            id,
+            file,
+            content,
+        } => {
+            update_staging_spark_compute(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
         }
     }
 }
@@ -364,5 +589,329 @@ async fn get_staging_spark_settings(
         ))
         .await?;
     output::render_object(cli, &data, "instancePool");
+    Ok(())
+}
+
+// ─── Definitions ─────────────────────────────────────────────────────────────
+
+async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/environments/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "environment get-definition", "Contributor"))?;
+    output::render_object(cli, &data, "definition");
+    Ok(())
+}
+
+async fn update_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let script = match (file, content) {
+        (Some(path), _) => std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?,
+        (_, Some(c)) => c.to_string(),
+        (None, None) => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Either --file or --content must be provided".to_string(),
+                "Example: fabio environment update-definition --workspace <WS> --id <ID> --file definition.json".to_string(),
+            ).into());
+        }
+    };
+
+    let encoded = base64::engine::general_purpose::STANDARD.encode(script.as_bytes());
+
+    let body = serde_json::json!({
+        "definition": {
+            "parts": [
+                {
+                    "path": "environment.metadata.json",
+                    "payload": encoded,
+                    "payloadType": "InlineBase64"
+                }
+            ]
+        }
+    });
+
+    if output::dry_run_guard(
+        cli,
+        "environment update-definition",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "contentLength": script.len()
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/environments/{id}/updateDefinition"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "environment update-definition", "Contributor"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({ "id": id, "status": "definition_updated" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
+
+// ─── Published Libraries ─────────────────────────────────────────────────────
+
+async fn list_libraries(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/environments/{id}/libraries"
+        ))
+        .await?;
+    output::render_object(cli, &data, "customLibraries");
+    Ok(())
+}
+
+async fn export_libraries(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/environments/{id}/libraries/exportExternalLibraries"
+        ))
+        .await?;
+    output::render_object(cli, &data, "externalLibraries");
+    Ok(())
+}
+
+// ─── Staging Libraries ───────────────────────────────────────────────────────
+
+async fn list_staging_libraries(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/environments/{id}/staging/libraries"
+        ))
+        .await?;
+    output::render_object(cli, &data, "customLibraries");
+    Ok(())
+}
+
+async fn delete_staging_library(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    library_name: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "environment delete-staging-library",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "libraryName": library_name
+        }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .delete(&format!(
+            "/workspaces/{workspace}/environments/{id}/staging/libraries?libraryToDelete={library_name}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "environment delete-staging-library", "Contributor"))?;
+
+    let obj = serde_json::json!({ "id": id, "library": library_name, "status": "deleted" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn export_staging_libraries(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/environments/{id}/staging/libraries/exportExternalLibraries"
+        ))
+        .await?;
+    output::render_object(cli, &data, "externalLibraries");
+    Ok(())
+}
+
+async fn import_staging_libraries(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body_str = match (file, content) {
+        (Some(path), _) => std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?,
+        (_, Some(c)) => c.to_string(),
+        (None, None) => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Either --file or --content must be provided".to_string(),
+                "Example: fabio environment import-staging-libraries --workspace <WS> --id <ID> --file libs.json".to_string(),
+            ).into());
+        }
+    };
+
+    let body: Value =
+        serde_json::from_str(&body_str).map_err(|e| anyhow::anyhow!("Invalid JSON: {e}"))?;
+
+    if output::dry_run_guard(
+        cli,
+        "environment import-staging-libraries",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "contentLength": body_str.len()
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!(
+                "/workspaces/{workspace}/environments/{id}/staging/libraries/importExternalLibraries"
+            ),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "environment import-staging-libraries", "Contributor"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({ "id": id, "status": "libraries_imported" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
+
+async fn remove_staging_library(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    library_name: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "environment remove-staging-library",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "libraryName": library_name
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let body = serde_json::json!({ "libraryToRemove": library_name });
+
+    let data = client
+        .post(
+            &format!(
+                "/workspaces/{workspace}/environments/{id}/staging/libraries/removeExternalLibrary"
+            ),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "environment remove-staging-library", "Contributor"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({ "id": id, "library": library_name, "status": "removed" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
+
+// ─── Staging Spark Compute ───────────────────────────────────────────────────
+
+async fn update_staging_spark_compute(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body_str = match (file, content) {
+        (Some(path), _) => std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?,
+        (_, Some(c)) => c.to_string(),
+        (None, None) => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Either --file or --content must be provided".to_string(),
+                "Example: fabio environment update-staging-spark-compute --workspace <WS> --id <ID> --file compute.json".to_string(),
+            ).into());
+        }
+    };
+
+    let body: Value =
+        serde_json::from_str(&body_str).map_err(|e| anyhow::anyhow!("Invalid JSON: {e}"))?;
+
+    if output::dry_run_guard(
+        cli,
+        "environment update-staging-spark-compute",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "contentLength": body_str.len()
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(
+            &format!("/workspaces/{workspace}/environments/{id}/staging/sparkcompute"),
+            &body,
+        )
+        .await
+        .map_err(|e| {
+            enrich_forbidden(e, "environment update-staging-spark-compute", "Contributor")
+        })?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({ "id": id, "status": "spark_compute_updated" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
     Ok(())
 }

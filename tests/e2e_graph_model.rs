@@ -28,7 +28,15 @@ fn graph_model_list_returns_array() {
 fn graph_model_dry_run_create() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["graph-model", "create", "--workspace", &cfg.source_workspace, "--name", "test-graph", "--dry-run"])
+        .args([
+            "graph-model",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-graph",
+            "--dry-run",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);

@@ -105,6 +105,167 @@ pub enum EventstreamCommand {
         #[arg(long)]
         content: Option<String>,
     },
+
+    // ── Topology ─────────────────────────────────────────────────────────
+    /// Get the topology of an eventstream
+    #[command(display_order = 10)]
+    GetTopology {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Eventstream ID
+        #[arg(long)]
+        id: String,
+    },
+
+    // ── Stream Control ───────────────────────────────────────────────────
+    /// Pause the entire eventstream
+    #[command(display_order = 11)]
+    Pause {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Eventstream ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Resume the entire eventstream
+    #[command(display_order = 12)]
+    Resume {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Eventstream ID
+        #[arg(long)]
+        id: String,
+    },
+
+    // ── Destinations ─────────────────────────────────────────────────────
+    /// Get details of a destination
+    #[command(display_order = 20)]
+    GetDestination {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Eventstream ID
+        #[arg(long)]
+        id: String,
+
+        /// Destination ID
+        #[arg(long)]
+        destination_id: String,
+    },
+    /// Get the connection of a destination
+    #[command(display_order = 21)]
+    GetDestinationConnection {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Eventstream ID
+        #[arg(long)]
+        id: String,
+
+        /// Destination ID
+        #[arg(long)]
+        destination_id: String,
+    },
+    /// Pause a destination
+    #[command(display_order = 22)]
+    PauseDestination {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Eventstream ID
+        #[arg(long)]
+        id: String,
+
+        /// Destination ID
+        #[arg(long)]
+        destination_id: String,
+    },
+    /// Resume a destination
+    #[command(display_order = 23)]
+    ResumeDestination {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Eventstream ID
+        #[arg(long)]
+        id: String,
+
+        /// Destination ID
+        #[arg(long)]
+        destination_id: String,
+    },
+
+    // ── Sources ──────────────────────────────────────────────────────────
+    /// Get details of a source
+    #[command(display_order = 30)]
+    GetSource {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Eventstream ID
+        #[arg(long)]
+        id: String,
+
+        /// Source ID
+        #[arg(long)]
+        source_id: String,
+    },
+    /// Get the connection of a source
+    #[command(display_order = 31)]
+    GetSourceConnection {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Eventstream ID
+        #[arg(long)]
+        id: String,
+
+        /// Source ID
+        #[arg(long)]
+        source_id: String,
+    },
+    /// Pause a source
+    #[command(display_order = 32)]
+    PauseSource {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Eventstream ID
+        #[arg(long)]
+        id: String,
+
+        /// Source ID
+        #[arg(long)]
+        source_id: String,
+    },
+    /// Resume a source
+    #[command(display_order = 33)]
+    ResumeSource {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Eventstream ID
+        #[arg(long)]
+        id: String,
+
+        /// Source ID
+        #[arg(long)]
+        source_id: String,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventstreamCommand) -> Result<()> {
@@ -152,6 +313,55 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventstreamComm
             )
             .await
         }
+        EventstreamCommand::GetTopology { workspace, id } => {
+            get_topology(cli, client, workspace, id).await
+        }
+        EventstreamCommand::Pause { workspace, id } => {
+            pause_stream(cli, client, workspace, id).await
+        }
+        EventstreamCommand::Resume { workspace, id } => {
+            resume_stream(cli, client, workspace, id).await
+        }
+        EventstreamCommand::GetDestination {
+            workspace,
+            id,
+            destination_id,
+        } => get_destination(cli, client, workspace, id, destination_id).await,
+        EventstreamCommand::GetDestinationConnection {
+            workspace,
+            id,
+            destination_id,
+        } => get_destination_connection(cli, client, workspace, id, destination_id).await,
+        EventstreamCommand::PauseDestination {
+            workspace,
+            id,
+            destination_id,
+        } => pause_destination(cli, client, workspace, id, destination_id).await,
+        EventstreamCommand::ResumeDestination {
+            workspace,
+            id,
+            destination_id,
+        } => resume_destination(cli, client, workspace, id, destination_id).await,
+        EventstreamCommand::GetSource {
+            workspace,
+            id,
+            source_id,
+        } => get_source(cli, client, workspace, id, source_id).await,
+        EventstreamCommand::GetSourceConnection {
+            workspace,
+            id,
+            source_id,
+        } => get_source_connection(cli, client, workspace, id, source_id).await,
+        EventstreamCommand::PauseSource {
+            workspace,
+            id,
+            source_id,
+        } => pause_source(cli, client, workspace, id, source_id).await,
+        EventstreamCommand::ResumeSource {
+            workspace,
+            id,
+            source_id,
+        } => resume_source(cli, client, workspace, id, source_id).await,
     }
 }
 
@@ -361,5 +571,253 @@ async fn update_definition(
     } else {
         output::render_object(cli, &data, "id");
     }
+    Ok(())
+}
+
+// ─── Topology ────────────────────────────────────────────────────────────────
+
+async fn get_topology(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/eventstreams/{id}/topology"
+        ))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+// ─── Stream Control ──────────────────────────────────────────────────────────
+
+async fn pause_stream(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "eventstream pause",
+        &serde_json::json!({ "workspace": workspace, "id": id }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/eventstreams/{id}/pause"),
+            &serde_json::json!({}),
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "eventstream pause", "Contributor"))?;
+
+    let obj = serde_json::json!({ "id": id, "status": "paused" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn resume_stream(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "eventstream resume",
+        &serde_json::json!({ "workspace": workspace, "id": id }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/eventstreams/{id}/resume"),
+            &serde_json::json!({}),
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "eventstream resume", "Contributor"))?;
+
+    let obj = serde_json::json!({ "id": id, "status": "resumed" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Destinations ────────────────────────────────────────────────────────────
+
+async fn get_destination(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    destination_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/eventstreams/{id}/destinations/{destination_id}"
+        ))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn get_destination_connection(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    destination_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/eventstreams/{id}/destinations/{destination_id}/connection"
+        ))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn pause_destination(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    destination_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "eventstream pause-destination",
+        &serde_json::json!({ "workspace": workspace, "id": id, "destinationId": destination_id }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!(
+                "/workspaces/{workspace}/eventstreams/{id}/destinations/{destination_id}/pause"
+            ),
+            &serde_json::json!({}),
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "eventstream pause-destination", "Contributor"))?;
+
+    let obj = serde_json::json!({ "id": destination_id, "status": "paused" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn resume_destination(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    destination_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "eventstream resume-destination",
+        &serde_json::json!({ "workspace": workspace, "id": id, "destinationId": destination_id }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!(
+                "/workspaces/{workspace}/eventstreams/{id}/destinations/{destination_id}/resume"
+            ),
+            &serde_json::json!({}),
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "eventstream resume-destination", "Contributor"))?;
+
+    let obj = serde_json::json!({ "id": destination_id, "status": "resumed" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Sources ─────────────────────────────────────────────────────────────────
+
+async fn get_source(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    source_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/eventstreams/{id}/sources/{source_id}"
+        ))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn get_source_connection(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    source_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/eventstreams/{id}/sources/{source_id}/connection"
+        ))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn pause_source(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    source_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "eventstream pause-source",
+        &serde_json::json!({ "workspace": workspace, "id": id, "sourceId": source_id }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/eventstreams/{id}/sources/{source_id}/pause"),
+            &serde_json::json!({}),
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "eventstream pause-source", "Contributor"))?;
+
+    let obj = serde_json::json!({ "id": source_id, "status": "paused" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn resume_source(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    source_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "eventstream resume-source",
+        &serde_json::json!({ "workspace": workspace, "id": id, "sourceId": source_id }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/eventstreams/{id}/sources/{source_id}/resume"),
+            &serde_json::json!({}),
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "eventstream resume-source", "Contributor"))?;
+
+    let obj = serde_json::json!({ "id": source_id, "status": "resumed" });
+    output::render_object(cli, &obj, "status");
     Ok(())
 }

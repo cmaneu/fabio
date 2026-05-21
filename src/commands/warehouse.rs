@@ -89,8 +89,185 @@ pub enum WarehouseCommand {
         #[arg(long)]
         sql: Option<String>,
     },
+    /// Get the connection string for a warehouse
+    #[command(display_order = 15)]
+    ConnectionString {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Warehouse item ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Get SQL pools configuration for a workspace
+    #[command(display_order = 20)]
+    GetSqlPoolsConfig {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+    },
+    /// Update SQL pools configuration for a workspace
+    #[command(display_order = 21)]
+    UpdateSqlPoolsConfig {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Path to JSON file with configuration (prefix with @)
+        #[arg(long, group = "input")]
+        file: Option<String>,
+
+        /// Inline JSON content
+        #[arg(long, group = "input")]
+        content: Option<String>,
+    },
+    /// Get SQL audit settings for a warehouse
+    #[command(display_order = 25)]
+    GetAuditSettings {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Warehouse item ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Update SQL audit settings for a warehouse
+    #[command(display_order = 26)]
+    UpdateAuditSettings {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Warehouse item ID
+        #[arg(long)]
+        id: String,
+
+        /// Audit state (e.g. Enabled, Disabled)
+        #[arg(long)]
+        state: Option<String>,
+
+        /// Retention period in days
+        #[arg(long)]
+        retention_days: Option<u32>,
+
+        /// Comma-separated list of audit actions
+        #[arg(long)]
+        audit_actions: Option<String>,
+    },
+    /// Set audit actions and groups for a warehouse
+    #[command(display_order = 27)]
+    SetAuditActions {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Warehouse item ID
+        #[arg(long)]
+        id: String,
+
+        /// Comma-separated list of audit actions and groups
+        #[arg(long, value_delimiter = ',')]
+        actions: Vec<String>,
+    },
+    /// List restore points for a warehouse
+    #[command(display_order = 30)]
+    ListRestorePoints {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Warehouse item ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Create a restore point for a warehouse
+    #[command(display_order = 31)]
+    CreateRestorePoint {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Warehouse item ID
+        #[arg(long)]
+        id: String,
+
+        /// Optional label for the restore point
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Show details of a restore point
+    #[command(display_order = 32)]
+    ShowRestorePoint {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Warehouse item ID
+        #[arg(long)]
+        id: String,
+
+        /// Restore point ID
+        #[arg(long)]
+        restore_point_id: String,
+    },
+    /// Update a restore point
+    #[command(display_order = 33)]
+    UpdateRestorePoint {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Warehouse item ID
+        #[arg(long)]
+        id: String,
+
+        /// Restore point ID
+        #[arg(long)]
+        restore_point_id: String,
+
+        /// New label for the restore point
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Delete a restore point
+    #[command(display_order = 34)]
+    DeleteRestorePoint {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Warehouse item ID
+        #[arg(long)]
+        id: String,
+
+        /// Restore point ID
+        #[arg(long)]
+        restore_point_id: String,
+    },
+    /// Restore a warehouse to a restore point
+    #[command(display_order = 36)]
+    RestoreToPoint {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Warehouse item ID
+        #[arg(long)]
+        id: String,
+
+        /// Restore point ID
+        #[arg(long)]
+        restore_point_id: String,
+
+        /// Name for the restored warehouse
+        #[arg(long)]
+        name: String,
+    },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseCommand) -> Result<()> {
     match command {
         WarehouseCommand::List { workspace } => list(cli, client, workspace).await,
@@ -124,6 +301,86 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
                 .await
                 .map_err(|e| enrich_forbidden(e, "warehouse query", "Viewer"))
         }
+        WarehouseCommand::ConnectionString { workspace, id } => {
+            connection_string(cli, client, workspace, id).await
+        }
+        WarehouseCommand::GetSqlPoolsConfig { workspace } => {
+            get_sql_pools_config(cli, client, workspace).await
+        }
+        WarehouseCommand::UpdateSqlPoolsConfig {
+            workspace,
+            file,
+            content,
+        } => {
+            update_sql_pools_config(cli, client, workspace, file.as_deref(), content.as_deref())
+                .await
+        }
+        WarehouseCommand::GetAuditSettings { workspace, id } => {
+            get_audit_settings(cli, client, workspace, id).await
+        }
+        WarehouseCommand::UpdateAuditSettings {
+            workspace,
+            id,
+            state,
+            retention_days,
+            audit_actions,
+        } => {
+            update_audit_settings(
+                cli,
+                client,
+                workspace,
+                id,
+                state.as_deref(),
+                *retention_days,
+                audit_actions.as_deref(),
+            )
+            .await
+        }
+        WarehouseCommand::SetAuditActions {
+            workspace,
+            id,
+            actions,
+        } => set_audit_actions(cli, client, workspace, id, actions).await,
+        WarehouseCommand::ListRestorePoints { workspace, id } => {
+            list_restore_points(cli, client, workspace, id).await
+        }
+        WarehouseCommand::CreateRestorePoint {
+            workspace,
+            id,
+            name,
+        } => create_restore_point(cli, client, workspace, id, name.as_deref()).await,
+        WarehouseCommand::ShowRestorePoint {
+            workspace,
+            id,
+            restore_point_id,
+        } => show_restore_point(cli, client, workspace, id, restore_point_id).await,
+        WarehouseCommand::UpdateRestorePoint {
+            workspace,
+            id,
+            restore_point_id,
+            name,
+        } => {
+            update_restore_point(
+                cli,
+                client,
+                workspace,
+                id,
+                restore_point_id,
+                name.as_deref(),
+            )
+            .await
+        }
+        WarehouseCommand::DeleteRestorePoint {
+            workspace,
+            id,
+            restore_point_id,
+        } => delete_restore_point(cli, client, workspace, id, restore_point_id).await,
+        WarehouseCommand::RestoreToPoint {
+            workspace,
+            id,
+            restore_point_id,
+            name,
+        } => restore_to_point(cli, client, workspace, id, restore_point_id, name).await,
     }
 }
 
@@ -369,4 +626,314 @@ fn parse_connection_string(connection_string: &str) -> (String, String) {
 
     // Database name would come from item metadata
     (server, String::new())
+}
+
+async fn connection_string(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/warehouses/{id}/connectionString"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse connection-string", "Viewer"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn get_sql_pools_config(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/warehouses/sqlPoolsConfiguration?beta=true"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse get-sql-pools-config", "Viewer"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn update_sql_pools_config(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body: Value = match (file, content) {
+        (Some(f), _) => {
+            let text = std::fs::read_to_string(f).map_err(|e| {
+                FabioError::not_found(format!("Configuration file not found: {f}: {e}"))
+            })?;
+            serde_json::from_str(&text)?
+        }
+        (_, Some(c)) => serde_json::from_str(c)?,
+        _ => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Either --file or --content must be provided".to_string(),
+                "Example: fabio warehouse update-sql-pools-config --workspace <WS> --content '{...}'"
+                    .to_string(),
+            )
+            .into());
+        }
+    };
+
+    if output::dry_run_guard(cli, "warehouse update-sql-pools-config", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(
+            &format!("/workspaces/{workspace}/warehouses/sqlPoolsConfiguration?beta=true"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse update-sql-pools-config", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn get_audit_settings(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/warehouses/{id}/settings/sqlAudit"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse get-audit-settings", "Viewer"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn update_audit_settings(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    state: Option<&str>,
+    retention_days: Option<u32>,
+    audit_actions: Option<&str>,
+) -> Result<()> {
+    let mut body = serde_json::json!({});
+    if let Some(s) = state {
+        body["state"] = Value::String(s.to_string());
+    }
+    if let Some(days) = retention_days {
+        body["retentionDays"] = Value::from(days);
+    }
+    if let Some(actions) = audit_actions {
+        let list: Vec<&str> = actions.split(',').map(str::trim).collect();
+        body["auditActionsAndGroups"] = serde_json::json!(list);
+    }
+
+    if output::dry_run_guard(cli, "warehouse update-audit-settings", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(
+            &format!("/workspaces/{workspace}/warehouses/{id}/settings/sqlAudit"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse update-audit-settings", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn set_audit_actions(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    actions: &[String],
+) -> Result<()> {
+    let body = serde_json::json!({
+        "auditActionsAndGroups": actions,
+    });
+
+    if output::dry_run_guard(cli, "warehouse set-audit-actions", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!(
+                "/workspaces/{workspace}/warehouses/{id}/settings/sqlAudit/setAuditActionsAndGroups"
+            ),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse set-audit-actions", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn list_restore_points(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/warehouses/{id}/restorePoints"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse list-restore-points", "Viewer"))?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["restorePointLabel", "id", "createdDateTime"],
+        &["LABEL", "ID", "CREATED"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn create_restore_point(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    name: Option<&str>,
+) -> Result<()> {
+    let body = name.map_or_else(
+        || serde_json::json!({}),
+        |n| serde_json::json!({ "restorePointLabel": n }),
+    );
+
+    if output::dry_run_guard(cli, "warehouse create-restore-point", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/warehouses/{id}/restorePoints"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse create-restore-point", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn show_restore_point(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    restore_point_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/warehouses/{id}/restorePoints/{restore_point_id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse show-restore-point", "Viewer"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn update_restore_point(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    restore_point_id: &str,
+    name: Option<&str>,
+) -> Result<()> {
+    let mut body = serde_json::json!({});
+    if let Some(n) = name {
+        body["restorePointLabel"] = Value::String(n.to_string());
+    }
+
+    if output::dry_run_guard(cli, "warehouse update-restore-point", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(
+            &format!("/workspaces/{workspace}/warehouses/{id}/restorePoints/{restore_point_id}"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse update-restore-point", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn delete_restore_point(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    restore_point_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "warehouse delete-restore-point",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "restorePointId": restore_point_id
+        }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .delete(&format!(
+            "/workspaces/{workspace}/warehouses/{id}/restorePoints/{restore_point_id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse delete-restore-point", "Contributor"))?;
+
+    let obj = serde_json::json!({ "id": restore_point_id, "status": "deleted" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn restore_to_point(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    restore_point_id: &str,
+    name: &str,
+) -> Result<()> {
+    let body = serde_json::json!({
+        "restoreToWarehouseName": name,
+    });
+
+    if output::dry_run_guard(cli, "warehouse restore-to-point", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!(
+                "/workspaces/{workspace}/warehouses/{id}/restorePoints/{restore_point_id}/restore"
+            ),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "warehouse restore-to-point", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
 }

@@ -14,7 +14,12 @@ fn fabio() -> Command {
 fn warehouse_snapshot_list_returns_array() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["warehouse-snapshot", "list", "--workspace", &cfg.source_workspace])
+        .args([
+            "warehouse-snapshot",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
@@ -28,7 +33,15 @@ fn warehouse_snapshot_list_returns_array() {
 fn warehouse_snapshot_dry_run_create() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["warehouse-snapshot", "create", "--workspace", &cfg.source_workspace, "--name", "test-snapshot", "--dry-run"])
+        .args([
+            "warehouse-snapshot",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-snapshot",
+            "--dry-run",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);

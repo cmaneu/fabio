@@ -34,10 +34,7 @@ fn admin_list_tenant_settings_structured_output() {
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn admin_list_workspaces_structured_output() {
-    let output = fabio()
-        .args(["admin", "list-workspaces"])
-        .output()
-        .unwrap();
+    let output = fabio().args(["admin", "list-workspaces"]).output().unwrap();
 
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -54,10 +51,7 @@ fn admin_list_workspaces_structured_output() {
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn admin_list_tags_structured_output() {
-    let output = fabio()
-        .args(["admin", "list-tags"])
-        .output()
-        .unwrap();
+    let output = fabio().args(["admin", "list-tags"]).output().unwrap();
 
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);

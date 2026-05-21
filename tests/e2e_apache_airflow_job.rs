@@ -14,7 +14,12 @@ fn fabio() -> Command {
 fn airflow_list_returns_array() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["apache-airflow-job", "list", "--workspace", &cfg.source_workspace])
+        .args([
+            "apache-airflow-job",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
@@ -28,7 +33,15 @@ fn airflow_list_returns_array() {
 fn airflow_dry_run_create() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
-        .args(["apache-airflow-job", "create", "--workspace", &cfg.source_workspace, "--name", "test-dag", "--dry-run"])
+        .args([
+            "apache-airflow-job",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-dag",
+            "--dry-run",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
