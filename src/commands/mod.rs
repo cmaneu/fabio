@@ -1,11 +1,14 @@
+pub mod anomaly_detector;
 pub mod auth;
 pub mod capacity;
 pub mod connection;
 pub mod copy_job;
 pub mod cosmos_db_database;
+pub mod dashboard;
 pub mod data_pipeline;
 pub mod dataagent;
 pub mod dataflow;
+pub mod datamart;
 pub mod deployment_pipeline;
 pub mod digital_twin_builder;
 pub mod digital_twin_builder_flow;
@@ -17,6 +20,7 @@ pub mod eventstream;
 pub mod feedback;
 pub mod gateway;
 pub mod git;
+pub mod graph_model;
 pub mod graph_query_set;
 pub mod graphql_api;
 pub mod item;
@@ -28,7 +32,10 @@ pub mod kql_queryset;
 pub mod lakehouse;
 pub mod managed_private_endpoint;
 pub mod map;
+pub mod mirrored_catalog;
 pub mod mirrored_database;
+pub mod mirrored_databricks_catalog;
+pub mod mirrored_warehouse;
 pub mod ml_experiment;
 pub mod ml_model;
 pub mod mounted_data_factory;
@@ -36,6 +43,7 @@ pub mod notebook;
 pub mod onelake_security;
 pub mod ontology;
 pub mod operations_agent;
+pub mod paginated_report;
 pub mod profile;
 pub mod reflex;
 pub mod report;
@@ -48,6 +56,7 @@ pub mod sql_endpoint;
 pub mod user_data_function;
 pub mod variable_library;
 pub mod warehouse;
+pub mod warehouse_snapshot;
 pub mod workspace;
 
 mod agent_context;
@@ -58,6 +67,7 @@ use crate::cli::{Cli, Command};
 use crate::client::FabricClient;
 
 /// Execute the CLI command.
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: Cli) -> Result<()> {
     let client = FabricClient::new();
 
@@ -126,6 +136,27 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Map { command } => map::execute(&cli, &client, command).await,
         Command::GraphQuerySet { command } => {
             graph_query_set::execute(&cli, &client, command).await
+        }
+        Command::GraphModel { command } => graph_model::execute(&cli, &client, command).await,
+        Command::MirroredCatalog { command } => {
+            mirrored_catalog::execute(&cli, &client, command).await
+        }
+        Command::MirroredDatabricksCatalog { command } => {
+            mirrored_databricks_catalog::execute(&cli, &client, command).await
+        }
+        Command::WarehouseSnapshot { command } => {
+            warehouse_snapshot::execute(&cli, &client, command).await
+        }
+        Command::PaginatedReport { command } => {
+            paginated_report::execute(&cli, &client, command).await
+        }
+        Command::Dashboard { command } => dashboard::execute(&cli, &client, command).await,
+        Command::Datamart { command } => datamart::execute(&cli, &client, command).await,
+        Command::MirroredWarehouse { command } => {
+            mirrored_warehouse::execute(&cli, &client, command).await
+        }
+        Command::AnomalyDetector { command } => {
+            anomaly_detector::execute(&cli, &client, command).await
         }
         // Integration
         Command::Gateway { command } => gateway::execute(&cli, &client, command).await,

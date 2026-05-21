@@ -1,14 +1,16 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
-    auth, capacity, connection, copy_job, cosmos_db_database, data_pipeline, dataagent, dataflow,
-    deployment_pipeline, digital_twin_builder, digital_twin_builder_flow, domain, environment,
-    event_schema_set, eventhouse, eventstream, feedback, gateway, git, graph_query_set,
-    graphql_api, item, job_scheduler, jobs, kql_dashboard, kql_database, kql_queryset, lakehouse,
-    managed_private_endpoint, map, mirrored_database, ml_experiment, ml_model,
-    mounted_data_factory, notebook, onelake_security, ontology, operations_agent, profile, reflex,
-    report, semantic_model, snowflake_database, spark, spark_job_definition, sql_database,
-    sql_endpoint, user_data_function, variable_library, warehouse, workspace,
+    anomaly_detector, auth, capacity, connection, copy_job, cosmos_db_database, dashboard,
+    data_pipeline, dataagent, dataflow, datamart, deployment_pipeline, digital_twin_builder,
+    digital_twin_builder_flow, domain, environment, event_schema_set, eventhouse, eventstream,
+    feedback, gateway, git, graph_model, graph_query_set, graphql_api, item, job_scheduler, jobs,
+    kql_dashboard, kql_database, kql_queryset, lakehouse, managed_private_endpoint, map,
+    mirrored_catalog, mirrored_database, mirrored_databricks_catalog, mirrored_warehouse,
+    ml_experiment, ml_model, mounted_data_factory, notebook, onelake_security, ontology,
+    operations_agent, paginated_report, profile, reflex, report, semantic_model,
+    snowflake_database, spark, spark_job_definition, sql_database, sql_endpoint,
+    user_data_function, variable_library, warehouse, warehouse_snapshot, workspace,
 };
 
 /// Agent-first CLI for managing Microsoft Fabric artifacts and data.
@@ -319,6 +321,60 @@ pub enum Command {
     GraphQuerySet {
         #[command(subcommand)]
         command: graph_query_set::GraphQuerySetCommand,
+    },
+    /// Manage graph models (knowledge graph)
+    #[command(display_order = 49)]
+    GraphModel {
+        #[command(subcommand)]
+        command: graph_model::GraphModelCommand,
+    },
+    /// Manage mirrored catalogs (Unity Catalog mirroring)
+    #[command(display_order = 52)]
+    MirroredCatalog {
+        #[command(subcommand)]
+        command: mirrored_catalog::MirroredCatalogCommand,
+    },
+    /// Manage mirrored Azure Databricks catalogs
+    #[command(display_order = 53)]
+    MirroredDatabricksCatalog {
+        #[command(subcommand)]
+        command: mirrored_databricks_catalog::MirroredDatabricksCatalogCommand,
+    },
+    /// Manage warehouse snapshots
+    #[command(display_order = 54)]
+    WarehouseSnapshot {
+        #[command(subcommand)]
+        command: warehouse_snapshot::WarehouseSnapshotCommand,
+    },
+    /// Manage paginated reports
+    #[command(display_order = 55)]
+    PaginatedReport {
+        #[command(subcommand)]
+        command: paginated_report::PaginatedReportCommand,
+    },
+    /// Manage dashboards (Power BI)
+    #[command(display_order = 56)]
+    Dashboard {
+        #[command(subcommand)]
+        command: dashboard::DashboardCommand,
+    },
+    /// Manage datamarts (Power BI)
+    #[command(display_order = 57)]
+    Datamart {
+        #[command(subcommand)]
+        command: datamart::DatamartCommand,
+    },
+    /// Manage mirrored warehouses
+    #[command(display_order = 58)]
+    MirroredWarehouse {
+        #[command(subcommand)]
+        command: mirrored_warehouse::MirroredWarehouseCommand,
+    },
+    /// Manage anomaly detectors
+    #[command(display_order = 59)]
+    AnomalyDetector {
+        #[command(subcommand)]
+        command: anomaly_detector::AnomalyDetectorCommand,
     },
 
     // ── Integration ──────────────────────────────────────────────────────
