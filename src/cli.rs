@@ -1,16 +1,17 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
-    admin, anomaly_detector, apache_airflow_job, auth, capacity, connection, copy_job,
+    admin, anomaly_detector, apache_airflow_job, auth, capacity, catalog, connection, copy_job,
     cosmos_db_database, dashboard, data_pipeline, dataagent, dataflow, datamart,
     deployment_pipeline, digital_twin_builder, digital_twin_builder_flow, domain, environment,
     event_schema_set, eventhouse, eventstream, feedback, gateway, git, graph_model,
     graph_query_set, graphql_api, item, job_scheduler, jobs, kql_dashboard, kql_database,
-    kql_queryset, lakehouse, managed_private_endpoint, map, mirrored_catalog, mirrored_database,
-    mirrored_databricks_catalog, mirrored_warehouse, ml_experiment, ml_model, mounted_data_factory,
-    notebook, onelake_security, ontology, operations_agent, paginated_report, profile, reflex,
-    report, semantic_model, snowflake_database, spark, spark_job_definition, sql_database,
-    sql_endpoint, user_data_function, variable_library, warehouse, warehouse_snapshot, workspace,
+    kql_queryset, lakehouse, lro, managed_private_endpoint, map, mirrored_catalog,
+    mirrored_database, mirrored_databricks_catalog, mirrored_warehouse, ml_experiment, ml_model,
+    mounted_data_factory, notebook, onelake_security, ontology, operations_agent, paginated_report,
+    profile, reflex, report, semantic_model, snowflake_database, spark, spark_job_definition,
+    sql_database, sql_endpoint, user_data_function, variable_library, warehouse,
+    warehouse_snapshot, workspace,
 };
 
 /// Agent-first CLI for managing Microsoft Fabric artifacts and data.
@@ -117,6 +118,12 @@ pub enum Command {
     Capacity {
         #[command(subcommand)]
         command: capacity::CapacityCommand,
+    },
+    /// Search the Fabric catalog
+    #[command(display_order = 5)]
+    Catalog {
+        #[command(subcommand)]
+        command: catalog::CatalogCommand,
     },
 
     // ── Data & Compute ───────────────────────────────────────────────────
@@ -467,6 +474,12 @@ pub enum Command {
     Feedback {
         #[command(subcommand)]
         command: feedback::FeedbackCommand,
+    },
+    /// Check long-running operation status and results
+    #[command(name = "operation", display_order = 63)]
+    Lro {
+        #[command(subcommand)]
+        command: lro::LroCommand,
     },
     /// Machine-readable CLI schema for agent introspection
     #[command(name = "agent-context", display_order = 64)]

@@ -3,6 +3,7 @@ pub mod anomaly_detector;
 pub mod apache_airflow_job;
 pub mod auth;
 pub mod capacity;
+pub mod catalog;
 pub mod connection;
 pub mod copy_job;
 pub mod cosmos_db_database;
@@ -32,6 +33,7 @@ pub mod kql_dashboard;
 pub mod kql_database;
 pub mod kql_queryset;
 pub mod lakehouse;
+pub mod lro;
 pub mod managed_private_endpoint;
 pub mod map;
 pub mod mirrored_catalog;
@@ -81,6 +83,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Item { command } => item::execute(&cli, &client, command).await,
         Command::Lakehouse { command } => lakehouse::execute(&cli, &client, command).await,
         Command::Capacity { command } => capacity::execute(&cli, &client, command).await,
+        Command::Catalog { command } => catalog::execute(&cli, &client, command).await,
         // Data & Compute
         Command::Notebook { command } => notebook::execute(&cli, &client, command).await,
         Command::Warehouse { command } => warehouse::execute(&cli, &client, command).await,
@@ -186,6 +189,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Profile { command } => profile::execute(&cli, command),
         Command::Jobs { command } => jobs::execute(&cli, command),
         Command::Feedback { command } => feedback::execute(&cli, command),
+        Command::Lro { command } => lro::execute(&cli, &client, command).await,
         Command::AgentContext => agent_context::execute(&cli),
     }
 }

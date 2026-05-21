@@ -297,6 +297,85 @@ pub enum WorkspaceCommand {
         workspace: String,
     },
 
+    // ── OneLake Settings ─────────────────────────────────────────────────
+    /// Get `OneLake` settings for a workspace
+    #[command(display_order = 55)]
+    GetOnelakeSettings {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+    },
+    /// Modify `OneLake` default tier (Hot or Cold)
+    #[command(display_order = 56)]
+    ModifyDefaultTier {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Tier: "Hot" or "Cold"
+        #[arg(long)]
+        tier: String,
+    },
+    /// Modify `OneLake` diagnostics configuration
+    #[command(display_order = 57)]
+    ModifyDiagnostics {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Path to JSON file with diagnostics config
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON diagnostics config
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Modify `OneLake` immutability policy
+    #[command(display_order = 58)]
+    ModifyImmutabilityPolicy {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Path to JSON file with policy config
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON policy config
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Export `OneLake` lifecycle policy
+    #[command(display_order = 59)]
+    ExportLifecyclePolicy {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+    },
+    /// Import `OneLake` lifecycle policy
+    #[command(display_order = 60)]
+    ImportLifecyclePolicy {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Path to JSON file with lifecycle policy
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON lifecycle policy
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Reset `OneLake` shortcut cache for a workspace
+    #[command(display_order = 61)]
+    ResetShortcutCache {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+    },
+
     // ── Networking ───────────────────────────────────────────────────────
     /// Get workspace network communication policy
     #[command(display_order = 50)]
@@ -429,6 +508,39 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
         } => assign_to_domain(cli, client, workspace, domain_id).await,
         WorkspaceCommand::UnassignFromDomain { workspace } => {
             unassign_from_domain(cli, client, workspace).await
+        }
+        WorkspaceCommand::GetOnelakeSettings { workspace } => {
+            get_onelake_settings(cli, client, workspace).await
+        }
+        WorkspaceCommand::ModifyDefaultTier { workspace, tier } => {
+            modify_default_tier(cli, client, workspace, tier).await
+        }
+        WorkspaceCommand::ModifyDiagnostics {
+            workspace,
+            file,
+            content,
+        } => modify_diagnostics(cli, client, workspace, file.as_deref(), content.as_deref()).await,
+        WorkspaceCommand::ModifyImmutabilityPolicy {
+            workspace,
+            file,
+            content,
+        } => {
+            modify_immutability_policy(cli, client, workspace, file.as_deref(), content.as_deref())
+                .await
+        }
+        WorkspaceCommand::ExportLifecyclePolicy { workspace } => {
+            export_lifecycle_policy(cli, client, workspace).await
+        }
+        WorkspaceCommand::ImportLifecyclePolicy {
+            workspace,
+            file,
+            content,
+        } => {
+            import_lifecycle_policy(cli, client, workspace, file.as_deref(), content.as_deref())
+                .await
+        }
+        WorkspaceCommand::ResetShortcutCache { workspace } => {
+            reset_shortcut_cache(cli, client, workspace).await
         }
         WorkspaceCommand::GetNetworkPolicy { workspace } => {
             get_network_policy(cli, client, workspace).await
@@ -1119,6 +1231,155 @@ async fn unassign_from_domain(cli: &Cli, client: &FabricClient, workspace: &str)
     Ok(())
 }
 
+// ─── OneLake Settings ────────────────────────────────────────────────────────
+
+async fn get_onelake_settings(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+    let data = client
+        .get(&format!("/workspaces/{workspace}/onelake/settings"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace get-onelake-settings", "Admin"))?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+async fn modify_default_tier(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    tier: &str,
+) -> Result<()> {
+    let body = serde_json::json!({ "defaultTier": tier });
+
+    if output::dry_run_guard(cli, "workspace modify-default-tier", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/onelake/settings/modifyDefaultTier"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace modify-default-tier", "Admin"))?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+async fn modify_diagnostics(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_body(file, content, "workspace modify-diagnostics")?;
+
+    if output::dry_run_guard(cli, "workspace modify-diagnostics", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/onelake/settings/modifyDiagnostics"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace modify-diagnostics", "Admin"))?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+async fn modify_immutability_policy(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_body(file, content, "workspace modify-immutability-policy")?;
+
+    if output::dry_run_guard(cli, "workspace modify-immutability-policy", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/onelake/settings/modifyImmutabilityPolicy"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace modify-immutability-policy", "Admin"))?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+async fn export_lifecycle_policy(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/onelake/lifecycle/exportPolicy"),
+            &serde_json::json!({}),
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace export-lifecycle-policy", "Admin"))?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+async fn import_lifecycle_policy(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_body(file, content, "workspace import-lifecycle-policy")?;
+
+    if output::dry_run_guard(cli, "workspace import-lifecycle-policy", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/onelake/lifecycle/importPolicy"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace import-lifecycle-policy", "Admin"))?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+async fn reset_shortcut_cache(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "workspace reset-shortcut-cache",
+        &serde_json::json!({ "workspaceId": workspace }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/onelake/resetShortcutCache"),
+            &serde_json::json!({}),
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace reset-shortcut-cache", "Admin"))?;
+
+    let obj = serde_json::json!({
+        "workspaceId": workspace,
+        "status": "cache_reset"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
 // ─── Get Network Policy ──────────────────────────────────────────────────────
 
 async fn get_network_policy(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
@@ -1172,6 +1433,26 @@ async fn set_network_policy(
         .map_err(|e| enrich_forbidden(e, "workspace set-network-policy", "Admin"))?;
     output::render_object(cli, &data, "workspaceId");
     Ok(())
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Read JSON body from --file or --content flag.
+fn read_json_body(file: Option<&str>, content: Option<&str>, command: &str) -> Result<Value> {
+    match (file, content) {
+        (Some(path), _) => {
+            let raw = std::fs::read_to_string(path)
+                .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?;
+            serde_json::from_str(&raw).map_err(|e| anyhow::anyhow!("Invalid JSON: {e}"))
+        }
+        (_, Some(c)) => serde_json::from_str(c).map_err(|e| anyhow::anyhow!("Invalid JSON: {e}")),
+        (None, None) => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Either --file or --content must be provided".to_string(),
+            format!("Example: fabio {command} --workspace <WS> --file config.json"),
+        )
+        .into()),
+    }
 }
 
 // ─── Error Enrichment ────────────────────────────────────────────────────────

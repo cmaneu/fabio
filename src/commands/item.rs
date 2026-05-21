@@ -347,6 +347,30 @@ pub enum ItemCommand {
         #[arg(long)]
         id: String,
     },
+
+    // ── External Data Share Invitations ──────────────────────────────────
+    /// Get an external data share invitation (platform-level)
+    #[command(display_order = 55)]
+    GetInvitation {
+        /// Invitation ID
+        #[arg(long)]
+        invitation_id: String,
+    },
+    /// Accept an external data share invitation
+    #[command(display_order = 56)]
+    AcceptInvitation {
+        /// Invitation ID
+        #[arg(long)]
+        invitation_id: String,
+
+        /// Target workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Display name for the created item
+        #[arg(long)]
+        name: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -532,6 +556,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
         ItemCommand::AssignIdentity { workspace, id } => {
             assign_identity(cli, client, workspace, id).await
         }
+        ItemCommand::GetInvitation { invitation_id } => {
+            get_invitation(cli, client, invitation_id).await
+        }
+        ItemCommand::AcceptInvitation {
+            invitation_id,
+            workspace,
+            name,
+        } => accept_invitation(cli, client, invitation_id, workspace, name).await,
     }
 }
 
@@ -1172,6 +1204,43 @@ async fn assign_identity(
 
     let obj = serde_json::json!({ "id": id, "status": "identity_assigned" });
     output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── External Data Share Invitations ─────────────────────────────────────────
+
+async fn get_invitation(cli: &Cli, client: &FabricClient, invitation_id: &str) -> Result<()> {
+    let data = client
+        .get(&format!("/externalDataShares/invitations/{invitation_id}"))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn accept_invitation(
+    cli: &Cli,
+    client: &FabricClient,
+    invitation_id: &str,
+    workspace: &str,
+    name: &str,
+) -> Result<()> {
+    let body = serde_json::json!({
+        "workspaceId": workspace,
+        "displayName": name
+    });
+
+    if output::dry_run_guard(cli, "item accept-invitation", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/externalDataShares/invitations/{invitation_id}/accept"),
+            &body,
+            false,
+        )
+        .await?;
+    output::render_object(cli, &data, "id");
     Ok(())
 }
 
