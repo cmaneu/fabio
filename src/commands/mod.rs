@@ -1,4 +1,5 @@
 pub mod anomaly_detector;
+pub mod apache_airflow_job;
 pub mod auth;
 pub mod capacity;
 pub mod connection;
@@ -154,6 +155,9 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Datamart { command } => datamart::execute(&cli, &client, command).await,
         Command::MirroredWarehouse { command } => {
             mirrored_warehouse::execute(&cli, &client, command).await
+        }
+        Command::ApacheAirflowJob { command } => {
+            apache_airflow_job::execute(&cli, &client, command).await
         }
         Command::AnomalyDetector { command } => {
             anomaly_detector::execute(&cli, &client, command).await
