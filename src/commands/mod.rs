@@ -11,6 +11,7 @@ pub mod environment;
 pub mod eventhouse;
 pub mod eventstream;
 pub mod feedback;
+pub mod gateway;
 pub mod git;
 pub mod graphql_api;
 pub mod item;
@@ -85,6 +86,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         }
         Command::GraphqlApi { command } => graphql_api::execute(&cli, &client, command).await,
         // Integration
+        Command::Gateway { command } => gateway::execute(&cli, &client, command).await,
         Command::Git { command } => git::execute(&cli, &client, command).await,
         Command::Connection { command } => connection::execute(&cli, &client, command).await,
         Command::DeploymentPipeline { command } => {

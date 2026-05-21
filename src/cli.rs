@@ -2,11 +2,11 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
     auth, capacity, connection, copy_job, data_pipeline, dataagent, dataflow, deployment_pipeline,
-    domain, environment, eventhouse, eventstream, feedback, git, graphql_api, item, job_scheduler,
-    jobs, kql_dashboard, kql_database, kql_queryset, lakehouse, managed_private_endpoint,
-    mirrored_database, ml_experiment, ml_model, notebook, onelake_security, ontology, profile,
-    reflex, report, semantic_model, spark, spark_job_definition, sql_database, sql_endpoint,
-    warehouse, workspace,
+    domain, environment, eventhouse, eventstream, feedback, gateway, git, graphql_api, item,
+    job_scheduler, jobs, kql_dashboard, kql_database, kql_queryset, lakehouse,
+    managed_private_endpoint, mirrored_database, ml_experiment, ml_model, notebook,
+    onelake_security, ontology, profile, reflex, report, semantic_model, spark,
+    spark_job_definition, sql_database, sql_endpoint, warehouse, workspace,
 };
 
 /// Agent-first CLI for managing Microsoft Fabric artifacts and data.
@@ -254,6 +254,12 @@ pub enum Command {
     },
 
     // ── Integration ──────────────────────────────────────────────────────
+    /// Manage gateways (on-premises, `VNet`, members, role assignments)
+    #[command(display_order = 45)]
+    Gateway {
+        #[command(subcommand)]
+        command: gateway::GatewayCommand,
+    },
     /// Manage Git integration (connect, commit, pull, status)
     #[command(display_order = 40)]
     Git {
