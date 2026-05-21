@@ -152,7 +152,7 @@ pub enum Command {
         command: sql_endpoint::SqlEndpointCommand,
     },
     /// Manage data agents (create, query, and interact with AI agents)
-    #[command(visible_alias = "da", display_order = 12)]
+    #[command(display_order = 12)]
     DataAgent {
         #[command(subcommand)]
         command: dataagent::DataAgentCommand,

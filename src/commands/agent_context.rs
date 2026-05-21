@@ -598,7 +598,6 @@ fn commands_schema() -> serde_json::Value {
         },
         "data-agent": {
             "description": "Manage data agents (create, query, and interact with AI agents)",
-            "aliases": ["da"],
             "subcommands": {
                 "list": {
                     "description": "List data agents in a workspace",
