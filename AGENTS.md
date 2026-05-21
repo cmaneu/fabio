@@ -89,7 +89,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **360 Rust tests** (54 unit + 306 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
-- Release binary: ~5 MB, stripped, LTO-optimized
+- Release binary: ~12 MB, stripped, LTO-optimized
 
 ### Blocked
 - (none)
@@ -133,16 +133,17 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 ## Relevant Files
 - `Cargo.toml`: Project config, dependencies, clippy/lints config, release profile (LTO+strip)
 - `rust-toolchain.toml`: stable channel, rustfmt+clippy components
-- `src/main.rs`: Entry point, tokio async main, error handling dispatch
+- `src/main.rs`: Entry point, `#![recursion_limit = "256"]`, tokio async main, error handling dispatch
 - `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 37 subcommand groups
 - `src/errors.rs`: ErrorCode enum + FabioError struct with thiserror
-- `src/output.rs`: render_list, render_object, render_error (respects --quiet/--query), apply_query, unit tests
+- `src/output.rs`: render_list_with_token, render_object, render_error (respects --quiet/--query), apply_query, dry_run_guard, unit tests
+- `src/parallel.rs`: Parallel execution framework for concurrent file/table operations with rate-limit retry
 - `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, run_notebook
 - `src/commands/mod.rs`: Command dispatch
 - `src/commands/auth.rs`: login/logout/status (DefaultAzureCredential chain)
-- `src/commands/workspace.rs`: list/show/create/delete/assign-capacity
-- `src/commands/item.rs`: list/show/create/delete/copy/move
-- `src/commands/lakehouse.rs`: 15 subcommands (tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut)
+- `src/commands/workspace.rs`: 13 subcommands (CRUD + capacity + identity + role assignments)
+- `src/commands/item.rs`: 10 subcommands (CRUD + copy/move + definitions + list-connections)
+- `src/commands/lakehouse.rs`: 20 subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut)
 - `src/commands/notebook.rs`: create/get-definition/run (with --wait/--timeout)/status/stop/delete
 - `src/commands/warehouse.rs`: list/show/create/update/delete/query (endpoint resolved, stdin/file/flag SQL input)
 - `src/commands/dataagent.rs`: list/show/create/update/delete/query
