@@ -1,0 +1,65 @@
+name: Feature Request
+description: Suggest a new command or enhancement for fabio CLI
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - New command group
+        - New subcommand
+        - Existing command enhancement
+        - Output/formatting
+        - Authentication
+        - Performance
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: command
+    attributes:
+      label: Proposed Command
+      description: If applicable, the command signature you'd like to see
+      placeholder: "fabio lakehouse query --workspace <id> --id <lh-id> --sql 'SELECT ...'"
+    validations:
+      required: false
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this solve? What workflow is currently painful?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How should this work? Include expected JSON output if relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Other approaches you've considered or workarounds you're using
+    validations:
+      required: false
+
+  - type: dropdown
+    id: fabric_api
+    attributes:
+      label: Fabric API Coverage
+      description: Is this backed by an existing Fabric REST API?
+      options:
+        - "Yes — API exists"
+        - "Partially — API exists but needs workarounds"
+        - "No — requires new approach"
+        - "Unknown"
+    validations:
+      required: false
