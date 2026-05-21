@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::errors::enrich_forbidden;
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -86,6 +87,76 @@ pub enum ConnectionCommand {
     /// List supported connection types (gateway types catalog)
     #[command(display_order = 10)]
     ListSupportedTypes,
+    /// List role assignments for a connection
+    #[command(display_order = 20)]
+    ListRoleAssignments {
+        /// Connection ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Add a role assignment to a connection
+    #[command(display_order = 21)]
+    AddRoleAssignment {
+        /// Connection ID
+        #[arg(long)]
+        id: String,
+
+        /// Principal ID (user, group, or service principal)
+        #[arg(long)]
+        principal_id: String,
+
+        /// Principal type
+        #[arg(long, value_parser = ["User", "Group", "ServicePrincipal"])]
+        principal_type: String,
+
+        /// Role to assign
+        #[arg(long, value_parser = ["Owner", "User", "UserWithReshare"])]
+        role: String,
+    },
+    /// Show a specific role assignment for a connection
+    #[command(display_order = 22)]
+    ShowRoleAssignment {
+        /// Connection ID
+        #[arg(long)]
+        id: String,
+
+        /// Role assignment ID
+        #[arg(long)]
+        assignment_id: String,
+    },
+    /// Update a role assignment for a connection
+    #[command(display_order = 23)]
+    UpdateRoleAssignment {
+        /// Connection ID
+        #[arg(long)]
+        id: String,
+
+        /// Role assignment ID
+        #[arg(long)]
+        assignment_id: String,
+
+        /// New role
+        #[arg(long, value_parser = ["Owner", "User", "UserWithReshare"])]
+        role: String,
+    },
+    /// Delete a role assignment from a connection
+    #[command(display_order = 24)]
+    DeleteRoleAssignment {
+        /// Connection ID
+        #[arg(long)]
+        id: String,
+
+        /// Role assignment ID
+        #[arg(long)]
+        assignment_id: String,
+    },
+    /// Test a connection
+    #[command(display_order = 30)]
+    TestConnection {
+        /// Connection ID
+        #[arg(long)]
+        id: String,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &ConnectionCommand) -> Result<()> {
@@ -136,6 +207,27 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ConnectionComma
         }
         ConnectionCommand::Delete { id } => delete(cli, client, id).await,
         ConnectionCommand::ListSupportedTypes => list_supported_types(cli, client).await,
+        ConnectionCommand::ListRoleAssignments { id } => {
+            list_role_assignments(cli, client, id).await
+        }
+        ConnectionCommand::AddRoleAssignment {
+            id,
+            principal_id,
+            principal_type,
+            role,
+        } => add_role_assignment(cli, client, id, principal_id, principal_type, role).await,
+        ConnectionCommand::ShowRoleAssignment { id, assignment_id } => {
+            show_role_assignment(cli, client, id, assignment_id).await
+        }
+        ConnectionCommand::UpdateRoleAssignment {
+            id,
+            assignment_id,
+            role,
+        } => update_role_assignment(cli, client, id, assignment_id, role).await,
+        ConnectionCommand::DeleteRoleAssignment { id, assignment_id } => {
+            delete_role_assignment(cli, client, id, assignment_id).await
+        }
+        ConnectionCommand::TestConnection { id } => test_connection(cli, client, id).await,
     }
 }
 
@@ -348,5 +440,153 @@ async fn list_supported_types(cli: &Cli, client: &FabricClient) -> Result<()> {
         "name",
         resp.continuation_token.as_deref(),
     );
+    Ok(())
+}
+
+async fn list_role_assignments(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/connections/{id}/roleAssignments"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["id", "role", "principal.id", "principal.type"],
+        &["ID", "ROLE", "PRINCIPAL ID", "PRINCIPAL TYPE"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn add_role_assignment(
+    cli: &Cli,
+    client: &FabricClient,
+    id: &str,
+    principal_id: &str,
+    principal_type: &str,
+    role: &str,
+) -> Result<()> {
+    if cli.dry_run {
+        let preview = json!({
+            "status": "dry_run",
+            "message": format!("Would add role assignment '{role}' for principal '{principal_id}' on connection '{id}'"),
+        });
+        output::render_object(cli, &preview, "status");
+        return Ok(());
+    }
+
+    let body = json!({
+        "principal": {
+            "id": principal_id,
+            "type": principal_type,
+        },
+        "role": role,
+    });
+
+    let data = client
+        .post(&format!("/connections/{id}/roleAssignments"), &body, false)
+        .await
+        .map_err(|e| enrich_forbidden(e, "connection add-role-assignment", "Owner"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn show_role_assignment(
+    cli: &Cli,
+    client: &FabricClient,
+    id: &str,
+    assignment_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/connections/{id}/roleAssignments/{assignment_id}"
+        ))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn update_role_assignment(
+    cli: &Cli,
+    client: &FabricClient,
+    id: &str,
+    assignment_id: &str,
+    role: &str,
+) -> Result<()> {
+    if cli.dry_run {
+        let preview = json!({
+            "status": "dry_run",
+            "message": format!("Would update role assignment '{assignment_id}' to role '{role}' on connection '{id}'"),
+        });
+        output::render_object(cli, &preview, "status");
+        return Ok(());
+    }
+
+    let body = json!({ "role": role });
+
+    let data = client
+        .patch(
+            &format!("/connections/{id}/roleAssignments/{assignment_id}"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "connection update-role-assignment", "Owner"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn delete_role_assignment(
+    cli: &Cli,
+    client: &FabricClient,
+    id: &str,
+    assignment_id: &str,
+) -> Result<()> {
+    if cli.dry_run {
+        let preview = json!({
+            "status": "dry_run",
+            "message": format!("Would delete role assignment '{assignment_id}' from connection '{id}'"),
+        });
+        output::render_object(cli, &preview, "status");
+        return Ok(());
+    }
+
+    client
+        .delete(&format!(
+            "/connections/{id}/roleAssignments/{assignment_id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "connection delete-role-assignment", "Owner"))?;
+
+    let result = json!({
+        "status": "deleted",
+        "id": assignment_id,
+        "connectionId": id,
+    });
+    output::render_object(cli, &result, "id");
+    Ok(())
+}
+
+async fn test_connection(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
+    if cli.dry_run {
+        let preview = json!({
+            "status": "dry_run",
+            "message": format!("Would test connection '{id}'"),
+        });
+        output::render_object(cli, &preview, "status");
+        return Ok(());
+    }
+
+    let body = json!({});
+    let data = client
+        .post(&format!("/connections/{id}/testConnection"), &body, false)
+        .await
+        .map_err(|e| enrich_forbidden(e, "connection test-connection", "User"))?;
+    output::render_object(cli, &data, "status");
     Ok(())
 }

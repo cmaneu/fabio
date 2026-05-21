@@ -156,8 +156,173 @@ pub enum WorkspaceCommand {
         #[arg(long)]
         assignment_id: String,
     },
+
+    /// Show a specific workspace role assignment
+    #[command(display_order = 16)]
+    ShowRoleAssignment {
+        /// Workspace ID
+        #[arg(long)]
+        id: String,
+
+        /// Role assignment ID
+        #[arg(long)]
+        assignment_id: String,
+    },
+
+    // ── Folder Management ────────────────────────────────────────────────
+    /// List workspace folders
+    #[command(display_order = 30)]
+    ListFolders {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+    },
+    /// Create a folder in a workspace
+    #[command(display_order = 31)]
+    CreateFolder {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Folder display name
+        #[arg(long)]
+        name: String,
+
+        /// Optional description
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Optional parent folder ID (omit for root)
+        #[arg(long)]
+        parent_folder_id: Option<String>,
+    },
+    /// Show details of a workspace folder
+    #[command(display_order = 32)]
+    ShowFolder {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Folder ID
+        #[arg(long)]
+        folder_id: String,
+    },
+    /// Update a workspace folder
+    #[command(display_order = 33)]
+    UpdateFolder {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Folder ID
+        #[arg(long)]
+        folder_id: String,
+
+        /// New display name
+        #[arg(long)]
+        name: Option<String>,
+
+        /// New description
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Delete a workspace folder
+    #[command(display_order = 34)]
+    DeleteFolder {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Folder ID
+        #[arg(long)]
+        folder_id: String,
+    },
+    /// Move a folder to another parent (or root)
+    #[command(display_order = 35)]
+    MoveFolder {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Folder ID to move
+        #[arg(long)]
+        folder_id: String,
+
+        /// Target parent folder ID (omit to move to root)
+        #[arg(long)]
+        target_folder_id: Option<String>,
+    },
+
+    // ── Tags ─────────────────────────────────────────────────────────────
+    /// Apply tags to a workspace
+    #[command(display_order = 40)]
+    ApplyTags {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Comma-separated tag IDs
+        #[arg(long, value_delimiter = ',')]
+        tag_ids: Vec<String>,
+    },
+    /// Remove tags from a workspace
+    #[command(display_order = 41)]
+    UnapplyTags {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Comma-separated tag IDs
+        #[arg(long, value_delimiter = ',')]
+        tag_ids: Vec<String>,
+    },
+
+    // ── Domain ───────────────────────────────────────────────────────────
+    /// Assign workspace to a domain
+    #[command(display_order = 45)]
+    AssignToDomain {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Domain ID
+        #[arg(long)]
+        domain_id: String,
+    },
+    /// Unassign workspace from its domain
+    #[command(display_order = 46)]
+    UnassignFromDomain {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+    },
+
+    // ── Networking ───────────────────────────────────────────────────────
+    /// Get workspace network communication policy
+    #[command(display_order = 50)]
+    GetNetworkPolicy {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+    },
+    /// Set workspace network communication policy
+    #[command(display_order = 51)]
+    SetNetworkPolicy {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Path to JSON file with policy configuration
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON policy configuration
+        #[arg(long)]
+        content: Option<String>,
+    },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceCommand) -> Result<()> {
     match command {
         WorkspaceCommand::List => list(cli, client).await,
@@ -194,6 +359,85 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
         WorkspaceCommand::DeleteRoleAssignment { id, assignment_id } => {
             delete_role_assignment(cli, client, id, assignment_id).await
         }
+        WorkspaceCommand::ShowRoleAssignment { id, assignment_id } => {
+            show_role_assignment(cli, client, id, assignment_id).await
+        }
+        WorkspaceCommand::ListFolders { workspace } => list_folders(cli, client, workspace).await,
+        WorkspaceCommand::CreateFolder {
+            workspace,
+            name,
+            description,
+            parent_folder_id,
+        } => {
+            create_folder(
+                cli,
+                client,
+                workspace,
+                name,
+                description.as_deref(),
+                parent_folder_id.as_deref(),
+            )
+            .await
+        }
+        WorkspaceCommand::ShowFolder {
+            workspace,
+            folder_id,
+        } => show_folder(cli, client, workspace, folder_id).await,
+        WorkspaceCommand::UpdateFolder {
+            workspace,
+            folder_id,
+            name,
+            description,
+        } => {
+            update_folder(
+                cli,
+                client,
+                workspace,
+                folder_id,
+                name.as_deref(),
+                description.as_deref(),
+            )
+            .await
+        }
+        WorkspaceCommand::DeleteFolder {
+            workspace,
+            folder_id,
+        } => delete_folder(cli, client, workspace, folder_id).await,
+        WorkspaceCommand::MoveFolder {
+            workspace,
+            folder_id,
+            target_folder_id,
+        } => {
+            move_folder(
+                cli,
+                client,
+                workspace,
+                folder_id,
+                target_folder_id.as_deref(),
+            )
+            .await
+        }
+        WorkspaceCommand::ApplyTags { workspace, tag_ids } => {
+            apply_tags(cli, client, workspace, tag_ids).await
+        }
+        WorkspaceCommand::UnapplyTags { workspace, tag_ids } => {
+            unapply_tags(cli, client, workspace, tag_ids).await
+        }
+        WorkspaceCommand::AssignToDomain {
+            workspace,
+            domain_id,
+        } => assign_to_domain(cli, client, workspace, domain_id).await,
+        WorkspaceCommand::UnassignFromDomain { workspace } => {
+            unassign_from_domain(cli, client, workspace).await
+        }
+        WorkspaceCommand::GetNetworkPolicy { workspace } => {
+            get_network_policy(cli, client, workspace).await
+        }
+        WorkspaceCommand::SetNetworkPolicy {
+            workspace,
+            file,
+            content,
+        } => set_network_policy(cli, client, workspace, file.as_deref(), content.as_deref()).await,
     }
 }
 
@@ -564,6 +808,369 @@ async fn delete_role_assignment(
         "status": "deleted"
     });
     output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Show Role Assignment ────────────────────────────────────────────────────
+
+async fn show_role_assignment(
+    cli: &Cli,
+    client: &FabricClient,
+    id: &str,
+    assignment_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!("/workspaces/{id}/roleAssignments/{assignment_id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace show-role-assignment", "Member"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+// ─── List Folders ────────────────────────────────────────────────────────────
+
+async fn list_folders(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/folders"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace list-folders", "Member"))?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["displayName", "id"],
+        &["NAME", "ID"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+// ─── Create Folder ───────────────────────────────────────────────────────────
+
+async fn create_folder(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    name: &str,
+    description: Option<&str>,
+    parent_folder_id: Option<&str>,
+) -> Result<()> {
+    let mut body = serde_json::json!({ "displayName": name });
+    if let Some(desc) = description {
+        body["description"] = Value::String(desc.to_string());
+    }
+    if let Some(parent) = parent_folder_id {
+        body["parentFolderId"] = Value::String(parent.to_string());
+    }
+
+    if output::dry_run_guard(cli, "workspace create-folder", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(&format!("/workspaces/{workspace}/folders"), &body, false)
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace create-folder", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+// ─── Show Folder ─────────────────────────────────────────────────────────────
+
+async fn show_folder(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    folder_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!("/workspaces/{workspace}/folders/{folder_id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace show-folder", "Member"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+// ─── Update Folder ───────────────────────────────────────────────────────────
+
+async fn update_folder(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    folder_id: &str,
+    name: Option<&str>,
+    description: Option<&str>,
+) -> Result<()> {
+    if name.is_none() && description.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one of --name or --description must be provided".to_string(),
+            "Example: fabio workspace update-folder --workspace <WS> --folder-id <ID> --name \"New Name\"".to_string(),
+        )
+        .into());
+    }
+
+    let mut body = serde_json::json!({});
+    if let Some(n) = name {
+        body["displayName"] = Value::String(n.to_string());
+    }
+    if let Some(d) = description {
+        body["description"] = Value::String(d.to_string());
+    }
+
+    if output::dry_run_guard(cli, "workspace update-folder", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(
+            &format!("/workspaces/{workspace}/folders/{folder_id}"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace update-folder", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+// ─── Delete Folder ───────────────────────────────────────────────────────────
+
+async fn delete_folder(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    folder_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "workspace delete-folder",
+        &serde_json::json!({ "workspaceId": workspace, "folderId": folder_id }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .delete(&format!("/workspaces/{workspace}/folders/{folder_id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace delete-folder", "Contributor"))?;
+
+    let obj = serde_json::json!({
+        "workspaceId": workspace,
+        "folderId": folder_id,
+        "status": "deleted"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Move Folder ─────────────────────────────────────────────────────────────
+
+async fn move_folder(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    folder_id: &str,
+    target_folder_id: Option<&str>,
+) -> Result<()> {
+    let body = target_folder_id.map_or_else(
+        || serde_json::json!({ "targetFolderId": null }),
+        |target| serde_json::json!({ "targetFolderId": target }),
+    );
+
+    if output::dry_run_guard(cli, "workspace move-folder", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/folders/{folder_id}/move"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace move-folder", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+// ─── Apply Tags ──────────────────────────────────────────────────────────────
+
+async fn apply_tags(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    tag_ids: &[String],
+) -> Result<()> {
+    let body = serde_json::json!({ "tagIds": tag_ids });
+
+    if output::dry_run_guard(cli, "workspace apply-tags", &body) {
+        return Ok(());
+    }
+
+    client
+        .post(&format!("/workspaces/{workspace}/applyTags"), &body, false)
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace apply-tags", "Admin"))?;
+
+    let obj = serde_json::json!({
+        "workspaceId": workspace,
+        "tagIds": tag_ids,
+        "status": "applied"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Unapply Tags ────────────────────────────────────────────────────────────
+
+async fn unapply_tags(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    tag_ids: &[String],
+) -> Result<()> {
+    let body = serde_json::json!({ "tagIds": tag_ids });
+
+    if output::dry_run_guard(cli, "workspace unapply-tags", &body) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/unapplyTags"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace unapply-tags", "Admin"))?;
+
+    let obj = serde_json::json!({
+        "workspaceId": workspace,
+        "tagIds": tag_ids,
+        "status": "unapplied"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Assign to Domain ────────────────────────────────────────────────────────
+
+async fn assign_to_domain(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    domain_id: &str,
+) -> Result<()> {
+    let body = serde_json::json!({ "domainId": domain_id });
+
+    if output::dry_run_guard(cli, "workspace assign-to-domain", &body) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/assignToDomain"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace assign-to-domain", "Admin"))?;
+
+    let obj = serde_json::json!({
+        "workspaceId": workspace,
+        "domainId": domain_id,
+        "status": "assigned"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Unassign from Domain ────────────────────────────────────────────────────
+
+async fn unassign_from_domain(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "workspace unassign-from-domain",
+        &serde_json::json!({ "workspaceId": workspace }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/unassignFromDomain"),
+            &serde_json::json!({}),
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace unassign-from-domain", "Admin"))?;
+
+    let obj = serde_json::json!({
+        "workspaceId": workspace,
+        "status": "unassigned"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Get Network Policy ──────────────────────────────────────────────────────
+
+async fn get_network_policy(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/networking/communicationPolicy"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace get-network-policy", "Admin"))?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+// ─── Set Network Policy ──────────────────────────────────────────────────────
+
+async fn set_network_policy(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let raw = match (file, content) {
+        (Some(path), _) => std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?,
+        (_, Some(c)) => c.to_string(),
+        (None, None) => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Either --file or --content must be provided".to_string(),
+                "Example: fabio workspace set-network-policy --workspace <WS> --file policy.json"
+                    .to_string(),
+            )
+            .into());
+        }
+    };
+
+    let body: Value =
+        serde_json::from_str(&raw).map_err(|e| anyhow::anyhow!("Invalid JSON: {e}"))?;
+
+    if output::dry_run_guard(cli, "workspace set-network-policy", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .put(
+            &format!("/workspaces/{workspace}/networking/communicationPolicy"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace set-network-policy", "Admin"))?;
+    output::render_object(cli, &data, "workspaceId");
     Ok(())
 }
 

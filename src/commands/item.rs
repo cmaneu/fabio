@@ -141,7 +141,7 @@ pub enum ItemCommand {
 
     // ── Copy/Move ────────────────────────────────────────────────────────
     /// Copy an item to another workspace
-    #[command(display_order = 20)]
+    #[command(display_order = 14)]
     Copy {
         /// Source workspace ID
         #[arg(long)]
@@ -160,7 +160,7 @@ pub enum ItemCommand {
         name: Option<String>,
     },
     /// Move an item to another workspace (copy + delete source)
-    #[command(display_order = 21)]
+    #[command(display_order = 15)]
     Move {
         /// Source workspace ID
         #[arg(long)]
@@ -178,8 +178,178 @@ pub enum ItemCommand {
         #[arg(long)]
         name: Option<String>,
     },
+
+    // ── Tags ─────────────────────────────────────────────────────────────
+    /// Apply tags to an item
+    #[command(display_order = 20)]
+    ApplyTags {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+
+        /// Comma-separated tag IDs
+        #[arg(long, value_delimiter = ',')]
+        tag_ids: Vec<String>,
+    },
+    /// Remove tags from an item
+    #[command(display_order = 21)]
+    UnapplyTags {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+
+        /// Comma-separated tag IDs
+        #[arg(long, value_delimiter = ',')]
+        tag_ids: Vec<String>,
+    },
+
+    // ── Bulk Operations ──────────────────────────────────────────────────
+    /// Bulk export item definitions (LRO)
+    #[command(display_order = 30)]
+    BulkExportDefinitions {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Path to JSON file with request body
+        #[arg(long, group = "input")]
+        file: Option<String>,
+
+        /// Inline JSON request body
+        #[arg(long, group = "input")]
+        content: Option<String>,
+    },
+    /// Bulk import item definitions (LRO)
+    #[command(display_order = 31)]
+    BulkImportDefinitions {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Path to JSON file with request body
+        #[arg(long, group = "input")]
+        file: Option<String>,
+
+        /// Inline JSON request body
+        #[arg(long, group = "input")]
+        content: Option<String>,
+    },
+    /// Bulk move items to another workspace (LRO)
+    #[command(display_order = 32)]
+    BulkMove {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Path to JSON file with request body
+        #[arg(long, group = "input")]
+        file: Option<String>,
+
+        /// Inline JSON request body
+        #[arg(long, group = "input")]
+        content: Option<String>,
+    },
+
+    // ── External Data Shares ─────────────────────────────────────────────
+    /// List external data shares for an item
+    #[command(display_order = 40)]
+    ListExternalDataShares {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Create an external data share for an item
+    #[command(display_order = 41)]
+    CreateExternalDataShare {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+
+        /// Comma-separated paths to share
+        #[arg(long, value_delimiter = ',')]
+        paths: Vec<String>,
+
+        /// Recipient tenant ID
+        #[arg(long)]
+        recipient_tenant_id: String,
+    },
+    /// Show details of an external data share
+    #[command(display_order = 42)]
+    ShowExternalDataShare {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+
+        /// External data share ID
+        #[arg(long)]
+        share_id: String,
+    },
+    /// Revoke an external data share
+    #[command(display_order = 43)]
+    RevokeExternalDataShare {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+
+        /// External data share ID
+        #[arg(long)]
+        share_id: String,
+    },
+    /// Delete an external data share
+    #[command(display_order = 44)]
+    DeleteExternalDataShare {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+
+        /// External data share ID
+        #[arg(long)]
+        share_id: String,
+    },
+
+    // ── Identity ─────────────────────────────────────────────────────────
+    /// Assign a managed identity to an item
+    #[command(display_order = 50)]
+    AssignIdentity {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+    },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) -> Result<()> {
     match command {
         ItemCommand::List {
@@ -277,6 +447,90 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
                 name.as_deref(),
             )
             .await
+        }
+        ItemCommand::ApplyTags {
+            workspace,
+            id,
+            tag_ids,
+        } => apply_tags(cli, client, workspace, id, tag_ids).await,
+        ItemCommand::UnapplyTags {
+            workspace,
+            id,
+            tag_ids,
+        } => unapply_tags(cli, client, workspace, id, tag_ids).await,
+        ItemCommand::BulkExportDefinitions {
+            workspace,
+            file,
+            content,
+        } => {
+            bulk_post(
+                cli,
+                client,
+                workspace,
+                "bulkExportDefinitions",
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        ItemCommand::BulkImportDefinitions {
+            workspace,
+            file,
+            content,
+        } => {
+            bulk_post(
+                cli,
+                client,
+                workspace,
+                "bulkImportDefinitions",
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        ItemCommand::BulkMove {
+            workspace,
+            file,
+            content,
+        } => {
+            bulk_post(
+                cli,
+                client,
+                workspace,
+                "bulkMove",
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        ItemCommand::ListExternalDataShares { workspace, id } => {
+            list_external_data_shares(cli, client, workspace, id).await
+        }
+        ItemCommand::CreateExternalDataShare {
+            workspace,
+            id,
+            paths,
+            recipient_tenant_id,
+        } => {
+            create_external_data_share(cli, client, workspace, id, paths, recipient_tenant_id).await
+        }
+        ItemCommand::ShowExternalDataShare {
+            workspace,
+            id,
+            share_id,
+        } => show_external_data_share(cli, client, workspace, id, share_id).await,
+        ItemCommand::RevokeExternalDataShare {
+            workspace,
+            id,
+            share_id,
+        } => revoke_external_data_share(cli, client, workspace, id, share_id).await,
+        ItemCommand::DeleteExternalDataShare {
+            workspace,
+            id,
+            share_id,
+        } => delete_external_data_share(cli, client, workspace, id, share_id).await,
+        ItemCommand::AssignIdentity { workspace, id } => {
+            assign_identity(cli, client, workspace, id).await
         }
     }
 }
@@ -678,6 +932,286 @@ async fn copy_item_impl(
         .await?;
 
     Ok(result)
+}
+
+// ─── Apply Tags ──────────────────────────────────────────────────────────────
+
+async fn apply_tags(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    tag_ids: &[String],
+) -> Result<()> {
+    let body = serde_json::json!({ "tagIds": tag_ids });
+
+    if output::dry_run_guard(cli, "item apply-tags", &body) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/items/{id}/applyTags"),
+            &body,
+            false,
+        )
+        .await?;
+
+    let obj = serde_json::json!({ "id": id, "status": "tags_applied" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Unapply Tags ────────────────────────────────────────────────────────────
+
+async fn unapply_tags(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    tag_ids: &[String],
+) -> Result<()> {
+    let body = serde_json::json!({ "tagIds": tag_ids });
+
+    if output::dry_run_guard(cli, "item unapply-tags", &body) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/items/{id}/unapplyTags"),
+            &body,
+            false,
+        )
+        .await?;
+
+    let obj = serde_json::json!({ "id": id, "status": "tags_removed" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Bulk Operations ─────────────────────────────────────────────────────────
+
+async fn bulk_post(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    operation: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_input(file, content, operation)?;
+
+    if output::dry_run_guard(cli, &format!("item {operation}"), &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/items/{operation}"),
+            &body,
+            true,
+        )
+        .await?;
+
+    output::render_object(cli, &data, "status");
+    Ok(())
+}
+
+// ─── External Data Shares ────────────────────────────────────────────────────
+
+async fn list_external_data_shares(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/items/{id}/externalDataShares"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["id", "status"],
+        &["ID", "STATUS"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn create_external_data_share(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    paths: &[String],
+    recipient_tenant_id: &str,
+) -> Result<()> {
+    let body = serde_json::json!({
+        "paths": paths,
+        "recipient": { "tenantId": recipient_tenant_id }
+    });
+
+    if output::dry_run_guard(cli, "item create-external-data-share", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/items/{id}/externalDataShares"),
+            &body,
+            false,
+        )
+        .await?;
+
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn show_external_data_share(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    share_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/items/{id}/externalDataShares/{share_id}"
+        ))
+        .await?;
+
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn revoke_external_data_share(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    share_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "item revoke-external-data-share",
+        &serde_json::json!({ "workspace": workspace, "id": id, "share_id": share_id }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/items/{id}/externalDataShares/{share_id}/revoke"),
+            &serde_json::json!({}),
+            false,
+        )
+        .await?;
+
+    let obj = serde_json::json!({ "id": share_id, "status": "revoked" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn delete_external_data_share(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    share_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "item delete-external-data-share",
+        &serde_json::json!({ "workspace": workspace, "id": id, "share_id": share_id }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .delete(&format!(
+            "/workspaces/{workspace}/items/{id}/externalDataShares/{share_id}"
+        ))
+        .await?;
+
+    let obj = serde_json::json!({ "id": share_id, "status": "deleted" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Assign Identity ─────────────────────────────────────────────────────────
+
+async fn assign_identity(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "item assign-identity",
+        &serde_json::json!({ "workspace": workspace, "id": id }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/items/{id}/identities/default/assign"),
+            &serde_json::json!({}),
+            false,
+        )
+        .await?;
+
+    let obj = serde_json::json!({ "id": id, "status": "identity_assigned" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Read JSON body from --file or --content flag.
+fn read_json_input(file: Option<&str>, content: Option<&str>, command: &str) -> Result<Value> {
+    if let Some(c) = content {
+        serde_json::from_str(c).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid JSON in --content: {e}"),
+                format!("Provide valid JSON for {command}."),
+            )
+            .into()
+        })
+    } else if let Some(f) = file {
+        let data = fs::read_to_string(f).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Failed to read file '{f}': {e}"),
+                "Provide a valid file path.".to_string(),
+            )
+        })?;
+        serde_json::from_str(&data).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid JSON in file '{f}': {e}"),
+                format!("Provide valid JSON for {command}."),
+            )
+            .into()
+        })
+    } else {
+        Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Either --file or --content must be provided".to_string(),
+            format!("Example: fabio item {command} --workspace <WS> --file request.json"),
+        )
+        .into())
+    }
 }
 
 // ─── Error Enrichment ────────────────────────────────────────────────────────

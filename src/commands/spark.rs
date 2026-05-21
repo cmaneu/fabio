@@ -117,8 +117,122 @@ pub enum SparkCommand {
         #[arg(long)]
         pool_id: String,
     },
+
+    // ── Capacity Spark Settings ──────────────────────────────────────────
+    /// Get capacity-level Spark settings
+    #[command(display_order = 20)]
+    GetCapacitySettings {
+        /// Capacity ID
+        #[arg(long)]
+        capacity_id: String,
+    },
+    /// Update capacity-level Spark settings
+    #[command(display_order = 21)]
+    UpdateCapacitySettings {
+        /// Capacity ID
+        #[arg(long)]
+        capacity_id: String,
+
+        /// JSON file path with settings
+        #[arg(long)]
+        file: Option<String>,
+
+        /// JSON content with settings (inline)
+        #[arg(long)]
+        content: Option<String>,
+    },
+
+    // ── Capacity Custom Pools ────────────────────────────────────────────
+    /// List custom Spark pools in a capacity
+    #[command(display_order = 30)]
+    ListCapacityPools {
+        /// Capacity ID
+        #[arg(long)]
+        capacity_id: String,
+    },
+    /// Create a custom Spark pool in a capacity
+    #[command(display_order = 31)]
+    CreateCapacityPool {
+        /// Capacity ID
+        #[arg(long)]
+        capacity_id: String,
+
+        /// Pool name
+        #[arg(long)]
+        name: String,
+
+        /// JSON file path with pool configuration
+        #[arg(long)]
+        file: Option<String>,
+
+        /// JSON content with pool configuration (inline)
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Get details of a capacity Spark pool
+    #[command(display_order = 32)]
+    GetCapacityPool {
+        /// Capacity ID
+        #[arg(long)]
+        capacity_id: String,
+
+        /// Pool ID
+        #[arg(long)]
+        pool_id: String,
+    },
+    /// Update a capacity Spark pool
+    #[command(display_order = 33)]
+    UpdateCapacityPool {
+        /// Capacity ID
+        #[arg(long)]
+        capacity_id: String,
+
+        /// Pool ID
+        #[arg(long)]
+        pool_id: String,
+
+        /// JSON file path with pool configuration
+        #[arg(long)]
+        file: Option<String>,
+
+        /// JSON content with pool configuration (inline)
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Delete a capacity Spark pool
+    #[command(display_order = 34)]
+    DeleteCapacityPool {
+        /// Capacity ID
+        #[arg(long)]
+        capacity_id: String,
+
+        /// Pool ID
+        #[arg(long)]
+        pool_id: String,
+    },
+
+    // ── Livy Sessions ────────────────────────────────────────────────────
+    /// List Livy sessions in a workspace
+    #[command(display_order = 40)]
+    ListLivySessions {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+    },
+    /// Get details of a Livy session
+    #[command(display_order = 41)]
+    GetLivySession {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Livy session ID
+        #[arg(long)]
+        livy_id: String,
+    },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &SparkCommand) -> Result<()> {
     match command {
         SparkCommand::GetSettings { workspace } => get_settings(cli, client, workspace).await,
@@ -165,6 +279,72 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SparkCommand) -
         } => update_pool(cli, client, workspace, pool_id, config).await,
         SparkCommand::DeletePool { workspace, pool_id } => {
             delete_pool(cli, client, workspace, pool_id).await
+        }
+        SparkCommand::GetCapacitySettings { capacity_id } => {
+            get_capacity_settings(cli, client, capacity_id).await
+        }
+        SparkCommand::UpdateCapacitySettings {
+            capacity_id,
+            file,
+            content,
+        } => {
+            update_capacity_settings(
+                cli,
+                client,
+                capacity_id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        SparkCommand::ListCapacityPools { capacity_id } => {
+            list_capacity_pools(cli, client, capacity_id).await
+        }
+        SparkCommand::CreateCapacityPool {
+            capacity_id,
+            name,
+            file,
+            content,
+        } => {
+            create_capacity_pool(
+                cli,
+                client,
+                capacity_id,
+                name,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        SparkCommand::GetCapacityPool {
+            capacity_id,
+            pool_id,
+        } => get_capacity_pool(cli, client, capacity_id, pool_id).await,
+        SparkCommand::UpdateCapacityPool {
+            capacity_id,
+            pool_id,
+            file,
+            content,
+        } => {
+            update_capacity_pool(
+                cli,
+                client,
+                capacity_id,
+                pool_id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        SparkCommand::DeleteCapacityPool {
+            capacity_id,
+            pool_id,
+        } => delete_capacity_pool(cli, client, capacity_id, pool_id).await,
+        SparkCommand::ListLivySessions { workspace } => {
+            list_livy_sessions(cli, client, workspace).await
+        }
+        SparkCommand::GetLivySession { workspace, livy_id } => {
+            get_livy_session(cli, client, workspace, livy_id).await
         }
     }
 }
@@ -325,4 +505,221 @@ async fn delete_pool(
     let obj = serde_json::json!({ "poolId": pool_id, "status": "deleted" });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+// ─── Capacity Spark Settings ─────────────────────────────────────────────────
+
+async fn get_capacity_settings(cli: &Cli, client: &FabricClient, capacity_id: &str) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/capacities/{capacity_id}/spark/settings?beta=true"
+        ))
+        .await?;
+    output::render_object(cli, &data, "capacity");
+    Ok(())
+}
+
+async fn update_capacity_settings(
+    cli: &Cli,
+    client: &FabricClient,
+    capacity_id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_body(file, content, "update-capacity-settings")?;
+
+    if output::dry_run_guard(cli, "spark update-capacity-settings", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(
+            &format!("/capacities/{capacity_id}/spark/settings?beta=true"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "spark update-capacity-settings", "Admin"))?;
+    output::render_object(cli, &data, "capacity");
+    Ok(())
+}
+
+// ─── Capacity Custom Pools ───────────────────────────────────────────────────
+
+async fn list_capacity_pools(cli: &Cli, client: &FabricClient, capacity_id: &str) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/capacities/{capacity_id}/spark/pools?beta=true"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["name", "id", "nodeFamily", "nodeSize"],
+        &["NAME", "ID", "NODE FAMILY", "NODE SIZE"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn create_capacity_pool(
+    cli: &Cli,
+    client: &FabricClient,
+    capacity_id: &str,
+    name: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let mut body = match (file, content) {
+        (Some(f), _) => {
+            let text = std::fs::read_to_string(f)
+                .map_err(|e| anyhow::anyhow!("Failed to read file '{f}': {e}"))?;
+            serde_json::from_str::<Value>(&text)?
+        }
+        (_, Some(c)) => serde_json::from_str::<Value>(c)?,
+        (None, None) => serde_json::json!({}),
+    };
+    body["name"] = Value::String(name.to_string());
+
+    if output::dry_run_guard(cli, "spark create-capacity-pool", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/capacities/{capacity_id}/spark/pools?beta=true"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "spark create-capacity-pool", "Admin"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn get_capacity_pool(
+    cli: &Cli,
+    client: &FabricClient,
+    capacity_id: &str,
+    pool_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/capacities/{capacity_id}/spark/pools/{pool_id}?beta=true"
+        ))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn update_capacity_pool(
+    cli: &Cli,
+    client: &FabricClient,
+    capacity_id: &str,
+    pool_id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_body(file, content, "update-capacity-pool")?;
+
+    if output::dry_run_guard(cli, "spark update-capacity-pool", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(
+            &format!("/capacities/{capacity_id}/spark/pools/{pool_id}?beta=true"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "spark update-capacity-pool", "Admin"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn delete_capacity_pool(
+    cli: &Cli,
+    client: &FabricClient,
+    capacity_id: &str,
+    pool_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "spark delete-capacity-pool",
+        &serde_json::json!({ "capacityId": capacity_id, "poolId": pool_id }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .delete(&format!(
+            "/capacities/{capacity_id}/spark/pools/{pool_id}?beta=true"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "spark delete-capacity-pool", "Admin"))?;
+
+    let obj = serde_json::json!({ "poolId": pool_id, "status": "deleted" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Livy Sessions ───────────────────────────────────────────────────────────
+
+async fn list_livy_sessions(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/spark/livySessions"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["id", "name", "state", "kind"],
+        &["ID", "NAME", "STATE", "KIND"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn get_livy_session(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    livy_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/spark/livySessions/{livy_id}"
+        ))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+fn read_json_body(file: Option<&str>, content: Option<&str>, command: &str) -> Result<Value> {
+    match (file, content) {
+        (Some(f), _) => {
+            let text = std::fs::read_to_string(f)
+                .map_err(|e| anyhow::anyhow!("Failed to read file '{f}': {e}"))?;
+            Ok(serde_json::from_str(&text)?)
+        }
+        (_, Some(c)) => Ok(serde_json::from_str(c)?),
+        _ => Err(crate::errors::FabioError::with_hint(
+            crate::errors::ErrorCode::InvalidInput,
+            "Either --file or --content must be provided".to_string(),
+            format!("Example: fabio spark {command} --capacity-id <ID> --file settings.json"),
+        )
+        .into()),
+    }
 }

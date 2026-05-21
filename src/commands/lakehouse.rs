@@ -418,6 +418,157 @@ pub enum LakehouseCommand {
         #[arg(short, long)]
         path: String,
     },
+
+    // ── Definitions ──────────────────────────────────────────────────────
+    /// Get the definition of a lakehouse
+    #[command(display_order = 50)]
+    GetDefinition {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Update the definition of a lakehouse
+    #[command(display_order = 51)]
+    UpdateDefinition {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long)]
+        id: String,
+
+        /// Definition file path (reads file content)
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Definition content (inline JSON)
+        #[arg(long)]
+        content: Option<String>,
+    },
+
+    // ── Materialized Lake Views ──────────────────────────────────────────
+    /// Trigger a refresh of materialized lake views
+    #[command(display_order = 60)]
+    RefreshMaterializedViews {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Create a schedule for materialized lake view refresh
+    #[command(display_order = 61)]
+    CreateMaterializedViewsSchedule {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long)]
+        id: String,
+
+        /// Schedule definition file path (JSON)
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Schedule definition content (inline JSON)
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Update a schedule for materialized lake view refresh
+    #[command(display_order = 62)]
+    UpdateMaterializedViewsSchedule {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long)]
+        id: String,
+
+        /// Schedule ID
+        #[arg(long)]
+        schedule_id: String,
+
+        /// Schedule definition file path (JSON)
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Schedule definition content (inline JSON)
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Delete a schedule for materialized lake view refresh
+    #[command(display_order = 63)]
+    DeleteMaterializedViewsSchedule {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long)]
+        id: String,
+
+        /// Schedule ID
+        #[arg(long)]
+        schedule_id: String,
+    },
+
+    // ── Table Maintenance ────────────────────────────────────────────────
+    /// Run table maintenance on a lakehouse
+    #[command(display_order = 70)]
+    RunTableMaintenance {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long)]
+        id: String,
+
+        /// Configuration file path (optional JSON)
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Configuration content (optional inline JSON)
+        #[arg(long)]
+        content: Option<String>,
+    },
+
+    // ── Livy Sessions ────────────────────────────────────────────────────
+    /// List Livy sessions for a lakehouse
+    #[command(display_order = 80)]
+    ListLivySessions {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Get details of a Livy session for a lakehouse
+    #[command(display_order = 81)]
+    GetLivySession {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long)]
+        id: String,
+
+        /// Livy session ID
+        #[arg(long)]
+        livy_id: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -629,6 +780,91 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
         } => delete_shortcut(cli, client, workspace, id, name, path)
             .await
             .map_err(|e| enrich_forbidden(e, "lakehouse delete-shortcut", "Contributor")),
+        LakehouseCommand::GetDefinition { workspace, id } => {
+            get_definition(cli, client, workspace, id).await
+        }
+        LakehouseCommand::UpdateDefinition {
+            workspace,
+            id,
+            file,
+            content,
+        } => {
+            update_definition(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        LakehouseCommand::RefreshMaterializedViews { workspace, id } => {
+            refresh_materialized_views(cli, client, workspace, id).await
+        }
+        LakehouseCommand::CreateMaterializedViewsSchedule {
+            workspace,
+            id,
+            file,
+            content,
+        } => {
+            create_materialized_views_schedule(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        LakehouseCommand::UpdateMaterializedViewsSchedule {
+            workspace,
+            id,
+            schedule_id,
+            file,
+            content,
+        } => {
+            update_materialized_views_schedule(
+                cli,
+                client,
+                workspace,
+                id,
+                schedule_id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        LakehouseCommand::DeleteMaterializedViewsSchedule {
+            workspace,
+            id,
+            schedule_id,
+        } => delete_materialized_views_schedule(cli, client, workspace, id, schedule_id).await,
+        LakehouseCommand::RunTableMaintenance {
+            workspace,
+            id,
+            file,
+            content,
+        } => {
+            run_table_maintenance(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        LakehouseCommand::ListLivySessions { workspace, id } => {
+            list_livy_sessions(cli, client, workspace, id).await
+        }
+        LakehouseCommand::GetLivySession {
+            workspace,
+            id,
+            livy_id,
+        } => get_livy_session(cli, client, workspace, id, livy_id).await,
     }
 }
 
@@ -2014,4 +2250,287 @@ async fn delete_shortcut(
     });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+// ─── Definitions ─────────────────────────────────────────────────────────────
+
+async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/lakehouses/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse get-definition", "Contributor"))?;
+    output::render_object(cli, &data, "definition");
+    Ok(())
+}
+
+async fn update_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body_str = match (file, content) {
+        (Some(path), _) => std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?,
+        (_, Some(c)) => c.to_string(),
+        (None, None) => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Either --file or --content must be provided".to_string(),
+                "Example: fabio lakehouse update-definition --workspace <WS> --id <ID> --file definition.json".to_string(),
+            ).into());
+        }
+    };
+
+    let body: Value = serde_json::from_str(&body_str)?;
+
+    if output::dry_run_guard(
+        cli,
+        "lakehouse update-definition",
+        &serde_json::json!({ "workspace": workspace, "id": id }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/lakehouses/{id}/updateDefinition"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse update-definition", "Contributor"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({ "id": id, "status": "definition_updated" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
+
+// ─── Materialized Lake Views ─────────────────────────────────────────────────
+
+async fn refresh_materialized_views(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let body = serde_json::json!({});
+
+    if output::dry_run_guard(cli, "lakehouse refresh-materialized-views", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/lakehouses/{id}/jobs/refreshMaterializedLakeViews/instances"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse refresh-materialized-views", "Contributor"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({ "id": id, "status": "refresh_triggered" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
+
+async fn create_materialized_views_schedule(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_body(file, content, "create-materialized-views-schedule")?;
+
+    if output::dry_run_guard(cli, "lakehouse create-materialized-views-schedule", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/lakehouses/{id}/jobs/refreshMaterializedLakeViews/schedules"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse create-materialized-views-schedule", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn update_materialized_views_schedule(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    schedule_id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_body(file, content, "update-materialized-views-schedule")?;
+
+    if output::dry_run_guard(cli, "lakehouse update-materialized-views-schedule", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(
+            &format!("/workspaces/{workspace}/lakehouses/{id}/jobs/refreshMaterializedLakeViews/schedules/{schedule_id}"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse update-materialized-views-schedule", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn delete_materialized_views_schedule(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    schedule_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "lakehouse delete-materialized-views-schedule",
+        &serde_json::json!({ "workspace": workspace, "id": id, "scheduleId": schedule_id }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .delete(&format!(
+            "/workspaces/{workspace}/lakehouses/{id}/jobs/refreshMaterializedLakeViews/schedules/{schedule_id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse delete-materialized-views-schedule", "Contributor"))?;
+
+    let obj = serde_json::json!({ "scheduleId": schedule_id, "status": "deleted" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Table Maintenance ───────────────────────────────────────────────────────
+
+async fn run_table_maintenance(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = match (file, content) {
+        (Some(f), _) => {
+            let text = std::fs::read_to_string(f)
+                .map_err(|e| anyhow::anyhow!("Failed to read file '{f}': {e}"))?;
+            serde_json::from_str(&text)?
+        }
+        (_, Some(c)) => serde_json::from_str(c)?,
+        (None, None) => serde_json::json!({}),
+    };
+
+    if output::dry_run_guard(cli, "lakehouse run-table-maintenance", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/lakehouses/{id}/jobs/tableMaintenance/instances"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse run-table-maintenance", "Contributor"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({ "id": id, "status": "maintenance_triggered" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
+
+// ─── Livy Sessions ───────────────────────────────────────────────────────────
+
+async fn list_livy_sessions(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/lakehouses/{id}/livySessions"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["id", "name", "state", "kind"],
+        &["ID", "NAME", "STATE", "KIND"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn get_livy_session(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    livy_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/lakehouses/{id}/livySessions/{livy_id}"
+        ))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+fn read_json_body(file: Option<&str>, content: Option<&str>, command: &str) -> Result<Value> {
+    match (file, content) {
+        (Some(f), _) => {
+            let text = std::fs::read_to_string(f)
+                .map_err(|e| anyhow::anyhow!("Failed to read file '{f}': {e}"))?;
+            Ok(serde_json::from_str(&text)?)
+        }
+        (_, Some(c)) => Ok(serde_json::from_str(c)?),
+        _ => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Either --file or --content must be provided".to_string(),
+            format!(
+                "Example: fabio lakehouse {command} --workspace <WS> --id <ID> --file config.json"
+            ),
+        )
+        .into()),
+    }
 }
