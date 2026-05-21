@@ -102,6 +102,21 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         file: String,
     },
+    /// Bind a semantic model to a connection
+    #[command(name = "bind-connection", display_order = 10)]
+    BindConnection {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Connection ID to bind
+        #[arg(long)]
+        connection_id: String,
+    },
 }
 
 pub async fn execute(
@@ -143,6 +158,11 @@ pub async fn execute(
             id,
             file,
         } => update_definition(cli, client, workspace, id, file).await,
+        SemanticModelCommand::BindConnection {
+            workspace,
+            id,
+            connection_id,
+        } => bind_connection(cli, client, workspace, id, connection_id).await,
     }
 }
 
@@ -356,6 +376,37 @@ async fn update_definition(
         "id": id,
         "workspace": workspace,
         "status": "definition_updated"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn bind_connection(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    connection_id: &str,
+) -> Result<()> {
+    let body = serde_json::json!({ "connectionId": connection_id });
+
+    if output::dry_run_guard(cli, "semantic-model bind-connection", &body) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/semanticModels/{id}/bindConnection"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model bind-connection", "Contributor"))?;
+
+    let obj = serde_json::json!({
+        "id": id,
+        "connectionId": connection_id,
+        "status": "connection_bound"
     });
     output::render_object(cli, &obj, "status");
     Ok(())

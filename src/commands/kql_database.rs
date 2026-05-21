@@ -85,7 +85,7 @@ pub enum KqlDatabaseCommand {
 
     // ── Definitions ──────────────────────────────────────────────────────
     /// Get the definition of a KQL database (KQL script)
-    #[command(display_order = 10)]
+    #[command(name = "get-definition", display_order = 6)]
     GetDefinition {
         /// Workspace ID
         #[arg(short, long)]
@@ -96,7 +96,7 @@ pub enum KqlDatabaseCommand {
         id: String,
     },
     /// Update the definition of a KQL database
-    #[command(display_order = 11)]
+    #[command(name = "update-definition", display_order = 11)]
     UpdateDefinition {
         /// Workspace ID
         #[arg(short, long)]
@@ -113,6 +113,72 @@ pub enum KqlDatabaseCommand {
         /// KQL script content (inline)
         #[arg(long)]
         content: Option<String>,
+    },
+
+    // ── Shortcuts ────────────────────────────────────────────────────────
+    /// List shortcuts in a KQL database
+    #[command(name = "list-shortcuts", display_order = 10)]
+    ListShortcuts {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// KQL database ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Create a shortcut in a KQL database
+    #[command(name = "create-shortcut", display_order = 11)]
+    CreateShortcut {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// KQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Shortcut name
+        #[arg(long)]
+        name: String,
+
+        /// JSON file with shortcut configuration
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON shortcut configuration
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Get a shortcut in a KQL database
+    #[command(name = "get-shortcut", display_order = 12)]
+    GetShortcut {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// KQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Shortcut name
+        #[arg(long)]
+        shortcut_name: String,
+    },
+    /// Delete a shortcut in a KQL database
+    #[command(name = "delete-shortcut", display_order = 13)]
+    DeleteShortcut {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// KQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Shortcut name
+        #[arg(long)]
+        shortcut_name: String,
     },
 }
 
@@ -174,6 +240,37 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseComm
             )
             .await
         }
+        KqlDatabaseCommand::ListShortcuts { workspace, id } => {
+            list_shortcuts(cli, client, workspace, id).await
+        }
+        KqlDatabaseCommand::CreateShortcut {
+            workspace,
+            id,
+            name,
+            file,
+            content,
+        } => {
+            create_shortcut(
+                cli,
+                client,
+                workspace,
+                id,
+                name,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        KqlDatabaseCommand::GetShortcut {
+            workspace,
+            id,
+            shortcut_name,
+        } => get_shortcut(cli, client, workspace, id, shortcut_name).await,
+        KqlDatabaseCommand::DeleteShortcut {
+            workspace,
+            id,
+            shortcut_name,
+        } => delete_shortcut(cli, client, workspace, id, shortcut_name).await,
     }
 }
 
@@ -378,5 +475,120 @@ async fn update_definition(
     } else {
         output::render_object(cli, &data, "id");
     }
+    Ok(())
+}
+
+// ─── Shortcuts ───────────────────────────────────────────────────────────────
+
+async fn list_shortcuts(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/kqlDatabases/{id}/shortcuts"
+        ))
+        .await?;
+
+    if let Some(arr) = data.as_array() {
+        output::render_list_with_token(
+            cli,
+            arr,
+            &["name", "target"],
+            &["NAME", "TARGET"],
+            "name",
+            None,
+        );
+    } else {
+        output::render_object(cli, &data, "shortcuts");
+    }
+    Ok(())
+}
+
+async fn create_shortcut(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    name: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let config: Value = match (file, content) {
+        (Some(path), _) => {
+            let raw = std::fs::read_to_string(path)
+                .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?;
+            serde_json::from_str(&raw)?
+        }
+        (_, Some(c)) => serde_json::from_str(c)?,
+        (None, None) => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Either --file or --content must be provided".to_string(),
+                "Example: fabio kql-database create-shortcut --workspace <WS> --id <ID> --name my-shortcut --content '{...}'"
+                    .to_string(),
+            )
+            .into());
+        }
+    };
+
+    let mut body = config;
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert("name".to_string(), Value::String(name.to_string()));
+    }
+
+    if output::dry_run_guard(cli, "kql-database create-shortcut", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/kqlDatabases/{id}/shortcuts"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "kql-database create-shortcut", "Contributor"))?;
+    output::render_object(cli, &data, "name");
+    Ok(())
+}
+
+async fn get_shortcut(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    shortcut_name: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/kqlDatabases/{id}/shortcuts/{shortcut_name}"
+        ))
+        .await?;
+    output::render_object(cli, &data, "name");
+    Ok(())
+}
+
+async fn delete_shortcut(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    shortcut_name: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "kql-database delete-shortcut",
+        &serde_json::json!({ "workspace": workspace, "id": id, "shortcutName": shortcut_name }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .delete(&format!(
+            "/workspaces/{workspace}/kqlDatabases/{id}/shortcuts/{shortcut_name}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "kql-database delete-shortcut", "Contributor"))?;
+
+    let obj = serde_json::json!({ "shortcutName": shortcut_name, "status": "deleted" });
+    output::render_object(cli, &obj, "status");
     Ok(())
 }

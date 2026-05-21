@@ -100,9 +100,100 @@ pub enum DeploymentPipelineCommand {
         stage_id: String,
     },
 
+    // ── Operations ─────────────────────────────────────────────────────────
+    /// List deploy operations for a deployment pipeline
+    #[command(display_order = 20)]
+    ListOperations {
+        /// Deployment pipeline ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Show details of a deploy operation
+    #[command(display_order = 21)]
+    ShowOperation {
+        /// Deployment pipeline ID
+        #[arg(long)]
+        id: String,
+
+        /// Operation ID
+        #[arg(long)]
+        operation_id: String,
+    },
+
+    // ── Role Assignments ─────────────────────────────────────────────────
+    /// List role assignments for a deployment pipeline
+    #[command(display_order = 30)]
+    ListRoleAssignments {
+        /// Deployment pipeline ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Add a role assignment to a deployment pipeline
+    #[command(display_order = 31)]
+    AddRoleAssignment {
+        /// Deployment pipeline ID
+        #[arg(long)]
+        id: String,
+
+        /// Principal ID
+        #[arg(long)]
+        principal_id: String,
+
+        /// Principal type (e.g. User, Group, `ServicePrincipal`)
+        #[arg(long)]
+        principal_type: String,
+
+        /// Role (e.g. Admin, Contributor, Viewer)
+        #[arg(long)]
+        role: String,
+    },
+    /// Delete a role assignment from a deployment pipeline
+    #[command(display_order = 32)]
+    DeleteRoleAssignment {
+        /// Deployment pipeline ID
+        #[arg(long)]
+        id: String,
+
+        /// Principal ID to remove
+        #[arg(long)]
+        principal_id: String,
+    },
+
+    // ── Stage Management ─────────────────────────────────────────────────
+    /// Show details of a deployment pipeline stage
+    #[command(display_order = 40)]
+    ShowStage {
+        /// Deployment pipeline ID
+        #[arg(long)]
+        id: String,
+
+        /// Stage ID
+        #[arg(long)]
+        stage_id: String,
+    },
+    /// Update a deployment pipeline stage configuration
+    #[command(display_order = 41)]
+    UpdateStage {
+        /// Deployment pipeline ID
+        #[arg(long)]
+        id: String,
+
+        /// Stage ID
+        #[arg(long)]
+        stage_id: String,
+
+        /// Path to JSON file with stage configuration
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON content with stage configuration
+        #[arg(long)]
+        content: Option<String>,
+    },
+
     // ── Deploy ───────────────────────────────────────────────────────────
     /// Deploy items from one stage to another
-    #[command(display_order = 20)]
+    #[command(display_order = 50)]
     Deploy {
         /// Deployment pipeline ID
         #[arg(long)]
@@ -155,6 +246,41 @@ pub async fn execute(
         } => assign_workspace(cli, client, id, stage_id, workspace).await,
         DeploymentPipelineCommand::UnassignWorkspace { id, stage_id } => {
             unassign_workspace(cli, client, id, stage_id).await
+        }
+        DeploymentPipelineCommand::ListOperations { id } => list_operations(cli, client, id).await,
+        DeploymentPipelineCommand::ShowOperation { id, operation_id } => {
+            show_operation(cli, client, id, operation_id).await
+        }
+        DeploymentPipelineCommand::ListRoleAssignments { id } => {
+            list_role_assignments(cli, client, id).await
+        }
+        DeploymentPipelineCommand::AddRoleAssignment {
+            id,
+            principal_id,
+            principal_type,
+            role,
+        } => add_role_assignment(cli, client, id, principal_id, principal_type, role).await,
+        DeploymentPipelineCommand::DeleteRoleAssignment { id, principal_id } => {
+            delete_role_assignment(cli, client, id, principal_id).await
+        }
+        DeploymentPipelineCommand::ShowStage { id, stage_id } => {
+            show_stage(cli, client, id, stage_id).await
+        }
+        DeploymentPipelineCommand::UpdateStage {
+            id,
+            stage_id,
+            file,
+            content,
+        } => {
+            update_stage(
+                cli,
+                client,
+                id,
+                stage_id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
         }
         DeploymentPipelineCommand::Deploy {
             id,
@@ -397,6 +523,172 @@ async fn unassign_workspace(
     Ok(())
 }
 
+// ─── Operations ──────────────────────────────────────────────────────────────
+
+async fn list_operations(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/deploymentPipelines/{id}/operations"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["id", "status", "sourceStageId", "targetStageId"],
+        &["ID", "STATUS", "SOURCE STAGE", "TARGET STAGE"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn show_operation(
+    cli: &Cli,
+    client: &FabricClient,
+    id: &str,
+    operation_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/deploymentPipelines/{id}/operations/{operation_id}"
+        ))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+// ─── Role Assignments ────────────────────────────────────────────────────────
+
+async fn list_role_assignments(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/deploymentPipelines/{id}/roleAssignments"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["principal.id", "principal.type", "role"],
+        &["PRINCIPAL ID", "PRINCIPAL TYPE", "ROLE"],
+        "principal.id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn add_role_assignment(
+    cli: &Cli,
+    client: &FabricClient,
+    id: &str,
+    principal_id: &str,
+    principal_type: &str,
+    role: &str,
+) -> Result<()> {
+    let body = serde_json::json!({
+        "principal": {
+            "id": principal_id,
+            "type": principal_type
+        },
+        "role": role
+    });
+
+    if output::dry_run_guard(cli, "deployment-pipeline add-role-assignment", &body) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/deploymentPipelines/{id}/roleAssignments"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "deployment-pipeline add-role-assignment", "Admin"))?;
+
+    let obj = serde_json::json!({
+        "pipelineId": id,
+        "principalId": principal_id,
+        "principalType": principal_type,
+        "role": role,
+        "status": "added"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn delete_role_assignment(
+    cli: &Cli,
+    client: &FabricClient,
+    id: &str,
+    principal_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "deployment-pipeline delete-role-assignment",
+        &serde_json::json!({ "pipelineId": id, "principalId": principal_id }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .delete(&format!(
+            "/deploymentPipelines/{id}/roleAssignments/{principal_id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "deployment-pipeline delete-role-assignment", "Admin"))?;
+
+    let obj = serde_json::json!({
+        "pipelineId": id,
+        "principalId": principal_id,
+        "status": "deleted"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Stage Management ────────────────────────────────────────────────────────
+
+async fn show_stage(cli: &Cli, client: &FabricClient, id: &str, stage_id: &str) -> Result<()> {
+    let data = client
+        .get(&format!("/deploymentPipelines/{id}/stages/{stage_id}"))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn update_stage(
+    cli: &Cli,
+    client: &FabricClient,
+    id: &str,
+    stage_id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_body(file, content, "update-stage")?;
+
+    if output::dry_run_guard(cli, "deployment-pipeline update-stage", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(
+            &format!("/deploymentPipelines/{id}/stages/{stage_id}"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "deployment-pipeline update-stage", "Admin"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
 // ─── Deploy ──────────────────────────────────────────────────────────────────
 
 async fn deploy(
@@ -443,6 +735,27 @@ async fn deploy(
     };
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+fn read_json_body(file: Option<&str>, content: Option<&str>, command: &str) -> Result<Value> {
+    match (file, content) {
+        (Some(f), _) => {
+            let text = std::fs::read_to_string(f)
+                .map_err(|e| anyhow::anyhow!("Failed to read file '{f}': {e}"))?;
+            Ok(serde_json::from_str(&text)?)
+        }
+        (_, Some(c)) => Ok(serde_json::from_str(c)?),
+        _ => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Either --file or --content must be provided".to_string(),
+            format!(
+                "Example: fabio deployment-pipeline {command} --id <ID> --stage-id <SID> --file stage.json"
+            ),
+        )
+        .into()),
+    }
 }
 
 #[cfg(test)]

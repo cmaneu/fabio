@@ -1,4 +1,5 @@
 use anyhow::Result;
+use base64::Engine;
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -72,6 +73,38 @@ pub enum EventhouseCommand {
         #[arg(long)]
         id: String,
     },
+
+    // ── Definitions ──────────────────────────────────────────────────────
+    /// Get the definition of an eventhouse
+    #[command(name = "get-definition", display_order = 6)]
+    GetDefinition {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Eventhouse ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Update the definition of an eventhouse
+    #[command(name = "update-definition", display_order = 7)]
+    UpdateDefinition {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Eventhouse ID
+        #[arg(long)]
+        id: String,
+
+        /// Path to eventhouse properties file
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline eventhouse properties content (JSON)
+        #[arg(long)]
+        content: Option<String>,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventhouseCommand) -> Result<()> {
@@ -100,6 +133,25 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventhouseComma
             .await
         }
         EventhouseCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
+        EventhouseCommand::GetDefinition { workspace, id } => {
+            get_definition(cli, client, workspace, id).await
+        }
+        EventhouseCommand::UpdateDefinition {
+            workspace,
+            id,
+            file,
+            content,
+        } => {
+            update_definition(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
     }
 }
 
@@ -223,5 +275,85 @@ async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> 
 
     let obj = serde_json::json!({ "id": id, "status": "deleted" });
     output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Definitions ─────────────────────────────────────────────────────────────
+
+async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/eventhouses/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "eventhouse get-definition", "Contributor"))?;
+    output::render_object(cli, &data, "definition");
+    Ok(())
+}
+
+async fn update_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let raw = match (file, content) {
+        (Some(path), _) => std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?,
+        (_, Some(c)) => c.to_string(),
+        (None, None) => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Either --file or --content must be provided".to_string(),
+                "Example: fabio eventhouse update-definition --workspace <WS> --id <ID> --file props.json".to_string(),
+            ).into());
+        }
+    };
+
+    let encoded = base64::engine::general_purpose::STANDARD.encode(raw.as_bytes());
+
+    let body = serde_json::json!({
+        "definition": {
+            "parts": [
+                {
+                    "path": "EventhouseProperties.json",
+                    "payload": encoded,
+                    "payloadType": "InlineBase64"
+                }
+            ]
+        }
+    });
+
+    if output::dry_run_guard(
+        cli,
+        "eventhouse update-definition",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "contentLength": raw.len()
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/eventhouses/{id}/updateDefinition"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "eventhouse update-definition", "Contributor"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({ "id": id, "status": "definition_updated" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
     Ok(())
 }

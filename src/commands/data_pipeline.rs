@@ -1,4 +1,5 @@
 use anyhow::Result;
+use base64::Engine;
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -76,7 +77,7 @@ pub enum DataPipelineCommand {
 
     // ── Execution ────────────────────────────────────────────────────────
     /// Run a data pipeline
-    #[command(display_order = 10)]
+    #[command(display_order = 6)]
     Run {
         /// Workspace ID
         #[arg(short, long)]
@@ -85,6 +86,59 @@ pub enum DataPipelineCommand {
         /// Data pipeline ID
         #[arg(long)]
         id: String,
+    },
+
+    // ── Definitions ──────────────────────────────────────────────────────
+    /// Get the definition of a data pipeline
+    #[command(name = "get-definition", display_order = 7)]
+    GetDefinition {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Data pipeline ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Update the definition of a data pipeline
+    #[command(name = "update-definition", display_order = 8)]
+    UpdateDefinition {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Data pipeline ID
+        #[arg(long)]
+        id: String,
+
+        /// Path to pipeline definition file
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline pipeline definition content (JSON)
+        #[arg(long)]
+        content: Option<String>,
+    },
+
+    // ── Scheduling ───────────────────────────────────────────────────────
+    /// Create a schedule for a data pipeline
+    #[command(name = "create-schedule", display_order = 10)]
+    CreateSchedule {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Data pipeline ID
+        #[arg(long)]
+        id: String,
+
+        /// JSON file with schedule configuration
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON schedule configuration
+        #[arg(long)]
+        content: Option<String>,
     },
 }
 
@@ -119,6 +173,41 @@ pub async fn execute(
         }
         DataPipelineCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
         DataPipelineCommand::Run { workspace, id } => run(cli, client, workspace, id).await,
+        DataPipelineCommand::GetDefinition { workspace, id } => {
+            get_definition(cli, client, workspace, id).await
+        }
+        DataPipelineCommand::UpdateDefinition {
+            workspace,
+            id,
+            file,
+            content,
+        } => {
+            update_definition(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        DataPipelineCommand::CreateSchedule {
+            workspace,
+            id,
+            file,
+            content,
+        } => {
+            create_schedule(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
     }
 }
 
@@ -284,5 +373,135 @@ async fn run(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Res
         data
     };
     output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Definitions ─────────────────────────────────────────────────────────────
+
+async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/dataPipelines/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-pipeline get-definition", "Contributor"))?;
+    output::render_object(cli, &data, "definition");
+    Ok(())
+}
+
+async fn update_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let raw = match (file, content) {
+        (Some(path), _) => std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?,
+        (_, Some(c)) => c.to_string(),
+        (None, None) => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Either --file or --content must be provided".to_string(),
+                "Example: fabio data-pipeline update-definition --workspace <WS> --id <ID> --file pipeline.json".to_string(),
+            ).into());
+        }
+    };
+
+    let encoded = base64::engine::general_purpose::STANDARD.encode(raw.as_bytes());
+
+    let body = serde_json::json!({
+        "definition": {
+            "parts": [
+                {
+                    "path": "pipeline-content.json",
+                    "payload": encoded,
+                    "payloadType": "InlineBase64"
+                }
+            ]
+        }
+    });
+
+    if output::dry_run_guard(
+        cli,
+        "data-pipeline update-definition",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "contentLength": raw.len()
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/dataPipelines/{id}/updateDefinition"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-pipeline update-definition", "Contributor"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({ "id": id, "status": "definition_updated" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
+
+// ─── Scheduling ──────────────────────────────────────────────────────────────
+
+async fn create_schedule(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body: Value = match (file, content) {
+        (Some(path), _) => {
+            let raw = std::fs::read_to_string(path)
+                .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?;
+            serde_json::from_str(&raw)?
+        }
+        (_, Some(c)) => serde_json::from_str(c)?,
+        (None, None) => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Either --file or --content must be provided".to_string(),
+                "Example: fabio data-pipeline create-schedule --workspace <WS> --id <ID> --content '{...}'"
+                    .to_string(),
+            )
+            .into());
+        }
+    };
+
+    if output::dry_run_guard(cli, "data-pipeline create-schedule", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/dataPipelines/{id}/jobs/execute/schedules"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-pipeline create-schedule", "Contributor"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({ "id": id, "status": "schedule_created" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
     Ok(())
 }

@@ -143,8 +143,23 @@ pub enum NotebookCommand {
         #[arg(long)]
         job_id: String,
     },
+    /// Get details of a specific job instance
+    #[command(name = "get-job-instance", display_order = 12)]
+    GetJobInstance {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Notebook item ID
+        #[arg(long)]
+        id: String,
+
+        /// Job instance ID
+        #[arg(long)]
+        job_instance_id: String,
+    },
     /// Stop a running notebook
-    #[command(display_order = 12)]
+    #[command(display_order = 13)]
     Stop {
         /// Workspace ID
         #[arg(short, long)]
@@ -157,6 +172,34 @@ pub enum NotebookCommand {
         /// Job instance ID
         #[arg(long)]
         job_id: String,
+    },
+
+    // ── Livy Sessions ────────────────────────────────────────────────────
+    /// List Livy sessions for a notebook
+    #[command(name = "list-livy-sessions", display_order = 15)]
+    ListLivySessions {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Notebook item ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Get details of a Livy session
+    #[command(name = "get-livy-session", display_order = 16)]
+    GetLivySession {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Notebook item ID
+        #[arg(long)]
+        id: String,
+
+        /// Livy session ID
+        #[arg(long)]
+        livy_id: String,
     },
 }
 
@@ -220,6 +263,19 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
             id,
             job_id,
         } => stop(cli, client, workspace, id, job_id).await,
+        NotebookCommand::GetJobInstance {
+            workspace,
+            id,
+            job_instance_id,
+        } => get_job_instance(cli, client, workspace, id, job_instance_id).await,
+        NotebookCommand::ListLivySessions { workspace, id } => {
+            list_livy_sessions(cli, client, workspace, id).await
+        }
+        NotebookCommand::GetLivySession {
+            workspace,
+            id,
+            livy_id,
+        } => get_livy_session(cli, client, workspace, id, livy_id).await,
         NotebookCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
     }
 }
@@ -584,5 +640,66 @@ async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> 
 
     let obj = serde_json::json!({ "id": id, "status": "deleted" });
     output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Job Instance & Livy Sessions ────────────────────────────────────────────
+
+async fn get_job_instance(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    job_instance_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/notebooks/{id}/jobs/execute/instances/{job_instance_id}?beta=true"
+        ))
+        .await?;
+    output::render_object(cli, &data, "status");
+    Ok(())
+}
+
+async fn list_livy_sessions(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/notebooks/{id}/livySessions"
+        ))
+        .await?;
+
+    if let Some(arr) = data.get("value").and_then(|v| v.as_array()) {
+        output::render_list_with_token(
+            cli,
+            arr,
+            &["id", "state", "appId"],
+            &["ID", "STATE", "APP_ID"],
+            "id",
+            None,
+        );
+    } else {
+        output::render_object(cli, &data, "sessions");
+    }
+    Ok(())
+}
+
+async fn get_livy_session(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    livy_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/notebooks/{id}/livySessions/{livy_id}"
+        ))
+        .await?;
+    output::render_object(cli, &data, "id");
     Ok(())
 }
