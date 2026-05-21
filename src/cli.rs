@@ -1,12 +1,12 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
-    anomaly_detector, apache_airflow_job, auth, capacity, connection, copy_job, cosmos_db_database,
-    dashboard, data_pipeline, dataagent, dataflow, datamart, deployment_pipeline,
-    digital_twin_builder, digital_twin_builder_flow, domain, environment, event_schema_set,
-    eventhouse, eventstream, feedback, gateway, git, graph_model, graph_query_set, graphql_api,
-    item, job_scheduler, jobs, kql_dashboard, kql_database, kql_queryset, lakehouse,
-    managed_private_endpoint, map, mirrored_catalog, mirrored_database,
+    admin, anomaly_detector, apache_airflow_job, auth, capacity, connection, copy_job,
+    cosmos_db_database, dashboard, data_pipeline, dataagent, dataflow, datamart,
+    deployment_pipeline, digital_twin_builder, digital_twin_builder_flow, domain, environment,
+    event_schema_set, eventhouse, eventstream, feedback, gateway, git, graph_model,
+    graph_query_set, graphql_api, item, job_scheduler, jobs, kql_dashboard, kql_database,
+    kql_queryset, lakehouse, managed_private_endpoint, map, mirrored_catalog, mirrored_database,
     mirrored_databricks_catalog, mirrored_warehouse, ml_experiment, ml_model, mounted_data_factory,
     notebook, onelake_security, ontology, operations_agent, paginated_report, profile, reflex,
     report, semantic_model, snowflake_database, spark, spark_job_definition, sql_database,
@@ -85,6 +85,14 @@ pub enum OutputFormat {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    // ── Admin ────────────────────────────────────────────────────────────
+    /// Fabric tenant administration (settings, tags, workloads, users)
+    #[command(display_order = 55)]
+    Admin {
+        #[command(subcommand)]
+        command: admin::AdminCommand,
+    },
+
     // ── Core ─────────────────────────────────────────────────────────────
     /// Manage workspaces
     #[command(display_order = 1)]

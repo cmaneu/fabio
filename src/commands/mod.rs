@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod anomaly_detector;
 pub mod apache_airflow_job;
 pub mod auth;
@@ -73,6 +74,8 @@ pub async fn execute(cli: Cli) -> Result<()> {
     let client = FabricClient::new();
 
     match &cli.command {
+        // Admin
+        Command::Admin { command } => admin::execute(&cli, &client, command).await,
         // Core
         Command::Workspace { command } => workspace::execute(&cli, &client, command).await,
         Command::Item { command } => item::execute(&cli, &client, command).await,
