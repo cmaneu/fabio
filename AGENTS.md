@@ -20,6 +20,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 10. **Two-way I/O** — Feedback channel (`fabio feedback send/list`); artifact delivery via stdout/file.
 
 ## Constraints & Preferences
+- **Windows-first compatibility** — All code must work on Windows. Use `Path::new().join()` (never hardcoded `/` for filesystem paths), `dirs::home_dir()` (never manual `HOME`/`USERPROFILE`), `.lines()` for text parsing (handles CRLF), no Unix-specific APIs. `.gitattributes` enforces LF line endings.
 - CLI designed for AI agents first (structured output, no interactive prompts, explicit params)
 - JSON output by default with `--output json|table|plain` flag
 - Composable: manage inputs and produce outputs for piping
