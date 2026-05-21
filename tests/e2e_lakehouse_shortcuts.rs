@@ -210,3 +210,62 @@ fn lakehouse_shortcut_create_in_tables_path() {
         .assert()
         .success();
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_bulk_create_shortcuts_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let content = r#"[{"name":"sc1","path":"Files","target":{"oneLake":{"workspaceId":"00000000-0000-0000-0000-000000000000","itemId":"00000000-0000-0000-0000-000000000001","path":"Files"}}}]"#;
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "bulk-create-shortcuts",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--content",
+            content,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "lakehouse bulk-create-shortcuts");
+    assert!(data["details"]["createShortcutRequests"].is_array());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_bulk_create_shortcuts_with_conflict_policy_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let content = r#"{"createShortcutRequests":[{"name":"sc1","path":"Files","target":{"oneLake":{"workspaceId":"00000000-0000-0000-0000-000000000000","itemId":"00000000-0000-0000-0000-000000000001","path":"Files"}}}]}"#;
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "bulk-create-shortcuts",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--content",
+            content,
+            "--conflict-policy",
+            "GenerateUniqueName",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "lakehouse bulk-create-shortcuts");
+}

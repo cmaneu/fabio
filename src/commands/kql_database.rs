@@ -180,8 +180,32 @@ pub enum KqlDatabaseCommand {
         #[arg(long)]
         shortcut_name: String,
     },
+    /// Bulk-create multiple shortcuts (LRO)
+    #[command(name = "bulk-create-shortcuts", display_order = 14)]
+    BulkCreateShortcuts {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// KQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Path to JSON file with array of shortcut requests
+        #[arg(long, group = "input")]
+        file: Option<String>,
+
+        /// Inline JSON with array of shortcut requests
+        #[arg(long, group = "input")]
+        content: Option<String>,
+
+        /// Conflict policy: `Abort`, `GenerateUniqueName`, `CreateOrOverwrite`, `OverwriteOnly`
+        #[arg(long = "conflict-policy")]
+        conflict_policy: Option<String>,
+    },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseCommand) -> Result<()> {
     match command {
         KqlDatabaseCommand::List { workspace } => list(cli, client, workspace).await,
@@ -271,6 +295,24 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseComm
             id,
             shortcut_name,
         } => delete_shortcut(cli, client, workspace, id, shortcut_name).await,
+        KqlDatabaseCommand::BulkCreateShortcuts {
+            workspace,
+            id,
+            file,
+            content,
+            conflict_policy,
+        } => {
+            bulk_create_shortcuts(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                content.as_deref(),
+                conflict_policy.as_deref(),
+            )
+            .await
+        }
     }
 }
 
@@ -590,5 +632,58 @@ async fn delete_shortcut(
 
     let obj = serde_json::json!({ "shortcutName": shortcut_name, "status": "deleted" });
     output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn bulk_create_shortcuts(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+    conflict_policy: Option<&str>,
+) -> Result<()> {
+    let input: Value = match (file, content) {
+        (Some(path), _) => {
+            let raw = std::fs::read_to_string(path)
+                .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?;
+            serde_json::from_str(&raw)?
+        }
+        (_, Some(c)) => serde_json::from_str(c)?,
+        (None, None) => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Either --file or --content must be provided".to_string(),
+                "Example: fabio kql-database bulk-create-shortcuts --workspace <WS> --id <ID> --file shortcuts.json"
+                    .to_string(),
+            )
+            .into());
+        }
+    };
+
+    // Wrap in the API envelope if user provided a raw array
+    let body = if input.is_array() {
+        serde_json::json!({ "createShortcutRequests": input })
+    } else {
+        input
+    };
+
+    if output::dry_run_guard(cli, "kql-database bulk-create-shortcuts", &body) {
+        return Ok(());
+    }
+
+    let mut url = format!("/workspaces/{workspace}/items/{id}/shortcuts/bulkCreate");
+    if let Some(policy) = conflict_policy {
+        use std::fmt::Write;
+        let _ = write!(url, "?shortcutConflictPolicy={policy}");
+    }
+
+    let data = client
+        .post(&url, &body, true)
+        .await
+        .map_err(|e| enrich_forbidden(e, "kql-database bulk-create-shortcuts", "Contributor"))?;
+    output::render_object(cli, &data, "value");
     Ok(())
 }

@@ -419,6 +419,30 @@ pub enum LakehouseCommand {
         path: String,
     },
 
+    /// Bulk-create multiple shortcuts (LRO)
+    #[command(display_order = 43)]
+    BulkCreateShortcuts {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long)]
+        id: String,
+
+        /// Path to JSON file with array of shortcut requests
+        #[arg(long, group = "input")]
+        file: Option<String>,
+
+        /// Inline JSON with array of shortcut requests
+        #[arg(long, group = "input")]
+        content: Option<String>,
+
+        /// Conflict policy: `Abort`, `GenerateUniqueName`, `CreateOrOverwrite`, `OverwriteOnly`
+        #[arg(long = "conflict-policy")]
+        conflict_policy: Option<String>,
+    },
+
     // ── Definitions ──────────────────────────────────────────────────────
     /// Get the definition of a lakehouse
     #[command(display_order = 50)]
@@ -780,6 +804,25 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
         } => delete_shortcut(cli, client, workspace, id, name, path)
             .await
             .map_err(|e| enrich_forbidden(e, "lakehouse delete-shortcut", "Contributor")),
+        LakehouseCommand::BulkCreateShortcuts {
+            workspace,
+            id,
+            file,
+            content,
+            conflict_policy,
+        } => {
+            bulk_create_shortcuts(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                content.as_deref(),
+                conflict_policy.as_deref(),
+            )
+            .await
+            .map_err(|e| enrich_forbidden(e, "lakehouse bulk-create-shortcuts", "Contributor"))
+        }
         LakehouseCommand::GetDefinition { workspace, id } => {
             get_definition(cli, client, workspace, id).await
         }
@@ -2250,6 +2293,77 @@ async fn delete_shortcut(
     });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn bulk_create_shortcuts(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+    conflict_policy: Option<&str>,
+) -> Result<()> {
+    let input = read_shortcut_json_input(file, content)?;
+
+    // Wrap in the API envelope if user provided a raw array
+    let body = if input.is_array() {
+        serde_json::json!({ "createShortcutRequests": input })
+    } else {
+        input
+    };
+
+    if output::dry_run_guard(cli, "lakehouse bulk-create-shortcuts", &body) {
+        return Ok(());
+    }
+
+    let mut url =
+        format!("/workspaces/{workspace}/items/{id}/shortcuts/bulkCreate");
+    if let Some(policy) = conflict_policy {
+        use std::fmt::Write;
+        let _ = write!(url, "?shortcutConflictPolicy={policy}");
+    }
+
+    let data = client.post(&url, &body, true).await?;
+    output::render_object(cli, &data, "value");
+    Ok(())
+}
+
+fn read_shortcut_json_input(file: Option<&str>, content: Option<&str>) -> Result<Value> {
+    if let Some(c) = content {
+        serde_json::from_str(c).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid JSON in --content: {e}"),
+                "Provide a valid JSON array of shortcut requests.".to_string(),
+            )
+            .into()
+        })
+    } else if let Some(f) = file {
+        let data = std::fs::read_to_string(f).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Failed to read file '{f}': {e}"),
+                "Provide a valid file path.".to_string(),
+            )
+        })?;
+        serde_json::from_str(&data).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid JSON in file '{f}': {e}"),
+                "Provide a valid JSON array of shortcut requests.".to_string(),
+            )
+            .into()
+        })
+    } else {
+        Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Either --file or --content must be provided".to_string(),
+            "Example: fabio lakehouse bulk-create-shortcuts --workspace <WS> --id <ID> --file shortcuts.json".to_string(),
+        )
+        .into())
+    }
 }
 
 // ─── Definitions ─────────────────────────────────────────────────────────────

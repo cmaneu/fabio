@@ -492,6 +492,18 @@ fn commands_schema() -> serde_json::Value {
                         "--name": {"type": "string", "required": true},
                         "--path": {"type": "string", "required": true}
                     }
+                },
+                "bulk-create-shortcuts": {
+                    "description": "Bulk-create multiple shortcuts (LRO)",
+                    "mutates": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true},
+                        "--id": {"type": "string", "required": true},
+                        "--file": {"type": "string", "description": "Path to JSON file with shortcut requests"},
+                        "--content": {"type": "string", "description": "Inline JSON with shortcut requests"},
+                        "--conflict-policy": {"type": "string", "description": "Abort|GenerateUniqueName|CreateOrOverwrite|OverwriteOnly"}
+                    },
+                    "example": "fabio lakehouse bulk-create-shortcuts --workspace <WS> --id <ID> --file shortcuts.json"
                 }
             }
         },

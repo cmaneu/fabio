@@ -21,6 +21,9 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Constraints & Preferences
 - **Windows-first compatibility** — All code must work on Windows. Use `Path::new().join()` (never hardcoded `/` for filesystem paths), `dirs::home_dir()` (never manual `HOME`/`USERPROFILE`), `.lines()` for text parsing (handles CRLF), no Unix-specific APIs. `.gitattributes` enforces LF line endings.
+- **Throttling reduction** — Reduce the likelihood of API throttling by:
+  - Use bulk and batch operations when available (e.g., `item bulk-create`, `item bulk-delete`, workspace role batch-assign, domain batch-assign).
+  - Prefer list APIs over repeated single-resource requests (e.g., use a single list call + client-side filter rather than N individual show calls).
 - CLI designed for AI agents first (structured output, no interactive prompts, explicit params)
 - JSON output by default with `--output json|table|plain` flag
 - Composable: manage inputs and produce outputs for piping
