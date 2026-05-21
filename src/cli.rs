@@ -5,8 +5,8 @@ use crate::commands::{
     domain, environment, eventhouse, eventstream, feedback, git, graphql_api, item, job_scheduler,
     jobs, kql_dashboard, kql_database, kql_queryset, lakehouse, managed_private_endpoint,
     mirrored_database, ml_experiment, ml_model, notebook, onelake_security, ontology, profile,
-    reflex, report, semantic_model, spark, spark_job_definition, sql_database, warehouse,
-    workspace,
+    reflex, report, semantic_model, spark, spark_job_definition, sql_database, sql_endpoint,
+    warehouse, workspace,
 };
 
 /// Agent-first CLI for managing Microsoft Fabric artifacts and data.
@@ -125,6 +125,12 @@ pub enum Command {
     SqlDatabase {
         #[command(subcommand)]
         command: sql_database::SqlDatabaseCommand,
+    },
+    /// Manage SQL endpoints (analytics endpoints for lakehouses)
+    #[command(display_order = 13)]
+    SqlEndpoint {
+        #[command(subcommand)]
+        command: sql_endpoint::SqlEndpointCommand,
     },
     /// Manage data agents (create, query, and interact with AI agents)
     #[command(visible_alias = "da", display_order = 12)]

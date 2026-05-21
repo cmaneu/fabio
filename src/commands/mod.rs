@@ -34,6 +34,7 @@ pub mod semantic_model;
 pub mod spark;
 pub mod spark_job_definition;
 pub mod sql_database;
+pub mod sql_endpoint;
 pub mod warehouse;
 pub mod workspace;
 
@@ -58,6 +59,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Notebook { command } => notebook::execute(&cli, &client, command).await,
         Command::Warehouse { command } => warehouse::execute(&cli, &client, command).await,
         Command::SqlDatabase { command } => sql_database::execute(&cli, &client, command).await,
+        Command::SqlEndpoint { command } => sql_endpoint::execute(&cli, &client, command).await,
         Command::DataAgent { command } => dataagent::execute(&cli, &client, command).await,
         Command::Ontology { command } => ontology::execute(&cli, &client, command).await,
         Command::Environment { command } => environment::execute(&cli, &client, command).await,
