@@ -2,17 +2,22 @@ pub mod auth;
 pub mod capacity;
 pub mod connection;
 pub mod copy_job;
+pub mod cosmos_db_database;
 pub mod data_pipeline;
 pub mod dataagent;
 pub mod dataflow;
 pub mod deployment_pipeline;
+pub mod digital_twin_builder;
+pub mod digital_twin_builder_flow;
 pub mod domain;
 pub mod environment;
+pub mod event_schema_set;
 pub mod eventhouse;
 pub mod eventstream;
 pub mod feedback;
 pub mod gateway;
 pub mod git;
+pub mod graph_query_set;
 pub mod graphql_api;
 pub mod item;
 pub mod job_scheduler;
@@ -22,20 +27,26 @@ pub mod kql_database;
 pub mod kql_queryset;
 pub mod lakehouse;
 pub mod managed_private_endpoint;
+pub mod map;
 pub mod mirrored_database;
 pub mod ml_experiment;
 pub mod ml_model;
+pub mod mounted_data_factory;
 pub mod notebook;
 pub mod onelake_security;
 pub mod ontology;
+pub mod operations_agent;
 pub mod profile;
 pub mod reflex;
 pub mod report;
 pub mod semantic_model;
+pub mod snowflake_database;
 pub mod spark;
 pub mod spark_job_definition;
 pub mod sql_database;
 pub mod sql_endpoint;
+pub mod user_data_function;
+pub mod variable_library;
 pub mod warehouse;
 pub mod workspace;
 
@@ -85,6 +96,37 @@ pub async fn execute(cli: Cli) -> Result<()> {
             spark_job_definition::execute(&cli, &client, command).await
         }
         Command::GraphqlApi { command } => graphql_api::execute(&cli, &client, command).await,
+        Command::CosmosDbDatabase { command } => {
+            cosmos_db_database::execute(&cli, &client, command).await
+        }
+        Command::SnowflakeDatabase { command } => {
+            snowflake_database::execute(&cli, &client, command).await
+        }
+        Command::DigitalTwinBuilder { command } => {
+            digital_twin_builder::execute(&cli, &client, command).await
+        }
+        Command::DigitalTwinBuilderFlow { command } => {
+            digital_twin_builder_flow::execute(&cli, &client, command).await
+        }
+        Command::EventSchemaSet { command } => {
+            event_schema_set::execute(&cli, &client, command).await
+        }
+        Command::OperationsAgent { command } => {
+            operations_agent::execute(&cli, &client, command).await
+        }
+        Command::MountedDataFactory { command } => {
+            mounted_data_factory::execute(&cli, &client, command).await
+        }
+        Command::UserDataFunction { command } => {
+            user_data_function::execute(&cli, &client, command).await
+        }
+        Command::VariableLibrary { command } => {
+            variable_library::execute(&cli, &client, command).await
+        }
+        Command::Map { command } => map::execute(&cli, &client, command).await,
+        Command::GraphQuerySet { command } => {
+            graph_query_set::execute(&cli, &client, command).await
+        }
         // Integration
         Command::Gateway { command } => gateway::execute(&cli, &client, command).await,
         Command::Git { command } => git::execute(&cli, &client, command).await,

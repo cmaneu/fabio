@@ -1,12 +1,14 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
-    auth, capacity, connection, copy_job, data_pipeline, dataagent, dataflow, deployment_pipeline,
-    domain, environment, eventhouse, eventstream, feedback, gateway, git, graphql_api, item,
-    job_scheduler, jobs, kql_dashboard, kql_database, kql_queryset, lakehouse,
-    managed_private_endpoint, mirrored_database, ml_experiment, ml_model, notebook,
-    onelake_security, ontology, profile, reflex, report, semantic_model, spark,
-    spark_job_definition, sql_database, sql_endpoint, warehouse, workspace,
+    auth, capacity, connection, copy_job, cosmos_db_database, data_pipeline, dataagent, dataflow,
+    deployment_pipeline, digital_twin_builder, digital_twin_builder_flow, domain, environment,
+    event_schema_set, eventhouse, eventstream, feedback, gateway, git, graph_query_set,
+    graphql_api, item, job_scheduler, jobs, kql_dashboard, kql_database, kql_queryset, lakehouse,
+    managed_private_endpoint, map, mirrored_database, ml_experiment, ml_model,
+    mounted_data_factory, notebook, onelake_security, ontology, operations_agent, profile, reflex,
+    report, semantic_model, snowflake_database, spark, spark_job_definition, sql_database,
+    sql_endpoint, user_data_function, variable_library, warehouse, workspace,
 };
 
 /// Agent-first CLI for managing Microsoft Fabric artifacts and data.
@@ -251,6 +253,72 @@ pub enum Command {
     GraphqlApi {
         #[command(subcommand)]
         command: graphql_api::GraphqlApiCommand,
+    },
+    /// Manage Cosmos DB databases (mirrored from Azure Cosmos DB)
+    #[command(display_order = 32)]
+    CosmosDbDatabase {
+        #[command(subcommand)]
+        command: cosmos_db_database::CosmosDbDatabaseCommand,
+    },
+    /// Manage Snowflake databases (mirrored from Snowflake)
+    #[command(display_order = 33)]
+    SnowflakeDatabase {
+        #[command(subcommand)]
+        command: snowflake_database::SnowflakeDatabaseCommand,
+    },
+    /// Manage Digital Twin Builder models
+    #[command(display_order = 34)]
+    DigitalTwinBuilder {
+        #[command(subcommand)]
+        command: digital_twin_builder::DigitalTwinBuilderCommand,
+    },
+    /// Manage Digital Twin Builder flows
+    #[command(display_order = 35)]
+    DigitalTwinBuilderFlow {
+        #[command(subcommand)]
+        command: digital_twin_builder_flow::DigitalTwinBuilderFlowCommand,
+    },
+    /// Manage event schema sets (real-time intelligence)
+    #[command(display_order = 36)]
+    EventSchemaSet {
+        #[command(subcommand)]
+        command: event_schema_set::EventSchemaSetCommand,
+    },
+    /// Manage operations agents (AI-powered operations)
+    #[command(display_order = 37)]
+    OperationsAgent {
+        #[command(subcommand)]
+        command: operations_agent::OperationsAgentCommand,
+    },
+    /// Manage Mounted Data Factories (ADF integration)
+    #[command(display_order = 38)]
+    MountedDataFactory {
+        #[command(subcommand)]
+        command: mounted_data_factory::MountedDataFactoryCommand,
+    },
+    /// Manage user data functions
+    #[command(display_order = 39)]
+    UserDataFunction {
+        #[command(subcommand)]
+        command: user_data_function::UserDataFunctionCommand,
+    },
+    /// Manage variable libraries (shared variables)
+    #[command(visible_alias = "var-lib", display_order = 46)]
+    VariableLibrary {
+        #[command(subcommand)]
+        command: variable_library::VariableLibraryCommand,
+    },
+    /// Manage maps (geospatial)
+    #[command(display_order = 47)]
+    Map {
+        #[command(subcommand)]
+        command: map::MapCommand,
+    },
+    /// Manage graph query sets
+    #[command(display_order = 48)]
+    GraphQuerySet {
+        #[command(subcommand)]
+        command: graph_query_set::GraphQuerySetCommand,
     },
 
     // ── Integration ──────────────────────────────────────────────────────
