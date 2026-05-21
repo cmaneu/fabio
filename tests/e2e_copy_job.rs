@@ -106,3 +106,25 @@ fn copy_job_update_requires_field() {
     let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
     assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn copy_job_dry_run_create() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "copy-job",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-dry-run",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "copy-job create");
+}

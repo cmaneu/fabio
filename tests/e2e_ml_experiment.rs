@@ -111,3 +111,25 @@ fn ml_experiment_update_requires_field() {
     let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
     assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ml_experiment_dry_run_create() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "ml-experiment",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-dry-run",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "ml-experiment create");
+}

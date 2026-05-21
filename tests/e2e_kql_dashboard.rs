@@ -111,3 +111,25 @@ fn kql_dashboard_update_requires_field() {
     let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
     assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn kql_dashboard_dry_run_create() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "kql-dashboard",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-dry-run",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "kql-dashboard create");
+}

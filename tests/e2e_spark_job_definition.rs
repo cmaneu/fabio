@@ -111,3 +111,25 @@ fn spark_job_definition_show_not_found() {
         .assert()
         .failure();
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn spark_job_definition_dry_run_create() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "spark-job-definition",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-dry-run",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "spark-job-definition create");
+}
