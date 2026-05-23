@@ -2,6 +2,7 @@ use std::io::{self, Read};
 use std::time::Duration;
 
 use anyhow::Result;
+use base64::Engine;
 use clap::Subcommand;
 use serde_json::Value;
 use tokio::time::sleep;
@@ -89,6 +90,65 @@ pub enum DataAgentCommand {
         /// Natural language question (omit to read from stdin)
         #[arg(short, long)]
         prompt: Option<String>,
+
+        /// Published URL (from portal Settings page after publishing the agent)
+        #[arg(long)]
+        published_url: Option<String>,
+
+        /// Include execution details (SQL queries, tool calls, run steps)
+        #[arg(long)]
+        verbose: bool,
+    },
+
+    // ── Definitions ──────────────────────────────────────────────────────
+    /// Get the definition of a data agent (configuration, data sources, etc.)
+    #[command(display_order = 10)]
+    GetDefinition {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Update the definition of a data agent (configure data sources, instructions, etc.)
+    #[command(display_order = 11)]
+    UpdateDefinition {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Path to definition file (JSON with parts array)
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON definition (alternative to --file)
+        #[arg(long)]
+        content: Option<String>,
+
+        /// Also update item metadata from .platform file if present
+        #[arg(long)]
+        update_metadata: bool,
+    },
+    /// Publish a data agent (promotes draft configuration to published state)
+    #[command(display_order = 12)]
+    Publish {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Optional publish description
+        #[arg(long)]
+        description: Option<String>,
     },
 }
 
@@ -125,9 +185,48 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             workspace,
             id,
             prompt,
-        } => query(cli, client, workspace, id, prompt.as_deref())
+            published_url,
+            verbose,
+        } => query(
+            cli,
+            client,
+            workspace,
+            id,
+            prompt.as_deref(),
+            published_url.as_deref(),
+            *verbose,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-agent query", "Viewer")),
+        DataAgentCommand::GetDefinition { workspace, id } => {
+            get_definition(cli, client, workspace, id)
+                .await
+                .map_err(|e| enrich_forbidden(e, "data-agent get-definition", "Contributor"))
+        }
+        DataAgentCommand::UpdateDefinition {
+            workspace,
+            id,
+            file,
+            content,
+            update_metadata,
+        } => update_definition(
+            cli,
+            client,
+            workspace,
+            id,
+            file.as_deref(),
+            content.as_deref(),
+            *update_metadata,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-agent update-definition", "Contributor")),
+        DataAgentCommand::Publish {
+            workspace,
+            id,
+            description,
+        } => publish(cli, client, workspace, id, description.as_deref())
             .await
-            .map_err(|e| enrich_forbidden(e, "data-agent query", "Viewer")),
+            .map_err(|e| enrich_forbidden(e, "data-agent publish", "Contributor")),
     }
 }
 
@@ -243,6 +342,8 @@ async fn query(
     workspace: &str,
     id: &str,
     prompt: Option<&str>,
+    published_url: Option<&str>,
+    verbose: bool,
 ) -> Result<()> {
     // Resolve prompt text: --prompt flag or stdin
     let prompt_text = if let Some(p) = prompt {
@@ -264,51 +365,85 @@ async fn query(
         buf
     };
 
-    // Get the published URL from the data agent's definition/settings.
-    // The Fabric API returns dataAgent properties; we need the published URL.
-    // Try to get it from the data agent metadata.
-    let published_url = get_published_url(client, workspace, id).await?;
+    // Get the published URL: explicit flag, settings API, or constructed fallback.
+    let resolved_url = match published_url {
+        Some(url) => url.to_string(),
+        None => get_published_url(client, workspace, id).await?,
+    };
 
     // Use the OpenAI Assistants protocol against the published URL
     let token = client.require_auth().await?;
-    let response_text = run_assistant_query(&published_url, &token, &prompt_text).await?;
+    let query_result = run_assistant_query(&resolved_url, &token, &prompt_text, verbose).await?;
 
-    let result = serde_json::json!({
+    let mut result = serde_json::json!({
         "question": prompt_text.trim(),
-        "answer": response_text,
+        "answer": query_result.answer,
     });
+    if let Some(steps) = query_result.steps {
+        result["steps"] = steps;
+    }
     output::render_object(cli, &result, "answer");
     Ok(())
 }
 
-/// Get the published URL of a data agent from its properties.
-/// Falls back to constructing the URL from workspace and agent IDs.
+/// Get the published URL of a data agent.
+///
+/// Strategy:
+/// 1. Try `/dataAgents/{id}/settings` (V3 management plane, if enabled).
+/// 2. Check the item properties for a `publishedUrl` field.
+/// 3. Return an error explaining that the user must provide `--published-url`.
+///
+/// If the V3 settings endpoint is not available and no URL is found,
+/// returns an error explaining that the user must provide `--published-url`.
 async fn get_published_url(client: &FabricClient, workspace: &str, id: &str) -> Result<String> {
-    // Try to get the data agent properties which may include the published URL
-    let data = client
-        .get(&format!("/workspaces/{workspace}/dataAgents/{id}"))
-        .await?;
-
-    // Check if properties contain published URL
-    if let Some(url) = data
-        .get("properties")
-        .and_then(|p| p.get("publishedUrl"))
-        .and_then(Value::as_str)
-    {
-        if !url.is_empty() {
+    // Attempt 1: Try the V3 settings endpoint (may not be enabled)
+    let settings_path = format!("/workspaces/{workspace}/dataAgents/{id}/settings");
+    if let Ok(settings) = client.get(&settings_path).await {
+        if let Some(url) = settings
+            .get("publishedUrl")
+            .and_then(Value::as_str)
+            .filter(|u| !u.is_empty())
+        {
             return Ok(url.to_string());
         }
     }
 
-    // Construct the standard published URL pattern for Fabric data agents
-    // Format: https://api.fabric.microsoft.com/v1/workspaces/{ws}/dataAgents/{id}/chat/openai
-    Ok(format!(
-        "https://api.fabric.microsoft.com/v1/workspaces/{workspace}/dataAgents/{id}/chat/openai"
-    ))
+    // Attempt 2: Check item properties
+    let data = client
+        .get(&format!("/workspaces/{workspace}/dataAgents/{id}"))
+        .await?;
+
+    if let Some(url) = data
+        .get("properties")
+        .and_then(|p| p.get("publishedUrl"))
+        .and_then(Value::as_str)
+        .filter(|u| !u.is_empty())
+    {
+        return Ok(url.to_string());
+    }
+
+    // No published URL found — the agent may not be published or V3 isn't enabled.
+    Err(FabioError::new(
+        ErrorCode::ApiError,
+        "Published URL not found. The data agent must be published from the Fabric portal first. \
+         Then provide the URL with --published-url (found in the agent's Settings page).",
+    )
+    .into())
+}
+
+/// Result of a data agent query, including the answer and optional execution steps.
+struct QueryResult {
+    answer: String,
+    steps: Option<Value>,
 }
 
 /// Run a query against the data agent using the `OpenAI` Assistants API protocol.
-async fn run_assistant_query(base_url: &str, token: &str, question: &str) -> Result<String> {
+async fn run_assistant_query(
+    base_url: &str,
+    token: &str,
+    question: &str,
+    verbose: bool,
+) -> Result<QueryResult> {
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(360))
         .build()
@@ -327,10 +462,17 @@ async fn run_assistant_query(base_url: &str, token: &str, question: &str) -> Res
     // Step 3: Poll for completion
     poll_run_completion(&http, base_url, &auth_header, &thread_id, &run_id).await?;
 
-    // Step 4: Retrieve response
+    // Step 4: Retrieve run steps (SQL queries, tool calls) if verbose
+    let steps = if verbose {
+        Some(retrieve_run_steps(&http, base_url, &auth_header, &thread_id, &run_id).await?)
+    } else {
+        None
+    };
+
+    // Step 5: Retrieve response
     let response_text = retrieve_response(&http, base_url, &auth_header, &thread_id).await?;
 
-    // Step 5: Clean up thread (best effort)
+    // Step 6: Clean up thread (best effort)
     let _ = http
         .delete(format!(
             "{base_url}/threads/{thread_id}?api-version=2024-05-01-preview"
@@ -339,7 +481,10 @@ async fn run_assistant_query(base_url: &str, token: &str, question: &str) -> Res
         .send()
         .await;
 
-    Ok(response_text)
+    Ok(QueryResult {
+        answer: response_text,
+        steps,
+    })
 }
 
 /// Create an assistant on the data agent endpoint.
@@ -596,4 +741,683 @@ async fn retrieve_response(
         .unwrap_or("(No response from data agent)");
 
     Ok(text.to_string())
+}
+
+/// Retrieve the run steps to show execution details (SQL queries, tool calls, etc.).
+///
+/// The `OpenAI` Assistants API exposes run steps at:
+/// `GET /threads/{thread_id}/runs/{run_id}/steps`
+///
+/// Each step has a `step_details` field that may contain:
+/// - `type: "tool_calls"` with tool call details (SQL queries, function calls)
+/// - `type: "message_creation"` for the final response generation
+async fn retrieve_run_steps(
+    http: &reqwest::Client,
+    base_url: &str,
+    auth_header: &str,
+    thread_id: &str,
+    run_id: &str,
+) -> Result<Value> {
+    let resp = http
+        .get(format!(
+            "{base_url}/threads/{thread_id}/runs/{run_id}/steps?api-version=2024-05-01-preview"
+        ))
+        .header("Authorization", auth_header)
+        .send()
+        .await
+        .map_err(|e| {
+            FabioError::new(ErrorCode::NetworkError, format!("Retrieve run steps: {e}"))
+        })?;
+
+    if !resp.status().is_success() {
+        // Non-fatal: if steps endpoint is not available, return empty array
+        return Ok(serde_json::json!([]));
+    }
+
+    let body: Value = resp.json().await.map_err(|e| {
+        FabioError::new(
+            ErrorCode::ApiError,
+            format!("Parse run steps response: {e}"),
+        )
+    })?;
+
+    // Extract meaningful step details
+    let steps = body
+        .get("data")
+        .and_then(Value::as_array)
+        .map(|steps_arr| {
+            steps_arr
+                .iter()
+                .filter_map(|step| {
+                    let step_type = step.get("type").and_then(Value::as_str)?;
+                    let step_details = step.get("step_details")?;
+                    let status = step
+                        .get("status")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown");
+
+                    match step_type {
+                        "tool_calls" => {
+                            let tool_calls = extract_tool_calls(step_details);
+                            if tool_calls.is_empty() {
+                                None
+                            } else {
+                                Some(serde_json::json!({
+                                    "type": "tool_calls",
+                                    "status": status,
+                                    "tool_calls": tool_calls
+                                }))
+                            }
+                        }
+                        "message_creation" => Some(serde_json::json!({
+                            "type": "message_creation",
+                            "status": status,
+                        })),
+                        _ => Some(serde_json::json!({
+                            "type": step_type,
+                            "status": status,
+                            "details": step_details
+                        })),
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Ok(Value::Array(steps))
+}
+
+/// Extract tool call details from a step's `step_details` field.
+/// Returns a vec of structured objects with type, name, input, and output.
+fn extract_tool_calls(step_details: &Value) -> Vec<Value> {
+    let Some(tool_calls) = step_details.get("tool_calls").and_then(Value::as_array) else {
+        return vec![];
+    };
+
+    tool_calls
+        .iter()
+        .map(|tc| {
+            let tc_type = tc.get("type").and_then(Value::as_str).unwrap_or("unknown");
+            match tc_type {
+                "code_interpreter" => {
+                    let input = tc
+                        .get("code_interpreter")
+                        .and_then(|ci| ci.get("input"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let outputs = tc
+                        .get("code_interpreter")
+                        .and_then(|ci| ci.get("outputs"))
+                        .cloned()
+                        .unwrap_or(Value::Array(vec![]));
+                    serde_json::json!({
+                        "type": "code_interpreter",
+                        "input": input,
+                        "outputs": outputs
+                    })
+                }
+                "function" => {
+                    let name = tc
+                        .get("function")
+                        .and_then(|f| f.get("name"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let arguments = tc
+                        .get("function")
+                        .and_then(|f| f.get("arguments"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let output = tc
+                        .get("function")
+                        .and_then(|f| f.get("output"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    serde_json::json!({
+                        "type": "function",
+                        "name": name,
+                        "arguments": arguments,
+                        "output": output
+                    })
+                }
+                // Fabric data agents may use custom tool types (e.g., SQL execution)
+                _ => {
+                    serde_json::json!({
+                        "type": tc_type,
+                        "details": tc
+                    })
+                }
+            }
+        })
+        .collect()
+}
+
+// ─── Validation ──────────────────────────────────────────────────────────────
+
+/// Validate datasource element IDs in a definition before sending to the API.
+///
+/// Elements with `id: null` or empty strings will cause the data agent to show
+/// "This table has been deleted or you don't have permission to view it" in the
+/// portal UI. IDs must follow the dot-path convention:
+/// - Schema: `"dbo"`
+/// - Table: `"dbo.table_name"`
+/// - Column: `"dbo.table_name.column_name"`
+fn validate_datasource_elements(body: &Value) -> Result<()> {
+    let parts = body
+        .get("definition")
+        .or(Some(body))
+        .and_then(|d| d.get("definition").or(Some(d)))
+        .and_then(|d| d.get("parts"))
+        .and_then(Value::as_array);
+
+    let Some(parts) = parts else {
+        return Ok(());
+    };
+
+    for part in parts {
+        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
+        if !path.contains("datasource.json") {
+            continue;
+        }
+
+        let Some(payload_str) = part.get("payload").and_then(Value::as_str) else {
+            continue;
+        };
+
+        // Decode base64 payload
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(payload_str)
+            .ok()
+            .and_then(|bytes| String::from_utf8(bytes).ok());
+
+        let Some(json_str) = decoded else {
+            continue;
+        };
+
+        let Ok(datasource) = serde_json::from_str::<Value>(&json_str) else {
+            continue;
+        };
+
+        let Some(elements) = datasource.get("elements").and_then(Value::as_array) else {
+            continue;
+        };
+
+        validate_elements_recursive(elements, path)?;
+    }
+
+    Ok(())
+}
+
+/// Recursively validate that all elements have non-null, non-empty IDs.
+fn validate_elements_recursive(elements: &[Value], datasource_path: &str) -> Result<()> {
+    for element in elements {
+        let id = element.get("id");
+        let display_name = element
+            .get("display_name")
+            .and_then(Value::as_str)
+            .unwrap_or("<unknown>");
+        let element_type = element
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or("<unknown>");
+
+        // Check for null or empty ID
+        let id_is_missing = match id {
+            None | Some(Value::Null) => true,
+            Some(Value::String(s)) => s.is_empty(),
+            _ => false,
+        };
+
+        if id_is_missing {
+            let hint = if element_type.contains(".schema") {
+                "schema elements should use the schema name as id, e.g. \"dbo\"".to_string()
+            } else if element_type.contains(".table") {
+                format!(
+                    "table elements should use \"schema.table\" format, e.g. \"dbo.{display_name}\""
+                )
+            } else if element_type.contains(".column") {
+                format!(
+                    "column elements should use \"schema.table.column\" format, e.g. \"dbo.table_name.{display_name}\""
+                )
+            } else {
+                "elements require a non-null id following dot-path convention".to_string()
+            };
+
+            return Err(FabioError::new(
+                ErrorCode::InvalidInput,
+                format!(
+                    "Element '{display_name}' (type: {element_type}) in '{datasource_path}' has a \
+                     null or empty 'id'. {hint}. Without valid IDs the portal will show \
+                     'This table has been deleted or you don't have permission to view it'."
+                ),
+            )
+            .into());
+        }
+
+        // Recurse into children
+        if let Some(children) = element.get("children").and_then(Value::as_array) {
+            validate_elements_recursive(children, datasource_path)?;
+        }
+    }
+
+    Ok(())
+}
+
+// ─── Definitions ─────────────────────────────────────────────────────────────
+
+/// Get the definition of a data agent (data sources, instructions, etc.).
+async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await?;
+    output::render_object(cli, &data, "definition");
+    Ok(())
+}
+
+/// Update the definition of a data agent (configure data sources, instructions, etc.).
+async fn update_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+    update_metadata: bool,
+) -> Result<()> {
+    let definition_json = match (file, content) {
+        (Some(path), _) => std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?,
+        (_, Some(inline)) => inline.to_string(),
+        (None, None) => {
+            return Err(
+                FabioError::invalid_input("Either --file or --content must be provided").into(),
+            );
+        }
+    };
+
+    let body: Value = serde_json::from_str(&definition_json).map_err(|e| {
+        FabioError::new(
+            ErrorCode::InvalidInput,
+            format!("Invalid JSON definition: {e}"),
+        )
+    })?;
+
+    // If the body already has a "definition" wrapper, use as-is; otherwise wrap it
+    let request_body = if body.get("definition").is_some() {
+        body
+    } else {
+        serde_json::json!({ "definition": body })
+    };
+
+    // Validate datasource element IDs before sending to the API
+    validate_datasource_elements(&request_body)?;
+
+    if output::dry_run_guard(
+        cli,
+        "data-agent update-definition",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "updateMetadata": update_metadata,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let path = if update_metadata {
+        format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition?updateMetadata=True")
+    } else {
+        format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition")
+    };
+
+    let data = client.post(&path, &request_body, true).await?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({ "id": id, "status": "definition_updated" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
+
+/// Publish a data agent by promoting draft configuration to published state.
+///
+/// This fetches the current definition, copies draft-stage configuration to
+/// published, adds `publish_info.json`, and updates the definition.
+///
+/// Note: This promotes the definition only. To fully activate the chat endpoint,
+/// publishing through the Fabric portal is currently required (the V3 Management
+/// Plane settings API is not yet generally available).
+#[allow(clippy::too_many_lines)]
+async fn publish(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    description: Option<&str>,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "data-agent publish",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "description": description,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    // Step 1: Get current definition
+    let definition_resp = client
+        .post(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await?;
+
+    let parts = definition_resp
+        .get("definition")
+        .and_then(|d| d.get("parts"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    if parts.is_empty() {
+        return Err(FabioError::new(
+            ErrorCode::ApiError,
+            "Data agent has no definition parts. Configure data sources first with \
+             'fabio data-agent update-definition'.",
+        )
+        .into());
+    }
+
+    // Step 2: Build new definition with published parts
+    let mut new_parts: Vec<Value> = Vec::new();
+
+    // Keep existing parts
+    for part in &parts {
+        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
+        // Skip existing published parts and publish_info (we'll regenerate them)
+        if !path.starts_with("Files/Config/published/") && path != "Files/Config/publish_info.json"
+        {
+            new_parts.push(part.clone());
+        }
+    }
+
+    // Copy draft parts to published
+    for part in &parts {
+        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
+        if path.starts_with("Files/Config/draft/") {
+            let published_path = path.replace("Files/Config/draft/", "Files/Config/published/");
+            let mut published_part = part.clone();
+            if let Some(obj) = published_part.as_object_mut() {
+                obj.insert("path".to_string(), Value::String(published_path));
+            }
+            new_parts.push(published_part);
+        }
+    }
+
+    // Add publish_info.json
+    let publish_info = serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/publishInfo/1.0.0/schema.json",
+        "description": description.unwrap_or("")
+    });
+    let publish_info_encoded =
+        base64::engine::general_purpose::STANDARD.encode(publish_info.to_string().as_bytes());
+    new_parts.push(serde_json::json!({
+        "path": "Files/Config/publish_info.json",
+        "payload": publish_info_encoded,
+        "payloadType": "InlineBase64"
+    }));
+
+    // Step 3: Validate and update the definition
+    let update_body = serde_json::json!({
+        "definition": {
+            "parts": new_parts
+        }
+    });
+
+    validate_datasource_elements(&update_body)?;
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition"),
+            &update_body,
+            true,
+        )
+        .await?;
+
+    // Step 4: Try the V3 settings endpoint to check if chat endpoint is active
+    let settings_path = format!("/workspaces/{workspace}/dataAgents/{id}/settings");
+    let published_url = client.get(&settings_path).await.ok().and_then(|s| {
+        s.get("publishedUrl")
+            .and_then(Value::as_str)
+            .filter(|u| !u.is_empty())
+            .map(String::from)
+    });
+
+    let mut obj = serde_json::json!({
+        "id": id,
+        "status": "definition_promoted",
+        "description": description.unwrap_or(""),
+        "note": "Definition promoted (draft → published). To activate the chat endpoint, \
+                 also publish via the Fabric portal (Settings → Publish)."
+    });
+
+    if let Some(url) = published_url {
+        obj["status"] = Value::String("published".to_string());
+        obj["publishedUrl"] = Value::String(url);
+        obj.as_object_mut().unwrap().remove("note");
+    }
+
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use base64::Engine;
+    use serde_json::json;
+
+    use super::validate_datasource_elements;
+
+    fn make_definition(datasource_json: &serde_json::Value) -> serde_json::Value {
+        let payload = base64::engine::general_purpose::STANDARD.encode(datasource_json.to_string());
+        json!({
+            "definition": {
+                "parts": [
+                    {
+                        "path": "Files/Config/draft/lakehouse-tables-TestLH/datasource.json",
+                        "payload": payload,
+                        "payloadType": "InlineBase64"
+                    }
+                ]
+            }
+        })
+    }
+
+    #[test]
+    fn valid_elements_pass_validation() {
+        let datasource = json!({
+            "artifactId": "00000000-0000-0000-0000-000000000001",
+            "workspaceId": "00000000-0000-0000-0000-000000000002",
+            "displayName": "TestLH",
+            "type": "lakehouse_tables",
+            "elements": [
+                {
+                    "id": "dbo",
+                    "is_selected": true,
+                    "display_name": "dbo",
+                    "type": "lakehouse_tables.schema",
+                    "children": [
+                        {
+                            "id": "dbo.my_table",
+                            "is_selected": true,
+                            "display_name": "my_table",
+                            "type": "lakehouse_tables.table",
+                            "children": [
+                                {
+                                    "id": "dbo.my_table.col1",
+                                    "is_selected": true,
+                                    "display_name": "col1",
+                                    "type": "lakehouse_tables.column",
+                                    "data_type": "string",
+                                    "children": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let body = make_definition(&datasource);
+        assert!(validate_datasource_elements(&body).is_ok());
+    }
+
+    #[test]
+    fn null_table_id_fails_validation() {
+        let datasource = json!({
+            "artifactId": "00000000-0000-0000-0000-000000000001",
+            "workspaceId": "00000000-0000-0000-0000-000000000002",
+            "displayName": "TestLH",
+            "type": "lakehouse_tables",
+            "elements": [
+                {
+                    "id": null,
+                    "is_selected": true,
+                    "display_name": "my_table",
+                    "type": "lakehouse_tables.table",
+                    "children": []
+                }
+            ]
+        });
+
+        let body = make_definition(&datasource);
+        let err = validate_datasource_elements(&body).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("my_table"),
+            "Error should mention element name: {msg}"
+        );
+        assert!(
+            msg.contains("null or empty"),
+            "Error should explain the problem: {msg}"
+        );
+        assert!(
+            msg.contains("dbo.my_table"),
+            "Error should suggest correct format: {msg}"
+        );
+    }
+
+    #[test]
+    fn empty_string_id_fails_validation() {
+        let datasource = json!({
+            "artifactId": "00000000-0000-0000-0000-000000000001",
+            "workspaceId": "00000000-0000-0000-0000-000000000002",
+            "displayName": "TestLH",
+            "type": "lakehouse_tables",
+            "elements": [
+                {
+                    "id": "",
+                    "is_selected": true,
+                    "display_name": "bad_schema",
+                    "type": "lakehouse_tables.schema",
+                    "children": []
+                }
+            ]
+        });
+
+        let body = make_definition(&datasource);
+        let err = validate_datasource_elements(&body).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("bad_schema"),
+            "Error should mention element name: {msg}"
+        );
+    }
+
+    #[test]
+    fn nested_null_column_id_fails_validation() {
+        let datasource = json!({
+            "artifactId": "00000000-0000-0000-0000-000000000001",
+            "workspaceId": "00000000-0000-0000-0000-000000000002",
+            "displayName": "TestLH",
+            "type": "lakehouse_tables",
+            "elements": [
+                {
+                    "id": "dbo",
+                    "is_selected": true,
+                    "display_name": "dbo",
+                    "type": "lakehouse_tables.schema",
+                    "children": [
+                        {
+                            "id": "dbo.my_table",
+                            "is_selected": true,
+                            "display_name": "my_table",
+                            "type": "lakehouse_tables.table",
+                            "children": [
+                                {
+                                    "id": null,
+                                    "is_selected": true,
+                                    "display_name": "bad_col",
+                                    "type": "lakehouse_tables.column",
+                                    "data_type": "int",
+                                    "children": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let body = make_definition(&datasource);
+        let err = validate_datasource_elements(&body).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("bad_col"),
+            "Error should mention nested element: {msg}"
+        );
+        assert!(
+            msg.contains("dbo.table_name.bad_col"),
+            "Error should suggest dot-path: {msg}"
+        );
+    }
+
+    #[test]
+    fn empty_elements_array_passes() {
+        let datasource = json!({
+            "artifactId": "00000000-0000-0000-0000-000000000001",
+            "workspaceId": "00000000-0000-0000-0000-000000000002",
+            "displayName": "TestLH",
+            "type": "lakehouse_tables",
+            "elements": []
+        });
+
+        let body = make_definition(&datasource);
+        assert!(validate_datasource_elements(&body).is_ok());
+    }
+
+    #[test]
+    fn no_datasource_parts_passes() {
+        let body = json!({
+            "definition": {
+                "parts": [
+                    {
+                        "path": "Files/Config/data_agent.json",
+                        "payload": "e30=",
+                        "payloadType": "InlineBase64"
+                    }
+                ]
+            }
+        });
+        assert!(validate_datasource_elements(&body).is_ok());
+    }
 }

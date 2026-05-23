@@ -133,6 +133,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - Storage scope: `https://storage.azure.com/.default`
 - Spark rate limit on small capacity: LRO reports 430 `TooManyRequestsForCapacity` (non-standard code)
 - Test env vars: `FABIO_TEST_SOURCE_WORKSPACE`, `FABIO_TEST_SOURCE_LAKEHOUSE`, `FABIO_TEST_DEST_WORKSPACE`, `FABIO_TEST_DEST_LAKEHOUSE`, `FABIO_TEST_NOTEBOOK_ID`, `FABIO_TEST_CAPACITY_ID`
+- Fabric REST API specs (OpenAPI): `https://github.com/Azure/azure-rest-api-specs/` (look under `specification/fabric/`)
 
 ## Relevant Files
 - `Cargo.toml`: Project config, dependencies, clippy/lints config, release profile (LTO+strip)
@@ -238,6 +239,54 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **DFS directory parameter "virtual lakehouse-in-lakehouse" view**: When `directory=X` is specified, the API returns ALL paths prefixed with `X/`, where top-level lakehouse dirs appear doubled (e.g., `Files/Files/myfile.csv` for a file at `Files/myfile.csv`). With `recursive=false`, only immediate virtual children show. Fix: always use `recursive=true` and strip the doubled prefix client-side.
 - **Notebook Jobs API**: `POST /workspaces/{ws}/items/{id}/jobs/instances?jobType=RunNotebook` returns 202 + Location header with job instance URL. Status endpoint returns `NotStarted`, `InProgress`, `Completed`, `Failed`, `Cancelled`. Cancel via `POST .../cancel`.
 - **Spark cold start on small capacity**: First notebook run can take 2-5 minutes to transition from `NotStarted` to `InProgress` due to Spark session allocation.
+
+## Data Agent API Behaviors Discovered
+- **Definition schema is minimal**: The `getDefinition`/`updateDefinition` API only controls `$schema`, `aiInstructions`, and `experimental` fields. Data sources are NOT configured through definitions — they are managed internally by Fabric (portal-only).
+- **Definition schema URLs**:
+  - `dataAgent/2.1.0/schema.json` — top-level, only has `$schema`
+  - `stageConfiguration/1.0.0/schema.json` — has `$schema`, `aiInstructions`, `experimental`
+  - `publishInfo/1.0.0/schema.json` — has `$schema`, `description`
+- **Definition parts structure** (observed):
+  - `Files/Config/data_agent.json` — schema version reference only
+  - `Files/Config/draft/stage_config.json` — AI instructions (draft stage)
+  - `Files/Config/published/stage_config.json` — AI instructions (published stage)
+  - `Files/Config/publish_info.json` — publish metadata
+  - `.platform` — git integration metadata (type, displayName, description, logicalId)
+- **V3 Management Plane**: `GET /workspaces/{ws}/dataAgents/{id}/settings` endpoint EXISTS but returns `FeatureNotAvailable` (HTTP 403) with message "Data Agent V3 Public Management Plane is not enabled." This implies a tenant-level feature flag controls access.
+- **Publishing is portal-only**: No REST API endpoint exposes publish functionality. Tried: `POST .../publish`, `POST .../jobs/instances?jobType=Publish`, `POST .../jobs/instances?jobType=PublishDataAgent` — all return 404 or InvalidJobType. The portal "Publish" button activates the server-side chat endpoint.
+- **Published URL**: Only available from the portal Settings page AFTER publishing. Not exposed in `GET /dataAgents/{id}` response (which only returns `id`, `type`, `displayName`, `description`, `workspaceId`). Will be in `/settings` once V3 is enabled.
+- **Chat protocol**: Data agents expose an OpenAI Assistants-compatible API at the published URL. Flow: `POST /assistants` → `POST /threads` → `POST /threads/{id}/messages` → `POST /threads/{id}/runs` → poll until terminal → `GET /threads/{id}/messages`. Query param: `?api-version=2024-05-01-preview`.
+- **Authentication for chat**: Uses same Fabric bearer token (`https://analysis.windows.net/powerbi/api/.default` scope), sent as `Authorization: Bearer {token}`.
+- **PATCH /dataAgents/{id}**: Only accepts `displayName` and `description` fields. Passing `properties` or other fields returns `InvalidInput: UpdateArtifactRequest should have at least one valid field to update`.
+- **Admin tenant settings API**: `GET /v1/admin/tenantsettings` returns error (insufficient privileges required). PowerBI admin API (`api.powerbi.com/v1.0/myorg/admin/tenantsettings`) returns 404.
+- **Data source configuration via definition IS supported**: Include `datasource.json` parts at path `Files/Config/draft/{type}-{DisplayName}/datasource.json`. The server normalizes the path (e.g., `lakehouse-SalesLH` → `lakehouse-tables-SalesLH`). Schema: `dataSource/1.0.0/schema.json`. The server adds `$schema` URL automatically.
+- **Data source path convention**: `Files/Config/{stage}/{type}-{DisplayName}/datasource.json` where stage is `draft` or `published`, and type is the full type value (e.g., `lakehouse-tables`, `data-warehouse`, `kusto`). The server normalizes shorthand prefixes.
+- **Data source type enum**: `unknown`, `lakehouse_tables`, `lakehouse`, `data_warehouse`, `kusto`, `semantic_model`, `graph`, `mirrored_database`, `mirrored_azure_databricks`.
+- **Elements array for table/column selection**: The `elements` field in `datasource.json` defines which tables and columns the agent can access. Each element has `display_name`, `type` (e.g., `lakehouse_tables.table`, `lakehouse_tables.column`), `is_selected`, `description`, `data_type`, and `children` (nested). Setting `is_selected: true` makes them available to the agent.
+- **Element type enum**: `lakehouse_tables.table`, `lakehouse_tables.column`, `warehouse_tables.table`, `warehouse_tables.column`, `kusto.table`, `kusto.column`, `kusto.functions`, `semantic_model.table`, `semantic_model.column`, `semantic_model.measure`, `graph.nodeType`, `graph.edgeType`, `mirrored_database.table`, `mirrored_database.column`, plus schema-level types.
+- **Server strips unknown fields from datasource.json**: Custom fields like `tables`, `connectionInfo` are stripped; only schema-defined fields are kept (`$schema`, `artifactId`, `workspaceId`, `displayName`, `type`, `userDescription`, `dataSourceInstructions`, `metadata`, `elements`).
+- **Server strips experimental.dataSources**: Putting data sources in `experimental` field of `stage_config.json` is ignored; the experimental object is emptied. Data sources MUST use dedicated `datasource.json` files at the correct paths.
+- **Update PATCH returns full object**: `PATCH /workspaces/{ws}/dataAgents/{id}` returns the full updated item object (not just `{status: "updated"}`).
+
+## Semantic Model API Behaviors Discovered
+- **TMDL vs model.bim**: Direct Lake semantic models REQUIRE TMDL format (v4.0 pbism). The older model.bim JSON format (compat level 1550) does NOT support DirectLake mode partitions.
+- **definition.pbism is always required**: Fabric Items API for semantic model creation always requires a `definition.pbism` file in the definition parts. Without it, creation fails silently or produces a broken model.
+- **TMDL definition.pbism format**: `{"version": "4.0", "datasetReference": {"byPath": null, "byConnection": null}}`
+- **model.bim definition.pbism format**: `{"version": "3.0", "datasetReference": {"byPath": null, "byConnection": null}}`
+- **TMDL file structure**: A Direct Lake TMDL semantic model requires: `definition.pbism`, `model.tmdl` (model-level settings + expressions), and `definition/tables/{TableName}.tmdl` (one per table). The expression in `model.tmdl` provides the lakehouse connection via `DatabaseQuery` with a placeholder connection string.
+- **Direct Lake partition annotation**: Each table partition needs `mode: directLake` in the TMDL source definition. Without it, the model defaults to Import mode.
+- **Connection flag**: `semantic-model create --connection <lakehouse-sql-endpoint-id>` wires the Direct Lake connection. The connection ID is the SQL Analytics Endpoint ID (not the lakehouse ID itself).
+- **Creation is LRO**: Semantic model creation uses the standard Fabric LRO pattern (202 + Location header polling).
+- **Format auto-detection**: `.tmdl` files → TMDL format (v4.0 pbism); `.bim` file → model.bim format (v3.0 pbism). The CLI auto-detects from the file extension.
+
+## Report API Behaviors Discovered
+- **definition.pbir is the report definition entry point**: Not `report.json`. The report definition file at `definition.pbir` references the semantic model binding.
+- **definition.pbir format**: `{"version": "4.0", "datasetReference": {"byConnection": {"connectionString": null, "pbiServiceModelId": null, "pbiModelVirtualServerName": "sobe_wowvirtualserver", "pbiModelDatabaseName": "<semantic-model-id>", "name": "EntityDataSource", "connectionType": "pbiServiceXmlaStyleLive"}}}` — the `pbiModelDatabaseName` is the semantic model ID.
+- **Blank report.json**: A minimal valid report is `{"config": "{\"version\":\"5.56\"}", "layoutOptimization": 0, "pods": [{"config": "{\"name\":\"Page 1\"}"}]}`
+- **report create --dataset**: Generates both `definition.pbir` (with semantic model binding) and `report.json` (blank page) automatically. No definition file needed from the user.
+- **Definition path changed**: The report definition entry point is `definition.pbir` (not `report.json`). Both `create` and `update-definition` use this path.
+- **publish-to-web**: `POST https://api.powerbi.com/v1.0/myorg/groups/{groupId}/reports/{reportId}/publishtoweb` returns 404 for Fabric reports. Attempted with various body formats (`{"accessLevel":"View","allowFullScreen":true}`). Likely requires: (1) tenant admin to enable "Publish to web" in admin portal, AND (2) may only work with classic Power BI reports (not Fabric-native reports created via Items API).
+- **PowerBI API scope**: Report publish-to-web uses `api.powerbi.com` (not `api.fabric.microsoft.com`). Requires the same bearer token (`https://analysis.windows.net/powerbi/api/.default` scope).
 
 ## Next Steps
 - Add ODBC support to warehouse query (`odbc-api` crate)

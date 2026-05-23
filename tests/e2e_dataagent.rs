@@ -345,3 +345,436 @@ fn dataagent_query_no_prompt_no_stdin_fails() {
         .failure()
         .stderr(predicate::str::contains("INVALID_INPUT"));
 }
+
+// ─── Definition & Publish Tests ──────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_get_definition() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("da_getdef");
+
+    // Create a data agent first
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let agent_id = data["id"].as_str().unwrap().to_string();
+
+    // Get definition - should succeed (even if empty/minimal)
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "get-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Should have a definition with parts
+    assert!(
+        data.get("definition").is_some(),
+        "expected definition field in response"
+    );
+
+    // Cleanup
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_update_definition_with_lakehouse_datasource() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("da_upddef");
+
+    // Create a data agent
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let agent_id = data["id"].as_str().unwrap().to_string();
+
+    // Build a definition that configures the data agent with a lakehouse data source
+    let data_agent_json = serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/dataAgent/2.1.0/schema.json"
+    });
+    let stage_config_json = serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/stageConfiguration/1.0.0/schema.json",
+        "aiInstructions": "You are a helpful data assistant for sales analytics."
+    });
+    let datasource_json = serde_json::json!({
+        "$schema": "1.0.0",
+        "artifactId": &cfg.source_lakehouse,
+        "workspaceId": &cfg.source_workspace,
+        "displayName": "SalesLakehouse",
+        "type": "lakehouse_tables",
+        "userDescription": "Sales data lakehouse",
+        "dataSourceInstructions": "This contains sales transaction data"
+    });
+
+    use base64::Engine;
+    let encode = |v: &serde_json::Value| {
+        base64::engine::general_purpose::STANDARD.encode(v.to_string().as_bytes())
+    };
+
+    let definition = serde_json::json!({
+        "definition": {
+            "parts": [
+                {
+                    "path": "Files/Config/data_agent.json",
+                    "payload": encode(&data_agent_json),
+                    "payloadType": "InlineBase64"
+                },
+                {
+                    "path": "Files/Config/draft/stage_config.json",
+                    "payload": encode(&stage_config_json),
+                    "payloadType": "InlineBase64"
+                },
+                {
+                    "path": "Files/Config/draft/lakehouse-SalesLakehouse/datasource.json",
+                    "payload": encode(&datasource_json),
+                    "payloadType": "InlineBase64"
+                }
+            ]
+        }
+    });
+
+    let def_content = definition.to_string();
+
+    // Update definition with lakehouse data source
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "update-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--content",
+            &def_content,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Response is either {"status":"definition_updated"} or the full item object
+    assert!(
+        data["status"] == "definition_updated" || data["id"] == *agent_id,
+        "expected definition_updated status or item with matching id, got: {data}"
+    );
+
+    // Verify the definition was updated by fetching it back
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "get-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    // Should have at least the parts we set
+    assert!(
+        parts.len() >= 3,
+        "expected at least 3 definition parts, got {}",
+        parts.len()
+    );
+
+    // Cleanup
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_update_definition_requires_file_or_content() {
+    let cfg = TestConfig::from_env();
+
+    // Should fail without --file or --content
+    fabio()
+        .args([
+            "data-agent",
+            "update-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("INVALID_INPUT"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_publish_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("da_pub");
+
+    // Create a data agent
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let agent_id = data["id"].as_str().unwrap().to_string();
+
+    // First set up a draft definition
+    let data_agent_json = serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/dataAgent/2.1.0/schema.json"
+    });
+    let stage_config_json = serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/stageConfiguration/1.0.0/schema.json",
+        "aiInstructions": "You are a helpful data assistant."
+    });
+    let datasource_json = serde_json::json!({
+        "$schema": "1.0.0",
+        "artifactId": &cfg.source_lakehouse,
+        "workspaceId": &cfg.source_workspace,
+        "displayName": "TestLH",
+        "type": "lakehouse_tables",
+        "userDescription": "Test lakehouse"
+    });
+
+    use base64::Engine;
+    let encode = |v: &serde_json::Value| {
+        base64::engine::general_purpose::STANDARD.encode(v.to_string().as_bytes())
+    };
+
+    let definition = serde_json::json!({
+        "definition": {
+            "parts": [
+                {
+                    "path": "Files/Config/data_agent.json",
+                    "payload": encode(&data_agent_json),
+                    "payloadType": "InlineBase64"
+                },
+                {
+                    "path": "Files/Config/draft/stage_config.json",
+                    "payload": encode(&stage_config_json),
+                    "payloadType": "InlineBase64"
+                },
+                {
+                    "path": "Files/Config/draft/lakehouse-TestLH/datasource.json",
+                    "payload": encode(&datasource_json),
+                    "payloadType": "InlineBase64"
+                }
+            ]
+        }
+    });
+
+    let def_content = definition.to_string();
+
+    // Set draft definition
+    fabio()
+        .args([
+            "data-agent",
+            "update-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--content",
+            &def_content,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    // Publish the data agent
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "publish",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--description",
+            "Test publish from e2e",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Status is "definition_promoted" (V3 not enabled) or "published" (V3 enabled)
+    assert!(
+        data["status"] == "definition_promoted" || data["status"] == "published",
+        "expected definition_promoted or published, got: {}",
+        data["status"]
+    );
+    assert_eq!(data["id"], agent_id);
+
+    // Verify the definition now has published parts
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "get-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    let paths: Vec<&str> = parts.iter().filter_map(|p| p["path"].as_str()).collect();
+
+    // Should now have published paths
+    assert!(
+        paths
+            .iter()
+            .any(|p| p.starts_with("Files/Config/published/")),
+        "expected published parts after publish, got paths: {paths:?}"
+    );
+    assert!(
+        paths.contains(&"Files/Config/publish_info.json"),
+        "expected publish_info.json, got paths: {paths:?}"
+    );
+
+    // Cleanup
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_publish_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    // --dry-run should succeed without making changes
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "publish",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--description",
+            "dry run test",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "data-agent publish");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_update_definition_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let definition = serde_json::json!({"definition": {"parts": []}}).to_string();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "update-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--content",
+            &definition,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "data-agent update-definition");
+}
