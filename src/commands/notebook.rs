@@ -46,6 +46,10 @@ pub enum NotebookCommand {
         /// Notebook content (Python/PySpark code)
         #[arg(long)]
         content: Option<String>,
+
+        /// Default lakehouse ID (binds the notebook so relative paths like Files/ and Tables/ work)
+        #[arg(long)]
+        lakehouse: Option<String>,
     },
     /// Update notebook properties (name and/or description)
     #[command(display_order = 2)]
@@ -211,7 +215,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
             workspace,
             name,
             content,
-        } => create(cli, client, workspace, name, content.as_deref()).await,
+            lakehouse,
+        } => create(cli, client, workspace, name, content.as_deref(), lakehouse.as_deref()).await,
         NotebookCommand::Update {
             workspace,
             id,
@@ -440,16 +445,38 @@ async fn create(
     workspace: &str,
     name: &str,
     content: Option<&str>,
+    lakehouse: Option<&str>,
 ) -> Result<()> {
     let code = content.unwrap_or("# New notebook\nprint('Hello from Fabric!')");
 
     // Build ipynb structure (source must be list of strings per spec)
+    let metadata = lakehouse.map_or_else(
+        || {
+            serde_json::json!({
+                "language_info": { "name": "python" }
+            })
+        },
+        |lh_id| {
+            // Include Fabric trident metadata to bind the default lakehouse.
+            // Without this, relative paths (Files/, Tables/) and saveAsTable() won't work.
+            serde_json::json!({
+                "language_info": { "name": "python" },
+                "trident": {
+                    "lakehouse": {
+                        "default_lakehouse": lh_id,
+                        "default_lakehouse_name": "",
+                        "default_lakehouse_workspace_id": workspace,
+                        "known_lakehouses": [{ "id": lh_id }]
+                    }
+                }
+            })
+        },
+    );
+
     let notebook_json = serde_json::json!({
         "nbformat": 4,
         "nbformat_minor": 5,
-        "metadata": {
-            "language_info": { "name": "python" }
-        },
+        "metadata": metadata,
         "cells": [{
             "cell_type": "code",
             "metadata": {},
