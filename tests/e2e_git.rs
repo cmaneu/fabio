@@ -2267,6 +2267,258 @@ fn git_azdo_connect_init_status_disconnect_lifecycle() {
 }
 
 // ---------------------------------------------------------------------------
+// CI/CD scenario: table data is NOT tracked by git integration
+// Validates that creating a Delta table does not produce NEW git changes.
+// The proper CI/CD pattern is to commit a Notebook (its definition IS tracked).
+// Uses the source workspace (which should have a lakehouse) and compares
+// the count of changes before/after table creation.
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_table_not_tracked_but_notebook_is() {
+    let cfg = TestConfig::from_env();
+    // Use the dedicated scenario workspace if env var is set, otherwise source
+    let workspace = std::env::var("FABIO_TEST_CICD_WORKSPACE")
+        .unwrap_or_else(|_| cfg.source_workspace.clone());
+    let lakehouse_id = std::env::var("FABIO_TEST_CICD_LAKEHOUSE")
+        .unwrap_or_else(|_| cfg.source_lakehouse.clone());
+
+    let Some(connection_id) = find_github_connection_id() else {
+        eprintln!("No GitHub connection found, skipping test.");
+        return;
+    };
+
+    // Check if workspace is already connected to git
+    let assert = fabio()
+        .args(["git", "connection", "show", "--workspace", &workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let already_connected = data["gitConnectionState"]
+        .as_str()
+        .is_some_and(|s| s.contains("Connected"));
+
+    // If not connected, connect temporarily
+    if !already_connected {
+        // Try to disconnect first (in case partially connected)
+        let _ = fabio()
+            .args(["git", "disconnect", "--workspace", &workspace])
+            .timeout(std::time::Duration::from_secs(60))
+            .assert();
+
+        let connect_result = fabio()
+            .args([
+                "git",
+                "connect",
+                "--workspace",
+                &workspace,
+                "--provider",
+                "github",
+                "--owner",
+                "iemejia",
+                "--repo",
+                "fabio-test-connection",
+                "--branch",
+                "main",
+                "--connection-id",
+                &connection_id,
+            ])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert();
+
+        if !connect_result.get_output().status.success() {
+            eprintln!("Could not connect workspace to git, skipping test.");
+            return;
+        }
+
+        retry_on_failure(|| {
+            fabio()
+                .args([
+                    "git",
+                    "init",
+                    "--workspace",
+                    &workspace,
+                    "--strategy",
+                    "prefer-workspace",
+                    "--wait",
+                ])
+                .timeout(std::time::Duration::from_secs(120))
+                .assert()
+        })
+        .success();
+    }
+
+    // Record git status BEFORE table creation (count of changes)
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args(["git", "status", "--workspace", &workspace])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    let changes_before = if data.is_array() {
+        data.as_array().unwrap().len()
+    } else {
+        data.get("changes")
+            .and_then(|c| c.as_array())
+            .map_or(0, Vec::len)
+    };
+
+    // Upload a CSV file to the lakehouse
+    let csv_content = "col_a,col_b\n1,test\n2,data";
+    let csv_path = "/tmp/fabio_git_table_test.csv";
+    std::fs::write(csv_path, csv_content).expect("Failed to write test CSV");
+
+    let upload_result = fabio()
+        .args([
+            "lakehouse",
+            "upload",
+            "--workspace",
+            &workspace,
+            "--id",
+            &lakehouse_id,
+            "--source-path",
+            csv_path,
+            "--dest-path",
+            "Files/git_table_test.csv",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert();
+
+    if !upload_result.get_output().status.success() {
+        eprintln!("Upload failed, skipping table tracking test.");
+        if !already_connected {
+            let _ = fabio()
+                .args(["git", "disconnect", "--workspace", &workspace])
+                .timeout(std::time::Duration::from_secs(60))
+                .assert();
+        }
+        return;
+    }
+
+    // Load the CSV into a Delta table
+    let load_result = fabio()
+        .args([
+            "lakehouse",
+            "load-table",
+            "--workspace",
+            &workspace,
+            "--id",
+            &lakehouse_id,
+            "--source-path",
+            "Files/git_table_test.csv",
+            "--table",
+            "git_test_table",
+            "--mode",
+            "Overwrite",
+            "--format",
+            "Csv",
+        ])
+        .timeout(std::time::Duration::from_secs(180))
+        .assert();
+
+    if !load_result.get_output().status.success() {
+        eprintln!("load-table failed (possibly capacity issue), skipping assertion.");
+        let _ = fabio()
+            .args([
+                "lakehouse",
+                "delete-file",
+                "--workspace",
+                &workspace,
+                "--id",
+                &lakehouse_id,
+                "--path",
+                "Files/git_table_test.csv",
+            ])
+            .timeout(std::time::Duration::from_secs(30))
+            .assert();
+        if !already_connected {
+            let _ = fabio()
+                .args(["git", "disconnect", "--workspace", &workspace])
+                .timeout(std::time::Duration::from_secs(60))
+                .assert();
+        }
+        return;
+    }
+
+    // KEY ASSERTION: git status AFTER table creation should have SAME number of changes
+    // as BEFORE. Tables (Delta data) do NOT produce new git changes.
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args(["git", "status", "--workspace", &workspace])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    let changes_after = if data.is_array() {
+        data.as_array().unwrap().len()
+    } else {
+        data.get("changes")
+            .and_then(|c| c.as_array())
+            .map_or(0, Vec::len)
+    };
+
+    assert_eq!(
+        changes_before, changes_after,
+        "IMPORTANT: Creating a Delta table should NOT produce new git changes. \
+         Table data is NOT tracked by Fabric git integration. \
+         Changes before: {changes_before}, after: {changes_after}"
+    );
+
+    // Clean up: delete the test table and file
+    let _ = fabio()
+        .args([
+            "lakehouse",
+            "delete-table",
+            "--workspace",
+            &workspace,
+            "--id",
+            &lakehouse_id,
+            "--table",
+            "git_test_table",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert();
+
+    let _ = fabio()
+        .args([
+            "lakehouse",
+            "delete-file",
+            "--workspace",
+            &workspace,
+            "--id",
+            &lakehouse_id,
+            "--path",
+            "Files/git_table_test.csv",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert();
+
+    // Clean up CSV file
+    let _ = std::fs::remove_file(csv_path);
+
+    // Disconnect only if we connected
+    if !already_connected {
+        fabio()
+            .args(["git", "disconnect", "--workspace", &workspace])
+            .timeout(std::time::Duration::from_secs(60))
+            .assert()
+            .success();
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Azure DevOps: connect to non-existent org/project gives error with hint
 // ---------------------------------------------------------------------------
 
@@ -2324,4 +2576,88 @@ fn git_azdo_connect_invalid_org_gives_hint() {
             "Hint should reference Azure DevOps: {hint}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// show-tracked: verify it produces structured output on connected workspaces
+// and actionable errors on unconnected workspaces
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_show_tracked_on_connected_workspace() {
+    let workspace = std::env::var("FABIO_TEST_CICD_WORKSPACE")
+        .expect("FABIO_TEST_CICD_WORKSPACE must be set");
+
+    let assert = retry_on_failure(|| {
+        fabio()
+            .args(["git", "show-tracked", "--workspace", &workspace])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+    })
+    .success();
+
+    let json = parse_json(&assert);
+
+    // Should have a data array (possibly empty if workspace is clean)
+    assert!(
+        json.get("data").is_some() || json.get("status").is_some(),
+        "Expected structured output with 'data' or 'status' field: {json}"
+    );
+
+    // If there are items, each should have required fields
+    if let Some(items) = json["data"].as_array() {
+        for item in items {
+            assert!(
+                item.get("displayName").is_some(),
+                "Each item should have 'displayName': {item}"
+            );
+            assert!(
+                item.get("itemType").is_some(),
+                "Each item should have 'itemType': {item}"
+            );
+            assert!(
+                item.get("status").is_some(),
+                "Each item should have 'status': {item}"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_show_tracked_on_unconnected_workspace_gives_hint() {
+    let cfg = TestConfig::from_env();
+    // Use source workspace which should NOT be connected to git
+    let workspace = &cfg.source_workspace;
+
+    let assert = fabio()
+        .args(["git", "show-tracked", "--workspace", workspace])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value =
+        serde_json::from_str(&stderr).expect("Expected JSON error on stderr");
+
+    let error = &err_json["error"];
+    assert_eq!(
+        error["code"].as_str().unwrap_or(""),
+        "API_ERROR",
+        "Should return API_ERROR for unconnected workspace"
+    );
+
+    // Should include a hint telling the user how to connect
+    let hint = error["hint"].as_str().expect("Error should include a hint");
+    assert!(
+        hint.contains("fabio git connect"),
+        "Hint should suggest 'fabio git connect': {hint}"
+    );
+    assert!(
+        hint.contains("fabio connection list"),
+        "Hint should suggest 'fabio connection list' for GitHub: {hint}"
+    );
 }

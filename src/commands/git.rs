@@ -179,6 +179,14 @@ pub enum GitCommand {
     /// Manage Git credentials
     #[command(subcommand, display_order = 21)]
     Credentials(CredentialsCommand),
+    // ── Inspection ───────────────────────────────────────────────────────
+    /// Show tracked items and their Git sync status
+    #[command(display_order = 30)]
+    ShowTracked {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -331,6 +339,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
                 .await
                 .map_err(|e| enrich_forbidden(e, "git credentials update", "Admin")),
         },
+        GitCommand::ShowTracked { workspace } => show_tracked(cli, client, workspace).await,
     }
 }
 
@@ -838,6 +847,168 @@ async fn credentials_update(
     Ok(())
 }
 
+/// Show items tracked by Git integration in a workspace.
+///
+/// Fetches git status and lists ALL items with their sync state:
+/// - tracked: items in git with no pending changes
+/// - added/modified/deleted: items with uncommitted workspace changes
+/// - remote changes: incoming changes from the remote branch
+///
+/// This helps agents understand what Fabric Git tracks (item definitions only,
+/// NOT table data, uploaded files, or `OneLake` runtime data).
+#[allow(clippy::too_many_lines)]
+async fn show_tracked(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+    // Get connection info to verify workspace is connected
+    let connection = client
+        .get(&format!("/workspaces/{workspace}/git/connection"))
+        .await?;
+
+    let state = connection
+        .get("gitConnectionState")
+        .and_then(Value::as_str)
+        .unwrap_or("NotConnected");
+
+    if state == "NotConnected" || state == "NotInitialized" {
+        let hint = if state == "NotConnected" {
+            "Connect first with: fabio git connect --workspace <ID> --provider <github|azure-devops> ...\n\
+             For GitHub, you also need --connection-id. Find it with: fabio connection list"
+                .to_string()
+        } else {
+            "Workspace is connected but not initialized. Run: fabio git init --workspace <ID> --strategy prefer-workspace --wait"
+                .to_string()
+        };
+        return Err(FabioError::with_hint(
+            ErrorCode::ApiError,
+            format!("Workspace Git state: {state}. Cannot show tracked items."),
+            hint,
+        )
+        .into());
+    }
+
+    let provider = connection
+        .get("gitProviderDetails")
+        .and_then(|d| d.get("repositoryName"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+
+    let branch = connection
+        .get("gitProviderDetails")
+        .and_then(|d| d.get("branchName"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+
+    // Get git status (LRO-aware)
+    let status_data = client
+        .get_with_lro(&format!("/workspaces/{workspace}/git/status"))
+        .await?;
+
+    let workspace_head = status_data
+        .get("workspaceHead")
+        .and_then(Value::as_str)
+        .unwrap_or("(none)");
+
+    let remote_head = status_data
+        .get("remoteCommitHash")
+        .and_then(Value::as_str)
+        .unwrap_or("(none)");
+
+    let changes = status_data
+        .get("changes")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    // Build tracked items list: each item gets a status label
+    let mut tracked_items: Vec<Value> = Vec::new();
+
+    for change in &changes {
+        let display_name = change
+            .pointer("/itemMetadata/displayName")
+            .and_then(Value::as_str)
+            .unwrap_or("(unknown)");
+        let item_type = change
+            .pointer("/itemMetadata/itemType")
+            .and_then(Value::as_str)
+            .unwrap_or("(unknown)");
+        let object_id = change
+            .pointer("/itemMetadata/itemIdentifier/objectId")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let workspace_change = change
+            .get("workspaceChange")
+            .and_then(Value::as_str)
+            .unwrap_or("None");
+        let remote_change = change
+            .get("remoteChange")
+            .and_then(Value::as_str);
+        let conflict_type = change
+            .get("conflictType")
+            .and_then(Value::as_str)
+            .unwrap_or("None");
+
+        let status = match workspace_change {
+            "Added" => "uncommitted (new)",
+            "Modified" => "uncommitted (modified)",
+            "Deleted" => "uncommitted (deleted)",
+            _ => {
+                if remote_change.is_some_and(|r| r != "None") {
+                    "incoming remote change"
+                } else if conflict_type != "None" {
+                    "conflict"
+                } else {
+                    "tracked"
+                }
+            }
+        };
+
+        tracked_items.push(serde_json::json!({
+            "displayName": display_name,
+            "itemType": item_type,
+            "objectId": object_id,
+            "status": status,
+            "workspaceChange": workspace_change,
+            "remoteChange": remote_change.unwrap_or("None"),
+            "conflict": conflict_type,
+        }));
+    }
+
+    // If no changes, workspace is fully synced
+    if tracked_items.is_empty() {
+        let result = serde_json::json!({
+            "repository": provider,
+            "branch": branch,
+            "workspaceHead": workspace_head,
+            "remoteHead": remote_head,
+            "status": "clean",
+            "message": "All items are synced. No pending changes.",
+            "items": [],
+            "note": "Fabric Git tracks item definitions only (notebooks, lakehouses, pipelines). Table data, uploaded files, and OneLake runtime data are NOT tracked."
+        });
+        output::render_object(cli, &result, "status");
+    } else {
+        let result = serde_json::json!({
+            "repository": provider,
+            "branch": branch,
+            "workspaceHead": workspace_head,
+            "remoteHead": remote_head,
+            "totalChanges": tracked_items.len(),
+            "items": tracked_items,
+            "note": "Fabric Git tracks item definitions only (notebooks, lakehouses, pipelines). Table data, uploaded files, and OneLake runtime data are NOT tracked."
+        });
+
+        // Render as table for human readability
+        output::render_list(
+            cli,
+            result["items"].as_array().unwrap(),
+            &["displayName", "itemType", "status", "workspaceChange", "remoteChange"],
+            &["NAME", "TYPE", "STATUS", "WORKSPACE", "REMOTE"],
+            "displayName",
+        );
+    }
+
+    Ok(())
+}
+
 /// Enrich a git connect/checkout error with actionable hints for agents.
 ///
 /// The Fabric API returns generic messages like "The requested operation can't
@@ -863,7 +1034,23 @@ fn enrich_git_connect_error(
     let msg = &fabio_err.message;
     let provider_lower = provider.to_lowercase();
 
-    let hint = if msg.contains("could not be found") || msg.contains("not found") {
+    let hint = if msg.contains("myGitCredentials is required") || msg.contains("credentials") {
+        // Missing --connection-id for GitHub
+        if provider_lower.contains("github") {
+            format!(
+                "GitHub requires --connection-id pointing to a GitHubSourceControl connection. \
+                 Find available connections with: fabio connection list --output json | \
+                 jq '.data[] | select(.connectivityType==\"ShareableCloud\")'. \
+                 Then retry: fabio git connect --provider github --owner {owner} --repo {repo} \
+                 --branch {branch} --connection-id <CONNECTION_ID>",
+                owner = owner.unwrap_or("OWNER"),
+            )
+        } else {
+            "Add --connection-id pointing to a configured Git connection. \
+             Find available connections with: fabio connection list"
+                .to_string()
+        }
+    } else if msg.contains("could not be found") || msg.contains("not found") {
         // Branch/repo/owner not found on the Git provider
         if provider_lower.contains("github") {
             let owner_str = owner.unwrap_or("OWNER");
@@ -899,4 +1086,162 @@ fn enrich_git_connect_error(
     };
 
     FabioError::with_hint(fabio_err.code, msg.clone(), hint).into()
+}
+
+// ─── Unit Tests ──────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enrich_git_connect_not_found_github_includes_branch() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::NotFound,
+            "Git provider resource could not be found".to_string(),
+        )
+        .into();
+
+        let enriched = enrich_git_connect_error(
+            err,
+            "GitHub",
+            "my-repo",
+            "feature-xyz",
+            Some("myowner"),
+            None,
+        );
+
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        let hint = fabio_err.hint.as_ref().unwrap();
+        assert!(hint.contains("feature-xyz"), "Hint should mention branch");
+        assert!(
+            hint.contains("myowner/my-repo"),
+            "Hint should reference repo"
+        );
+        assert!(
+            hint.contains("gh api"),
+            "Hint should suggest gh api for listing branches"
+        );
+    }
+
+    #[test]
+    fn enrich_git_connect_not_found_azdo_includes_org() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::NotFound,
+            "Git provider resource could not be found".to_string(),
+        )
+        .into();
+
+        let enriched = enrich_git_connect_error(
+            err,
+            "AzureDevOps",
+            "my-repo",
+            "develop",
+            None,
+            Some("my-org"),
+        );
+
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        let hint = fabio_err.hint.as_ref().unwrap();
+        assert!(hint.contains("develop"), "Hint should mention branch");
+        assert!(hint.contains("my-org/my-repo"), "Hint should reference repo");
+        assert!(
+            hint.contains("az repos"),
+            "Hint should suggest az repos for Azure DevOps"
+        );
+    }
+
+    #[test]
+    fn enrich_git_connect_preserves_non_fabio_errors() {
+        let err = anyhow::anyhow!("generic error");
+        let enriched =
+            enrich_git_connect_error(err, "GitHub", "repo", "branch", Some("owner"), None);
+        assert!(enriched.to_string().contains("generic error"));
+    }
+
+    #[test]
+    fn enrich_git_connect_invalid_input_github_gives_verification_hint() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::ApiError,
+            "Invalid input: something wrong".to_string(),
+        )
+        .into();
+
+        let enriched = enrich_git_connect_error(
+            err,
+            "GitHub",
+            "test-repo",
+            "main",
+            Some("testowner"),
+            None,
+        );
+
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        let hint = fabio_err.hint.as_ref().unwrap();
+        assert!(
+            hint.contains("testowner"),
+            "Hint should reference the owner"
+        );
+        assert!(
+            hint.contains("test-repo"),
+            "Hint should reference the repo"
+        );
+        assert!(
+            hint.contains("--connection-id"),
+            "Hint should suggest checking connection-id"
+        );
+    }
+
+    #[test]
+    fn enrich_git_connect_skips_unrelated_error_codes() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::RateLimited,
+            "Rate limited".to_string(),
+        )
+        .into();
+
+        let enriched =
+            enrich_git_connect_error(err, "GitHub", "repo", "branch", Some("owner"), None);
+        // Should return the original error unchanged (rate limit is not enriched)
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(fabio_err.code, ErrorCode::RateLimited);
+        assert!(fabio_err.hint.is_none());
+    }
+
+    #[test]
+    fn enrich_git_connect_missing_credentials_github_suggests_connection_list() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::ApiError,
+            "The property myGitCredentials is required for the GitProviderType GitHub.".to_string(),
+        )
+        .into();
+
+        let enriched = enrich_git_connect_error(
+            err,
+            "GitHub",
+            "my-repo",
+            "main",
+            Some("myowner"),
+            None,
+        );
+
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        let hint = fabio_err.hint.as_ref().unwrap();
+        assert!(
+            hint.contains("--connection-id"),
+            "Hint should mention --connection-id flag"
+        );
+        assert!(
+            hint.contains("fabio connection list"),
+            "Hint should suggest 'fabio connection list' to find connections"
+        );
+        assert!(
+            hint.contains("myowner"),
+            "Hint should include the owner in the retry example"
+        );
+        assert!(
+            hint.contains("my-repo"),
+            "Hint should include the repo in the retry example"
+        );
+    }
 }
