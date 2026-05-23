@@ -45,6 +45,10 @@ pub enum SemanticModelCommand {
         /// Path to model definition file (model.bim TMSL/TMDL format)
         #[arg(long)]
         file: String,
+
+        /// SQL endpoint or lakehouse ID for live connection (generates definition.pbism)
+        #[arg(long)]
+        connection: Option<String>,
     },
     /// Update semantic model properties (name and/or description)
     #[command(display_order = 4)]
@@ -132,7 +136,19 @@ pub async fn execute(
             name,
             description,
             file,
-        } => create(cli, client, workspace, name, description.as_deref(), file).await,
+            connection,
+        } => {
+            create(
+                cli,
+                client,
+                workspace,
+                name,
+                description.as_deref(),
+                file,
+                connection.as_deref(),
+            )
+            .await
+        }
         SemanticModelCommand::Update {
             workspace,
             id,
@@ -202,12 +218,13 @@ async fn create(
     name: &str,
     description: Option<&str>,
     file: &str,
+    connection: Option<&str>,
 ) -> Result<()> {
     let content = std::fs::read_to_string(file).map_err(|e| {
         FabioError::with_hint(
             ErrorCode::InvalidInput,
             format!("Failed to read file '{file}': {e}"),
-            "Provide a valid model.bim file path.".to_string(),
+            "Provide a valid model.bim or .tmdl file path.".to_string(),
         )
     })?;
     let encoded = base64::engine::Engine::encode(
@@ -215,14 +232,58 @@ async fn create(
         content.as_bytes(),
     );
 
+    // Detect format from file extension
+    let is_tmdl = std::path::Path::new(file)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("tmdl"));
+
+    let mut parts = vec![serde_json::json!({
+        "path": if is_tmdl { "definition/model.tmdl" } else { "model.bim" },
+        "payload": encoded,
+        "payloadType": "InlineBase64"
+    })];
+
+    // Always include definition.pbism (required by Fabric API)
+    // Version "4.0" for TMDL, "3.0" for model.bim (v3 JSON)
+    let pbism_version = if is_tmdl { "4.0" } else { "3.0" };
+    let pbism = serde_json::json!({ "version": pbism_version });
+    let pbism_encoded = base64::engine::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        pbism.to_string().as_bytes(),
+    );
+    parts.push(serde_json::json!({
+        "path": "definition.pbism",
+        "payload": pbism_encoded,
+        "payloadType": "InlineBase64"
+    }));
+
+    // For TMDL models with --connection, generate the expressions.tmdl
+    if let Some(conn_id) = connection {
+        if is_tmdl {
+            let expr = format!(
+                "expression DatabaseQuery =\n\
+                 \t\tlet\n\
+                 \t\t\tdatabase = Sql.Database(\"placeholder\", \"{conn_id}\")\n\
+                 \t\tin\n\
+                 \t\t\tdatabase\n\
+                 \tlineageTag: 00000000-0000-0000-0000-000000000001"
+            );
+            let expr_encoded = base64::engine::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                expr.as_bytes(),
+            );
+            parts.push(serde_json::json!({
+                "path": "definition/expressions.tmdl",
+                "payload": expr_encoded,
+                "payloadType": "InlineBase64"
+            }));
+        }
+    }
+
     let mut body = serde_json::json!({
         "displayName": name,
         "definition": {
-            "parts": [{
-                "path": "model.bim",
-                "payload": encoded,
-                "payloadType": "InlineBase64"
-            }]
+            "parts": parts
         }
     });
     if let Some(desc) = description {
@@ -236,7 +297,8 @@ async fn create(
             "workspace": workspace,
             "displayName": name,
             "description": description,
-            "file": file
+            "file": file,
+            "connection": connection
         }),
     ) {
         return Ok(());
