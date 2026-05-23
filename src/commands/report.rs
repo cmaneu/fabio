@@ -43,9 +43,13 @@ pub enum ReportCommand {
         #[arg(long)]
         description: Option<String>,
 
-        /// Path to report definition file (JSON)
+        /// Path to report definition file (definition.pbir JSON)
+        #[arg(long, required_unless_present = "dataset")]
+        file: Option<String>,
+
+        /// Dataset/semantic model ID to bind report to (auto-generates definition.pbir)
         #[arg(long)]
-        file: String,
+        dataset: Option<String>,
     },
     /// Update report properties (name and/or description)
     #[command(display_order = 4)]
@@ -105,6 +109,22 @@ pub enum ReportCommand {
         #[arg(long)]
         file: String,
     },
+
+    // ── Sharing & Publishing ─────────────────────────────────────────────
+    /// Publish a report to the web (generates a publicly accessible embed URL)
+    ///
+    /// Requires "Publish to web" tenant setting to be enabled by your Power BI admin.
+    /// WARNING: The report will be accessible to anyone on the internet without authentication.
+    #[command(display_order = 10)]
+    PublishToWeb {
+        /// Workspace ID (Power BI group ID)
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Report ID
+        #[arg(long)]
+        id: String,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) -> Result<()> {
@@ -116,7 +136,19 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
             name,
             description,
             file,
-        } => create(cli, client, workspace, name, description.as_deref(), file).await,
+            dataset,
+        } => {
+            create(
+                cli,
+                client,
+                workspace,
+                name,
+                description.as_deref(),
+                file.as_deref(),
+                dataset.as_deref(),
+            )
+            .await
+        }
         ReportCommand::Update {
             workspace,
             id,
@@ -142,6 +174,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
             id,
             file,
         } => update_definition(cli, client, workspace, id, file).await,
+        ReportCommand::PublishToWeb { workspace, id } => {
+            publish_to_web(cli, client, workspace, id).await
+        }
     }
 }
 
@@ -182,22 +217,79 @@ async fn create(
     workspace: &str,
     name: &str,
     description: Option<&str>,
-    file: &str,
+    file: Option<&str>,
+    dataset: Option<&str>,
 ) -> Result<()> {
-    let content = std::fs::read_to_string(file)
-        .map_err(|e| anyhow::anyhow!("Failed to read file '{file}': {e}"))?;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
+    let mut parts: Vec<Value> = Vec::new();
+
+    if let Some(dataset_id) = dataset {
+        // Auto-generate definition.pbir binding to the specified dataset
+        let pbir = serde_json::json!({
+            "version": "4.0",
+            "datasetReference": {
+                "byConnection": {
+                    "connectionString": null,
+                    "pbiServiceModelId": null,
+                    "pbiModelVirtualServerName": "sobe_wowvirtualserver",
+                    "pbiModelDatabaseName": dataset_id,
+                    "name": "EntityDataSource",
+                    "connectionType": "pbiServiceXmlaStyleLive"
+                }
+            }
+        });
+        let pbir_encoded =
+            base64::engine::general_purpose::STANDARD.encode(pbir.to_string().as_bytes());
+        parts.push(serde_json::json!({
+            "path": "definition.pbir",
+            "payload": pbir_encoded,
+            "payloadType": "InlineBase64"
+        }));
+
+        // Generate a minimal blank report.json (required by Fabric)
+        let report_json = serde_json::json!({
+            "config": "{\"version\":\"5.53\",\"themeCollection\":{\"baseTheme\":{\"name\":\"CY24SU06\",\"version\":\"5.53\",\"type\":2}},\"activeSectionIndex\":0}",
+            "layoutOptimization": 0,
+            "resourcePackages": [],
+            "sections": [{
+                "name": "ReportSection",
+                "displayName": "Page 1",
+                "filters": "[]",
+                "ordinal": 0,
+                "visualContainers": [],
+                "config": "{\"name\":\"ReportSection\",\"layouts\":[{\"id\":0,\"position\":{\"x\":0,\"y\":0,\"z\":0,\"width\":1280,\"height\":720,\"tabOrder\":0}}]}",
+                "displayOption": 1,
+                "width": 1280,
+                "height": 720
+            }]
+        });
+        let report_encoded =
+            base64::engine::general_purpose::STANDARD.encode(report_json.to_string().as_bytes());
+        parts.push(serde_json::json!({
+            "path": "report.json",
+            "payload": report_encoded,
+            "payloadType": "InlineBase64"
+        }));
+    } else if let Some(file_path) = file {
+        let content = std::fs::read_to_string(file_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file '{file_path}': {e}"))?;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
+        parts.push(serde_json::json!({
+            "path": "definition.pbir",
+            "payload": encoded,
+            "payloadType": "InlineBase64"
+        }));
+    } else {
+        return Err(FabioError::new(
+            ErrorCode::InvalidInput,
+            "Provide --file or --dataset".to_string(),
+        )
+        .into());
+    }
 
     let mut body = serde_json::json!({
         "displayName": name,
         "definition": {
-            "parts": [
-                {
-                    "path": "report.json",
-                    "payload": encoded,
-                    "payloadType": "InlineBase64"
-                }
-            ]
+            "parts": parts
         }
     });
     if let Some(desc) = description {
@@ -211,7 +303,8 @@ async fn create(
             "workspace": workspace,
             "displayName": name,
             "description": description,
-            "contentLength": content.len()
+            "dataset": dataset,
+            "file": file
         }),
     ) {
         return Ok(());
@@ -316,7 +409,7 @@ async fn update_definition(
         "definition": {
             "parts": [
                 {
-                    "path": "report.json",
+                    "path": "definition.pbir",
                     "payload": encoded,
                     "payloadType": "InlineBase64"
                 }
@@ -351,5 +444,71 @@ async fn update_definition(
     } else {
         output::render_object(cli, &data, "id");
     }
+    Ok(())
+}
+
+// ─── Publish to Web ──────────────────────────────────────────────────────────
+
+/// Publish a report to the web, generating a publicly accessible embed URL.
+///
+/// Uses the Power BI REST API endpoint for "Publish to Web" which creates an
+/// anonymous embed code accessible without authentication.
+///
+/// Requires the "Publish to web" tenant setting to be enabled by a Power BI admin.
+async fn publish_to_web(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "report publish-to-web",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id
+        }),
+    ) {
+        return Ok(());
+    }
+
+    // Power BI "Publish to Web" API
+    // POST https://api.powerbi.com/v1.0/myorg/groups/{groupId}/reports/{reportId}/GenerateToken
+    // with accessLevel: "View" creates a public embed token.
+    //
+    // The actual "Publish to Web" endpoint is:
+    // POST /groups/{groupId}/reports/{reportId}/publishtoweb
+    let body = serde_json::json!({
+        "allowEditMode": false
+    });
+
+    let data = client
+        .post_powerbi(
+            &format!("/groups/{workspace}/reports/{id}/publishtoweb"),
+            &body,
+        )
+        .await
+        .map_err(|e| {
+            enrich_forbidden(
+                e,
+                "report publish-to-web",
+                "Member (and 'Publish to web' tenant setting must be enabled)",
+            )
+        })?;
+
+    // The response should contain embedUrl, embedCode, reportId, etc.
+    // Construct a user-friendly response
+    let embed_url = data
+        .get("embedUrl")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let embed_code = data
+        .get("embedCode")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    let result = serde_json::json!({
+        "id": id,
+        "status": "published_to_web",
+        "embedUrl": embed_url,
+        "embedCode": embed_code,
+        "warning": "This report is now publicly accessible to anyone on the internet without authentication."
+    });
+    output::render_object(cli, &result, "embedUrl");
     Ok(())
 }

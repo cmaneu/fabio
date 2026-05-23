@@ -496,6 +496,38 @@ impl FabricClient {
         handle_response(resp).await
     }
 
+    /// POST request to Power BI REST API (different base URL, same Fabric auth scope).
+    /// Used for Power BI-specific operations like Publish to Web.
+    pub async fn post_powerbi(&self, path: &str, body: &Value) -> Result<Value> {
+        let token = self.require_auth().await?;
+        let url = format!("https://api.powerbi.com/v1.0/myorg{path}");
+
+        let resp = self
+            .http
+            .post(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .post(&url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .json(body)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return handle_response(resp).await;
+        }
+
+        handle_response(resp).await
+    }
+
     /// Upload a file to `OneLake` via DFS (create + append + flush).
     pub async fn upload_onelake_file(
         &self,
