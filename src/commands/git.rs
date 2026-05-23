@@ -160,7 +160,7 @@ pub enum GitCommand {
         #[arg(long)]
         branch: String,
 
-        /// Initialization strategy when both sides have content
+        /// Initialization strategy [default: prefer-remote]
         #[arg(long, value_parser = ["none", "prefer-remote", "prefer-workspace"])]
         strategy: Option<String>,
 
@@ -765,31 +765,45 @@ async fn checkout(
     }
 
     // Step 5: Initialize the connection
-    let init_body = strategy.map_or_else(
-        || serde_json::json!({}),
-        |s| {
-            let api_strategy = match s {
-                "prefer-remote" => "PreferRemote",
-                "prefer-workspace" => "PreferWorkspace",
-                "none" => "None",
-                _ => s,
-            };
-            serde_json::json!({"initializationStrategy": api_strategy})
-        },
-    );
+    // Default to prefer-remote: when switching branches the user expects the
+    // workspace to update to match the target branch content.
+    let effective_strategy = strategy.unwrap_or("prefer-remote");
+    let api_strategy = match effective_strategy {
+        "prefer-remote" => "PreferRemote",
+        "prefer-workspace" => "PreferWorkspace",
+        "none" => "None",
+        _ => effective_strategy,
+    };
+    let init_body = serde_json::json!({"initializationStrategy": api_strategy});
 
-    let _data = client
-        .post_with_timeout(
-            &format!("/workspaces/{workspace}/git/initializeConnection"),
-            &init_body,
-            wait,
-            timeout,
-        )
-        .await?;
-
-    let result = serde_json::json!({"status": "switched", "branch": branch});
-    output::render_object(cli, &result, "status");
-    Ok(())
+    // The Git provider sometimes needs a moment after connect before init works.
+    // Retry up to 3 times with a 2s delay to handle transient "Git provider failed" errors.
+    let init_url = format!("/workspaces/{workspace}/git/initializeConnection");
+    let mut last_err = None;
+    for attempt in 0..3 {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+        match client
+            .post_with_timeout(&init_url, &init_body, wait, timeout)
+            .await
+        {
+            Ok(_data) => {
+                let result = serde_json::json!({"status": "switched", "branch": branch});
+                output::render_object(cli, &result, "status");
+                return Ok(());
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("Git provider failed") && attempt < 2 {
+                    last_err = Some(e);
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("initializeConnection failed")))
 }
 
 async fn connection_show(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
