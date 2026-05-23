@@ -311,7 +311,7 @@ async fn create(
             true,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "semantic-model create", "Member"))?;
+        .map_err(|e| enrich_create_error(enrich_forbidden(e, "semantic-model create", "Member")))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -472,4 +472,84 @@ async fn bind_connection(
     });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+// ─── Error Enrichment ────────────────────────────────────────────────────────
+
+/// Enrich semantic model API errors with actionable hints for common failures.
+///
+/// Intercepts known error patterns and provides corrective guidance so that
+/// agents (and users) can self-correct without searching documentation.
+fn enrich_create_error(err: anyhow::Error) -> anyhow::Error {
+    let Some(fabio_err) = err.downcast_ref::<FabioError>() else {
+        return err;
+    };
+
+    let msg = &fabio_err.message;
+    let msg_lower = msg.to_lowercase();
+
+    // Pattern: "Import from JSON supported for V3 models only"
+    if msg_lower.contains("v3 models only") || msg_lower.contains("import from json") {
+        return FabioError::with_hint(
+            fabio_err.code,
+            msg.clone(),
+            "model.bim must use compatibilityLevel 1604 (not 1550) and include \
+             \"defaultPowerBIDataSourceVersion\": \"powerBI_V3\" in the model object. \
+             Example: {\"compatibilityLevel\": 1604, \"model\": {\"defaultPowerBIDataSourceVersion\": \"powerBI_V3\", ...}}"
+        ).into();
+    }
+
+    // Pattern: TMDL "InvalidValueFormat" for PowerBIDataSourceVersion
+    if msg_lower.contains("invalidvalueformat")
+        && msg_lower.contains("powerbidatasourceversion")
+    {
+        return FabioError::with_hint(
+            fabio_err.code,
+            msg.clone(),
+            "In TMDL, use 'defaultPowerBIDataSourceVersion: powerBI_V3' (with underscore). \
+             The value 'powerBIDataSourceVersion3' is not valid. \
+             Valid values: powerBI_V3."
+        ).into();
+    }
+
+    // Pattern: TMDL general parsing errors
+    if msg_lower.contains("tmdl format error") {
+        let hint = if msg_lower.contains("line number") {
+            "Check TMDL syntax at the reported line. Common issues: \
+             (1) Use tabs for indentation (not spaces). \
+             (2) Enum values are case-sensitive (e.g., powerBI_V3, not powerbi_v3). \
+             (3) Each table/column/partition needs a lineageTag GUID. \
+             Reference: https://learn.microsoft.com/en-us/power-bi/developer/projects/projects-dataset#tmdl-format"
+        } else {
+            "TMDL parsing failed. Verify file uses tab indentation and valid enum values. \
+             Reference: https://learn.microsoft.com/en-us/power-bi/developer/projects/projects-dataset#tmdl-format"
+        };
+        return FabioError::with_hint(fabio_err.code, msg.clone(), hint).into();
+    }
+
+    // Pattern: Definition parts missing or invalid
+    if msg_lower.contains("definition") && msg_lower.contains("invalid") {
+        return FabioError::with_hint(
+            fabio_err.code,
+            msg.clone(),
+            "Semantic model creation requires: (1) a model definition file (model.bim or .tmdl), \
+             (2) a definition.pbism entry. The CLI auto-generates definition.pbism. \
+             For .bim files use compat 1604 + powerBI_V3. \
+             For .tmdl files ensure 'defaultPowerBIDataSourceVersion: powerBI_V3'."
+        ).into();
+    }
+
+    // Pattern: DirectLake requires TMDL
+    if msg_lower.contains("directlake") || msg_lower.contains("direct lake") {
+        return FabioError::with_hint(
+            fabio_err.code,
+            msg.clone(),
+            "Direct Lake semantic models require TMDL format (not model.bim). \
+             Use a .tmdl file with partition mode: directLake and provide \
+             --connection <sql-endpoint-id> to bind the lakehouse connection."
+        ).into();
+    }
+
+    // No known pattern matched — return original error
+    err
 }

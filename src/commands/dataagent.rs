@@ -423,10 +423,14 @@ async fn get_published_url(client: &FabricClient, workspace: &str, id: &str) -> 
     }
 
     // No published URL found — the agent may not be published or V3 isn't enabled.
-    Err(FabioError::new(
+    Err(FabioError::with_hint(
         ErrorCode::ApiError,
-        "Published URL not found. The data agent must be published from the Fabric portal first. \
-         Then provide the URL with --published-url (found in the agent's Settings page).",
+        "Published URL not found. The data agent must be published from the Fabric portal first.",
+        format!(
+            "After publishing in the portal, provide the URL with --published-url. \
+             The URL pattern is: https://api.fabric.microsoft.com/v1/workspaces/{workspace}/dataagents/{id}/aiassistant/openai \
+             (found in the agent's Settings page in the portal)."
+        ),
     )
     .into())
 }
@@ -506,10 +510,15 @@ async fn create_assistant(
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
+        let retry_after = extract_retry_after(&resp);
         let text = resp.text().await.unwrap_or_default();
-        return Err(
-            FabioError::from_status(status, format!("Failed to create assistant: {text}")).into(),
-        );
+        return Err(enrich_query_error(
+            status,
+            &format!("Failed to create assistant: {text}"),
+            base_url,
+            retry_after.as_deref(),
+        )
+        .into());
     }
     let body: Value = resp.json().await.map_err(|e| {
         FabioError::new(
@@ -541,10 +550,15 @@ async fn create_thread(
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
+        let retry_after = extract_retry_after(&resp);
         let text = resp.text().await.unwrap_or_default();
-        return Err(
-            FabioError::from_status(status, format!("Failed to create thread: {text}")).into(),
-        );
+        return Err(enrich_query_error(
+            status,
+            &format!("Failed to create thread: {text}"),
+            base_url,
+            retry_after.as_deref(),
+        )
+        .into());
     }
     let body: Value = resp
         .json()
@@ -581,10 +595,15 @@ async fn post_message(
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
+        let retry_after = extract_retry_after(&resp);
         let text = resp.text().await.unwrap_or_default();
-        return Err(
-            FabioError::from_status(status, format!("Failed to post message: {text}")).into(),
-        );
+        return Err(enrich_query_error(
+            status,
+            &format!("Failed to post message: {text}"),
+            base_url,
+            retry_after.as_deref(),
+        )
+        .into());
     }
     Ok(())
 }
@@ -612,10 +631,15 @@ async fn create_run(
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
+        let retry_after = extract_retry_after(&resp);
         let text = resp.text().await.unwrap_or_default();
-        return Err(
-            FabioError::from_status(status, format!("Failed to create run: {text}")).into(),
-        );
+        return Err(enrich_query_error(
+            status,
+            &format!("Failed to create run: {text}"),
+            base_url,
+            retry_after.as_deref(),
+        )
+        .into());
     }
     let body: Value = resp
         .json()
@@ -641,9 +665,14 @@ async fn poll_run_completion(
 
     loop {
         if start.elapsed() > QUERY_MAX_WAIT {
-            return Err(FabioError::new(
+            return Err(FabioError::with_hint(
                 ErrorCode::Timeout,
                 "Data agent query timed out waiting for response",
+                "The query exceeded the maximum wait time. Possible causes: \
+                 (1) Spark cold start on small capacities can take 2-5 minutes. \
+                 (2) Complex queries over large datasets take longer. \
+                 (3) The Fabric capacity may be overloaded. \
+                 Retry the query, or check capacity status in the Azure portal.",
             )
             .into());
         }
@@ -661,10 +690,13 @@ async fn poll_run_completion(
 
         if !poll_resp.status().is_success() {
             let status = poll_resp.status().as_u16();
+            let retry_after = extract_retry_after(&poll_resp);
             let text = poll_resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(
+            return Err(enrich_query_error(
                 status,
-                format!("Failed to poll run status: {text}"),
+                &format!("Failed to poll run status: {text}"),
+                base_url,
+                retry_after.as_deref(),
             )
             .into());
         }
@@ -684,9 +716,24 @@ async fn poll_run_completion(
                     .and_then(|e| e.get("message"))
                     .and_then(Value::as_str)
                     .unwrap_or("Data agent run did not complete successfully");
-                return Err(
-                    FabioError::api_error(format!("Run status '{status}': {err_msg}")).into(),
-                );
+                let hint = match status {
+                    "failed" => "The data agent run failed. Check: \
+                        (1) Is the Fabric capacity active? \
+                        (2) Does the agent have access to its configured data sources? \
+                        (3) Are the lakehouse tables loaded and accessible? \
+                        Inspect the agent definition: fabio data-agent get-definition -w <workspace> --id <id>",
+                    "cancelled" => "The run was cancelled. This may happen if the capacity \
+                        is under pressure or the query was interrupted. Retry the query.",
+                    "requires_action" => "The run requires additional action (tool approval). \
+                        This is unexpected for data agent queries — check the agent configuration.",
+                    _ => "The run ended in an unexpected state. Retry the query.",
+                };
+                return Err(FabioError::with_hint(
+                    ErrorCode::ApiError,
+                    format!("Run status '{status}': {err_msg}"),
+                    hint,
+                )
+                .into());
             }
             return Ok(());
         }
@@ -711,10 +758,13 @@ async fn retrieve_response(
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
+        let retry_after = extract_retry_after(&resp);
         let text = resp.text().await.unwrap_or_default();
-        return Err(FabioError::from_status(
+        return Err(enrich_query_error(
             status,
-            format!("Failed to retrieve messages: {text}"),
+            &format!("Failed to retrieve messages: {text}"),
+            base_url,
+            retry_after.as_deref(),
         )
         .into());
     }
@@ -889,6 +939,110 @@ fn extract_tool_calls(step_details: &Value) -> Vec<Value> {
             }
         })
         .collect()
+}
+
+// ─── Error Enrichment ────────────────────────────────────────────────────────
+
+/// Extract the `Retry-After` header value from an HTTP response (seconds or date).
+fn extract_retry_after(resp: &reqwest::Response) -> Option<String> {
+    resp.headers()
+        .get("retry-after")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from)
+}
+
+/// Enrich data agent query errors with actionable hints for common failures.
+///
+/// Intercepts HTTP status codes and known error patterns from the `OpenAI`
+/// Assistants-compatible endpoint to guide agents toward self-correction.
+fn enrich_query_error(
+    status: u16,
+    message: &str,
+    base_url: &str,
+    retry_after: Option<&str>,
+) -> FabioError {
+    let msg_lower = message.to_lowercase();
+
+    // 404: The published URL is wrong or agent isn't published
+    if status == 404 {
+        return FabioError::with_hint(
+            ErrorCode::NotFound,
+            message.to_string(),
+            format!(
+                "The data agent endpoint returned 404. Possible causes: \
+                 (1) The agent has not been published from the Fabric portal. \
+                 (2) The --published-url is incorrect. \
+                 Expected URL pattern: https://api.fabric.microsoft.com/v1/workspaces/{{workspace}}/dataagents/{{agentId}}/aiassistant/openai \
+                 Current URL: {base_url}"
+            ),
+        );
+    }
+
+    // 401/403: Token or permission issue
+    if status == 401 || status == 403 {
+        return FabioError::with_hint(
+            if status == 401 {
+                ErrorCode::AuthRequired
+            } else {
+                ErrorCode::Forbidden
+            },
+            message.to_string(),
+            "Authentication failed for the data agent endpoint. Ensure: \
+             (1) You have at least Viewer role on the workspace. \
+             (2) Your token is valid (re-run 'fabio auth login'). \
+             (3) The data agent has been published and you have access to it."
+                .to_string(),
+        );
+    }
+
+    // 429: Rate limited — include Retry-After value
+    if status == 429 {
+        let hint = retry_after.map_or_else(
+            || {
+                "Rate-limited by the data agent endpoint. Wait at least 10 seconds \
+                 before retrying. If this persists, the Fabric capacity may be under \
+                 heavy load."
+                    .to_string()
+            },
+            |seconds| {
+                format!(
+                    "Rate-limited by the data agent endpoint. Retry after {seconds} seconds. \
+                     Do NOT retry before this time. If this persists, the Fabric capacity may \
+                     be under heavy load."
+                )
+            },
+        );
+        return FabioError::with_hint(ErrorCode::RateLimited, message.to_string(), hint);
+    }
+
+    // Run failed or cancelled
+    if msg_lower.contains("failed") || msg_lower.contains("cancelled") {
+        return FabioError::with_hint(
+            ErrorCode::ApiError,
+            message.to_string(),
+            "The data agent run failed. Possible causes: \
+             (1) The data source (lakehouse/warehouse) is unavailable or the capacity is paused. \
+             (2) The query references tables/columns not configured in the agent's data sources. \
+             (3) The agent's AI instructions are misconfigured. \
+             Check the agent definition with: fabio data-agent get-definition -w <workspace> --id <id>"
+                .to_string(),
+        );
+    }
+
+    // Timeout
+    if msg_lower.contains("timeout") || msg_lower.contains("timed out") {
+        return FabioError::with_hint(
+            ErrorCode::Timeout,
+            message.to_string(),
+            "The data agent query timed out. This may happen on first use due to Spark cold start \
+             (2-5 minutes on small capacities). Retry the query, or check if the Fabric capacity \
+             is active and not overloaded."
+                .to_string(),
+        );
+    }
+
+    // Default: return error without hint
+    FabioError::from_status(status, message)
 }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
