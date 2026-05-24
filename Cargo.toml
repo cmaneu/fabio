@@ -48,6 +48,11 @@ home = "0.5"
 base64 = "0.22"
 glob = "0.3"
 
+# TDS protocol (SQL query execution for warehouse/lakehouse)
+# TODO: Switch to upstream crates.io release once https://github.com/microsoft/mssql-rust-driver
+# publishes a version with rustls support (currently only available in this fork).
+mssql-tds = { git = "https://github.com/iemejia/mssql-rs.git", branch = "feat/examples", default-features = false, features = ["rustls-backend"] }
+
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"

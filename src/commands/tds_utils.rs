@@ -1,0 +1,177 @@
+use base64::Engine;
+use mssql_tds::datatypes::column_values::ColumnValues;
+use serde_json::Value;
+
+/// Convert a TDS `ColumnValues` to a `serde_json::Value`.
+pub fn column_value_to_json(val: &ColumnValues) -> Value {
+    match val {
+        ColumnValues::Null => Value::Null,
+        ColumnValues::TinyInt(v) => Value::from(*v),
+        ColumnValues::SmallInt(v) => Value::from(*v),
+        ColumnValues::Int(v) => Value::from(*v),
+        ColumnValues::BigInt(v) => Value::from(*v),
+        ColumnValues::Real(v) => serde_json::Number::from_f64(f64::from(*v))
+            .map_or(Value::Null, Value::Number),
+        ColumnValues::Float(v) => serde_json::Number::from_f64(*v)
+            .map_or(Value::Null, Value::Number),
+        ColumnValues::Bit(v) => Value::from(*v),
+        ColumnValues::String(s) => Value::from(s.to_string()),
+        ColumnValues::Decimal(d) | ColumnValues::Numeric(d) => {
+            // Render as string to avoid precision loss
+            Value::from(d.to_string())
+        }
+        ColumnValues::Uuid(u) => Value::from(u.to_string()),
+        ColumnValues::DateTime(dt) => Value::from(format!(
+            "{}-{:02}-{:02}T{:02}:{:02}:{:02}",
+            1900 + dt.days / 365,
+            1 + (dt.days % 365) / 30,
+            1 + (dt.days % 30),
+            dt.time / 1_080_000,
+            (dt.time / 18000) % 60,
+            (dt.time / 300) % 60
+        )),
+        ColumnValues::Date(d) => {
+            // Days since 0001-01-01
+            let days = d.get_days();
+            Value::from(format!("{days} days since 0001-01-01"))
+        }
+        ColumnValues::Time(t) => {
+            let total_ns = t.time_nanoseconds;
+            let hours = total_ns / 3_600_000_000_000;
+            let minutes = (total_ns / 60_000_000_000) % 60;
+            let seconds = (total_ns / 1_000_000_000) % 60;
+            let frac = total_ns % 1_000_000_000;
+            Value::from(format!("{hours:02}:{minutes:02}:{seconds:02}.{frac:07}"))
+        }
+        ColumnValues::DateTime2(dt2) => {
+            let days = dt2.days;
+            let t = &dt2.time;
+            let total_ns = t.time_nanoseconds;
+            let hours = total_ns / 3_600_000_000_000;
+            let minutes = (total_ns / 60_000_000_000) % 60;
+            let seconds = (total_ns / 1_000_000_000) % 60;
+            Value::from(format!("{days} days + {hours:02}:{minutes:02}:{seconds:02}"))
+        }
+        ColumnValues::DateTimeOffset(dto) => {
+            let offset_hours = dto.offset / 60;
+            let offset_mins = (dto.offset % 60).unsigned_abs();
+            Value::from(format!(
+                "{} days + offset {offset_hours:+03}:{offset_mins:02}",
+                dto.datetime2.days
+            ))
+        }
+        ColumnValues::SmallDateTime(sdt) => Value::from(format!(
+            "{} days since 1900 + {} minutes",
+            sdt.days, sdt.time
+        )),
+        ColumnValues::Money(m) => {
+            let lsb_i64 = i64::from(m.lsb_part) & 0x0000_0000_FFFF_FFFF;
+            let val = lsb_i64 | (i64::from(m.msb_part) << 32);
+            #[allow(clippy::cast_precision_loss)]
+            let amount = (val as f64) / 10000.0;
+            serde_json::Number::from_f64(amount)
+                .map_or(Value::Null, Value::Number)
+        }
+        ColumnValues::SmallMoney(sm) => {
+            let amount = f64::from(sm.int_val) / 10000.0;
+            serde_json::Number::from_f64(amount)
+                .map_or(Value::Null, Value::Number)
+        }
+        ColumnValues::Bytes(b) => Value::from(
+            base64::engine::general_purpose::STANDARD.encode(b),
+        ),
+        ColumnValues::Xml(xml) => Value::from(xml.as_string()),
+        ColumnValues::Json(j) => {
+            // Try to parse as JSON value, fall back to string
+            let s = j.as_string();
+            serde_json::from_str(&s).unwrap_or_else(|_| Value::from(s))
+        }
+        ColumnValues::Vector(v) => Value::from(format!("{v:?}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mssql_tds::datatypes::sql_json::SqlJson;
+    use mssql_tds::datatypes::sql_string::{EncodingType, SqlString};
+
+    #[test]
+    fn null_converts_to_null() {
+        assert_eq!(column_value_to_json(&ColumnValues::Null), Value::Null);
+    }
+
+    #[test]
+    fn tinyint_converts_to_number() {
+        assert_eq!(column_value_to_json(&ColumnValues::TinyInt(42)), Value::from(42));
+    }
+
+    #[test]
+    fn smallint_converts_to_number() {
+        assert_eq!(column_value_to_json(&ColumnValues::SmallInt(-100)), Value::from(-100));
+    }
+
+    #[test]
+    fn int_converts_to_number() {
+        assert_eq!(column_value_to_json(&ColumnValues::Int(123_456)), Value::from(123_456));
+    }
+
+    #[test]
+    fn bigint_converts_to_number() {
+        assert_eq!(
+            column_value_to_json(&ColumnValues::BigInt(9_000_000_000)),
+            Value::from(9_000_000_000_i64)
+        );
+    }
+
+    #[test]
+    fn bit_true_converts_to_bool() {
+        assert_eq!(column_value_to_json(&ColumnValues::Bit(true)), Value::from(true));
+    }
+
+    #[test]
+    fn bit_false_converts_to_bool() {
+        assert_eq!(column_value_to_json(&ColumnValues::Bit(false)), Value::from(false));
+    }
+
+    #[test]
+    fn string_converts_to_string() {
+        let s = SqlString::new("hello".as_bytes().to_vec(), EncodingType::Utf8);
+        assert_eq!(
+            column_value_to_json(&ColumnValues::String(s)),
+            Value::from("hello")
+        );
+    }
+
+    #[test]
+    fn float_converts_to_number() {
+        let result = column_value_to_json(&ColumnValues::Float(3.14));
+        assert!(result.is_number());
+    }
+
+    #[test]
+    fn real_converts_to_number() {
+        let result = column_value_to_json(&ColumnValues::Real(2.5));
+        assert!(result.is_number());
+    }
+
+    #[test]
+    fn bytes_converts_to_base64() {
+        let result = column_value_to_json(&ColumnValues::Bytes(vec![0x48, 0x65, 0x6c]));
+        assert_eq!(result, Value::from("SGVs"));
+    }
+
+    #[test]
+    fn json_valid_parses_as_json() {
+        let j = SqlJson::from(r#"{"key":"value"}"#.to_string());
+        let result = column_value_to_json(&ColumnValues::Json(j));
+        assert_eq!(result["key"], "value");
+    }
+
+    #[test]
+    fn json_invalid_falls_back_to_string() {
+        let j = SqlJson::from("not valid json".to_string());
+        let result = column_value_to_json(&ColumnValues::Json(j));
+        assert_eq!(result, Value::from("not valid json"));
+    }
+}

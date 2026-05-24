@@ -57,6 +57,7 @@ pub mod spark;
 pub mod spark_job_definition;
 pub mod sql_database;
 pub mod sql_endpoint;
+pub mod tds_utils;
 pub mod user_data_function;
 pub mod variable_library;
 pub mod warehouse;

@@ -66,10 +66,10 @@ fn warehouse_show_returns_details() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn warehouse_query_resolves_endpoint() {
+fn warehouse_query_select_one() {
     let cfg = TestConfig::from_env();
 
-    // Query against the lakehouse SQL endpoint
+    // Query against the lakehouse SQL endpoint via TDS
     let assert = fabio()
         .args([
             "warehouse",
@@ -81,25 +81,17 @@ fn warehouse_query_resolves_endpoint() {
             "--sql",
             "SELECT 1 AS test",
         ])
+        .timeout(std::time::Duration::from_secs(60))
         .assert()
         .success();
 
     let json = parse_json(&assert);
     let data = extract_data(&json);
 
-    // Should resolve the endpoint (ODBC execution may not be implemented)
-    assert!(
-        data.get("endpoint").is_some() || data.get("rows").is_some(),
-        "expected endpoint or query results"
-    );
-
-    // Verify the endpoint was resolved correctly
-    if let Some(endpoint) = data.get("endpoint").and_then(|e| e.as_str()) {
-        assert!(
-            endpoint.contains("datawarehouse.fabric.microsoft.com"),
-            "unexpected endpoint: {endpoint}"
-        );
-    }
+    // New TDS-based query returns rows array
+    let rows = data.as_array().expect("expected array of rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["test"], 1);
 }
 
 #[test]
@@ -118,13 +110,16 @@ fn warehouse_query_from_stdin() {
             "--id",
             &cfg.source_lakehouse,
         ])
-        .write_stdin("SELECT 1 AS test")
+        .write_stdin("SELECT 42 AS answer")
+        .timeout(std::time::Duration::from_secs(60))
         .assert()
         .success();
 
     let json = parse_json(&assert);
     let data = extract_data(&json);
-    assert_eq!(data["sql"], "SELECT 1 AS test");
+    let rows = data.as_array().expect("expected array of rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["answer"], 42);
 }
 
 #[test]
@@ -133,7 +128,7 @@ fn warehouse_query_from_stdin() {
 fn warehouse_query_table_output() {
     let cfg = TestConfig::from_env();
 
-    // Table output should not crash even if ODBC isn't available
+    // Table output should render the result
     fabio()
         .args([
             "--output",
@@ -147,9 +142,10 @@ fn warehouse_query_table_output() {
             "--sql",
             "SELECT 1 AS test",
         ])
+        .timeout(std::time::Duration::from_secs(60))
         .assert()
         .success()
-        .stdout(predicate::str::is_empty().not());
+        .stdout(predicate::str::contains("test"));
 }
 
 // ---------------------------------------------------------------------------
@@ -208,12 +204,15 @@ fn warehouse_query_from_file() {
             "--sql",
             &sql_arg,
         ])
+        .timeout(std::time::Duration::from_secs(60))
         .assert()
         .success();
 
     let json = parse_json(&assert);
     let data = extract_data(&json);
-    assert_eq!(data["sql"], "SELECT 42 AS answer");
+    let rows = data.as_array().expect("expected array of rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["answer"], 42);
 }
 
 // ===========================================================================

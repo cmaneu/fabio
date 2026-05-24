@@ -17,6 +17,7 @@ const ONELAKE_DFS_URL: &str = "https://onelake.dfs.fabric.microsoft.com";
 const ONELAKE_BLOB_URL: &str = "https://onelake.blob.fabric.microsoft.com";
 const FABRIC_SCOPE: &str = "https://analysis.windows.net/powerbi/api/.default";
 const STORAGE_SCOPE: &str = "https://storage.azure.com/.default";
+const SQL_SCOPE: &str = "https://database.windows.net/.default";
 const LRO_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const LRO_MAX_WAIT: Duration = Duration::from_secs(120);
 
@@ -78,6 +79,7 @@ pub struct FabricClient {
     http: Client,
     fabric_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
     storage_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
+    sql_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
     credential_source: Arc<tokio::sync::RwLock<Option<CredentialSource>>>,
 }
 
@@ -92,6 +94,7 @@ impl FabricClient {
             http,
             fabric_token: Arc::new(tokio::sync::RwLock::new(None)),
             storage_token: Arc::new(tokio::sync::RwLock::new(None)),
+            sql_token: Arc::new(tokio::sync::RwLock::new(None)),
             credential_source: Arc::new(tokio::sync::RwLock::new(None)),
         }
     }
@@ -132,6 +135,24 @@ impl FabricClient {
 
         let (token, _source) = acquire_token(STORAGE_SCOPE).await?;
         let mut guard = self.storage_token.write().await;
+        *guard = Some(token.clone());
+        drop(guard);
+        Ok(token.token)
+    }
+
+    /// Get a SQL token for TDS connections (scope: `database.windows.net`).
+    pub async fn require_sql_auth(&self) -> Result<String> {
+        {
+            let guard = self.sql_token.read().await;
+            if let Some(ref cached) = *guard {
+                if !cached.is_expired() {
+                    return Ok(cached.token.clone());
+                }
+            }
+        }
+
+        let (token, _source) = acquire_token(SQL_SCOPE).await?;
+        let mut guard = self.sql_token.write().await;
         *guard = Some(token.clone());
         drop(guard);
         Ok(token.token)

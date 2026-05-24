@@ -14,7 +14,7 @@ use cli::Cli;
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    let result = commands::execute(cli).await;
+    let result = Box::pin(commands::execute(cli)).await;
 
     match result {
         Ok(()) => Ok(()),
