@@ -15,7 +15,7 @@ pub fn column_value_to_json(val: &ColumnValues) -> Value {
         ColumnValues::Float(v) => serde_json::Number::from_f64(*v)
             .map_or(Value::Null, Value::Number),
         ColumnValues::Bit(v) => Value::from(*v),
-        ColumnValues::String(s) => Value::from(s.to_string()),
+        ColumnValues::String(s) => Value::from(s.to_utf8_string()),
         ColumnValues::Decimal(d) | ColumnValues::Numeric(d) => {
             // Render as string to avoid precision loss
             Value::from(d.to_string())
@@ -95,6 +95,7 @@ mod tests {
     use super::*;
     use mssql_tds::datatypes::sql_json::SqlJson;
     use mssql_tds::datatypes::sql_string::{EncodingType, SqlString};
+    use mssql_tds::token::tokens::SqlCollation;
 
     #[test]
     fn null_converts_to_null() {
@@ -135,11 +136,50 @@ mod tests {
     }
 
     #[test]
-    fn string_converts_to_string() {
+    fn string_utf8_converts_to_string() {
         let s = SqlString::new("hello".as_bytes().to_vec(), EncodingType::Utf8);
         assert_eq!(
             column_value_to_json(&ColumnValues::String(s)),
             Value::from("hello")
+        );
+    }
+
+    #[test]
+    fn string_utf16_converts_to_string() {
+        // "Hi" encoded as UTF-16LE: H=0x48,0x00 i=0x69,0x00
+        let bytes = vec![0x48, 0x00, 0x69, 0x00];
+        let s = SqlString::new(bytes, EncodingType::Utf16);
+        assert_eq!(
+            column_value_to_json(&ColumnValues::String(s)),
+            Value::from("Hi")
+        );
+    }
+
+    #[test]
+    fn string_utf16_unicode_chars() {
+        // "cafe\u{0301}" = "café" in UTF-16LE: c=0x63,0x00 a=0x61,0x00 f=0x66,0x00 e=0x65,0x00 \u0301=0x01,0x03
+        let bytes = vec![0x63, 0x00, 0x61, 0x00, 0x66, 0x00, 0x65, 0x00, 0x01, 0x03];
+        let s = SqlString::new(bytes, EncodingType::Utf16);
+        assert_eq!(
+            column_value_to_json(&ColumnValues::String(s)),
+            Value::from("cafe\u{0301}")
+        );
+    }
+
+    #[test]
+    fn string_lcid_us_english_converts_to_string() {
+        // US English (LCID 0x0409) uses Windows-1252 encoding
+        // "Hello" in Windows-1252 is same as ASCII
+        let collation = SqlCollation {
+            info: 0x0409, // US English LCID
+            lcid_language_id: 0,
+            col_flags: 0,
+            sort_id: 0,
+        };
+        let s = SqlString::new(b"Hello".to_vec(), EncodingType::LcidBased(collation));
+        assert_eq!(
+            column_value_to_json(&ColumnValues::String(s)),
+            Value::from("Hello")
         );
     }
 
