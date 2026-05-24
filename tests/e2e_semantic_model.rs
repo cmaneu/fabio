@@ -577,9 +577,7 @@ fn semantic_model_query_from_file() {
 
     // Create model
     let mut tmp_model = NamedTempFile::with_suffix(".bim").unwrap();
-    tmp_model
-        .write_all(minimal_model_bim().as_bytes())
-        .unwrap();
+    tmp_model.write_all(minimal_model_bim().as_bytes()).unwrap();
     let file_path = tmp_model.path().to_str().unwrap().to_string();
     let name = unique_name("sm_qfile");
 
@@ -604,9 +602,7 @@ fn semantic_model_query_from_file() {
 
     // Write DAX to a temp file
     let mut tmp_dax = NamedTempFile::with_suffix(".dax").unwrap();
-    tmp_dax
-        .write_all(b"EVALUATE ROW(\"Pi\", 3.14159)")
-        .unwrap();
+    tmp_dax.write_all(b"EVALUATE ROW(\"Pi\", 3.14159)").unwrap();
     let dax_path = tmp_dax.path().to_str().unwrap().to_string();
 
     // Query via --file

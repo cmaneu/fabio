@@ -35,7 +35,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (265 subcommands across 37 groups): auth, workspace, item, lakehouse, capacity, notebook, warehouse, data-agent, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, git, connection, deployment-pipeline, domain, job-scheduler, onelake-security, managed-private-endpoint, profile, jobs, feedback + agent-context
+- **Full Rust implementation** (267 subcommands across 37 groups): auth, workspace, item, lakehouse, capacity, notebook, warehouse, data-agent, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, git, connection, deployment-pipeline, domain, job-scheduler, onelake-security, managed-private-endpoint, profile, jobs, feedback + agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`
@@ -56,7 +56,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Environment**: list, show, create, update, delete, publish, cancel-publish, get-spark-settings, get-staging-spark-settings
 - **Data Pipeline**: list, show, create, update, delete, run (triggers Pipeline job)
 - **Eventhouse**: list, show, create, update, delete
-- **Eventstream**: list, show, create, update, delete, get-definition, update-definition
+- **Eventstream**: list, show, create, update, delete, get-definition, update-definition, get-topology, pause, resume, get/pause/resume-source, get-source-connection, get/pause/resume-destination, get-destination-connection, add-source, add-destination
 - **KQL Database**: list, show, create, update, delete, get-definition, update-definition (ReadWrite/ReadOnlyFollowing)
 - **KQL Queryset**: list, show, create, update, delete, get-definition, update-definition, run (executes saved query tabs against configured data source)
 - **KQL Dashboard**: list, show, create, update, delete, get-definition, update-definition (RealTimeDashboard.json)
@@ -92,7 +92,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
   - Principle 10: Two-way I/O (`fabio feedback send/list`)
 - **SQL Database**: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
 - **SQL Database import**: Reads CSV/JSON files, infers column types (Int/BigInt/Float/Bit/Date/NVarChar), generates CREATE TABLE + batched INSERTs via TDS. Supports --drop-if-exists, --no-create-table, --batch-size.
-- **630 Rust tests** (177 unit + 453 E2E integration), zero clippy warnings, rustfmt clean
+- **648 Rust tests** (183 unit + 465 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~9.4 MB, stripped, full LTO, panic=abort
@@ -767,6 +767,55 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Report visuals are fully programmable**: CLI-created reports can include working visuals (cards, bar charts, tables) that render data — no portal interaction needed. The key requirement is including `prototypeQuery` in each visual's `singleVisual` config.
 - **Semantic model ID links report to data**: The `definition.pbir` file's `pbiModelDatabaseName` field is the semantic model ID (UUID), not the display name.
 - **End-to-end creation order**: Warehouse (data source) → Semantic Model (definition + connection) → Report (bound to semantic model). Each step depends on the previous item's ID.
+
+## EventStream API Behaviors Discovered
+- **Definition format**: `eventstream.json` contains the topology with `sources`, `destinations`, `streams`, `operators`, and `compatibilityLevel` fields. Separate `eventstreamProperties.json` controls retention and throughput.
+- **Definition update is LRO**: `POST .../updateDefinition` returns 202 and requires polling. The response body after LRO completion is empty/null.
+- **Source types**: `CustomEndpoint`, `AzureEventHub`, `AzureIoTHub`, `SampleData`, `AmazonKinesis`, `ApacheKafka`, `ConfluentCloud`, `GooglePubSub`, plus CDC types (`AzureSQLDBCDC`, `MySQLCDC`, `PostgreSQLCDC`) and Fabric events (`FabricWorkspaceItemEvents`, `FabricJobEvents`, `FabricOneLakeEvents`).
+- **Destination types**: `Eventhouse`, `Lakehouse`, `CustomEndpoint`, `Activator`.
+- **CustomEndpoint source exposes Event Hub-compatible interface**: Creates an Azure Event Hub-compatible endpoint. Connection info retrieved via `GET .../sources/{sourceId}/connection` returns `fullyQualifiedNamespace`, `eventHubName`, and `accessKeys` with SAS connection strings.
+- **Eventhouse destination `itemId` is the KQL Database ID**: Despite documentation examples showing Eventhouse ID, the topology `itemId` field must be the **KQL Database item ID** (not the Eventhouse ID). Using the Eventhouse ID causes errors ("Unable to extract cluster URL from the Eventhouse KQL database item ID").
+- **Two ingestion modes for Eventhouse destination**:
+  - `ProcessedIngestion`: Auto-creates the destination table with extra system columns (`EventEnqueuedUtcTime`, `EventProcessedUtcTime`, `PartitionId`). Does NOT require pre-created table or mapping. Requires `inputSerialization` in properties.
+  - `DirectIngestion`: Uses a pre-created KQL table and JSON mapping rule. Requires `connectionName` (arbitrary unique string) and `mappingRuleName`. Only maps fields defined in the mapping — no extra system columns.
+- **DirectIngestion requires pre-created table + mapping**: Use `.create-merge table` and `.create-or-alter table ... ingestion json mapping` via `kql-database query` BEFORE configuring the destination.
+- **Destination status transitions**: `Creating` → `Running` (or `Warning`). The `Warning` state appears when the Eventhouse ID is used instead of KQL Database ID. With correct KQL Database ID, destination transitions to `Running` within ~90 seconds.
+- **Source status transitions**: `Creating` → `Running`. Custom Endpoint sources become Running quickly (~15-30 seconds).
+- **Stream status**: Always shows `Created` (not `Running`). This is expected — streams are routing constructs, not active processes.
+- **Graph-like topology**: Nodes reference each other by `name` via `inputNodes` arrays. A source feeds into a stream, which feeds into a destination or operator. The `name` field must be unique across all nodes (sources, destinations, streams, operators).
+- **Default stream naming convention**: `{eventstream-name}-stream` for the default stream fed by the primary source.
+- **No REST API for individual source/destination CRUD**: Sources and destinations can only be created/deleted via `update-definition` (full definition replacement). The individual `GET .../sources/{id}` and `GET .../destinations/{id}` endpoints are read-only.
+- **`databaseName` field is optional in topology properties**: The server stores it but it's not required for either DirectIngestion or ProcessedIngestion. The `itemId` (KQL Database ID) is sufficient for routing.
+- **`connectionName` for DirectIngestion**: Any unique string up to 40 characters. Recommended pattern: `es-eh-conn-{random4}`.
+- **ProcessedIngestion auto-creates table**: When using ProcessedIngestion mode, the destination table (e.g., `SensorEvents2`) is automatically created in the KQL database when the first events flow through. No need to pre-create it.
+- **Ingestion latency**: ProcessedIngestion: ~60 seconds from event send to queryable. DirectIngestion: ~60-90 seconds. Both modes batch events for efficiency.
+- **Event Hub SDK for sending**: Use `azure-eventhub` Python SDK (or equivalent) with the SAS connection string from `get-source-connection`. Standard Event Hub producer pattern works.
+- **Pause/Resume for stream control**: `POST .../pause` and `POST .../resume` control the entire eventstream. Individual sources/destinations can be paused/resumed independently.
+- **`eventstreamProperties.json`**: Controls `retentionTimeInDays` (1-90, default 1) and `eventThroughputLevel` (`Low`, `Medium`, `High`). Optional in definition updates.
+- **Compatibility level**: Current version is `"1.1"`. Always include it in the definition.
+- **New commands added**: `fabio eventstream add-source` and `fabio eventstream add-destination` — high-level helpers that fetch current definition, merge in the new node, auto-create default streams, and push the updated definition. Simplifies agent workflow vs. manually crafting full definition JSON.
+
+## RTI (Real-Time Intelligence) End-to-End Workflow
+- **Creation order**: Workspace → Eventhouse → KQL Database (with `--eventhouse-id`) → EventStream → Configure topology (add-source + add-destination) → Send events → Query via KQL.
+- **Required items**: Workspace (with Fabric capacity assigned), Eventhouse, KQL Database, EventStream.
+- **Pre-requisites for DirectIngestion**: Create table schema and JSON ingestion mapping in KQL database BEFORE configuring the EventStream destination.
+- **Querying EventStream data**: Query the KQL database directly using `fabio kql-database query`. The EventStream itself is not queryable — it's a routing/processing layer.
+- **fabio commands for full RTI pipeline**:
+  ```
+  fabio workspace create --name "my-rti-workspace"
+  fabio workspace assign-capacity --id <ws-id> --capacity <cap-id>
+  fabio eventhouse create --workspace <ws-id> --name "MyEventhouse"
+  fabio kql-database create --workspace <ws-id> --name "MyDB" --eventhouse-id <eh-id>
+  fabio kql-database query --workspace <ws-id> --id <db-id> --kql ".create-merge table ..."
+  fabio kql-database query --workspace <ws-id> --id <db-id> --kql ".create-or-alter table ... ingestion json mapping ..."
+  fabio eventstream create --workspace <ws-id> --name "MyStream"
+  fabio eventstream add-source --workspace <ws-id> --id <es-id> --name "app-source" --source-type CustomEndpoint
+  fabio eventstream add-destination --workspace <ws-id> --id <es-id> --name "kql-dest" --destination-type Eventhouse --input-node "app-source-stream" --properties '{"dataIngestionMode":"DirectIngestion","workspaceId":"<ws-id>","itemId":"<kql-db-id>","tableName":"<table>","connectionName":"es-conn-1","mappingRuleName":"<mapping>"}'
+  # Send events via Event Hub SDK using connection from:
+  fabio eventstream get-source-connection --workspace <ws-id> --id <es-id> --source-id <src-id>
+  # Query data:
+  fabio kql-database query --workspace <ws-id> --id <db-id> --kql "MyTable | take 10"
+  ```
 
 ## Next Steps
 - Add ODBC support to warehouse query (`odbc-api` crate)

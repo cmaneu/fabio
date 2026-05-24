@@ -572,9 +572,7 @@ async fn query(
         let columns: Vec<&str> = rows
             .first()
             .and_then(Value::as_object)
-            .map_or_else(Vec::new, |first| {
-                first.keys().map(String::as_str).collect()
-            });
+            .map_or_else(Vec::new, |first| first.keys().map(String::as_str).collect());
 
         let items: Vec<Value> = rows.clone();
         output::render_list_with_token(
@@ -738,7 +736,13 @@ mod tests {
         let enriched = enrich_dax_error(err);
         let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
         assert_eq!(fabio_err.code, ErrorCode::NotFound);
-        assert!(fabio_err.hint.as_ref().unwrap().contains("semantic-model list"));
+        assert!(
+            fabio_err
+                .hint
+                .as_ref()
+                .unwrap()
+                .contains("semantic-model list")
+        );
     }
 
     #[test]
@@ -769,11 +773,8 @@ mod tests {
 
     #[test]
     fn test_enrich_dax_error_passthrough() {
-        let err: anyhow::Error = FabioError::new(
-            ErrorCode::ApiError,
-            "Some unknown error".to_string(),
-        )
-        .into();
+        let err: anyhow::Error =
+            FabioError::new(ErrorCode::ApiError, "Some unknown error".to_string()).into();
 
         let enriched = enrich_dax_error(err);
         let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();

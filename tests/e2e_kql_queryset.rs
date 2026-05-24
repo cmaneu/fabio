@@ -245,7 +245,12 @@ fn kql_queryset_run_tab_not_found() {
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
     assert_eq!(err_json["error"]["code"], "NOT_FOUND");
-    assert!(err_json["error"]["hint"].as_str().unwrap().contains("Available tabs"));
+    assert!(
+        err_json["error"]["hint"]
+            .as_str()
+            .unwrap()
+            .contains("Available tabs")
+    );
 }
 
 #[test]
@@ -272,10 +277,12 @@ fn kql_queryset_run_tab_index_out_of_range() {
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
     assert_eq!(err_json["error"]["code"], "NOT_FOUND");
-    assert!(err_json["error"]["message"]
-        .as_str()
-        .unwrap()
-        .contains("out of range"));
+    assert!(
+        err_json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("out of range")
+    );
 }
 
 #[test]
