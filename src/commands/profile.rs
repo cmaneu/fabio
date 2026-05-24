@@ -96,7 +96,7 @@ impl ProfileStore {
 }
 
 fn dirs_or_home() -> PathBuf {
-    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+    home::home_dir().unwrap_or_else(|| PathBuf::from("."))
 }
 
 pub fn execute(cli: &Cli, command: &ProfileCommand) -> Result<()> {

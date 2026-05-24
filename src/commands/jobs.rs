@@ -70,7 +70,7 @@ pub struct JobLedger;
 
 impl JobLedger {
     fn ledger_path() -> PathBuf {
-        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        let home = home::home_dir().unwrap_or_else(|| PathBuf::from("."));
         home.join(".fabio").join("jobs.jsonl")
     }
 

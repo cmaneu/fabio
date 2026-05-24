@@ -1725,8 +1725,13 @@ async fn expand_remote_glob(
         .await?;
 
     let prefix_with_id = format!("{item_id}/");
-    let regex = fnmatch_regex::glob_to_regex(pattern)
+    let glob_pattern = glob::Pattern::new(pattern)
         .map_err(|e| crate::errors::FabioError::invalid_input(format!("Invalid pattern: {e}")))?;
+    let match_opts = glob::MatchOptions {
+        case_sensitive: true,
+        require_literal_separator: false,
+        require_literal_leading_dot: false,
+    };
 
     let matched: Vec<String> = files
         .iter()
@@ -1742,7 +1747,7 @@ async fn expand_remote_glob(
             }
             // Strip item ID prefix to get the logical path
             let logical_path = name.strip_prefix(&prefix_with_id).unwrap_or(name);
-            if regex.is_match(logical_path) {
+            if glob_pattern.matches_with(logical_path, match_opts) {
                 Some(logical_path.to_string())
             } else {
                 None
@@ -1780,15 +1785,20 @@ async fn expand_table_glob(
         )
         .await?;
 
-    let regex = fnmatch_regex::glob_to_regex(pattern)
+    let glob_pattern = glob::Pattern::new(pattern)
         .map_err(|e| crate::errors::FabioError::invalid_input(format!("Invalid pattern: {e}")))?;
+    let match_opts = glob::MatchOptions {
+        case_sensitive: true,
+        require_literal_separator: false,
+        require_literal_leading_dot: false,
+    };
 
     let matched: Vec<String> = resp
         .items
         .iter()
         .filter_map(|t| {
             let name = t.get("name").and_then(Value::as_str)?;
-            if regex.is_match(name) {
+            if glob_pattern.matches_with(name, match_opts) {
                 Some(name.to_string())
             } else {
                 None

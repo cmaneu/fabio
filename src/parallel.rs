@@ -4,9 +4,11 @@
 //! that respects Fabric API rate limits (429/503) via exponential backoff with jitter.
 
 use std::future::Future;
+use std::sync::Arc;
 use std::time::Duration;
 
-use futures::stream::{self, StreamExt};
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 use tokio::time::sleep;
 
 use crate::errors::ErrorCode;
@@ -57,24 +59,33 @@ pub async fn execute_parallel<T, I, F, Fut>(
     op: F,
 ) -> Vec<OpResult<T>>
 where
-    I: Clone + Send + 'static,
+    I: Clone + Send + Sync + 'static,
     T: Send + 'static,
     F: Fn(I) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = Result<T, anyhow::Error>> + Send,
+    Fut: Future<Output = Result<T, anyhow::Error>> + Send + 'static,
 {
-    let op = std::sync::Arc::new(op);
+    let op = Arc::new(op);
+    let semaphore = Arc::new(Semaphore::new(concurrency));
+    let mut join_set = JoinSet::new();
 
-    stream::iter(items.into_iter().enumerate())
-        .map(|(index, item)| {
-            let op = op.clone();
-            async move {
-                let result = retry_with_backoff(|| op(item.clone())).await;
-                OpResult { index, result }
-            }
-        })
-        .buffer_unordered(concurrency)
-        .collect()
-        .await
+    for (index, item) in items.into_iter().enumerate() {
+        let op = op.clone();
+        let sem = semaphore.clone();
+        join_set.spawn(async move {
+            let _permit = sem.acquire().await.expect("semaphore closed");
+            let result = retry_with_backoff(|| op(item.clone())).await;
+            OpResult { index, result }
+        });
+    }
+
+    let mut results = Vec::new();
+    while let Some(res) = join_set.join_next().await {
+        if let Ok(op_result) = res {
+            results.push(op_result);
+        }
+    }
+    results.sort_by_key(|r| r.index);
+    results
 }
 
 /// Retry an async operation with exponential backoff on transient/rate-limited errors.

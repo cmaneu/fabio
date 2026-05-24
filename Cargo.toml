@@ -18,7 +18,7 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive", "env"] }
 
 # Async runtime
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs"] }
 
 # HTTP
 reqwest = { version = "0.13", features = ["json", "rustls"], default-features = false }
@@ -38,18 +38,15 @@ anyhow = "1"
 # Output formatting
 comfy-table = "7"
 
-# Date/time
-chrono = { version = "0.4", features = ["serde"] }
+# Date/time (clock = Utc::now(); no timezone DB needed)
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
-# Token persistence
-dirs = "6"
+# Home directory resolution
+home = "0.5"
 
 # Misc
 base64 = "0.22"
-urlencoding = "2"
 glob = "0.3"
-fnmatch-regex = "0.3"
-futures = "0.3.32"
 
 [dev-dependencies]
 assert_cmd = "2"
