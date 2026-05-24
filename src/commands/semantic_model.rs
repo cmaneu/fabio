@@ -500,16 +500,15 @@ fn enrich_create_error(err: anyhow::Error) -> anyhow::Error {
     }
 
     // Pattern: TMDL "InvalidValueFormat" for PowerBIDataSourceVersion
-    if msg_lower.contains("invalidvalueformat")
-        && msg_lower.contains("powerbidatasourceversion")
-    {
+    if msg_lower.contains("invalidvalueformat") && msg_lower.contains("powerbidatasourceversion") {
         return FabioError::with_hint(
             fabio_err.code,
             msg.clone(),
             "In TMDL, use 'defaultPowerBIDataSourceVersion: powerBI_V3' (with underscore). \
              The value 'powerBIDataSourceVersion3' is not valid. \
-             Valid values: powerBI_V3."
-        ).into();
+             Valid values: powerBI_V3.",
+        )
+        .into();
     }
 
     // Pattern: TMDL general parsing errors
@@ -535,8 +534,9 @@ fn enrich_create_error(err: anyhow::Error) -> anyhow::Error {
             "Semantic model creation requires: (1) a model definition file (model.bim or .tmdl), \
              (2) a definition.pbism entry. The CLI auto-generates definition.pbism. \
              For .bim files use compat 1604 + powerBI_V3. \
-             For .tmdl files ensure 'defaultPowerBIDataSourceVersion: powerBI_V3'."
-        ).into();
+             For .tmdl files ensure 'defaultPowerBIDataSourceVersion: powerBI_V3'.",
+        )
+        .into();
     }
 
     // Pattern: DirectLake requires TMDL
@@ -546,8 +546,9 @@ fn enrich_create_error(err: anyhow::Error) -> anyhow::Error {
             msg.clone(),
             "Direct Lake semantic models require TMDL format (not model.bim). \
              Use a .tmdl file with partition mode: directLake and provide \
-             --connection <sql-endpoint-id> to bind the lakehouse connection."
-        ).into();
+             --connection <sql-endpoint-id> to bind the lakehouse connection.",
+        )
+        .into();
     }
 
     // No known pattern matched — return original error

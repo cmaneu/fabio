@@ -2280,10 +2280,10 @@ fn git_azdo_connect_init_status_disconnect_lifecycle() {
 fn git_table_not_tracked_but_notebook_is() {
     let cfg = TestConfig::from_env();
     // Use the dedicated scenario workspace if env var is set, otherwise source
-    let workspace = std::env::var("FABIO_TEST_CICD_WORKSPACE")
-        .unwrap_or_else(|_| cfg.source_workspace.clone());
-    let lakehouse_id = std::env::var("FABIO_TEST_CICD_LAKEHOUSE")
-        .unwrap_or_else(|_| cfg.source_lakehouse.clone());
+    let workspace =
+        std::env::var("FABIO_TEST_CICD_WORKSPACE").unwrap_or_else(|_| cfg.source_workspace.clone());
+    let lakehouse_id =
+        std::env::var("FABIO_TEST_CICD_LAKEHOUSE").unwrap_or_else(|_| cfg.source_lakehouse.clone());
 
     let Some(connection_id) = find_github_connection_id() else {
         eprintln!("No GitHub connection found, skipping test.");
@@ -2587,8 +2587,8 @@ fn git_azdo_connect_invalid_org_gives_hint() {
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn git_show_tracked_on_connected_workspace() {
-    let workspace = std::env::var("FABIO_TEST_CICD_WORKSPACE")
-        .expect("FABIO_TEST_CICD_WORKSPACE must be set");
+    let workspace =
+        std::env::var("FABIO_TEST_CICD_WORKSPACE").expect("FABIO_TEST_CICD_WORKSPACE must be set");
 
     let assert = retry_on_failure(|| {
         fabio()

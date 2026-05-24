@@ -568,10 +568,7 @@ fn sql_database_import_csv() {
     let db_id = ensure_sql_database(&cfg);
 
     // Create a temp CSV file
-    let mut tmpfile = tempfile::Builder::new()
-        .suffix(".csv")
-        .tempfile()
-        .unwrap();
+    let mut tmpfile = tempfile::Builder::new().suffix(".csv").tempfile().unwrap();
     writeln!(tmpfile, "id,name,age,active").unwrap();
     writeln!(tmpfile, "1,Alice,30,true").unwrap();
     writeln!(tmpfile, "2,Bob,25,false").unwrap();
@@ -648,10 +645,7 @@ fn sql_database_import_json() {
     let db_id = ensure_sql_database(&cfg);
 
     // Create a temp JSON file
-    let mut tmpfile = tempfile::Builder::new()
-        .suffix(".json")
-        .tempfile()
-        .unwrap();
+    let mut tmpfile = tempfile::Builder::new().suffix(".json").tempfile().unwrap();
     write!(
         tmpfile,
         r#"[
@@ -732,10 +726,7 @@ fn sql_database_import_dry_run() {
     let db_id = ensure_sql_database(&cfg);
 
     // Create temp CSV
-    let mut tmpfile = tempfile::Builder::new()
-        .suffix(".csv")
-        .tempfile()
-        .unwrap();
+    let mut tmpfile = tempfile::Builder::new().suffix(".csv").tempfile().unwrap();
     writeln!(tmpfile, "x,y").unwrap();
     writeln!(tmpfile, "1,hello").unwrap();
     tmpfile.flush().unwrap();
@@ -763,7 +754,12 @@ fn sql_database_import_dry_run() {
     let data = extract_data(&json);
     // dry-run returns the plan
     assert_eq!(data["total_rows"], 1);
-    assert!(data["create_table_ddl"].as_str().unwrap().contains("CREATE TABLE"));
+    assert!(
+        data["create_table_ddl"]
+            .as_str()
+            .unwrap()
+            .contains("CREATE TABLE")
+    );
 }
 
 #[test]
@@ -773,10 +769,7 @@ fn sql_database_import_unsupported_format() {
     let cfg = TestConfig::from_env();
     let db_id = ensure_sql_database(&cfg);
 
-    let mut tmpfile = tempfile::Builder::new()
-        .suffix(".xml")
-        .tempfile()
-        .unwrap();
+    let mut tmpfile = tempfile::Builder::new().suffix(".xml").tempfile().unwrap();
     writeln!(tmpfile, "<data/>").unwrap();
     tmpfile.flush().unwrap();
     let file_path = tmpfile.path().to_str().unwrap().to_string();

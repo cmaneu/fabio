@@ -1044,7 +1044,10 @@ async fn query(
             } else {
                 ""
             };
-            FabioError::new(ErrorCode::ApiError, format!("SQL execution failed: {e}{hint}"))
+            FabioError::new(
+                ErrorCode::ApiError,
+                format!("SQL execution failed: {e}{hint}"),
+            )
         })?;
 
     // Collect results
@@ -1060,24 +1063,26 @@ async fn query(
             .collect();
 
         // Read all rows
-        while let Some(row) = rs.next_row().await.map_err(|e| {
-            FabioError::new(ErrorCode::ApiError, format!("Failed to read row: {e}"))
-        })? {
+        while let Some(row) = rs
+            .next_row()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("Failed to read row: {e}")))?
+        {
             let mut obj = serde_json::Map::new();
             for (i, val) in row.into_iter().enumerate() {
-                let col_name = columns.get(i).map_or_else(
-                    || format!("column{i}"),
-                    std::clone::Clone::clone,
-                );
+                let col_name = columns
+                    .get(i)
+                    .map_or_else(|| format!("column{i}"), std::clone::Clone::clone);
                 obj.insert(col_name, column_value_to_json(&val));
             }
             all_rows.push(Value::Object(obj));
         }
     }
 
-    tds_client.close_query().await.map_err(|e| {
-        FabioError::new(ErrorCode::ApiError, format!("Failed to close query: {e}"))
-    })?;
+    tds_client
+        .close_query()
+        .await
+        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("Failed to close query: {e}")))?;
 
     // Render output
     if all_rows.is_empty() {
@@ -1301,22 +1306,13 @@ fn read_csv_file(path: &str) -> Result<CsvSchema> {
 
     let headers: Vec<String> = reader
         .headers()
-        .map_err(|e| {
-            FabioError::new(
-                ErrorCode::InvalidInput,
-                format!("Invalid CSV headers: {e}"),
-            )
-        })?
+        .map_err(|e| FabioError::new(ErrorCode::InvalidInput, format!("Invalid CSV headers: {e}")))?
         .iter()
         .map(|h| h.trim().to_string())
         .collect();
 
     if headers.is_empty() {
-        return Err(FabioError::new(
-            ErrorCode::InvalidInput,
-            "CSV file has no columns",
-        )
-        .into());
+        return Err(FabioError::new(ErrorCode::InvalidInput, "CSV file has no columns").into());
     }
 
     let mut col_types: Vec<InferredType> = vec![InferredType::Unknown; headers.len()];
@@ -1324,10 +1320,7 @@ fn read_csv_file(path: &str) -> Result<CsvSchema> {
 
     for result in reader.records() {
         let record = result.map_err(|e| {
-            FabioError::new(
-                ErrorCode::InvalidInput,
-                format!("Invalid CSV row: {e}"),
-            )
+            FabioError::new(ErrorCode::InvalidInput, format!("Invalid CSV row: {e}"))
         })?;
 
         let row: Vec<String> = record.iter().map(|v| v.trim().to_string()).collect();
@@ -1386,11 +1379,7 @@ fn read_json_file(path: &str) -> Result<JsonSchema> {
     }
 
     if columns.is_empty() {
-        return Err(FabioError::new(
-            ErrorCode::InvalidInput,
-            "JSON objects have no keys",
-        )
-        .into());
+        return Err(FabioError::new(ErrorCode::InvalidInput, "JSON objects have no keys").into());
     }
 
     // Infer types and collect rows
@@ -1461,7 +1450,8 @@ async fn import(
     let (columns, col_types, sql_batches) = match ext.as_str() {
         "csv" => {
             let (columns, col_types, rows) = read_csv_file(file)?;
-            let batches = generate_csv_insert_batches(&safe_table, &columns, &col_types, &rows, batch_size);
+            let batches =
+                generate_csv_insert_batches(&safe_table, &columns, &col_types, &rows, batch_size);
             (columns, col_types, batches)
         }
         "json" => {
@@ -1558,7 +1548,8 @@ async fn import(
                     if drop_if_exists {
                         String::new()
                     } else {
-                        "If the table already exists, use --drop-if-exists or --no-create-table".to_string()
+                        "If the table already exists, use --drop-if-exists or --no-create-table"
+                            .to_string()
                     },
                 )
             })?;
@@ -1605,10 +1596,7 @@ fn generate_create_table(table: &str, columns: &[String], types: &[InferredType]
         })
         .collect();
 
-    format!(
-        "CREATE TABLE {table} (\n{}\n);",
-        col_defs.join(",\n")
-    )
+    format!("CREATE TABLE {table} (\n{}\n);", col_defs.join(",\n"))
 }
 
 /// Generate batched INSERT statements for CSV data.
@@ -1703,10 +1691,7 @@ mod tests {
 
     #[test]
     fn infer_type_bigint() {
-        assert_eq!(
-            infer_type_from_str("9000000000"),
-            InferredType::BigInt
-        );
+        assert_eq!(infer_type_from_str("9000000000"), InferredType::BigInt);
     }
 
     #[test]
@@ -1717,10 +1702,7 @@ mod tests {
 
     #[test]
     fn infer_type_date() {
-        assert_eq!(
-            infer_type_from_str("2024-01-15"),
-            InferredType::Date
-        );
+        assert_eq!(infer_type_from_str("2024-01-15"), InferredType::Date);
     }
 
     #[test]
@@ -1795,10 +1777,7 @@ mod tests {
 
     #[test]
     fn value_to_literal_int() {
-        assert_eq!(
-            value_to_sql_literal("42", &InferredType::Int),
-            "42"
-        );
+        assert_eq!(value_to_sql_literal("42", &InferredType::Int), "42");
     }
 
     #[test]
@@ -1844,16 +1823,16 @@ mod tests {
     #[test]
     fn infer_json_types() {
         assert_eq!(infer_type_from_json(&Value::from(42)), InferredType::Int);
-        assert_eq!(infer_type_from_json(&Value::from(3.14)), InferredType::Float);
+        assert_eq!(
+            infer_type_from_json(&Value::from(3.14)),
+            InferredType::Float
+        );
         assert_eq!(infer_type_from_json(&Value::from(true)), InferredType::Bit);
         assert_eq!(
             infer_type_from_json(&Value::from("hello")),
             InferredType::NVarChar(5)
         );
-        assert_eq!(
-            infer_type_from_json(&Value::Null),
-            InferredType::Unknown
-        );
+        assert_eq!(infer_type_from_json(&Value::Null), InferredType::Unknown);
     }
 
     #[test]

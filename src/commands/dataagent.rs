@@ -717,15 +717,21 @@ async fn poll_run_completion(
                     .and_then(Value::as_str)
                     .unwrap_or("Data agent run did not complete successfully");
                 let hint = match status {
-                    "failed" => "The data agent run failed. Check: \
+                    "failed" => {
+                        "The data agent run failed. Check: \
                         (1) Is the Fabric capacity active? \
                         (2) Does the agent have access to its configured data sources? \
                         (3) Are the lakehouse tables loaded and accessible? \
-                        Inspect the agent definition: fabio data-agent get-definition -w <workspace> --id <id>",
-                    "cancelled" => "The run was cancelled. This may happen if the capacity \
-                        is under pressure or the query was interrupted. Retry the query.",
-                    "requires_action" => "The run requires additional action (tool approval). \
-                        This is unexpected for data agent queries — check the agent configuration.",
+                        Inspect the agent definition: fabio data-agent get-definition -w <workspace> --id <id>"
+                    }
+                    "cancelled" => {
+                        "The run was cancelled. This may happen if the capacity \
+                        is under pressure or the query was interrupted. Retry the query."
+                    }
+                    "requires_action" => {
+                        "The run requires additional action (tool approval). \
+                        This is unexpected for data agent queries — check the agent configuration."
+                    }
                     _ => "The run ended in an unexpected state. Retry the query.",
                 };
                 return Err(FabioError::with_hint(

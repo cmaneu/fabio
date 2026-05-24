@@ -210,12 +210,11 @@ fn semantic_model_create_show_get_definition_delete() {
     assert!(!parts.is_empty(), "expected at least one definition part");
 
     // Should contain model.bim or definition.pbism
-    let paths: Vec<&str> = parts
-        .iter()
-        .filter_map(|p| p["path"].as_str())
-        .collect();
+    let paths: Vec<&str> = parts.iter().filter_map(|p| p["path"].as_str()).collect();
     assert!(
-        paths.iter().any(|p| p.contains("model.bim") || p.contains(".pbism")),
+        paths
+            .iter()
+            .any(|p| p.contains("model.bim") || p.contains(".pbism")),
         "expected model.bim or definition.pbism in parts, got: {paths:?}"
     );
 
@@ -301,12 +300,7 @@ fn semantic_model_create_tmdl_and_delete() {
 
     // ── Verify it shows up in list ───────────────────────────────────────
     let assert = fabio()
-        .args([
-            "semantic-model",
-            "list",
-            "--workspace",
-            &cfg.dest_workspace,
-        ])
+        .args(["semantic-model", "list", "--workspace", &cfg.dest_workspace])
         .assert()
         .success();
 

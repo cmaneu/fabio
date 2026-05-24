@@ -10,10 +10,12 @@ pub fn column_value_to_json(val: &ColumnValues) -> Value {
         ColumnValues::SmallInt(v) => Value::from(*v),
         ColumnValues::Int(v) => Value::from(*v),
         ColumnValues::BigInt(v) => Value::from(*v),
-        ColumnValues::Real(v) => serde_json::Number::from_f64(f64::from(*v))
-            .map_or(Value::Null, Value::Number),
-        ColumnValues::Float(v) => serde_json::Number::from_f64(*v)
-            .map_or(Value::Null, Value::Number),
+        ColumnValues::Real(v) => {
+            serde_json::Number::from_f64(f64::from(*v)).map_or(Value::Null, Value::Number)
+        }
+        ColumnValues::Float(v) => {
+            serde_json::Number::from_f64(*v).map_or(Value::Null, Value::Number)
+        }
         ColumnValues::Bit(v) => Value::from(*v),
         ColumnValues::String(s) => Value::from(s.to_utf8_string()),
         ColumnValues::Decimal(d) | ColumnValues::Numeric(d) => {
@@ -50,7 +52,9 @@ pub fn column_value_to_json(val: &ColumnValues) -> Value {
             let hours = total_ns / 3_600_000_000_000;
             let minutes = (total_ns / 60_000_000_000) % 60;
             let seconds = (total_ns / 1_000_000_000) % 60;
-            Value::from(format!("{days} days + {hours:02}:{minutes:02}:{seconds:02}"))
+            Value::from(format!(
+                "{days} days + {hours:02}:{minutes:02}:{seconds:02}"
+            ))
         }
         ColumnValues::DateTimeOffset(dto) => {
             let offset_hours = dto.offset / 60;
@@ -69,17 +73,13 @@ pub fn column_value_to_json(val: &ColumnValues) -> Value {
             let val = lsb_i64 | (i64::from(m.msb_part) << 32);
             #[allow(clippy::cast_precision_loss)]
             let amount = (val as f64) / 10000.0;
-            serde_json::Number::from_f64(amount)
-                .map_or(Value::Null, Value::Number)
+            serde_json::Number::from_f64(amount).map_or(Value::Null, Value::Number)
         }
         ColumnValues::SmallMoney(sm) => {
             let amount = f64::from(sm.int_val) / 10000.0;
-            serde_json::Number::from_f64(amount)
-                .map_or(Value::Null, Value::Number)
+            serde_json::Number::from_f64(amount).map_or(Value::Null, Value::Number)
         }
-        ColumnValues::Bytes(b) => Value::from(
-            base64::engine::general_purpose::STANDARD.encode(b),
-        ),
+        ColumnValues::Bytes(b) => Value::from(base64::engine::general_purpose::STANDARD.encode(b)),
         ColumnValues::Xml(xml) => Value::from(xml.as_string()),
         ColumnValues::Json(j) => {
             // Try to parse as JSON value, fall back to string
@@ -104,17 +104,26 @@ mod tests {
 
     #[test]
     fn tinyint_converts_to_number() {
-        assert_eq!(column_value_to_json(&ColumnValues::TinyInt(42)), Value::from(42));
+        assert_eq!(
+            column_value_to_json(&ColumnValues::TinyInt(42)),
+            Value::from(42)
+        );
     }
 
     #[test]
     fn smallint_converts_to_number() {
-        assert_eq!(column_value_to_json(&ColumnValues::SmallInt(-100)), Value::from(-100));
+        assert_eq!(
+            column_value_to_json(&ColumnValues::SmallInt(-100)),
+            Value::from(-100)
+        );
     }
 
     #[test]
     fn int_converts_to_number() {
-        assert_eq!(column_value_to_json(&ColumnValues::Int(123_456)), Value::from(123_456));
+        assert_eq!(
+            column_value_to_json(&ColumnValues::Int(123_456)),
+            Value::from(123_456)
+        );
     }
 
     #[test]
@@ -127,12 +136,18 @@ mod tests {
 
     #[test]
     fn bit_true_converts_to_bool() {
-        assert_eq!(column_value_to_json(&ColumnValues::Bit(true)), Value::from(true));
+        assert_eq!(
+            column_value_to_json(&ColumnValues::Bit(true)),
+            Value::from(true)
+        );
     }
 
     #[test]
     fn bit_false_converts_to_bool() {
-        assert_eq!(column_value_to_json(&ColumnValues::Bit(false)), Value::from(false));
+        assert_eq!(
+            column_value_to_json(&ColumnValues::Bit(false)),
+            Value::from(false)
+        );
     }
 
     #[test]

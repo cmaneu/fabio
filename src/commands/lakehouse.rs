@@ -3049,7 +3049,7 @@ mod tests {
 
     #[test]
     fn valid_formats_accepted() {
-    const VALID_FORMATS: &[&str] = &["Csv", "Parquet"];
+        const VALID_FORMATS: &[&str] = &["Csv", "Parquet"];
         assert!(VALID_FORMATS.contains(&"Csv"));
         assert!(VALID_FORMATS.contains(&"Parquet"));
         assert!(!VALID_FORMATS.contains(&"Json"));

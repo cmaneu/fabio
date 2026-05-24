@@ -556,7 +556,11 @@ async fn query(
     let (connection_string, item_name) = get_connection_string(client, workspace, id).await?;
     let (server, parsed_db) = parse_connection_string(&connection_string);
     // Use item displayName as database catalog; fall back to parsed value from connection string
-    let database = if item_name.is_empty() { parsed_db } else { item_name };
+    let database = if item_name.is_empty() {
+        parsed_db
+    } else {
+        item_name
+    };
 
     // Acquire AAD token for SQL scope
     let token = client.require_sql_auth().await?;
@@ -574,20 +578,13 @@ async fn query(
     let mut tds_client = provider
         .create_client(context, &data_source, None)
         .await
-        .map_err(|e| {
-            FabioError::new(
-                ErrorCode::ApiError,
-                format!("TDS connection failed: {e}"),
-            )
-        })?;
+        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("TDS connection failed: {e}")))?;
 
     // Execute SQL
     tds_client
         .execute(sql_text, Some(60), None)
         .await
-        .map_err(|e| {
-            FabioError::new(ErrorCode::ApiError, format!("SQL execution failed: {e}"))
-        })?;
+        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("SQL execution failed: {e}")))?;
 
     // Collect results
     let mut all_rows: Vec<Value> = Vec::new();
@@ -602,24 +599,26 @@ async fn query(
             .collect();
 
         // Read all rows
-        while let Some(row) = rs.next_row().await.map_err(|e| {
-            FabioError::new(ErrorCode::ApiError, format!("Failed to read row: {e}"))
-        })? {
+        while let Some(row) = rs
+            .next_row()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("Failed to read row: {e}")))?
+        {
             let mut obj = serde_json::Map::new();
             for (i, val) in row.into_iter().enumerate() {
-                let col_name = columns.get(i).map_or_else(
-                    || format!("column{i}"),
-                    std::clone::Clone::clone,
-                );
+                let col_name = columns
+                    .get(i)
+                    .map_or_else(|| format!("column{i}"), std::clone::Clone::clone);
                 obj.insert(col_name, column_value_to_json(&val));
             }
             all_rows.push(Value::Object(obj));
         }
     }
 
-    tds_client.close_query().await.map_err(|e| {
-        FabioError::new(ErrorCode::ApiError, format!("Failed to close query: {e}"))
-    })?;
+    tds_client
+        .close_query()
+        .await
+        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("Failed to close query: {e}")))?;
 
     // Render output
     if all_rows.is_empty() {
@@ -638,7 +637,11 @@ async fn query(
 
 /// Get SQL connection string from warehouse or lakehouse metadata.
 /// Returns (`server_hostname`, `database_name`).
-async fn get_connection_string(client: &FabricClient, workspace: &str, id: &str) -> Result<(String, String)> {
+async fn get_connection_string(
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<(String, String)> {
     // Try warehouse endpoint first
     if let Ok(data) = client
         .get(&format!("/workspaces/{workspace}/warehouses/{id}"))
@@ -1041,8 +1044,7 @@ mod tests {
 
     #[test]
     fn parse_plain_hostname() {
-        let (server, db) =
-            parse_connection_string("abc123.datawarehouse.fabric.microsoft.com");
+        let (server, db) = parse_connection_string("abc123.datawarehouse.fabric.microsoft.com");
         assert_eq!(server, "abc123.datawarehouse.fabric.microsoft.com");
         assert_eq!(db, "");
     }
@@ -1075,17 +1077,14 @@ mod tests {
 
     #[test]
     fn parse_trims_whitespace() {
-        let (server, db) =
-            parse_connection_string("  abc.fabric.microsoft.com  ");
+        let (server, db) = parse_connection_string("  abc.fabric.microsoft.com  ");
         assert_eq!(server, "abc.fabric.microsoft.com");
         assert_eq!(db, "");
     }
 
     #[test]
     fn parse_case_insensitive_database_key() {
-        let (server, db) = parse_connection_string(
-            "host.com;DATABASE=TestDb;encrypt=true",
-        );
+        let (server, db) = parse_connection_string("host.com;DATABASE=TestDb;encrypt=true");
         assert_eq!(server, "host.com");
         assert_eq!(db, "TestDb");
     }

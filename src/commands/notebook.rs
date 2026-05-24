@@ -216,7 +216,17 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
             name,
             content,
             lakehouse,
-        } => create(cli, client, workspace, name, content.as_deref(), lakehouse.as_deref()).await,
+        } => {
+            create(
+                cli,
+                client,
+                workspace,
+                name,
+                content.as_deref(),
+                lakehouse.as_deref(),
+            )
+            .await
+        }
         NotebookCommand::Update {
             workspace,
             id,

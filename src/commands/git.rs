@@ -952,9 +952,7 @@ async fn show_tracked(cli: &Cli, client: &FabricClient, workspace: &str) -> Resu
             .get("workspaceChange")
             .and_then(Value::as_str)
             .unwrap_or("None");
-        let remote_change = change
-            .get("remoteChange")
-            .and_then(Value::as_str);
+        let remote_change = change.get("remoteChange").and_then(Value::as_str);
         let conflict_type = change
             .get("conflictType")
             .and_then(Value::as_str)
@@ -1014,7 +1012,13 @@ async fn show_tracked(cli: &Cli, client: &FabricClient, workspace: &str) -> Resu
         output::render_list(
             cli,
             result["items"].as_array().unwrap(),
-            &["displayName", "itemType", "status", "workspaceChange", "remoteChange"],
+            &[
+                "displayName",
+                "itemType",
+                "status",
+                "workspaceChange",
+                "remoteChange",
+            ],
             &["NAME", "TYPE", "STATUS", "WORKSPACE", "REMOTE"],
             "displayName",
         );
@@ -1158,7 +1162,10 @@ mod tests {
         let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
         let hint = fabio_err.hint.as_ref().unwrap();
         assert!(hint.contains("develop"), "Hint should mention branch");
-        assert!(hint.contains("my-org/my-repo"), "Hint should reference repo");
+        assert!(
+            hint.contains("my-org/my-repo"),
+            "Hint should reference repo"
+        );
         assert!(
             hint.contains("az repos"),
             "Hint should suggest az repos for Azure DevOps"
@@ -1181,14 +1188,8 @@ mod tests {
         )
         .into();
 
-        let enriched = enrich_git_connect_error(
-            err,
-            "GitHub",
-            "test-repo",
-            "main",
-            Some("testowner"),
-            None,
-        );
+        let enriched =
+            enrich_git_connect_error(err, "GitHub", "test-repo", "main", Some("testowner"), None);
 
         let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
         let hint = fabio_err.hint.as_ref().unwrap();
@@ -1196,10 +1197,7 @@ mod tests {
             hint.contains("testowner"),
             "Hint should reference the owner"
         );
-        assert!(
-            hint.contains("test-repo"),
-            "Hint should reference the repo"
-        );
+        assert!(hint.contains("test-repo"), "Hint should reference the repo");
         assert!(
             hint.contains("--connection-id"),
             "Hint should suggest checking connection-id"
@@ -1208,11 +1206,8 @@ mod tests {
 
     #[test]
     fn enrich_git_connect_skips_unrelated_error_codes() {
-        let err: anyhow::Error = FabioError::new(
-            ErrorCode::RateLimited,
-            "Rate limited".to_string(),
-        )
-        .into();
+        let err: anyhow::Error =
+            FabioError::new(ErrorCode::RateLimited, "Rate limited".to_string()).into();
 
         let enriched =
             enrich_git_connect_error(err, "GitHub", "repo", "branch", Some("owner"), None);
@@ -1230,14 +1225,8 @@ mod tests {
         )
         .into();
 
-        let enriched = enrich_git_connect_error(
-            err,
-            "GitHub",
-            "my-repo",
-            "main",
-            Some("myowner"),
-            None,
-        );
+        let enriched =
+            enrich_git_connect_error(err, "GitHub", "my-repo", "main", Some("myowner"), None);
 
         let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
         let hint = fabio_err.hint.as_ref().unwrap();
