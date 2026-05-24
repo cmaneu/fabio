@@ -433,3 +433,306 @@ fn semantic_model_create_dry_run() {
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["would_execute"], "semantic-model create");
 }
+
+// ─── DAX Query ───────────────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_query_dax_flag() {
+    let cfg = TestConfig::from_env();
+
+    // Create a model with an M-expression table (Import mode) for querying
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(minimal_model_bim().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+    let name = unique_name("sm_query");
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let sm_id = data["id"].as_str().unwrap().to_string();
+
+    // Query with --dax flag
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--dax",
+            "EVALUATE ROW(\"Result\", 1 + 1)",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let rows = data.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["[Result]"], 2);
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_query_from_stdin() {
+    let cfg = TestConfig::from_env();
+
+    // Create model
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(minimal_model_bim().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+    let name = unique_name("sm_qstdin");
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let sm_id = data["id"].as_str().unwrap().to_string();
+
+    // Query via stdin
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .write_stdin("EVALUATE ROW(\"Value\", 42)")
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let rows = data.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["[Value]"], 42);
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_query_from_file() {
+    let cfg = TestConfig::from_env();
+
+    // Create model
+    let mut tmp_model = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp_model
+        .write_all(minimal_model_bim().as_bytes())
+        .unwrap();
+    let file_path = tmp_model.path().to_str().unwrap().to_string();
+    let name = unique_name("sm_qfile");
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let sm_id = data["id"].as_str().unwrap().to_string();
+
+    // Write DAX to a temp file
+    let mut tmp_dax = NamedTempFile::with_suffix(".dax").unwrap();
+    tmp_dax
+        .write_all(b"EVALUATE ROW(\"Pi\", 3.14159)")
+        .unwrap();
+    let dax_path = tmp_dax.path().to_str().unwrap().to_string();
+
+    // Query via --file
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--file",
+            &dax_path,
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let rows = data.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    // Floating point — just check it exists
+    assert!(rows[0]["[Pi]"].as_f64().unwrap() > 3.14);
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_query_table_output() {
+    let cfg = TestConfig::from_env();
+
+    // Create model
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(minimal_model_bim().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+    let name = unique_name("sm_qtable");
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let sm_id = data["id"].as_str().unwrap().to_string();
+
+    // Query with table output
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--dax",
+            "EVALUATE ROW(\"X\", 1, \"Y\", 2)",
+            "-o",
+            "table",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    // Table output should contain header and data
+    assert!(stdout.contains("[X]") || stdout.contains("[Y]"));
+    assert!(stdout.contains("1") && stdout.contains("2"));
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_query_not_found() {
+    let cfg = TestConfig::from_env();
+
+    // Query a non-existent model
+    fabio()
+        .args([
+            "semantic-model",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--dax",
+            "EVALUATE ROW(\"X\", 1)",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .failure();
+}

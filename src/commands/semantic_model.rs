@@ -1,3 +1,5 @@
+use std::io::{self, Read};
+
 use anyhow::Result;
 use clap::Subcommand;
 use serde_json::Value;
@@ -106,6 +108,25 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         file: String,
     },
+    /// Execute a DAX query against a semantic model
+    #[command(display_order = 8)]
+    Query {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// DAX query (e.g., "EVALUATE Sales"). If omitted, reads from stdin.
+        #[arg(long)]
+        dax: Option<String>,
+
+        /// Read DAX query from a file
+        #[arg(long, conflicts_with = "dax")]
+        file: Option<String>,
+    },
     /// Bind a semantic model to a connection
     #[command(name = "bind-connection", display_order = 10)]
     BindConnection {
@@ -174,6 +195,12 @@ pub async fn execute(
             id,
             file,
         } => update_definition(cli, client, workspace, id, file).await,
+        SemanticModelCommand::Query {
+            workspace,
+            id,
+            dax,
+            file,
+        } => query(cli, client, workspace, id, dax.as_deref(), file.as_deref()).await,
         SemanticModelCommand::BindConnection {
             workspace,
             id,
@@ -474,6 +501,98 @@ async fn bind_connection(
     Ok(())
 }
 
+async fn query(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    dax: Option<&str>,
+    file: Option<&str>,
+) -> Result<()> {
+    // Resolve DAX query from --dax flag, --file flag, or stdin
+    let dax_query = if let Some(d) = dax {
+        d.to_string()
+    } else if let Some(f) = file {
+        std::fs::read_to_string(f).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Failed to read DAX file '{f}': {e}"),
+                "Provide a valid file path containing a DAX query.".to_string(),
+            )
+        })?
+    } else {
+        // Read from stdin
+        let mut buf = String::new();
+        io::stdin().read_to_string(&mut buf).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Failed to read DAX from stdin: {e}"),
+                "Provide DAX via --dax flag, --file flag, or pipe to stdin.".to_string(),
+            )
+        })?;
+        if buf.trim().is_empty() {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "No DAX query provided".to_string(),
+                "Usage: fabio semantic-model query --workspace <WS> --id <ID> --dax \"EVALUATE MyTable\"\n\
+                 Or pipe: echo 'EVALUATE MyTable' | fabio semantic-model query --workspace <WS> --id <ID>"
+                    .to_string(),
+            )
+            .into());
+        }
+        buf
+    };
+
+    let body = serde_json::json!({
+        "queries": [{"query": dax_query.trim()}],
+        "serializerSettings": {"includeNulls": true}
+    });
+
+    let data = client
+        .post_powerbi(
+            &format!("/groups/{workspace}/datasets/{id}/executeQueries"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_dax_error(enrich_forbidden(e, "semantic-model query", "Viewer")))?;
+
+    // Extract rows from the response: results[0].tables[0].rows
+    let rows = data
+        .get("results")
+        .and_then(|r| r.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|t| t.get("tables"))
+        .and_then(|t| t.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|t| t.get("rows"))
+        .and_then(Value::as_array);
+
+    if let Some(rows) = rows {
+        // Build column names from the first row's keys
+        let columns: Vec<&str> = rows
+            .first()
+            .and_then(Value::as_object)
+            .map_or_else(Vec::new, |first| {
+                first.keys().map(String::as_str).collect()
+            });
+
+        let items: Vec<Value> = rows.clone();
+        output::render_list_with_token(
+            cli,
+            &items,
+            &columns,
+            &columns,
+            columns.first().copied().unwrap_or("value"),
+            None,
+        );
+    } else {
+        // No rows — might be an error or empty result
+        output::render_object(cli, &data, "results");
+    }
+
+    Ok(())
+}
+
 // ─── Error Enrichment ────────────────────────────────────────────────────────
 
 /// Enrich semantic model API errors with actionable hints for common failures.
@@ -553,4 +672,138 @@ fn enrich_create_error(err: anyhow::Error) -> anyhow::Error {
 
     // No known pattern matched — return original error
     err
+}
+
+/// Enrich DAX query errors with actionable hints.
+fn enrich_dax_error(err: anyhow::Error) -> anyhow::Error {
+    let Some(fabio_err) = err.downcast_ref::<FabioError>() else {
+        return err;
+    };
+
+    let msg = &fabio_err.message;
+    let msg_lower = msg.to_lowercase();
+
+    // Pattern: model not found
+    if msg_lower.contains("dataset not found") || msg_lower.contains("datasetnotfound") {
+        return FabioError::with_hint(
+            ErrorCode::NotFound,
+            msg.clone(),
+            "The semantic model ID was not found in this workspace. \
+             Use: fabio semantic-model list --workspace <WS> to find available models."
+                .to_string(),
+        )
+        .into();
+    }
+
+    // Pattern: model not refreshed / framing required
+    if msg_lower.contains("3242524690") || msg_lower.contains("not framed") {
+        return FabioError::with_hint(
+            fabio_err.code,
+            msg.clone(),
+            "Direct Lake model needs framing before queries work. \
+             Trigger a refresh via the Power BI REST API: \
+             POST /groups/{ws}/datasets/{id}/refreshes with body {\"type\": \"Full\"}"
+                .to_string(),
+        )
+        .into();
+    }
+
+    // Pattern: DAX syntax error
+    if msg_lower.contains("dax") && msg_lower.contains("syntax") {
+        return FabioError::with_hint(
+            fabio_err.code,
+            msg.clone(),
+            "DAX query has a syntax error. Ensure EVALUATE is followed by a valid table expression. \
+             Example: EVALUATE SUMMARIZE(sales_summary, sales_summary[country], \"Revenue\", SUM(sales_summary[total]))"
+                .to_string(),
+        )
+        .into();
+    }
+
+    err
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_enrich_dax_error_dataset_not_found() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::NotFound,
+            "Dataset not found in workspace".to_string(),
+        )
+        .into();
+
+        let enriched = enrich_dax_error(err);
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(fabio_err.code, ErrorCode::NotFound);
+        assert!(fabio_err.hint.as_ref().unwrap().contains("semantic-model list"));
+    }
+
+    #[test]
+    fn test_enrich_dax_error_not_framed() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::ApiError,
+            "Query failed with error code 3242524690".to_string(),
+        )
+        .into();
+
+        let enriched = enrich_dax_error(err);
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert!(fabio_err.hint.as_ref().unwrap().contains("framing"));
+    }
+
+    #[test]
+    fn test_enrich_dax_error_syntax() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::ApiError,
+            "DAX syntax error near 'EVALUAT'".to_string(),
+        )
+        .into();
+
+        let enriched = enrich_dax_error(err);
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert!(fabio_err.hint.as_ref().unwrap().contains("EVALUATE"));
+    }
+
+    #[test]
+    fn test_enrich_dax_error_passthrough() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::ApiError,
+            "Some unknown error".to_string(),
+        )
+        .into();
+
+        let enriched = enrich_dax_error(err);
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        // No hint added — returned as-is
+        assert!(fabio_err.hint.is_none());
+    }
+
+    #[test]
+    fn test_enrich_create_error_v3_models() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::ApiError,
+            "Import from JSON supported for V3 models only".to_string(),
+        )
+        .into();
+
+        let enriched = enrich_create_error(err);
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert!(fabio_err.hint.as_ref().unwrap().contains("1604"));
+    }
+
+    #[test]
+    fn test_enrich_create_error_tmdl_format() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::ApiError,
+            "TMDL Format Error: Parsing error at line number 5".to_string(),
+        )
+        .into();
+
+        let enriched = enrich_create_error(err);
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert!(fabio_err.hint.as_ref().unwrap().contains("tab"));
+    }
 }
