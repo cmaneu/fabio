@@ -298,6 +298,10 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **report create --dataset**: Generates both `definition.pbir` (with semantic model binding) and `report.json` (blank page) automatically. No definition file needed from the user.
 - **Definition path changed**: The report definition entry point is `definition.pbir` (not `report.json`). Both `create` and `update-definition` use this path.
 - **updateDefinition ALWAYS requires definition.pbir**: The API rejects requests missing the `definition.pbir` part, even if only updating `report.json`. Always include both parts when updating visuals.
+- **updateDefinition CANNOT switch formats**: You cannot convert a PBIR-Legacy report to PBIR via updateDefinition. The API silently ignores format changes. Must delete and recreate.
+- **PBIR format is required for programmatic visuals**: PBIR-Legacy (report.json) does NOT officially support external editing and visuals created this way may not render correctly. Always use PBIR format (definition/ folder) for programmatic visual creation.
+- **PBIR version.json requires semver**: The `version` field must match `^[1-9][0-9]*\.(0|[1-9][0-9]*)\.0$` (e.g., `"4.0.0"`, NOT `"4.0"`).
+- **PBIR report.json requires layoutOptimization as string**: Must be `"None"` (string), not `0` (integer). Unlike PBIR-Legacy which uses integer 0.
 - **PBIR-Legacy visual containers**: Reports use `report.json` with `sections[].visualContainers[]` array. Each visual container has `x`, `y`, `z`, `width`, `height`, `config` (JSON string), `filters`, and `tabOrder`.
 - **Visual config structure**: The `config` JSON string contains `name`, `layouts[]`, and `singleVisual` with `visualType`, `projections`, `properties`, `objects`, and `dataTransforms`.
 - **Supported visualType values**: `card` (KPI cards), `barChart` (bar charts), `tableEx` (data tables), `columnChart`, `lineChart`, `pieChart`, `donutChart`, etc.
@@ -512,14 +516,17 @@ definition/
 #### definition/version.json
 ```json
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/versionMetadata/1.0.0/schema.json"
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/versionMetadata/1.0.0/schema.json",
+  "version": "4.0.0"
 }
 ```
+Note: `version` must match `^[1-9][0-9]*\.(0|[1-9][0-9]*)\.0$` (semver with trailing `.0`).
 
 #### definition/report.json (PBIR — NOT the same as PBIR-Legacy report.json)
 ```json
 {
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/report/1.0.0/schema.json",
+  "layoutOptimization": "None",
   "themeCollection": {
     "baseTheme": {
       "name": "CY24SU06",
