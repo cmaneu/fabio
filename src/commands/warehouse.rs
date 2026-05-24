@@ -553,8 +553,10 @@ async fn query(
     };
 
     // Get connection string from warehouse or lakehouse
-    let connection_string = get_connection_string(client, workspace, id).await?;
-    let (server, database) = parse_connection_string(&connection_string);
+    let (connection_string, item_name) = get_connection_string(client, workspace, id).await?;
+    let (server, parsed_db) = parse_connection_string(&connection_string);
+    // Use item displayName as database catalog; fall back to parsed value from connection string
+    let database = if item_name.is_empty() { parsed_db } else { item_name };
 
     // Acquire AAD token for SQL scope
     let token = client.require_sql_auth().await?;
@@ -636,7 +638,7 @@ async fn query(
 
 /// Get SQL connection string from warehouse or lakehouse metadata.
 /// Returns (`server_hostname`, `database_name`).
-async fn get_connection_string(client: &FabricClient, workspace: &str, id: &str) -> Result<String> {
+async fn get_connection_string(client: &FabricClient, workspace: &str, id: &str) -> Result<(String, String)> {
     // Try warehouse endpoint first
     if let Ok(data) = client
         .get(&format!("/workspaces/{workspace}/warehouses/{id}"))
@@ -648,7 +650,12 @@ async fn get_connection_string(client: &FabricClient, workspace: &str, id: &str)
             .and_then(Value::as_str)
         {
             if !conn.is_empty() {
-                return Ok(conn.to_string());
+                let db_name = data
+                    .get("displayName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                return Ok((conn.to_string(), db_name));
             }
         }
     }
@@ -665,7 +672,12 @@ async fn get_connection_string(client: &FabricClient, workspace: &str, id: &str)
             .and_then(Value::as_str)
         {
             if !conn.is_empty() {
-                return Ok(conn.to_string());
+                let db_name = data
+                    .get("displayName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                return Ok((conn.to_string(), db_name));
             }
         }
     }
