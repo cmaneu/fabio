@@ -309,6 +309,380 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **publish-to-web**: `POST https://api.powerbi.com/v1.0/myorg/groups/{groupId}/reports/{reportId}/publishtoweb` returns 404 for Fabric reports. Attempted with various body formats (`{"accessLevel":"View","allowFullScreen":true}`). Likely requires: (1) tenant admin to enable "Publish to web" in admin portal, AND (2) may only work with classic Power BI reports (not Fabric-native reports created via Items API).
 - **PowerBI API scope**: Report publish-to-web uses `api.powerbi.com` (not `api.fabric.microsoft.com`). Requires the same bearer token (`https://analysis.windows.net/powerbi/api/.default` scope).
 
+## Power BI Report Definition Formats Reference
+
+Power BI reports use one of two definition formats: **PBIR-Legacy** (single `report.json` file) or **PBIR** (individual files per visual/page in a `definition/` folder). Both formats use `definition.pbir` as the entry point for semantic model binding.
+
+### Format Detection
+
+The Fabric Items API returns the format in `getDefinition` response:
+- `"format": "PBIR-Legacy"` → Single `report.json` contains all pages and visuals
+- `"format": "PBIR"` → `definition/` folder with structured files per visual
+
+New reports created in the Fabric Service default to PBIR. Existing reports are auto-converted to PBIR when edited in the Service (unless opted out via tenant setting). PBIR will become the only supported format at GA.
+
+### definition.pbir (Common to Both Formats)
+
+The `definition.pbir` file is **always required** and defines the semantic model binding. Two schema versions exist:
+
+**Version 2 (Recommended for Fabric REST API deployments):**
+```json
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/2.0.0/schema.json",
+  "version": "4.0",
+  "datasetReference": {
+    "byConnection": {
+      "connectionString": "semanticmodelid=<SEMANTIC-MODEL-UUID>"
+    }
+  }
+}
+```
+When deploying via Fabric REST API, only `semanticmodelid=<UUID>` is needed in `connectionString`. The server auto-resolves workspace/name.
+
+**Version 1 (Legacy, full connection details):**
+```json
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/1.0.0/schema.json",
+  "version": "4.0",
+  "datasetReference": {
+    "byConnection": {
+      "connectionString": "Data Source=powerbi://api.powerbi.com/v1.0/myorg/<WorkspaceName>;initial catalog=\"<ModelName>\";integrated security=ClaimsToken;semanticmodelid=<UUID>",
+      "pbiServiceModelId": null,
+      "pbiModelVirtualServerName": "sobe_wowvirtualserver",
+      "pbiModelDatabaseName": "<SEMANTIC-MODEL-UUID>",
+      "connectionType": "pbiServiceXmlaStyleLive",
+      "name": "EntityDataSource"
+    }
+  }
+}
+```
+
+**Local path reference (PBIP only, not for API deployment):**
+```json
+{
+  "version": "4.0",
+  "datasetReference": {
+    "byPath": {
+      "path": "../Sales.Dataset"
+    }
+  }
+}
+```
+
+| Version | Supported formats |
+|---------|-------------------|
+| 1.0     | PBIR-Legacy only (`report.json`) |
+| 4.0+    | PBIR-Legacy (`report.json`) or PBIR (`definition/` folder) |
+
+### PBIR-Legacy Format (`report.json`)
+
+A single JSON file containing ALL report pages, visuals, filters, and formatting. Not publicly documented for editing — modifications may break on Desktop reload. Used by `fabio report update-definition --file <pbir> --report-json <report.json>`.
+
+#### File Structure (API parts)
+```
+definition.pbir          # Semantic model binding (always required)
+report.json              # All pages + visuals in one file
+.platform                # Git integration metadata
+```
+
+#### report.json Top-Level Structure
+```json
+{
+  "config": "<JSON-string: version, theme, activeSectionIndex>",
+  "layoutOptimization": 0,
+  "resourcePackages": [],
+  "sections": [
+    {
+      "name": "ReportSection",
+      "displayName": "Page Title",
+      "displayOption": 1,
+      "width": 1280.0,
+      "height": 720.0,
+      "ordinal": 0,
+      "config": "<JSON-string: name, layouts>",
+      "filters": "[]",
+      "visualContainers": [ ... ]
+    }
+  ]
+}
+```
+
+#### visualContainers[] Entry (PBIR-Legacy)
+```json
+{
+  "x": 30.0,
+  "y": 20.0,
+  "z": 1000,
+  "width": 250.0,
+  "height": 110.0,
+  "config": "<JSON-string: see Visual Config below>",
+  "filters": "[]",
+  "tabOrder": 0
+}
+```
+- `x`, `y`: position on page canvas (pixels)
+- `z`: stacking order (higher = on top)
+- `width`, `height`: visual dimensions
+- `config`: JSON-encoded string containing the visual definition
+- `filters`: JSON-encoded array of visual-level filters
+- `tabOrder`: keyboard navigation order
+
+#### Visual Config Structure (PBIR-Legacy, inside `config` string)
+```json
+{
+  "name": "unique_visual_name",
+  "layouts": [{"id": 0, "position": {"x": 30, "y": 20, "z": 1000, "width": 250, "height": 110, "tabOrder": 0}}],
+  "singleVisual": {
+    "visualType": "barChart",
+    "projections": {
+      "Category": [{"queryRef": "TableName.columnName"}],
+      "Y": [{"queryRef": "TableName.MeasureName"}]
+    },
+    "objects": {},
+    "dataTransforms": {
+      "projectionOrdering": {"Category": [0], "Y": [1]},
+      "queryMetadata": {
+        "Select": [
+          {"Restatement": "columnName", "Name": "TableName.columnName", "Type": 1},
+          {"Restatement": "MeasureName", "Name": "TableName.MeasureName", "Type": 2}
+        ]
+      },
+      "selects": [
+        {"displayName": "columnName", "queryName": "TableName.columnName", "roles": {"Category": true}, "type": {"category": null, "underlyingType": 1}},
+        {"displayName": "MeasureName", "queryName": "TableName.MeasureName", "roles": {"Y": true}, "type": {"category": null, "underlyingType": 260}}
+      ]
+    }
+  }
+}
+```
+
+#### queryRef Format
+- Columns: `TableName.columnName` (e.g., `Sales Summary.country`)
+- Measures: `TableName.MeasureName` (e.g., `Sales Summary.Total Revenue`)
+- Must match semantic model table/column/measure names exactly (case-sensitive)
+
+#### dataTransforms Type Values
+| Type | underlyingType | Description |
+|------|---------------|-------------|
+| 1    | 1             | Text/categorical (columns) |
+| 2    | 260           | Numeric/measure/aggregate |
+
+#### Projection Role Names by Visual Type
+| visualType | Roles |
+|------------|-------|
+| `card` | `Values` (single measure or column) |
+| `multiRowCard` | `Values` (multiple fields) |
+| `barChart` | `Category` + `Y` |
+| `columnChart` | `Category` + `Y` |
+| `lineChart` | `Category` + `Y` (+ optional `Series`) |
+| `pieChart` | `Category` + `Y` |
+| `donutChart` | `Category` + `Y` |
+| `tableEx` | `Values` (array of columns) |
+| `matrix` | `Rows` + `Columns` + `Values` |
+| `map` | `Category` (location) + `Size` + `Color` |
+| `scatterChart` | `Category` + `X` + `Y` + `Size` |
+| `slicer` | `Values` |
+| `kpi` | `Indicator` + `TrendAxis` + `Goal` |
+
+### PBIR Format (`definition/` folder)
+
+A structured folder with individual JSON files per visual, page, and bookmark. Publicly documented with JSON schemas. Supports external editing and merge-friendly diffs.
+
+#### File Structure (API parts)
+```
+definition.pbir                              # Semantic model binding
+definition/
+├── version.json                             # Required: PBIR version
+├── report.json                              # Required: report-level settings
+├── reportExtensions.json                    # Optional: report-level measures
+├── pages/
+│   ├── pages.json                           # Page ordering and active page
+│   └── <pageName>/
+│       ├── page.json                        # Required: page settings
+│       └── visuals/
+│           └── <visualName>/
+│               ├── visual.json              # Required: visual definition
+│               └── mobile.json              # Optional: mobile layout
+└── bookmarks/
+    ├── bookmarks.json                       # Bookmark ordering/groups
+    └── <bookmarkName>.bookmark.json         # Individual bookmark state
+.platform                                    # Git integration metadata
+```
+
+#### definition/version.json
+```json
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/versionMetadata/1.0.0/schema.json"
+}
+```
+
+#### definition/report.json (PBIR — NOT the same as PBIR-Legacy report.json)
+```json
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/report/1.0.0/schema.json",
+  "themeCollection": {
+    "baseTheme": {
+      "name": "CY24SU06",
+      "reportVersionAtImport": "5.55",
+      "type": "SharedResources"
+    }
+  },
+  "annotations": [
+    {"name": "defaultPage", "value": "<pageName>"}
+  ]
+}
+```
+
+#### definition/pages/pages.json
+```json
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/pagesMetadata/1.0.0/schema.json",
+  "pageOrder": ["page1Name", "page2Name"],
+  "activePageName": "page1Name"
+}
+```
+
+#### definition/pages/<pageName>/page.json
+```json
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/1.2.0/schema.json",
+  "name": "salesOverview",
+  "displayName": "Sales Overview",
+  "displayOption": "FitToPage",
+  "height": 720,
+  "width": 1280
+}
+```
+
+**displayOption values**: `FitToPage`, `FitToWidth`, `ActualSize`
+
+#### definition/pages/<pageName>/visuals/<visualName>/visual.json
+```json
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+  "name": "barByCountry",
+  "position": {
+    "x": 30,
+    "y": 150,
+    "z": 3000,
+    "width": 580,
+    "height": 380,
+    "tabOrder": 2000
+  },
+  "visual": {
+    "visualType": "barChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "Column": {"Expression": {"SourceRef": {"Entity": "Sales Summary"}}, "Property": "country"}
+              },
+              "queryRef": "Sales Summary.country"
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {"Expression": {"SourceRef": {"Entity": "Sales Summary"}}, "Property": "Total Revenue"}
+              },
+              "queryRef": "Sales Summary.Total Revenue"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+#### PBIR Field Expression Types (in `field` property)
+
+**Column reference:**
+```json
+{"Column": {"Expression": {"SourceRef": {"Entity": "TableName"}}, "Property": "columnName"}}
+```
+
+**Measure reference:**
+```json
+{"Measure": {"Expression": {"SourceRef": {"Entity": "TableName"}}, "Property": "measureName"}}
+```
+
+**Aggregation (e.g., SUM of a column):**
+```json
+{"Aggregation": {"Expression": {"Column": {"Expression": {"SourceRef": {"Entity": "TableName"}}, "Property": "columnName"}}, "Function": 0}}
+```
+Aggregation Function values: 0=Sum, 1=Avg, 2=Count, 3=Min, 4=Max, 5=CountNonNull, 6=Median, 7=StandardDeviation, 8=Variance
+
+#### PBIR Naming Convention
+- Page/visual/bookmark folder names default to 20-char unique IDs (e.g., `90c2e07d8e84e7d5c026`)
+- Can be renamed to human-friendly names (letters, digits, underscores, hyphens)
+- The `name` property inside each JSON must match the folder name and be unique
+
+#### PBIR Annotations
+Custom name-value pairs for external tools (ignored by Power BI Desktop):
+```json
+"annotations": [{"name": "myCustomKey", "value": "myCustomValue"}]
+```
+Supported on `visual.json`, `page.json`, and `report.json`.
+
+### Key Differences Between Formats
+
+| Aspect | PBIR-Legacy | PBIR |
+|--------|-------------|------|
+| File structure | Single `report.json` | `definition/` folder tree |
+| Visual definition | JSON string in `visualContainers[].config` | `visual.json` per visual |
+| Field binding | `projections` + `dataTransforms` | `query.queryState` with semantic expressions |
+| Schema validation | No public schema | Full JSON schemas with IntelliSense |
+| External editing | Not supported (may break) | Officially supported |
+| Merge conflicts | Entire report in one file | Per-visual file diffs |
+| Size limits | N/A | 1000 pages, 1000 visuals/page, 300MB total |
+| Future | Deprecated at GA | Only supported format at GA |
+| API export format | Matches what's stored in service | Matches what's stored in service |
+
+### Fabric REST API Usage
+
+**Creating a report (both formats):**
+```
+POST /workspaces/{ws}/reports
+Body: {"displayName": "My Report", "definition": {"parts": [...]}}
+```
+
+**Updating definition (both formats):**
+```
+POST /workspaces/{ws}/reports/{id}/updateDefinition
+Body: {"definition": {"parts": [...]}}
+```
+
+Required parts depend on format:
+- **PBIR-Legacy**: `definition.pbir` (always required) + `report.json`
+- **PBIR**: `definition.pbir` + `definition/version.json` + `definition/report.json` + `definition/pages/pages.json` + page/visual files
+
+**fabio CLI commands:**
+```bash
+# Create report bound to semantic model (auto-generates blank definition)
+fabio report create --workspace $WS --name "My Report" --dataset $SEMANTIC_MODEL_ID
+
+# Update with visuals (PBIR-Legacy)
+fabio report update-definition --workspace $WS --id $REPORT_ID \
+  --file definition.pbir --report-json report.json
+
+# Get definition (returns format + all parts base64-encoded)
+fabio report get-definition --workspace $WS --id $REPORT_ID
+```
+
+### JSON Schema URLs (PBIR)
+- Visual container: `https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json`
+- Visual configuration: `https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualConfiguration/2.0.0/schema-embedded.json`
+- Page: `https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/1.2.0/schema.json`
+- Semantic query: `https://developer.microsoft.com/json-schemas/fabric/item/report/definition/semanticQuery/1.2.0/schema.json`
+- Report: `https://developer.microsoft.com/json-schemas/fabric/item/report/definition/report/1.0.0/schema.json`
+- definition.pbir: `https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/2.0.0/schema.json`
+- All schemas: `https://github.com/microsoft/json-schemas/tree/main/fabric/item/report/definition`
+
 ## Git Integration API Behaviors Discovered
 - **GitHub provider REQUIRES credentials**: `fabio git connect --provider github` ALWAYS requires `--connection-id` pointing to a pre-configured `GitHubSourceControl` connection. Without it, returns: `"The property myGitCredentials is required for the GitProviderType GitHub."`. Azure DevOps can use "Automatic" credentials without a connection ID.
 - **Fabric Git does NOT track table data**: Delta tables created via `load-table` are NOT version-controlled. Only item definitions (`.platform`, metadata files, notebook code) are tracked. `git status` shows NO changes after creating a table. CI/CD best practice: version-control the Notebook/Pipeline that creates the table.
