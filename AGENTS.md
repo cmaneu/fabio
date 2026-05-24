@@ -58,7 +58,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Eventhouse**: list, show, create, update, delete
 - **Eventstream**: list, show, create, update, delete, get-definition, update-definition
 - **KQL Database**: list, show, create, update, delete, get-definition, update-definition (ReadWrite/ReadOnlyFollowing)
-- **KQL Queryset**: list, show, create, update, delete, get-definition, update-definition
+- **KQL Queryset**: list, show, create, update, delete, get-definition, update-definition, run (executes saved query tabs against configured data source)
 - **KQL Dashboard**: list, show, create, update, delete, get-definition, update-definition (RealTimeDashboard.json)
 - **Mirrored Database**: list, show, create, update, delete, get/update-definition, start, stop, status, table-status
 - **Reflex**: list, show, create, update, delete, get-definition, update-definition (Data Activator triggers)
@@ -92,7 +92,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
   - Principle 10: Two-way I/O (`fabio feedback send/list`)
 - **SQL Database**: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
 - **SQL Database import**: Reads CSV/JSON files, infers column types (Int/BigInt/Float/Bit/Date/NVarChar), generates CREATE TABLE + batched INSERTs via TDS. Supports --drop-if-exists, --no-create-table, --batch-size.
-- **493 Rust tests** (91 unit + 402 E2E integration), zero clippy warnings, rustfmt clean
+- **630 Rust tests** (177 unit + 453 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~9.4 MB, stripped, full LTO, panic=abort
@@ -122,6 +122,8 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - Auth relies on `DefaultAzureCredential` chain (az login, environment, managed identity)
 - `azure_identity`/`azure_core` with `default-features = false` (no OpenSSL dependency)
 - `unsafe_code = "forbid"` in lints
+- **KQL Queryset definition format**: Uses `RealTimeQueryset.json` (NOT `RawQueryset.kql`). JSON structure: `{"queryset":{"version":"1.0.0","dataSources":[{"id","clusterUri","type","databaseName"}],"tabs":[{"id","content","title","dataSourceId"}]}}`. The `content` field holds the KQL query text with `\n` for newlines.
+- **KQL Queryset run**: Fetches definition via LRO, decodes `RealTimeQueryset.json`, selects tab by name or index, resolves data source (clusterUri + databaseName), executes via Kusto REST API. Tab selection is case-insensitive by title.
 
 ## Critical Context
 - User's tenant: set locally via secure environment configuration (redacted)
@@ -167,7 +169,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/eventhouse.rs`: list/show/create/update/delete
 - `src/commands/eventstream.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/kql_database.rs`: list/show/create/update/delete/get-definition/update-definition
-- `src/commands/kql_queryset.rs`: list/show/create/update/delete/get-definition/update-definition
+- `src/commands/kql_queryset.rs`: CRUD + get-definition/update-definition + run (fetch definition, select tab, execute against Kusto REST API)
 - `src/commands/kql_dashboard.rs`: list/show/create/update/delete/get-definition/update-definition (RealTimeDashboard.json)
 - `src/commands/mirrored_database.rs`: list/show/create/update/delete/get-definition/update-definition/start/stop/status/table-status
 - `src/commands/reflex.rs`: list/show/create/update/delete/get-definition/update-definition (Data Activator)

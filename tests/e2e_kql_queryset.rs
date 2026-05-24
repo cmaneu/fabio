@@ -1,4 +1,8 @@
 //! End-to-end integration tests for `fabio kql-queryset` commands.
+//!
+//! Run tests require:
+//! - `FABIO_TEST_SOURCE_WORKSPACE` (workspace with queryset)
+//! - `FABIO_TEST_KQL_QUERYSET_ID` (ID of a queryset with saved tabs pointing to a KQL database)
 
 mod common;
 
@@ -127,4 +131,199 @@ fn kql_queryset_dry_run_create() {
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["would_execute"], "kql-queryset create");
+}
+
+// ─── Run Tests ───────────────────────────────────────────────────────────────
+
+fn queryset_test_config() -> (TestConfig, String) {
+    let cfg = TestConfig::from_env();
+    let queryset_id = std::env::var("FABIO_TEST_KQL_QUERYSET_ID")
+        .expect("FABIO_TEST_KQL_QUERYSET_ID required for run tests");
+    (cfg, queryset_id)
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with KQL queryset"]
+#[serial]
+fn kql_queryset_run_default_tab() {
+    let (cfg, queryset_id) = queryset_test_config();
+
+    let output = fabio()
+        .args([
+            "kql-queryset",
+            "run",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &queryset_id,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    // Should return data (either rows or a no-results message)
+    assert!(json.get("data").is_some() || json.get("count").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with KQL queryset"]
+#[serial]
+fn kql_queryset_run_by_tab_name() {
+    let (cfg, queryset_id) = queryset_test_config();
+
+    let output = fabio()
+        .args([
+            "kql-queryset",
+            "run",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &queryset_id,
+            "--tab",
+            "EventCount",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    // EventCount should return a count result
+    if let Some(rows) = data.as_array() {
+        assert!(!rows.is_empty());
+        assert!(rows[0].get("Count").is_some());
+    }
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with KQL queryset"]
+#[serial]
+fn kql_queryset_run_by_tab_index() {
+    let (cfg, queryset_id) = queryset_test_config();
+
+    let output = fabio()
+        .args([
+            "kql-queryset",
+            "run",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &queryset_id,
+            "--tab",
+            "0",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    assert!(json.get("data").is_some() || json.get("count").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with KQL queryset"]
+#[serial]
+fn kql_queryset_run_tab_not_found() {
+    let (cfg, queryset_id) = queryset_test_config();
+
+    let assert = fabio()
+        .args([
+            "kql-queryset",
+            "run",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &queryset_id,
+            "--tab",
+            "NonExistentTab",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err_json["error"]["code"], "NOT_FOUND");
+    assert!(err_json["error"]["hint"].as_str().unwrap().contains("Available tabs"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with KQL queryset"]
+#[serial]
+fn kql_queryset_run_tab_index_out_of_range() {
+    let (cfg, queryset_id) = queryset_test_config();
+
+    let assert = fabio()
+        .args([
+            "kql-queryset",
+            "run",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &queryset_id,
+            "--tab",
+            "99",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err_json["error"]["code"], "NOT_FOUND");
+    assert!(err_json["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("out of range"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with KQL queryset"]
+#[serial]
+fn kql_queryset_run_case_insensitive_tab() {
+    let (cfg, queryset_id) = queryset_test_config();
+
+    // Test case-insensitive tab lookup
+    let output = fabio()
+        .args([
+            "kql-queryset",
+            "run",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &queryset_id,
+            "--tab",
+            "eventcount", // lowercase version of "EventCount"
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    assert!(json.get("data").is_some() || json.get("count").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with KQL queryset"]
+#[serial]
+fn kql_queryset_run_not_found_queryset() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "kql-queryset",
+            "run",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err_json["error"]["code"], "NOT_FOUND");
 }
