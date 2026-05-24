@@ -354,6 +354,233 @@ fn lakehouse_move_table_across_workspaces() {
         .success();
 }
 
+// ─── upload-table (single-step upload + load) ────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_upload_table_csv_auto_format() {
+    let cfg = TestConfig::from_env();
+    let table_name = common::unique_name("upload_tbl");
+
+    let tmp_dir = TempDir::new().unwrap();
+    let csv_content = "id,name,score\n1,alice,95\n2,bob,87\n3,carol,91\n";
+    let local_path = tmp_dir.path().join("scores.csv");
+    fs::write(&local_path, csv_content).unwrap();
+
+    // upload-table: single-step (auto-detects Csv from extension)
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "upload-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            local_path.to_str().unwrap(),
+            "--table",
+            &table_name,
+        ])
+        .timeout(std::time::Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "loaded");
+    assert_eq!(data["table"], table_name);
+    assert_eq!(data["format"], "Csv");
+
+    // Verify table exists
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "list-tables",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let found = data
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["name"].as_str() == Some(table_name.as_str()));
+    assert!(found, "table not found in listing after upload-table");
+
+    // Cleanup
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            &table_name,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_upload_table_explicit_format() {
+    let cfg = TestConfig::from_env();
+    let table_name = common::unique_name("upload_fmt");
+
+    let tmp_dir = TempDir::new().unwrap();
+    let csv_content = "col1,col2\nfoo,10\nbar,20\n";
+    let local_path = tmp_dir.path().join("data.txt"); // non-standard extension
+    fs::write(&local_path, csv_content).unwrap();
+
+    // upload-table with explicit --format Csv (since .txt can't be auto-detected)
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "upload-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            local_path.to_str().unwrap(),
+            "--table",
+            &table_name,
+            "--format",
+            "Csv",
+        ])
+        .timeout(std::time::Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "loaded");
+    assert_eq!(data["table"], table_name);
+
+    // Cleanup
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            &table_name,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_upload_table_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let tmp_dir = TempDir::new().unwrap();
+    let local_path = tmp_dir.path().join("dry.csv");
+    fs::write(&local_path, "a,b\n1,2\n").unwrap();
+
+    // dry-run should NOT upload or load
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "upload-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            local_path.to_str().unwrap(),
+            "--table",
+            "dry_run_table",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["command"], "lakehouse upload-table");
+}
+
+#[test]
+fn lakehouse_upload_table_invalid_mode() {
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "upload-table",
+            "--workspace",
+            "fake-ws",
+            "--id",
+            "fake-id",
+            "--source-path",
+            "/dev/null",
+            "--table",
+            "t",
+            "--mode",
+            "BadMode",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("INVALID_INPUT"),
+        "expected INVALID_INPUT error code"
+    );
+    assert!(
+        stderr.contains("Overwrite"),
+        "expected valid modes in error hint"
+    );
+}
+
+#[test]
+fn lakehouse_upload_table_unknown_extension() {
+    let tmp_dir = TempDir::new().unwrap();
+    let local_path = tmp_dir.path().join("data.xyz");
+    fs::write(&local_path, "stuff").unwrap();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "upload-table",
+            "--workspace",
+            "fake-ws",
+            "--id",
+            "fake-id",
+            "--source-path",
+            local_path.to_str().unwrap(),
+            "--table",
+            "t",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("INVALID_INPUT"),
+        "expected INVALID_INPUT error code"
+    );
+    assert!(
+        stderr.contains("--format"),
+        "expected hint suggesting --format flag"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Delete non-existent table returns error
 // ---------------------------------------------------------------------------

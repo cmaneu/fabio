@@ -147,8 +147,35 @@ pub enum LakehouseCommand {
         #[arg(short = 'd', long = "dest-path")]
         dest_path: String,
     },
-    /// Load a file into a Delta table
+    /// Upload a local file and load it into a Delta table (upload + load-table in one step)
     #[command(display_order = 12)]
+    UploadTable {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long)]
+        id: String,
+
+        /// Local source file path (e.g., ./data.csv)
+        #[arg(short = 's', long = "source-path")]
+        source_path: String,
+
+        /// Table name
+        #[arg(short = 't', long)]
+        table: String,
+
+        /// Load mode: Overwrite or Append
+        #[arg(short, long, default_value = "Overwrite")]
+        mode: String,
+
+        /// File format: Csv, Parquet, Json (auto-detected from extension if omitted)
+        #[arg(short, long)]
+        format: Option<String>,
+    },
+    /// Load a file (already in the lakehouse) into a Delta table
+    #[command(display_order = 13)]
     LoadTable {
         /// Workspace ID
         #[arg(short, long)]
@@ -657,6 +684,25 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             source_path,
             dest_path,
         } => download(cli, client, workspace, id, source_path, dest_path).await,
+        LakehouseCommand::UploadTable {
+            workspace,
+            id,
+            source_path,
+            table,
+            mode,
+            format,
+        } => upload_table(
+            cli,
+            client,
+            workspace,
+            id,
+            source_path,
+            table,
+            mode,
+            format.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse upload-table", "Contributor")),
         LakehouseCommand::LoadTable {
             workspace,
             id,
@@ -1275,6 +1321,147 @@ async fn load_table(
 
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+/// Upload a local file to the lakehouse and load it into a Delta table in one step.
+/// Auto-detects format from file extension if `--format` is not provided.
+#[allow(clippy::too_many_arguments)]
+async fn upload_table(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    source_path: &str,
+    table: &str,
+    mode: &str,
+    format: Option<&str>,
+) -> Result<()> {
+    const VALID_MODES: &[&str] = &["Overwrite", "Append"];
+    const VALID_FORMATS: &[&str] = &["Csv", "Parquet", "Json"];
+
+    if !VALID_MODES.contains(&mode) {
+        return Err(crate::errors::FabioError::with_hint(
+            crate::errors::ErrorCode::InvalidInput,
+            format!("Invalid load mode: '{mode}'"),
+            format!(
+                "--mode must be one of: {} (got: '{mode}')",
+                VALID_MODES.join(", ")
+            ),
+        )
+        .into());
+    }
+
+    // Auto-detect format from file extension if not explicitly provided
+    let detected_format = match format {
+        Some(f) => f.to_string(),
+        None => detect_format_from_extension(source_path)?,
+    };
+
+    if !VALID_FORMATS.contains(&detected_format.as_str()) {
+        return Err(crate::errors::FabioError::with_hint(
+            crate::errors::ErrorCode::InvalidInput,
+            format!("Invalid format: '{detected_format}'"),
+            format!(
+                "--format must be one of: {} (got: '{detected_format}')",
+                VALID_FORMATS.join(", ")
+            ),
+        )
+        .into());
+    }
+
+    // Derive a staging path in the lakehouse Files area
+    let filename = Path::new(source_path)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let staging_path = format!("Files/.staging/{filename}");
+
+    if output::dry_run_guard(
+        cli,
+        "lakehouse upload-table",
+        &serde_json::json!({
+            "workspace": workspace,
+            "lakehouse": id,
+            "source_path": source_path,
+            "staging_path": staging_path,
+            "table": table,
+            "mode": mode,
+            "format": detected_format
+        }),
+    ) {
+        return Ok(());
+    }
+
+    // Step 1: Upload the local file to Files/.staging/<filename>
+    let data = std::fs::read(source_path).map_err(|e| {
+        crate::errors::FabioError::invalid_input(format!("Cannot read file {source_path}: {e}"))
+    })?;
+
+    eprintln!("  Uploading {source_path} to {staging_path}...");
+    client
+        .upload_onelake_file(workspace, id, &staging_path, &data)
+        .await?;
+
+    // Step 2: Load the uploaded file into the Delta table
+    eprintln!("  Loading into table '{table}' (mode={mode}, format={detected_format})...");
+    let body = serde_json::json!({
+        "relativePath": staging_path,
+        "pathType": "File",
+        "mode": mode,
+        "formatOptions": {
+            "format": detected_format,
+            "header": true,
+            "delimiter": ","
+        }
+    });
+
+    let load_result = client
+        .post(
+            &format!("/workspaces/{workspace}/lakehouses/{id}/tables/{table}/load"),
+            &body,
+            true,
+        )
+        .await;
+
+    // Step 3: Clean up the staging file (best-effort)
+    let _ = client
+        .delete_onelake_file(workspace, id, &staging_path)
+        .await;
+
+    // Handle the load result
+    load_result?;
+
+    let obj = serde_json::json!({
+        "table": table,
+        "source": source_path,
+        "mode": mode,
+        "format": detected_format,
+        "status": "loaded"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+/// Detect the file format (Csv, Parquet, Json) from a file extension.
+fn detect_format_from_extension(path: &str) -> Result<String> {
+    let ext = Path::new(path)
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("")
+        .to_lowercase();
+
+    match ext.as_str() {
+        "csv" | "tsv" => Ok("Csv".to_string()),
+        "parquet" | "pq" => Ok("Parquet".to_string()),
+        "json" | "jsonl" | "ndjson" => Ok("Json".to_string()),
+        _ => Err(crate::errors::FabioError::with_hint(
+            crate::errors::ErrorCode::InvalidInput,
+            format!("Cannot detect format from extension '.{ext}'"),
+            "Use --format to specify one of: Csv, Parquet, Json".to_string(),
+        )
+        .into()),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2643,5 +2830,211 @@ fn read_json_body(file: Option<&str>, content: Option<&str>, command: &str) -> R
             ),
         )
         .into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── detect_format_from_extension ────────────────────────────────────
+
+    #[test]
+    fn detect_format_csv() {
+        assert_eq!(detect_format_from_extension("data.csv").unwrap(), "Csv");
+    }
+
+    #[test]
+    fn detect_format_tsv() {
+        assert_eq!(detect_format_from_extension("data.tsv").unwrap(), "Csv");
+    }
+
+    #[test]
+    fn detect_format_parquet() {
+        assert_eq!(
+            detect_format_from_extension("sales.parquet").unwrap(),
+            "Parquet"
+        );
+    }
+
+    #[test]
+    fn detect_format_pq_shorthand() {
+        assert_eq!(
+            detect_format_from_extension("events.pq").unwrap(),
+            "Parquet"
+        );
+    }
+
+    #[test]
+    fn detect_format_json() {
+        assert_eq!(detect_format_from_extension("logs.json").unwrap(), "Json");
+    }
+
+    #[test]
+    fn detect_format_jsonl() {
+        assert_eq!(detect_format_from_extension("stream.jsonl").unwrap(), "Json");
+    }
+
+    #[test]
+    fn detect_format_ndjson() {
+        assert_eq!(
+            detect_format_from_extension("events.ndjson").unwrap(),
+            "Json"
+        );
+    }
+
+    #[test]
+    fn detect_format_case_insensitive() {
+        assert_eq!(detect_format_from_extension("DATA.CSV").unwrap(), "Csv");
+        assert_eq!(
+            detect_format_from_extension("big.PARQUET").unwrap(),
+            "Parquet"
+        );
+        assert_eq!(detect_format_from_extension("log.JSON").unwrap(), "Json");
+    }
+
+    #[test]
+    fn detect_format_mixed_case() {
+        assert_eq!(detect_format_from_extension("file.Csv").unwrap(), "Csv");
+        assert_eq!(
+            detect_format_from_extension("file.Parquet").unwrap(),
+            "Parquet"
+        );
+        assert_eq!(detect_format_from_extension("file.JsonL").unwrap(), "Json");
+    }
+
+    #[test]
+    fn detect_format_with_path_components() {
+        assert_eq!(
+            detect_format_from_extension("/tmp/dir/file.csv").unwrap(),
+            "Csv"
+        );
+        assert_eq!(
+            detect_format_from_extension("./relative/path.parquet").unwrap(),
+            "Parquet"
+        );
+        assert_eq!(
+            detect_format_from_extension("C:\\Users\\data\\file.json").unwrap(),
+            "Json"
+        );
+    }
+
+    #[test]
+    fn detect_format_with_dots_in_path() {
+        assert_eq!(
+            detect_format_from_extension("/tmp/my.dir/v1.2/data.csv").unwrap(),
+            "Csv"
+        );
+    }
+
+    #[test]
+    fn detect_format_unknown_extension_errors() {
+        let err = detect_format_from_extension("data.xlsx").unwrap_err();
+        let fabio_err = err.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(fabio_err.code, ErrorCode::InvalidInput);
+        assert!(
+            fabio_err.message.contains("xlsx"),
+            "error message should mention the extension"
+        );
+        let hint = fabio_err.hint.as_ref().unwrap();
+        assert!(hint.contains("--format"), "hint should suggest --format");
+        assert!(hint.contains("Csv"), "hint should list valid formats");
+    }
+
+    #[test]
+    fn detect_format_no_extension_errors() {
+        let err = detect_format_from_extension("Makefile").unwrap_err();
+        let fabio_err = err.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(fabio_err.code, ErrorCode::InvalidInput);
+        let hint = fabio_err.hint.as_ref().unwrap();
+        assert!(hint.contains("--format"), "hint should suggest --format");
+    }
+
+    #[test]
+    fn detect_format_hidden_file_no_extension_errors() {
+        let err = detect_format_from_extension(".gitignore").unwrap_err();
+        let fabio_err = err.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(fabio_err.code, ErrorCode::InvalidInput);
+    }
+
+    // ─── upload_table staging path derivation ────────────────────────────
+
+    #[test]
+    fn staging_path_uses_filename_only() {
+        // Verify the staging path logic (same as in upload_table)
+        let source = "/home/user/data/sales_2024.csv";
+        let filename = Path::new(source)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        let staging = format!("Files/.staging/{filename}");
+        assert_eq!(staging, "Files/.staging/sales_2024.csv");
+    }
+
+    #[test]
+    fn staging_path_handles_deep_nesting() {
+        let source = "/home/user/projects/etl/output/2024/01/report.parquet";
+        let filename = Path::new(source)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        let staging = format!("Files/.staging/{filename}");
+        assert_eq!(staging, "Files/.staging/report.parquet");
+    }
+
+    #[test]
+    fn staging_path_handles_relative_paths() {
+        let source = "./data/events.json";
+        let filename = Path::new(source)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        let staging = format!("Files/.staging/{filename}");
+        assert_eq!(staging, "Files/.staging/events.json");
+    }
+
+    // ─── upload_table mode/format validation (inline logic) ──────────────
+
+    #[test]
+    fn valid_modes_accepted() {
+        const VALID_MODES: &[&str] = &["Overwrite", "Append"];
+        assert!(VALID_MODES.contains(&"Overwrite"));
+        assert!(VALID_MODES.contains(&"Append"));
+        assert!(!VALID_MODES.contains(&"overwrite"));
+        assert!(!VALID_MODES.contains(&"OVERWRITE"));
+        assert!(!VALID_MODES.contains(&"Upsert"));
+        assert!(!VALID_MODES.contains(&"Replace"));
+    }
+
+    #[test]
+    fn valid_formats_accepted() {
+        const VALID_FORMATS: &[&str] = &["Csv", "Parquet", "Json"];
+        assert!(VALID_FORMATS.contains(&"Csv"));
+        assert!(VALID_FORMATS.contains(&"Parquet"));
+        assert!(VALID_FORMATS.contains(&"Json"));
+        assert!(!VALID_FORMATS.contains(&"csv"));
+        assert!(!VALID_FORMATS.contains(&"Avro"));
+        assert!(!VALID_FORMATS.contains(&"XML"));
+    }
+
+    // ─── is_glob_pattern ─────────────────────────────────────────────────
+
+    #[test]
+    fn glob_pattern_detection() {
+        assert!(is_glob_pattern("Files/*.csv"));
+        assert!(is_glob_pattern("Tables/[a-z]*"));
+        assert!(is_glob_pattern("data?.parquet"));
+        assert!(!is_glob_pattern("Files/data.csv"));
+        assert!(!is_glob_pattern("/plain/path/file.txt"));
+    }
+
+    #[test]
+    fn glob_pattern_in_directory() {
+        assert!(is_glob_pattern("Files/subdir/*.parquet"));
+        assert!(is_glob_pattern("Tables/sales_*"));
+        assert!(!is_glob_pattern("Tables/sales_2024"));
     }
 }
