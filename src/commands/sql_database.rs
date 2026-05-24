@@ -959,6 +959,7 @@ async fn resolve_sql_connection(
     Ok((host, port, database))
 }
 
+#[allow(clippy::too_many_lines)]
 async fn query(
     cli: &Cli,
     client: &FabricClient,
@@ -1015,9 +1016,17 @@ async fn query(
         .create_client(context, &data_source, None)
         .await
         .map_err(|e| {
+            let msg = format!("{e}");
+            let hint = if msg.contains("18456") {
+                ". Hint: Fabric SQL Database requires F4+ capacity. On F2, TDS connections \
+                 fail with 'Validation of user's permissions failed' due to insufficient \
+                 compute, not actual permissions issues. Scale your capacity to F4 or higher."
+            } else {
+                ""
+            };
             FabioError::new(
                 ErrorCode::ApiError,
-                format!("TDS connection failed: {e}"),
+                format!("TDS connection failed: {e}{hint}"),
             )
         })?;
 
@@ -1026,7 +1035,16 @@ async fn query(
         .execute(sql_text, Some(60), None)
         .await
         .map_err(|e| {
-            FabioError::new(ErrorCode::ApiError, format!("SQL execution failed: {e}"))
+            let msg = format!("{e}");
+            let hint = if msg.contains("40515") {
+                ". Hint: Fabric SQL Database does not support cross-database queries via \
+                 three-part naming ([Database].[schema].[table]). Use a lakehouse SQL \
+                 endpoint or warehouse instead — they support cross-database queries to \
+                 SQL Databases in the same workspace."
+            } else {
+                ""
+            };
+            FabioError::new(ErrorCode::ApiError, format!("SQL execution failed: {e}{hint}"))
         })?;
 
     // Collect results
@@ -1500,9 +1518,17 @@ async fn import(
         .create_client(context, &data_source, None)
         .await
         .map_err(|e| {
+            let msg = format!("{e}");
+            let hint = if msg.contains("18456") {
+                ". Hint: Fabric SQL Database requires F4+ capacity. On F2, TDS connections \
+                 fail with 'Validation of user's permissions failed' due to insufficient \
+                 compute, not actual permissions issues. Scale your capacity to F4 or higher."
+            } else {
+                ""
+            };
             FabioError::new(
                 ErrorCode::ApiError,
-                format!("TDS connection failed: {e}"),
+                format!("TDS connection failed: {e}{hint}"),
             )
         })?;
 
