@@ -90,7 +90,9 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
   - Principle 8: Async-aware (`--wait`, jobs ledger)
   - Principle 9: Named profiles (`fabio profile save/use/list/show/delete`)
   - Principle 10: Two-way I/O (`fabio feedback send/list`)
-- **468 Rust tests** (66 unit + 402 E2E integration), zero clippy warnings, rustfmt clean
+- **SQL Database**: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
+- **SQL Database import**: Reads CSV/JSON files, infers column types (Int/BigInt/Float/Bit/Date/NVarChar), generates CREATE TABLE + batched INSERTs via TDS. Supports --drop-if-exists, --no-create-table, --batch-size.
+- **493 Rust tests** (91 unit + 402 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~9.4 MB, stripped, full LTO, panic=abort
@@ -109,6 +111,8 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - LRO polling: 2s default interval, 120s max wait, handles `Location`/`x-ms-operation-id` headers
 - `post()` accepts `poll: bool` for LRO-aware operations
 - Load-table requires PascalCase values (`"Overwrite"`, `"Csv"`) and `format` inside `formatOptions`
+- **Load-table only supports Csv and Parquet**: The Fabric REST API `formatOptions` discriminated union only has `Csv` (with `header`/`delimiter`) and `Parquet` (format only). JSON is NOT supported — must convert to CSV/Parquet first. Sending CSV-specific fields (header, delimiter) with Parquet format causes API rejection.
+- **SQL Database import**: Uses type inference with `Unknown` initial state → first non-empty observation sets the type, subsequent observations widen (Int→BigInt→Float→NVarChar, never narrows)
 - **Server-side copy**: OneLake Blob API supports `PUT` with `x-ms-copy-source`; returns 202 with pending status. Poll via HEAD.
 - **No native move/rename**: OneLake rejects `x-ms-rename-source`. Move = copy + delete.
 - **Table file listing**: Must list from root (no `directory` param) to get real paths prefixed with item ID.
@@ -151,6 +155,8 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/lakehouse.rs`: 20 subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut)
 - `src/commands/notebook.rs`: create/get-definition/run (with --wait/--timeout)/status/stop/delete
 - `src/commands/warehouse.rs`: list/show/create/update/delete/query (endpoint resolved, stdin/file/flag SQL input)
+- `src/commands/sql_database.rs`: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
+- `src/commands/tds_utils.rs`: shared `column_value_to_json()` with `to_utf8_string()` fix
 - `src/commands/dataagent.rs`: list/show/create/update/delete/query
 - `src/commands/git.rs`: status/commit/pull/connect/disconnect/initialize/switch/connection/credentials/show-tracked
 - `src/commands/ontology.rs`: list/show/create/update/delete/get-definition/update-definition
@@ -194,6 +200,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_lakehouse_shortcuts.rs`: Shortcut create/get/delete tests
 - `tests/e2e_notebook.rs`: Notebook create/get-definition/run/run --wait/status/stop/delete tests
 - `tests/e2e_warehouse.rs`: Warehouse list/show/query/query-stdin tests
+- `tests/e2e_sql_database.rs`: SQL Database CRUD + query + import tests
 - `tests/e2e_dataagent.rs`: Data agent tests
 - `tests/e2e_git.rs`: Git command group tests
 - `tests/e2e_ontology.rs`: Ontology CRUD + definition tests
