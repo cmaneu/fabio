@@ -128,3 +128,189 @@ fn graphql_api_dry_run_create() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["would_execute"], "graphql-api create");
 }
+
+// ─── Query tests ─────────────────────────────────────────────────────────────
+
+/// Query the SalesGraphQL API (requires it to exist with data source configured)
+/// Uses FABIO_TEST_GRAPHQL_API_ID and FABIO_TEST_SOURCE_WORKSPACE.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn graphql_api_query_customers() {
+    let cfg = TestConfig::from_env();
+    let graphql_id = std::env::var("FABIO_TEST_GRAPHQL_API_ID")
+        .unwrap_or_else(|_| "12310041-f5d0-4578-bf40-7aa461c79868".to_string());
+
+    let assert = fabio()
+        .args([
+            "graphql-api",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &graphql_id,
+            "--gql",
+            "{ customers { items { customer_id email city } } }",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let items = data["customers"]["items"].as_array().unwrap();
+    assert!(!items.is_empty());
+    // Check first item has expected fields
+    assert!(items[0].get("customer_id").is_some());
+    assert!(items[0].get("email").is_some());
+    assert!(items[0].get("city").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn graphql_api_query_with_filter() {
+    let cfg = TestConfig::from_env();
+    let graphql_id = std::env::var("FABIO_TEST_GRAPHQL_API_ID")
+        .unwrap_or_else(|_| "12310041-f5d0-4578-bf40-7aa461c79868".to_string());
+
+    let assert = fabio()
+        .args([
+            "graphql-api",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &graphql_id,
+            "--gql",
+            r#"{ products(filter: {category: {eq: "Electronics"}}) { items { product_id category price } } }"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let items = data["products"]["items"].as_array().unwrap();
+    assert!(!items.is_empty());
+    // All returned items should be Electronics
+    for item in items {
+        assert_eq!(item["category"], "Electronics");
+    }
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn graphql_api_query_from_file() {
+    let cfg = TestConfig::from_env();
+    let graphql_id = std::env::var("FABIO_TEST_GRAPHQL_API_ID")
+        .unwrap_or_else(|_| "12310041-f5d0-4578-bf40-7aa461c79868".to_string());
+
+    // Write query to temp file
+    let tmp_file = std::env::temp_dir().join("fabio_test_query.graphql");
+    std::fs::write(&tmp_file, "{ products { items { product_id price } } }").unwrap();
+    let file_arg = format!("@{}", tmp_file.display());
+
+    let assert = fabio()
+        .args([
+            "graphql-api",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &graphql_id,
+            "--gql",
+            &file_arg,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let items = data["products"]["items"].as_array().unwrap();
+    assert!(!items.is_empty());
+
+    // Cleanup
+    let _ = std::fs::remove_file(&tmp_file);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn graphql_api_query_from_stdin() {
+    let cfg = TestConfig::from_env();
+    let graphql_id = std::env::var("FABIO_TEST_GRAPHQL_API_ID")
+        .unwrap_or_else(|_| "12310041-f5d0-4578-bf40-7aa461c79868".to_string());
+
+    let assert = fabio()
+        .args([
+            "graphql-api",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &graphql_id,
+        ])
+        .write_stdin("{ products { items { product_id } } }")
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data["products"]["items"].is_array());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn graphql_api_query_invalid_field_returns_error() {
+    let cfg = TestConfig::from_env();
+    let graphql_id = std::env::var("FABIO_TEST_GRAPHQL_API_ID")
+        .unwrap_or_else(|_| "12310041-f5d0-4578-bf40-7aa461c79868".to_string());
+
+    let assert = fabio()
+        .args([
+            "graphql-api",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &graphql_id,
+            "--gql",
+            "{ nonexistent_type { items { id } } }",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err_json["error"]["code"], "API_ERROR");
+    assert!(err_json["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("does not exist"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn graphql_api_query_not_found() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "graphql-api",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--gql",
+            "{ __typename }",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err_json["error"]["code"], "NOT_FOUND");
+}
