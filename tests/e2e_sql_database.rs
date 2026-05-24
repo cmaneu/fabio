@@ -5,6 +5,7 @@ mod common;
 use common::{TestConfig, extract_data, fabio, parse_json};
 use predicates::prelude::*;
 use serial_test::serial;
+use std::io::Write;
 
 #[test]
 #[ignore = "requires live Fabric tenant"]
@@ -555,4 +556,266 @@ fn sql_database_query_not_found() {
         code == "NOT_FOUND" || code == "API_ERROR",
         "Expected NOT_FOUND or API_ERROR, got: {code}"
     );
+}
+
+// ─── Import tests ────────────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant with SQL database"]
+#[serial]
+fn sql_database_import_csv() {
+    let cfg = TestConfig::from_env();
+    let db_id = ensure_sql_database(&cfg);
+
+    // Create a temp CSV file
+    let mut tmpfile = tempfile::Builder::new()
+        .suffix(".csv")
+        .tempfile()
+        .unwrap();
+    writeln!(tmpfile, "id,name,age,active").unwrap();
+    writeln!(tmpfile, "1,Alice,30,true").unwrap();
+    writeln!(tmpfile, "2,Bob,25,false").unwrap();
+    writeln!(tmpfile, "3,Charlie,35,true").unwrap();
+    tmpfile.flush().unwrap();
+
+    let file_path = tmpfile.path().to_str().unwrap().to_string();
+
+    // Import CSV
+    let assert = fabio()
+        .args([
+            "sql-database",
+            "import",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &db_id,
+            "--file",
+            &file_path,
+            "--table",
+            "test_csv_import",
+            "--drop-if-exists",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["rows_inserted"], 3);
+    assert_eq!(data["table"], "test_csv_import");
+
+    // Verify data via query
+    let assert = fabio()
+        .args([
+            "sql-database",
+            "query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &db_id,
+            "--sql",
+            "SELECT COUNT(*) AS cnt FROM [test_csv_import]",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let rows = extract_data(&json).as_array().unwrap().clone();
+    assert_eq!(rows[0]["cnt"], 3);
+
+    // Cleanup
+    let _ = fabio()
+        .args([
+            "sql-database",
+            "query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &db_id,
+            "--sql",
+            "DROP TABLE IF EXISTS [test_csv_import]",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with SQL database"]
+#[serial]
+fn sql_database_import_json() {
+    let cfg = TestConfig::from_env();
+    let db_id = ensure_sql_database(&cfg);
+
+    // Create a temp JSON file
+    let mut tmpfile = tempfile::Builder::new()
+        .suffix(".json")
+        .tempfile()
+        .unwrap();
+    write!(
+        tmpfile,
+        r#"[
+        {{"order_id": 1, "product": "Widget", "price": 9.99, "qty": 2}},
+        {{"order_id": 2, "product": "Gadget", "price": 19.99, "qty": 1}},
+        {{"order_id": 3, "product": "Doohickey", "price": 4.50, "qty": 5}}
+    ]"#
+    )
+    .unwrap();
+    tmpfile.flush().unwrap();
+
+    let file_path = tmpfile.path().to_str().unwrap().to_string();
+
+    // Import JSON
+    let assert = fabio()
+        .args([
+            "sql-database",
+            "import",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &db_id,
+            "--file",
+            &file_path,
+            "--table",
+            "test_json_import",
+            "--drop-if-exists",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["rows_inserted"], 3);
+
+    // Verify data
+    let assert = fabio()
+        .args([
+            "sql-database",
+            "query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &db_id,
+            "--sql",
+            "SELECT product, price FROM [test_json_import] WHERE order_id = 2",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let rows = extract_data(&json).as_array().unwrap().clone();
+    assert_eq!(rows[0]["product"], "Gadget");
+
+    // Cleanup
+    let _ = fabio()
+        .args([
+            "sql-database",
+            "query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &db_id,
+            "--sql",
+            "DROP TABLE IF EXISTS [test_json_import]",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with SQL database"]
+#[serial]
+fn sql_database_import_dry_run() {
+    let cfg = TestConfig::from_env();
+    let db_id = ensure_sql_database(&cfg);
+
+    // Create temp CSV
+    let mut tmpfile = tempfile::Builder::new()
+        .suffix(".csv")
+        .tempfile()
+        .unwrap();
+    writeln!(tmpfile, "x,y").unwrap();
+    writeln!(tmpfile, "1,hello").unwrap();
+    tmpfile.flush().unwrap();
+    let file_path = tmpfile.path().to_str().unwrap().to_string();
+
+    // Dry-run should NOT create the table
+    let assert = fabio()
+        .args([
+            "sql-database",
+            "import",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &db_id,
+            "--file",
+            &file_path,
+            "--table",
+            "test_dryrun_import",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // dry-run returns the plan
+    assert_eq!(data["total_rows"], 1);
+    assert!(data["create_table_ddl"].as_str().unwrap().contains("CREATE TABLE"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with SQL database"]
+#[serial]
+fn sql_database_import_unsupported_format() {
+    let cfg = TestConfig::from_env();
+    let db_id = ensure_sql_database(&cfg);
+
+    let mut tmpfile = tempfile::Builder::new()
+        .suffix(".xml")
+        .tempfile()
+        .unwrap();
+    writeln!(tmpfile, "<data/>").unwrap();
+    tmpfile.flush().unwrap();
+    let file_path = tmpfile.path().to_str().unwrap().to_string();
+
+    fabio()
+        .args([
+            "sql-database",
+            "import",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &db_id,
+            "--file",
+            &file_path,
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("Unsupported file format"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with SQL database"]
+#[serial]
+fn sql_database_import_file_not_found() {
+    let cfg = TestConfig::from_env();
+    let db_id = ensure_sql_database(&cfg);
+
+    fabio()
+        .args([
+            "sql-database",
+            "import",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &db_id,
+            "--file",
+            "/tmp/nonexistent_file_xyz.csv",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("Cannot read CSV file"));
 }

@@ -170,7 +170,7 @@ pub enum LakehouseCommand {
         #[arg(short, long, default_value = "Overwrite")]
         mode: String,
 
-        /// File format: Csv, Parquet, Json (auto-detected from extension if omitted)
+        /// File format: Csv, Parquet (auto-detected from extension if omitted)
         #[arg(short, long)]
         format: Option<String>,
     },
@@ -197,7 +197,7 @@ pub enum LakehouseCommand {
         #[arg(short, long, default_value = "Overwrite")]
         mode: String,
 
-        /// File format: Csv, Parquet, Json
+        /// File format: Csv, Parquet
         #[arg(short, long, default_value = "Csv")]
         format: String,
     },
@@ -1249,7 +1249,7 @@ async fn load_table(
     format: &str,
 ) -> Result<()> {
     const VALID_MODES: &[&str] = &["Overwrite", "Append"];
-    const VALID_FORMATS: &[&str] = &["Csv", "Parquet", "Json"];
+    const VALID_FORMATS: &[&str] = &["Csv", "Parquet"];
 
     if !VALID_MODES.contains(&mode) {
         return Err(crate::errors::FabioError::with_hint(
@@ -1289,15 +1289,22 @@ async fn load_table(
         return Ok(());
     }
 
+    let format_options = match format {
+        "Csv" => serde_json::json!({
+            "format": format,
+            "header": true,
+            "delimiter": ","
+        }),
+        _ => serde_json::json!({
+            "format": format
+        }),
+    };
+
     let body = serde_json::json!({
         "relativePath": source_path,
         "pathType": "File",
         "mode": mode,
-        "formatOptions": {
-            "format": format,
-            "header": true,
-            "delimiter": ","
-        }
+        "formatOptions": format_options
     });
 
     let data = client
@@ -1337,7 +1344,7 @@ async fn upload_table(
     format: Option<&str>,
 ) -> Result<()> {
     const VALID_MODES: &[&str] = &["Overwrite", "Append"];
-    const VALID_FORMATS: &[&str] = &["Csv", "Parquet", "Json"];
+    const VALID_FORMATS: &[&str] = &["Csv", "Parquet"];
 
     if !VALID_MODES.contains(&mode) {
         return Err(crate::errors::FabioError::with_hint(
@@ -1405,15 +1412,21 @@ async fn upload_table(
 
     // Step 2: Load the uploaded file into the Delta table
     eprintln!("  Loading into table '{table}' (mode={mode}, format={detected_format})...");
+    let format_options = match detected_format.as_str() {
+        "Csv" => serde_json::json!({
+            "format": detected_format,
+            "header": true,
+            "delimiter": ","
+        }),
+        _ => serde_json::json!({
+            "format": detected_format
+        }),
+    };
     let body = serde_json::json!({
         "relativePath": staging_path,
         "pathType": "File",
         "mode": mode,
-        "formatOptions": {
-            "format": detected_format,
-            "header": true,
-            "delimiter": ","
-        }
+        "formatOptions": format_options
     });
 
     let load_result = client
@@ -1443,7 +1456,7 @@ async fn upload_table(
     Ok(())
 }
 
-/// Detect the file format (Csv, Parquet, Json) from a file extension.
+/// Detect the file format (Csv, Parquet) from a file extension. JSON is not supported by the API.
 fn detect_format_from_extension(path: &str) -> Result<String> {
     let ext = Path::new(path)
         .extension()
@@ -1454,11 +1467,16 @@ fn detect_format_from_extension(path: &str) -> Result<String> {
     match ext.as_str() {
         "csv" | "tsv" => Ok("Csv".to_string()),
         "parquet" | "pq" => Ok("Parquet".to_string()),
-        "json" | "jsonl" | "ndjson" => Ok("Json".to_string()),
+        "json" | "jsonl" | "ndjson" => Err(crate::errors::FabioError::with_hint(
+            crate::errors::ErrorCode::InvalidInput,
+            "JSON format is not supported by the Fabric load-table API".to_string(),
+            "Convert to CSV or Parquet first. The load-table API only supports Csv and Parquet formats.".to_string(),
+        )
+        .into()),
         _ => Err(crate::errors::FabioError::with_hint(
             crate::errors::ErrorCode::InvalidInput,
             format!("Cannot detect format from extension '.{ext}'"),
-            "Use --format to specify one of: Csv, Parquet, Json".to_string(),
+            "Use --format to specify one of: Csv, Parquet".to_string(),
         )
         .into()),
     }
@@ -2876,21 +2894,26 @@ mod tests {
     }
 
     #[test]
-    fn detect_format_json() {
-        assert_eq!(detect_format_from_extension("logs.json").unwrap(), "Json");
+    fn detect_format_json_errors() {
+        let err = detect_format_from_extension("logs.json").unwrap_err();
+        let fabio_err = err.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(fabio_err.code, ErrorCode::InvalidInput);
+        assert!(fabio_err.message.contains("JSON format is not supported"));
     }
 
     #[test]
-    fn detect_format_jsonl() {
-        assert_eq!(detect_format_from_extension("stream.jsonl").unwrap(), "Json");
+    fn detect_format_jsonl_errors() {
+        let err = detect_format_from_extension("stream.jsonl").unwrap_err();
+        let fabio_err = err.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(fabio_err.code, ErrorCode::InvalidInput);
+        assert!(fabio_err.message.contains("JSON format is not supported"));
     }
 
     #[test]
-    fn detect_format_ndjson() {
-        assert_eq!(
-            detect_format_from_extension("events.ndjson").unwrap(),
-            "Json"
-        );
+    fn detect_format_ndjson_errors() {
+        let err = detect_format_from_extension("events.ndjson").unwrap_err();
+        let fabio_err = err.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(fabio_err.code, ErrorCode::InvalidInput);
     }
 
     #[test]
@@ -2900,7 +2923,8 @@ mod tests {
             detect_format_from_extension("big.PARQUET").unwrap(),
             "Parquet"
         );
-        assert_eq!(detect_format_from_extension("log.JSON").unwrap(), "Json");
+        // JSON should error regardless of case
+        assert!(detect_format_from_extension("log.JSON").is_err());
     }
 
     #[test]
@@ -2910,7 +2934,8 @@ mod tests {
             detect_format_from_extension("file.Parquet").unwrap(),
             "Parquet"
         );
-        assert_eq!(detect_format_from_extension("file.JsonL").unwrap(), "Json");
+        // JSON should error regardless of case
+        assert!(detect_format_from_extension("file.JsonL").is_err());
     }
 
     #[test]
@@ -2923,10 +2948,8 @@ mod tests {
             detect_format_from_extension("./relative/path.parquet").unwrap(),
             "Parquet"
         );
-        assert_eq!(
-            detect_format_from_extension("C:\\Users\\data\\file.json").unwrap(),
-            "Json"
-        );
+        // JSON should error even with path components
+        assert!(detect_format_from_extension("C:\\Users\\data\\file.json").is_err());
     }
 
     #[test]
@@ -3021,10 +3044,10 @@ mod tests {
 
     #[test]
     fn valid_formats_accepted() {
-        const VALID_FORMATS: &[&str] = &["Csv", "Parquet", "Json"];
+    const VALID_FORMATS: &[&str] = &["Csv", "Parquet"];
         assert!(VALID_FORMATS.contains(&"Csv"));
         assert!(VALID_FORMATS.contains(&"Parquet"));
-        assert!(VALID_FORMATS.contains(&"Json"));
+        assert!(!VALID_FORMATS.contains(&"Json"));
         assert!(!VALID_FORMATS.contains(&"csv"));
         assert!(!VALID_FORMATS.contains(&"Avro"));
         assert!(!VALID_FORMATS.contains(&"XML"));

@@ -47,6 +47,7 @@ home = "0.5"
 # Misc
 base64 = "0.22"
 glob = "0.3"
+csv = "1"
 
 # TDS protocol (SQL query execution for warehouse/lakehouse)
 # TODO: Switch to upstream crates.io release once https://github.com/microsoft/mssql-rust-driver
