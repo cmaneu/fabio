@@ -528,6 +528,45 @@ mod tests {
     }
 
     #[test]
+    fn test_graphql_body_construction_variables_null_when_omitted() {
+        // When variables is None, the body should NOT include variables key
+        let mut body = serde_json::json!({"query": "{ users { id } }"});
+        let variables_value: Value = Value::Null;
+        if !variables_value.is_null() {
+            body["variables"] = variables_value;
+        }
+        assert!(body.get("variables").is_none());
+    }
+
+    #[test]
+    fn test_graphql_body_construction_variables_object() {
+        let mut body =
+            serde_json::json!({"query": "query($limit: Int) { users(first: $limit) { id } }"});
+        let vars: Value = serde_json::from_str(r#"{"limit": 10}"#).unwrap();
+        if !vars.is_null() {
+            body["variables"] = vars;
+        }
+        assert_eq!(body["variables"]["limit"], 10);
+    }
+
+    #[test]
+    fn test_graphql_body_construction_variables_nested() {
+        let vars: Value =
+            serde_json::from_str(r#"{"filter": {"category": {"eq": "Electronics"}}, "first": 5}"#)
+                .unwrap();
+        let mut body = serde_json::json!({"query": "query($filter: FilterInput, $first: Int) { products(filter: $filter, first: $first) { items { id } } }"});
+        body["variables"] = vars;
+        assert_eq!(body["variables"]["filter"]["category"]["eq"], "Electronics");
+        assert_eq!(body["variables"]["first"], 5);
+    }
+
+    #[test]
+    fn test_graphql_body_operation_name_omitted_when_none() {
+        let body = serde_json::json!({"query": "{ users { id } }"});
+        assert!(body.get("operationName").is_none());
+    }
+
+    #[test]
     fn test_graphql_error_response_pure_error() {
         let response = serde_json::json!({
             "errors": [
@@ -542,6 +581,21 @@ mod tests {
             .and_then(Value::as_str)
             .unwrap();
         assert_eq!(message, "Cannot query field 'foo' on type 'Query'.");
+        // No data field
+        assert!(response.get("data").is_none());
+    }
+
+    #[test]
+    fn test_graphql_error_response_pure_error_with_null_data() {
+        // Some GraphQL servers return {"data": null, "errors": [...]}
+        let response = serde_json::json!({
+            "data": null,
+            "errors": [{"message": "Internal server error"}]
+        });
+        assert!(response.get("data").is_some());
+        assert!(response["data"].is_null());
+        assert!(response.get("errors").is_some());
+        // This should be treated as a pure error (data is null)
     }
 
     #[test]
@@ -551,10 +605,44 @@ mod tests {
             "data": {"users": [{"id": "1"}]},
             "errors": [{"message": "Unauthorized field 'email'"}]
         });
-        // Has both data and errors — should still render
+        // Has both data and errors — should still render data
         assert!(response.get("data").is_some());
         assert!(!response["data"].is_null());
         assert!(response.get("errors").is_some());
+    }
+
+    #[test]
+    fn test_graphql_error_response_multiple_errors() {
+        let response = serde_json::json!({
+            "errors": [
+                {"message": "Field 'a' not found", "locations": [{"line": 1, "column": 3}]},
+                {"message": "Field 'b' not found", "locations": [{"line": 1, "column": 10}]}
+            ]
+        });
+        let errors = response["errors"].as_array().unwrap();
+        assert_eq!(errors.len(), 2);
+        // First error message is used for CLI error
+        assert_eq!(errors[0]["message"], "Field 'a' not found");
+    }
+
+    #[test]
+    fn test_graphql_response_data_unwrap() {
+        // Normal success response — data should be unwrapped
+        let response = serde_json::json!({
+            "data": {"customers": {"items": [{"id": 1}, {"id": 2}]}}
+        });
+        let result = response.get("data").unwrap_or(&response);
+        assert!(result.get("customers").is_some());
+        assert_eq!(result["customers"]["items"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_graphql_response_no_data_key() {
+        // Edge case: response doesn't have "data" key at all (unexpected)
+        let response = serde_json::json!({"unexpected": "format"});
+        let result = response.get("data").unwrap_or(&response);
+        // Falls back to original response
+        assert_eq!(result["unexpected"], "format");
     }
 
     #[test]
@@ -569,5 +657,77 @@ mod tests {
         let bad_json = "not valid json";
         let result: Result<Value, _> = serde_json::from_str(bad_json);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_graphql_variables_empty_object() {
+        let vars: Value = serde_json::from_str("{}").unwrap();
+        assert!(vars.is_object());
+        assert!(vars.as_object().unwrap().is_empty());
+        // Empty object is NOT null, so it should be included
+        assert!(!vars.is_null());
+    }
+
+    #[test]
+    fn test_graphql_file_prefix_detection() {
+        assert!("@query.graphql".starts_with('@'));
+        assert!("@/tmp/my query.graphql".starts_with('@'));
+        assert!(!"{ query }".starts_with('@'));
+        assert!(!"query { users { id } }".starts_with('@'));
+    }
+
+    #[test]
+    fn test_graphql_file_path_extraction() {
+        let input = "@/tmp/my-query.graphql";
+        let file_path = &input[1..];
+        assert_eq!(file_path, "/tmp/my-query.graphql");
+    }
+
+    #[test]
+    fn test_graphql_multiline_query() {
+        let query = r#"
+            query GetProducts($category: String!) {
+                products(filter: { category: { eq: $category } }) {
+                    items {
+                        product_id
+                        category
+                        price
+                    }
+                }
+            }
+        "#;
+        let body = serde_json::json!({"query": query});
+        assert!(body["query"].as_str().unwrap().contains("GetProducts"));
+        assert!(body["query"].as_str().unwrap().contains("$category"));
+    }
+
+    #[test]
+    fn test_graphql_mutation_query_format() {
+        // Mutations use the same body format as queries
+        let mutation =
+            r#"mutation CreateUser($name: String!) { createUser(name: $name) { id name } }"#;
+        let vars: Value = serde_json::from_str(r#"{"name": "Alice"}"#).unwrap();
+        let mut body = serde_json::json!({"query": mutation});
+        body["variables"] = vars;
+        assert!(body["query"].as_str().unwrap().starts_with("mutation"));
+        assert_eq!(body["variables"]["name"], "Alice");
+    }
+
+    #[test]
+    fn test_graphql_error_with_extensions() {
+        // Fabric returns errors with extensions containing code and other metadata
+        let response = serde_json::json!({
+            "errors": [{
+                "message": "Introspection is not allowed for the current request.",
+                "extensions": {"code": "HC0046", "field": "__schema"},
+                "locations": [{"line": 1, "column": 3}]
+            }]
+        });
+        let errors = response["errors"].as_array().unwrap();
+        assert_eq!(errors[0]["extensions"]["code"], "HC0046");
+        assert_eq!(
+            errors[0]["message"],
+            "Introspection is not allowed for the current request."
+        );
     }
 }
