@@ -158,6 +158,18 @@ impl FabricClient {
         Ok(token.token)
     }
 
+    /// Get a token for an arbitrary scope (used for Kusto queries with dynamic query URIs).
+    /// Not cached — each call acquires a fresh token from the credential chain.
+    pub async fn require_token_for_scope(&self, scope: &str) -> Result<String> {
+        let (token, _source) = acquire_token(scope).await?;
+        Ok(token.token)
+    }
+
+    /// Returns the inner HTTP client for direct requests (e.g., Kusto REST API).
+    pub const fn http(&self) -> &Client {
+        &self.http
+    }
+
     /// Returns which credential source was used for the last successful authentication.
     pub async fn credential_source(&self) -> Option<CredentialSource> {
         let guard = self.credential_source.read().await;
