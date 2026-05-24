@@ -95,6 +95,10 @@ pub enum ReportCommand {
         id: String,
     },
     /// Update the definition of a report
+    ///
+    /// The Fabric API requires definition.pbir in every update. Use --file for the
+    /// semantic model binding (always required) and --report-json to include visual
+    /// definitions for PBIR-Legacy format reports.
     #[command(display_order = 7)]
     UpdateDefinition {
         /// Workspace ID
@@ -105,9 +109,13 @@ pub enum ReportCommand {
         #[arg(long)]
         id: String,
 
-        /// Path to updated report definition file (JSON)
+        /// Path to definition.pbir file (semantic model binding — always required)
         #[arg(long)]
         file: String,
+
+        /// Path to report.json file (visual definitions for PBIR-Legacy format)
+        #[arg(long)]
+        report_json: Option<String>,
     },
 
     // ── Sharing & Publishing ─────────────────────────────────────────────
@@ -173,7 +181,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
             workspace,
             id,
             file,
-        } => update_definition(cli, client, workspace, id, file).await,
+            report_json,
+        } => update_definition(cli, client, workspace, id, file, report_json.as_deref()).await,
         ReportCommand::PublishToWeb { workspace, id } => {
             publish_to_web(cli, client, workspace, id).await
         }
@@ -399,21 +408,37 @@ async fn update_definition(
     workspace: &str,
     id: &str,
     file: &str,
+    report_json: Option<&str>,
 ) -> Result<()> {
+    let mut parts = Vec::new();
+    let mut total_len: usize = 0;
+
+    // definition.pbir is always required by the Fabric API
     let content = std::fs::read_to_string(file)
         .map_err(|e| anyhow::anyhow!("Failed to read file '{file}': {e}"))?;
-
+    total_len += content.len();
     let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
+    parts.push(serde_json::json!({
+        "path": "definition.pbir",
+        "payload": encoded,
+        "payloadType": "InlineBase64"
+    }));
+
+    if let Some(rj) = report_json {
+        let rj_content = std::fs::read_to_string(rj)
+            .map_err(|e| anyhow::anyhow!("Failed to read file '{rj}': {e}"))?;
+        total_len += rj_content.len();
+        let rj_encoded = base64::engine::general_purpose::STANDARD.encode(rj_content.as_bytes());
+        parts.push(serde_json::json!({
+            "path": "report.json",
+            "payload": rj_encoded,
+            "payloadType": "InlineBase64"
+        }));
+    }
 
     let body = serde_json::json!({
         "definition": {
-            "parts": [
-                {
-                    "path": "definition.pbir",
-                    "payload": encoded,
-                    "payloadType": "InlineBase64"
-                }
-            ]
+            "parts": parts
         }
     });
 
@@ -423,7 +448,8 @@ async fn update_definition(
         &serde_json::json!({
             "workspace": workspace,
             "id": id,
-            "contentLength": content.len()
+            "parts": parts.len(),
+            "contentLength": total_len
         }),
     ) {
         return Ok(());
