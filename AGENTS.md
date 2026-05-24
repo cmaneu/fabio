@@ -290,6 +290,11 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Connection flag**: `semantic-model create --connection <lakehouse-sql-endpoint-id>` wires the Direct Lake connection. The connection ID is the SQL Analytics Endpoint ID (not the lakehouse ID itself).
 - **Creation is LRO**: Semantic model creation uses the standard Fabric LRO pattern (202 + Location header polling).
 - **Format auto-detection**: `.tmdl` files → TMDL format (v4.0 pbism); `.bim` file → model.bim format (v3.0 pbism). The CLI auto-detects from the file extension.
+- **DirectQuery requires interactive credential binding**: DirectQuery models to Fabric warehouses need OAuth2 credentials configured via portal "Manage connections and gateways". The Power BI REST API `GetBoundGatewayDataSources` returns empty for API-created models. `BindToGateway` with virtual gateway `00000000-...` succeeds but doesn't configure credentials. OAuth2 credential type is "not supported for this API" when creating connections. The `executeQueries` DAX API works (uses caller's token directly), but report viewers fail (service needs stored credentials for the double-hop).
+- **Direct Lake avoids credential issues**: Direct Lake models read directly from OneLake Delta files — no SQL connection credentials needed. The framing refresh uses the workspace identity automatically. Prefer Direct Lake over DirectQuery for programmatically-created reports.
+- **Direct Lake Sql.Database() second parameter must be SQL endpoint ID**: The M expression `Sql.Database("<server>", "<database>")` must use the SQL Analytics Endpoint ID (not the lakehouse ID). Using the lakehouse ID causes `DM_InvalidRequest_DatamartNotFound` with `artifactType: 2000`.
+- **Direct Lake needs refresh to frame**: After creation or updateDefinition, a `POST /refreshes` with `{"type": "Full"}` is required. Without framing, DAX queries fail with error code `3242524690`.
+- **Direct Lake entity partition format**: `partition 'Name' = entity` with `mode: directLake`, `source` block containing `entityName: <table_name>`, `schemaName: dbo`, `expressionSource: DatabaseQuery`.
 
 ## Report API Behaviors Discovered
 - **definition.pbir is the report definition entry point**: Not `report.json`. The report definition file at `definition.pbir` references the semantic model binding.
