@@ -27,7 +27,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
     },
     /// Create a new lakehouse
@@ -57,7 +57,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// New display name
@@ -76,7 +76,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
     },
 
@@ -89,7 +89,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
     },
     /// List files in a lakehouse
@@ -100,7 +100,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Directory path to list (default: root)
@@ -117,15 +117,15 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Local source path (supports glob patterns, e.g. ./data/*.csv)
-        #[arg(short = 's', long = "source-path")]
+        #[arg(short = 's', long = "source-path", visible_alias = "source")]
         source_path: String,
 
         /// Remote destination path (directory when uploading multiple files)
-        #[arg(short = 'd', long = "dest-path")]
+        #[arg(short = 'd', long = "dest-path", visible_alias = "dest")]
         dest_path: String,
     },
     /// Download a file from a lakehouse
@@ -136,15 +136,15 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Remote source path
-        #[arg(short = 's', long = "source-path")]
+        #[arg(short = 's', long = "source-path", visible_alias = "source")]
         source_path: String,
 
         /// Local destination path
-        #[arg(short = 'd', long = "dest-path")]
+        #[arg(short = 'd', long = "dest-path", visible_alias = "dest")]
         dest_path: String,
     },
     /// Upload a local file and load it into a Delta table (upload + load-table in one step)
@@ -155,7 +155,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Local source file path (e.g., ./data.csv)
@@ -182,7 +182,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Relative path to the source file (e.g., Files/data.csv)
@@ -200,6 +200,14 @@ pub enum LakehouseCommand {
         /// File format: Csv, Parquet
         #[arg(short, long, default_value = "Csv")]
         format: String,
+
+        /// Wait for completion (no-op: load-table always waits via LRO polling)
+        #[arg(long, hide = true)]
+        wait: bool,
+
+        /// Include CSV header row
+        #[arg(long, hide = true)]
+        header: bool,
     },
 
     // ── Copy/Move/Sync ───────────────────────────────────────────────────
@@ -207,11 +215,11 @@ pub enum LakehouseCommand {
     #[command(display_order = 20)]
     CopyFile {
         /// Source workspace ID
-        #[arg(long, visible_alias = "sw")]
+        #[arg(long, visible_alias = "sw", alias = "source-workspace")]
         source_workspace: String,
 
         /// Source lakehouse ID
-        #[arg(long, visible_alias = "si")]
+        #[arg(long, visible_alias = "si", alias = "source-id")]
         source_id: String,
 
         /// Source file path (supports glob patterns, e.g. Files/data/*.csv)
@@ -219,11 +227,11 @@ pub enum LakehouseCommand {
         source_path: String,
 
         /// Destination workspace ID
-        #[arg(long, visible_alias = "dw")]
+        #[arg(long, visible_alias = "dw", alias = "dest-workspace")]
         dest_workspace: String,
 
         /// Destination lakehouse ID
-        #[arg(long, visible_alias = "di")]
+        #[arg(long, visible_alias = "di", alias = "dest-id")]
         dest_id: String,
 
         /// Destination path (directory when copying multiple files)
@@ -234,11 +242,11 @@ pub enum LakehouseCommand {
     #[command(display_order = 21)]
     MoveFile {
         /// Source workspace ID
-        #[arg(long, visible_alias = "sw")]
+        #[arg(long, visible_alias = "sw", alias = "source-workspace")]
         source_workspace: String,
 
         /// Source lakehouse ID
-        #[arg(long, visible_alias = "si")]
+        #[arg(long, visible_alias = "si", alias = "source-id")]
         source_id: String,
 
         /// Source file path (supports glob patterns, e.g. Files/data/*.csv)
@@ -246,11 +254,11 @@ pub enum LakehouseCommand {
         source_path: String,
 
         /// Destination workspace ID
-        #[arg(long, visible_alias = "dw")]
+        #[arg(long, visible_alias = "dw", alias = "dest-workspace")]
         dest_workspace: String,
 
         /// Destination lakehouse ID
-        #[arg(long, visible_alias = "di")]
+        #[arg(long, visible_alias = "di", alias = "dest-id")]
         dest_id: String,
 
         /// Destination path (directory when moving multiple files)
@@ -261,11 +269,11 @@ pub enum LakehouseCommand {
     #[command(display_order = 22)]
     CopyTable {
         /// Source workspace ID
-        #[arg(long, visible_alias = "sw")]
+        #[arg(long, visible_alias = "sw", alias = "source-workspace")]
         source_workspace: String,
 
         /// Source lakehouse ID
-        #[arg(long, visible_alias = "si")]
+        #[arg(long, visible_alias = "si", alias = "source-id")]
         source_id: String,
 
         /// Source table name (supports glob patterns)
@@ -273,11 +281,11 @@ pub enum LakehouseCommand {
         source_table: String,
 
         /// Destination workspace ID
-        #[arg(long, visible_alias = "dw")]
+        #[arg(long, visible_alias = "dw", alias = "dest-workspace")]
         dest_workspace: String,
 
         /// Destination lakehouse ID
-        #[arg(long, visible_alias = "di")]
+        #[arg(long, visible_alias = "di", alias = "dest-id")]
         dest_id: String,
 
         /// Destination table name (ignored for glob patterns)
@@ -288,11 +296,11 @@ pub enum LakehouseCommand {
     #[command(display_order = 23)]
     MoveTable {
         /// Source workspace ID
-        #[arg(long, visible_alias = "sw")]
+        #[arg(long, visible_alias = "sw", alias = "source-workspace")]
         source_workspace: String,
 
         /// Source lakehouse ID
-        #[arg(long, visible_alias = "si")]
+        #[arg(long, visible_alias = "si", alias = "source-id")]
         source_id: String,
 
         /// Source table name (supports glob patterns)
@@ -300,11 +308,11 @@ pub enum LakehouseCommand {
         source_table: String,
 
         /// Destination workspace ID
-        #[arg(long, visible_alias = "dw")]
+        #[arg(long, visible_alias = "dw", alias = "dest-workspace")]
         dest_workspace: String,
 
         /// Destination lakehouse ID
-        #[arg(long, visible_alias = "di")]
+        #[arg(long, visible_alias = "di", alias = "dest-id")]
         dest_id: String,
 
         /// Destination table name (ignored for glob patterns)
@@ -315,11 +323,11 @@ pub enum LakehouseCommand {
     #[command(display_order = 24)]
     Sync {
         /// Source workspace ID
-        #[arg(long, visible_alias = "sw")]
+        #[arg(long, visible_alias = "sw", alias = "source-workspace")]
         source_workspace: String,
 
         /// Source lakehouse ID
-        #[arg(long, visible_alias = "si")]
+        #[arg(long, visible_alias = "si", alias = "source-id")]
         source_id: String,
 
         /// Source path (e.g. Files/data or Tables/mytable)
@@ -327,11 +335,11 @@ pub enum LakehouseCommand {
         source_path: String,
 
         /// Destination workspace ID
-        #[arg(long, visible_alias = "dw")]
+        #[arg(long, visible_alias = "dw", alias = "dest-workspace")]
         dest_workspace: String,
 
         /// Destination lakehouse ID
-        #[arg(long, visible_alias = "di")]
+        #[arg(long, visible_alias = "di", alias = "dest-id")]
         dest_id: String,
 
         /// Destination path
@@ -356,7 +364,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// File path to delete
@@ -371,7 +379,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Table name (supports glob patterns)
@@ -388,7 +396,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Shortcut name
@@ -415,7 +423,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Shortcut name
@@ -434,7 +442,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Shortcut name
@@ -454,7 +462,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Path to JSON file with array of shortcut requests
@@ -479,8 +487,12 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
+
+        /// Decode base64 payloads inline (adds decodedPayload field)
+        #[arg(long)]
+        decode: bool,
     },
     /// Update the definition of a lakehouse
     #[command(display_order = 51)]
@@ -490,7 +502,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Definition file path (reads file content)
@@ -511,7 +523,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
     },
     /// Create a schedule for materialized lake view refresh
@@ -522,7 +534,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Schedule definition file path (JSON)
@@ -541,7 +553,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Schedule ID
@@ -564,7 +576,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Schedule ID
@@ -581,7 +593,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Configuration file path (optional JSON)
@@ -602,7 +614,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
     },
     /// Get details of a Livy session for a lakehouse
@@ -613,7 +625,7 @@ pub enum LakehouseCommand {
         workspace: String,
 
         /// Lakehouse ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "lakehouse")]
         id: String,
 
         /// Livy session ID
@@ -710,6 +722,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             table,
             mode,
             format,
+            wait: _,
+            header: _,
         } => load_table(cli, client, workspace, id, source_path, table, mode, format)
             .await
             .map_err(|e| enrich_forbidden(e, "lakehouse load-table", "Contributor")),
@@ -867,9 +881,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
         )
         .await
         .map_err(|e| enrich_forbidden(e, "lakehouse bulk-create-shortcuts", "Contributor")),
-        LakehouseCommand::GetDefinition { workspace, id } => {
-            get_definition(cli, client, workspace, id).await
-        }
+        LakehouseCommand::GetDefinition {
+            workspace,
+            id,
+            decode,
+        } => get_definition(cli, client, workspace, id, *decode).await,
         LakehouseCommand::UpdateDefinition {
             workspace,
             id,
@@ -2610,7 +2626,13 @@ fn read_shortcut_json_input(file: Option<&str>, content: Option<&str>) -> Result
 
 // ─── Definitions ─────────────────────────────────────────────────────────────
 
-async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn get_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    decode: bool,
+) -> Result<()> {
     let data = client
         .post(
             &format!("/workspaces/{workspace}/lakehouses/{id}/getDefinition"),
@@ -2619,7 +2641,12 @@ async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &
         )
         .await
         .map_err(|e| enrich_forbidden(e, "lakehouse get-definition", "Contributor"))?;
-    output::render_object(cli, &data, "definition");
+    if decode {
+        let decoded = output::decode_definition_parts(&data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
+    }
     Ok(())
 }
 

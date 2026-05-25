@@ -29,7 +29,7 @@ pub enum GitCommand {
         message: Option<String>,
 
         /// Commit all pending changes
-        #[arg(long = "commit-all", conflicts_with = "items")]
+        #[arg(long = "commit-all", visible_alias = "all", conflicts_with = "items")]
         all: bool,
 
         /// Selective commit: comma-separated item object IDs
@@ -131,7 +131,7 @@ pub enum GitCommand {
         workspace: String,
     },
     /// Initialize a workspace Git connection (required after connect)
-    #[command(display_order = 12)]
+    #[command(visible_alias = "initialize", display_order = 12)]
     Init {
         /// Workspace ID
         #[arg(short, long)]

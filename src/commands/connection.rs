@@ -30,8 +30,8 @@ pub enum ConnectionCommand {
         #[arg(long, value_name = "TYPE", value_parser = ["ShareableCloud", "OnPremises", "VirtualNetworkGateway", "PersonalCloud"])]
         connectivity_type: String,
 
-        /// Connection type path (e.g., Web, SQL)
-        #[arg(long, value_name = "TYPE")]
+        /// Connection type path (e.g., Web, SQL, `GitHubSourceControl`)
+        #[arg(long, visible_alias = "type", value_name = "TYPE")]
         connection_type: String,
 
         /// Connection parameters as JSON (e.g., '{"server":"host","database":"db"}')

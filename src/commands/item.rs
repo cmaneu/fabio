@@ -24,7 +24,7 @@ pub enum ItemCommand {
         workspace: String,
 
         /// Filter by item type (e.g., Notebook, Lakehouse, Warehouse)
-        #[arg(short = 't', long = "type")]
+        #[arg(short = 't', long = "type", visible_alias = "item-type")]
         item_type: Option<String>,
     },
     /// Show details of an item
@@ -52,6 +52,10 @@ pub enum ItemCommand {
         /// Definition format (optional, item-type dependent)
         #[arg(long)]
         format: Option<String>,
+
+        /// Decode base64 payloads inline (adds decodedPayload field)
+        #[arg(long)]
+        decode: bool,
     },
     /// List connections used by an item
     #[command(display_order = 4)]
@@ -385,7 +389,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             workspace,
             id,
             format,
-        } => get_definition(cli, client, workspace, id, format.as_deref()).await,
+            decode,
+        } => get_definition(cli, client, workspace, id, format.as_deref(), *decode).await,
         ItemCommand::ListConnections { workspace, id } => {
             list_connections(cli, client, workspace, id).await
         }
@@ -614,6 +619,7 @@ async fn get_definition(
     workspace: &str,
     id: &str,
     format: Option<&str>,
+    decode: bool,
 ) -> Result<()> {
     let mut path = format!("/workspaces/{workspace}/items/{id}/getDefinition");
     if let Some(f) = format {
@@ -624,7 +630,12 @@ async fn get_definition(
         .post(&path, &serde_json::json!({}), true)
         .await
         .map_err(|e| enrich_forbidden(e, "item get-definition", "ReadWrite"))?;
-    output::render_object(cli, &data, "definition");
+    if decode {
+        let decoded = output::decode_definition_parts(&data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
+    }
     Ok(())
 }
 
