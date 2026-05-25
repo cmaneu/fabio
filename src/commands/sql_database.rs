@@ -1824,7 +1824,7 @@ mod tests {
     fn infer_json_types() {
         assert_eq!(infer_type_from_json(&Value::from(42)), InferredType::Int);
         assert_eq!(
-            infer_type_from_json(&Value::from(3.14)),
+            infer_type_from_json(&Value::from(1.23)),
             InferredType::Float
         );
         assert_eq!(infer_type_from_json(&Value::from(true)), InferredType::Bit);
@@ -1850,8 +1850,8 @@ mod tests {
             "42"
         );
         assert_eq!(
-            json_value_to_sql_literal(&Value::from(3.14), &InferredType::Float),
-            "3.14"
+            json_value_to_sql_literal(&Value::from(1.23), &InferredType::Float),
+            "1.23"
         );
     }
 

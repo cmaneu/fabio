@@ -171,7 +171,7 @@ fn error_codes() -> Vec<ErrorCodeInfo> {
     ]
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::large_stack_frames)]
 fn commands_schema() -> serde_json::Value {
     serde_json::json!({
         "auth": {

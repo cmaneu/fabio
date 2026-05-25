@@ -286,8 +286,7 @@ fn graph_model_get_definition() {
     // Definition should have parts with at least .platform
     let parts = data["definition"]["parts"].as_array().unwrap();
     assert!(!parts.is_empty());
-    let paths: Vec<&str> = parts.iter().map(|p| p["path"].as_str().unwrap()).collect();
-    assert!(paths.contains(&".platform"));
+    assert!(parts.iter().any(|p| p["path"].as_str().unwrap() == ".platform"));
 
     // Cleanup
     fabio()

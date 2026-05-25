@@ -131,8 +131,8 @@ fn graphql_api_dry_run_create() {
 
 // ─── Query tests ─────────────────────────────────────────────────────────────
 
-/// Query the SalesGraphQL API (requires it to exist with data source configured)
-/// Uses FABIO_TEST_GRAPHQL_API_ID and FABIO_TEST_SOURCE_WORKSPACE.
+/// Query the `SalesGraphQL` API (requires it to exist with data source configured)
+/// Uses `FABIO_TEST_GRAPHQL_API_ID` and `FABIO_TEST_SOURCE_WORKSPACE`.
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
@@ -544,7 +544,7 @@ fn graphql_api_query_multiline_from_stdin() {
     let graphql_id = std::env::var("FABIO_TEST_GRAPHQL_API_ID")
         .unwrap_or_else(|_| "12310041-f5d0-4578-bf40-7aa461c79868".to_string());
 
-    let multiline_query = r#"{
+    let multiline_query = r"{
         customers(filter: {customer_id: {eq: 1}}) {
             items {
                 customer_id
@@ -552,7 +552,7 @@ fn graphql_api_query_multiline_from_stdin() {
                 city
             }
         }
-    }"#;
+    }";
 
     let assert = fabio()
         .args([
@@ -591,7 +591,7 @@ fn graphql_api_query_price_filter_gte() {
             "--id",
             &graphql_id,
             "--gql",
-            r#"{ products(filter: {price: {gte: 40}}) { items { product_id price } } }"#,
+            r"{ products(filter: {price: {gte: 40}}) { items { product_id price } } }",
         ])
         .assert()
         .success();

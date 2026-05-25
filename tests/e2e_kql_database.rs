@@ -3,7 +3,7 @@
 //! Live query tests require:
 //! - `FABIO_TEST_SOURCE_WORKSPACE` (workspace with an Eventhouse + KQL Database)
 //! - `FABIO_TEST_KQL_DATABASE_ID` (ID of the KQL database to query)
-//! - `FABIO_TEST_KUSTO_QUERY_URI` (Kusto query URI, e.g. https://xxx.z4.kusto.fabric.microsoft.com)
+//! - `FABIO_TEST_KUSTO_QUERY_URI` (Kusto query URI, e.g. `https://xxx.z4.kusto.fabric.microsoft.com`)
 
 mod common;
 

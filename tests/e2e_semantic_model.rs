@@ -626,7 +626,7 @@ fn semantic_model_query_from_file() {
     let rows = data.as_array().unwrap();
     assert_eq!(rows.len(), 1);
     // Floating point — just check it exists
-    assert!(rows[0]["[Pi]"].as_f64().unwrap() > 3.14);
+    assert!(rows[0]["[Pi]"].as_f64().unwrap() > 3.0);
 
     // Cleanup
     fabio()
@@ -694,7 +694,7 @@ fn semantic_model_query_table_output() {
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     // Table output should contain header and data
     assert!(stdout.contains("[X]") || stdout.contains("[Y]"));
-    assert!(stdout.contains("1") && stdout.contains("2"));
+    assert!(stdout.contains('1') && stdout.contains('2'));
 
     // Cleanup
     fabio()

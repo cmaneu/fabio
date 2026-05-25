@@ -165,7 +165,17 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GraphModelComma
             name,
             description,
             ontology,
-        } => create(cli, client, workspace, name, description.as_deref(), ontology.as_deref()).await,
+        } => {
+            create(
+                cli,
+                client,
+                workspace,
+                name,
+                description.as_deref(),
+                ontology.as_deref(),
+            )
+            .await
+        }
         GraphModelCommand::Update {
             workspace,
             id,

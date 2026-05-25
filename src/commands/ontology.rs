@@ -54,7 +54,7 @@ pub enum OntologyCommand {
         file: Option<String>,
 
         /// Path to a directory containing Fabric ontology definition structure
-        /// (EntityTypes/, RelationshipTypes/ with definition.json, DataBindings/, etc.)
+        /// (`EntityTypes/`, `RelationshipTypes/` with definition.json, `DataBindings/`, etc.)
         #[arg(long, conflicts_with_all = ["definition", "file"])]
         dir: Option<String>,
     },
@@ -128,7 +128,7 @@ pub enum OntologyCommand {
         file: Option<String>,
 
         /// Path to a directory containing Fabric ontology definition structure
-        /// (EntityTypes/, RelationshipTypes/ with definition.json, DataBindings/, etc.)
+        /// (`EntityTypes/`, `RelationshipTypes/` with definition.json, `DataBindings/`, etc.)
         #[arg(long, conflicts_with_all = ["definition", "file"])]
         dir: Option<String>,
 
@@ -241,6 +241,7 @@ async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Re
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -381,6 +382,7 @@ fn decode_definition_parts(data: &Value) -> Value {
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn update_definition(
     cli: &Cli,
     client: &FabricClient,
@@ -478,7 +480,7 @@ fn build_definition_from_rdf(path: &str) -> Result<Value> {
 fn build_definition_from_dir(dir_path: &str) -> Result<Value> {
     let dir = Path::new(dir_path);
     if !dir.is_dir() {
-        anyhow::bail!("'{}' is not a directory", dir_path);
+        anyhow::bail!("'{dir_path}' is not a directory");
     }
 
     let mut parts: Vec<Value> = Vec::new();
@@ -524,14 +526,14 @@ fn build_definition_from_dir(dir_path: &str) -> Result<Value> {
     Ok(serde_json::json!({ "parts": parts }))
 }
 
-/// Scan EntityTypes directory and add parts for each entity type and its sub-items.
+/// Scan `EntityTypes` directory and add parts for each entity type and its sub-items.
 fn scan_entity_types(entity_types_dir: &Path, parts: &mut Vec<Value>) -> Result<()> {
     let mut entries: Vec<_> = std::fs::read_dir(entity_types_dir)
         .map_err(|e| anyhow::anyhow!("Failed to read EntityTypes directory: {e}"))?
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.path().is_dir())
         .collect();
-    entries.sort_by_key(|e| e.file_name());
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         let type_id = entry.file_name().to_string_lossy().to_string();
@@ -601,10 +603,10 @@ fn scan_entity_types(entity_types_dir: &Path, parts: &mut Vec<Value>) -> Result<
 fn scan_relationship_types(rel_types_dir: &Path, parts: &mut Vec<Value>) -> Result<()> {
     let mut entries: Vec<_> = std::fs::read_dir(rel_types_dir)
         .map_err(|e| anyhow::anyhow!("Failed to read RelationshipTypes directory: {e}"))?
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.path().is_dir())
         .collect();
-    entries.sort_by_key(|e| e.file_name());
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         let type_id = entry.file_name().to_string_lossy().to_string();
@@ -640,7 +642,7 @@ fn scan_relationship_types(rel_types_dir: &Path, parts: &mut Vec<Value>) -> Resu
 fn scan_json_files(dir: &Path, prefix: &str, parts: &mut Vec<Value>) -> Result<()> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .map_err(|e| anyhow::anyhow!("Failed to read directory {}: {e}", dir.display()))?
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| {
             e.path().is_file()
                 && e.path()
@@ -648,11 +650,11 @@ fn scan_json_files(dir: &Path, prefix: &str, parts: &mut Vec<Value>) -> Result<(
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
         })
         .collect();
-    entries.sort_by_key(|e| e.file_name());
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         let file_name = entry.file_name().to_string_lossy().to_string();
-        let content = std::fs::read(&entry.path())
+        let content = std::fs::read(entry.path())
             .map_err(|e| anyhow::anyhow!("Failed to read {}: {e}", entry.path().display()))?;
         parts.push(serde_json::json!({
             "path": format!("{prefix}/{file_name}"),
@@ -685,7 +687,7 @@ fn scan_data_binding_files(dir: &Path, prefix: &str, parts: &mut Vec<Value>) -> 
 
     for entry in entries {
         let file_name = entry.file_name().to_string_lossy().to_string();
-        let content = std::fs::read(&entry.path())
+        let content = std::fs::read(entry.path())
             .map_err(|e| anyhow::anyhow!("Failed to read {}: {e}", entry.path().display()))?;
 
         let normalized = normalize_data_binding(&content)?;
@@ -1332,7 +1334,7 @@ GRAPH :EventGraph {
                 "parts": [
                     {
                         "path": "binary.bin",
-                        "payload": BASE64.encode(&[0xFF, 0xFE, 0x00, 0x80]),
+                        "payload": BASE64.encode([0xFF, 0xFE, 0x00, 0x80]),
                         "payloadType": "InlineBase64"
                     }
                 ]

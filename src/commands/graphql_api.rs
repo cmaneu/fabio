@@ -685,7 +685,7 @@ mod tests {
 
     #[test]
     fn test_graphql_multiline_query() {
-        let query = r#"
+        let query = r"
             query GetProducts($category: String!) {
                 products(filter: { category: { eq: $category } }) {
                     items {
@@ -695,7 +695,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let body = serde_json::json!({"query": query});
         assert!(body["query"].as_str().unwrap().contains("GetProducts"));
         assert!(body["query"].as_str().unwrap().contains("$category"));
@@ -705,7 +705,7 @@ mod tests {
     fn test_graphql_mutation_query_format() {
         // Mutations use the same body format as queries
         let mutation =
-            r#"mutation CreateUser($name: String!) { createUser(name: $name) { id name } }"#;
+            r"mutation CreateUser($name: String!) { createUser(name: $name) { id name } }";
         let vars: Value = serde_json::from_str(r#"{"name": "Alice"}"#).unwrap();
         let mut body = serde_json::json!({"query": mutation});
         body["variables"] = vars;

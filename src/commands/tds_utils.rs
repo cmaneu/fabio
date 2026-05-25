@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn string_utf8_converts_to_string() {
-        let s = SqlString::new("hello".as_bytes().to_vec(), EncodingType::Utf8);
+        let s = SqlString::new(b"hello".to_vec(), EncodingType::Utf8);
         assert_eq!(
             column_value_to_json(&ColumnValues::String(s)),
             Value::from("hello")
@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn float_converts_to_number() {
-        let result = column_value_to_json(&ColumnValues::Float(3.14));
+        let result = column_value_to_json(&ColumnValues::Float(1.23));
         assert!(result.is_number());
     }
 

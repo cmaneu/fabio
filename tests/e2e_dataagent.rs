@@ -3,6 +3,7 @@
 mod common;
 
 use common::{TestConfig, extract_count, extract_data, fabio, parse_json, unique_name};
+use base64::Engine;
 use predicates::prelude::*;
 use serial_test::serial;
 
@@ -452,7 +453,6 @@ fn dataagent_update_definition_with_lakehouse_datasource() {
         "dataSourceInstructions": "This contains sales transaction data"
     });
 
-    use base64::Engine;
     let encode = |v: &serde_json::Value| {
         base64::engine::general_purpose::STANDARD.encode(v.to_string().as_bytes())
     };
@@ -606,7 +606,6 @@ fn dataagent_publish_lifecycle() {
         "userDescription": "Test lakehouse"
     });
 
-    use base64::Engine;
     let encode = |v: &serde_json::Value| {
         base64::engine::general_purpose::STANDARD.encode(v.to_string().as_bytes())
     };

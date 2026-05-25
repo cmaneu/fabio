@@ -198,13 +198,15 @@ fn map_get_definition_returns_map_json() {
     // Decode map.json and verify structure
     let map_part = parts.iter().find(|p| p["path"] == "map.json").unwrap();
     let payload = map_part["payload"].as_str().unwrap();
-    let decoded = base64::Engine::decode(
-        &base64::engine::general_purpose::STANDARD,
-        payload,
-    )
-    .unwrap();
+    let decoded =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, payload).unwrap();
     let map_def: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
-    assert!(map_def["$schema"].as_str().unwrap().contains("map/definition"));
+    assert!(
+        map_def["$schema"]
+            .as_str()
+            .unwrap()
+            .contains("map/definition")
+    );
     assert!(map_def["dataSources"].is_array());
     assert!(map_def["layerSources"].is_array());
     assert!(map_def["layerSettings"].is_array());
@@ -347,18 +349,12 @@ fn map_update_definition_with_layers() {
     let parts = data["definition"]["parts"].as_array().unwrap();
     let map_part = parts.iter().find(|p| p["path"] == "map.json").unwrap();
     let payload = map_part["payload"].as_str().unwrap();
-    let decoded = base64::Engine::decode(
-        &base64::engine::general_purpose::STANDARD,
-        payload,
-    )
-    .unwrap();
+    let decoded =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, payload).unwrap();
     let saved_def: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
     // Verify the layer source was persisted
     assert_eq!(saved_def["layerSources"][0]["name"], "test_layer_source");
-    assert_eq!(
-        saved_def["layerSettings"][0]["name"],
-        "Test Bubble Layer"
-    );
+    assert_eq!(saved_def["layerSettings"][0]["name"], "Test Bubble Layer");
     assert_eq!(
         saved_def["layerSettings"][0]["options"]["pointLayerType"],
         "bubble"

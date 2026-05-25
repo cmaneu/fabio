@@ -93,7 +93,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
   - Principle 10: Two-way I/O (`fabio feedback send/list`)
 - **SQL Database**: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
 - **SQL Database import**: Reads CSV/JSON files, infers column types (Int/BigInt/Float/Bit/Date/NVarChar), generates CREATE TABLE + batched INSERTs via TDS. Supports --drop-if-exists, --no-create-table, --batch-size.
-- **693 Rust tests** (199 unit + 494 E2E integration), zero clippy warnings, rustfmt clean
+- **700 Rust tests** (199 unit + 501 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~9.4 MB, stripped, full LTO, panic=abort
@@ -219,7 +219,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_kql_queryset.rs`: KQL queryset tests
 - `tests/e2e_kql_dashboard.rs`: KQL dashboard tests
 - `tests/e2e_mirrored_database.rs`: Mirrored database tests
-- `tests/e2e_reflex.rs`: Reflex CRUD tests
+- `tests/e2e_reflex.rs`: Reflex CRUD + definition (get/update with simulator pipeline) tests
 - `tests/e2e_graphql_api.rs`: GraphQL API CRUD tests
 - `tests/e2e_ml_model.rs`: ML model CRUD tests
 - `tests/e2e_ml_experiment.rs`: ML experiment CRUD tests
@@ -887,4 +887,43 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Map visual IDs must be UUID format**: `layerSources[].id` and `layerSettings[].id` must be valid UUIDs.
 - **Create is LRO**: Returns 202 and requires polling (item returned after LRO completes).
 - **Conflict on duplicate names**: Creating a map with an existing name returns `409 Conflict` with message "Requested '<name>' is already in use".
+
+## Reflex (Activator) API Behaviors Discovered
+- **Definition file is `ReflexEntities.json`**: Contains a JSON array of entity objects. Empty reflex = `[]`.
+- **Entity structure**: Each entity has `uniqueIdentifier` (GUID, required), `payload` (object, required), and `type` (string, required). Entities reference each other by `uniqueIdentifier`.
+- **Entity types**: `container-v1`, `simulatorSource-v1`, `kqlSource-v1`, `realTimeHubSource-v1`, `eventstreamSource-v1`, `fabricItemAction-v1`, `timeSeriesView-v1`.
+- **`timeSeriesView-v1` subtypes**: Determined by `payload.definition.type`: `Event`, `Object`, `Attribute`, `Rule`. This single entity type covers events, objects, attributes, and rules.
+- **Processing pipeline hierarchy**: Container → Data Source → Event View → Object View → Attribute Views + Rule Views. Each entity references its parent via `payload.parentContainer.targetUniqueIdentifier` and (for attributes/rules) `payload.parentObject.targetUniqueIdentifier`.
+- **`definition.instance` is a JSON-encoded string**: The `instance` field contains a stringified JSON template definition (not a nested object). Must be escaped when building the definition file.
+- **Template structure**: `{"templateId":"<name>","templateVersion":"1.1","steps":[{"name":"<step>","id":"<guid>","rows":[{"name":"<row>","kind":"<kind>","arguments":[...]}]}]}`.
+- **Template IDs for events**: `SourceEvent` (selects from data source), `SplitEvent` (splits by object identity).
+- **Template IDs for attributes**: `IdentityPartAttribute` (object identity field), `IdentityTupleAttribute` (composite identity), `BasicEventAttribute` (extracts field value).
+- **Template IDs for rules**: `EventTrigger` (fires on event occurrence), `AttributeTrigger` (fires on threshold condition).
+- **Rule action types (in ActStep)**: `TeamsMessage` (Teams notification), `EmailMessage` (email notification), `FabricItemInvocation` (runs a Pipeline/Notebook).
+- **TeamsMessage action arguments**: `messageLocale`, `recipients` (array), `headline` (array), `optionalMessage` (array), `additionalInformation` (array). All array values use `{"type":"string","value":"..."}` format.
+- **EmailMessage action arguments**: `messageLocale`, `sentTo` (array), `copyTo` (array), `bCCTo` (array), `subject` (array), `headline` (array), `optionalMessage` (array), `additionalInformation` (array).
+- **FabricItemInvocation action**: References a `fabricItemAction-v1` entity by `uniqueIdentifier`. The action entity defines `fabricItem.itemId`, `fabricItem.workspaceId`, `fabricItem.itemType`, and `jobType`.
+- **Rule settings**: `definition.settings.shouldRun` (boolean, enables/disables rule), `definition.settings.shouldApplyRuleOnUpdate` (boolean, apply to historical data).
+- **Simulator source types**: `PackageShipment` (with `version: "V2_0"`). Supports `runSettings.startTime` and `runSettings.stopTime` (ISO 8601).
+- **KQL source**: Requires `query.queryString` (KQL), `eventhouseItem.targetUniqueIdentifier` (references Eventhouse item), and `runSettings.executionIntervalInSeconds`.
+- **Real-time Hub source**: Requires `connection.scope`, `connection.tenantId`, `connection.workspaceId`, `connection.eventGroupType`, and `filterSettings.eventTypes[]`.
+- **Eventstream source**: Requires `metadata.eventstreamArtifactId`.
+- **updateDefinition does NOT accept `format` field**: Unlike `createItem` which accepts `"format": "json"` in the definition, `updateDefinition` rejects it with `InvalidDefinitionFormat`. Only send `{"definition":{"parts":[...]}}`.
+- **updateDefinition returns 200 (not 202 LRO)**: For valid definitions, the API returns 200 immediately. Invalid content returns 400 with `Activator_Alm_GenericError` (500 from internal service).
+- **`.platform` part is optional for updateDefinition**: Only `ReflexEntities.json` is required. `.platform` is accepted if `?updateMetadata=true` is set.
+- **Container `type` field values**: `samples` (for simulator-based), `kqlQueries` (for KQL-based), and likely others for Real-time Hub and Eventstream containers.
+- **AttributeTrigger rule steps**: `ScalarSelectStep` (selects attribute + summary), `ScalarDetectStep` (condition check), optional `DimensionalFilterStep` (filter by another attribute), `ActStep` (action to execute).
+- **NumberBecomes operators**: `BecomesGreaterThan`, `BecomesLessThan`, `BecomesGreaterThanOrEqualTo`, `BecomesLessThanOrEqualTo`.
+- **NumberSummary operators**: `Average`, `Min`, `Max`, `Sum`, `Count`.
+- **TimeDrivenWindowSpec**: `width` and `hop` in milliseconds (e.g., 600000 = 10 minutes).
+- **EventTrigger template step structure is undocumented**: The `EventTrigger` template requires an `EventSelector` row, but the correct step/row placement is not documented. Attempts with `EventDetectStep` + `EventSelector` (kind: `Event` or `EventSelector`) all fail with "Expected at least 1 occurrences of EventSelector, but got: 0". Microsoft docs recommend: "configure a Reflex in the Fabric UI, then use Get Item Definition to retrieve the definition." Use `AttributeTrigger` for programmatic rule creation (fully validated).
+- **KQL source (`kqlSource-v1`) requires portal initialization**: Always fails via REST API with `Activator_Alm_UserError: "The importArtifactRequest field is required"`. Similar to Graph Model refresh requiring portal `VersionConfig` initialization. Configure KQL sources through the Fabric portal, then manage definitions programmatically afterward.
+- **Real-time Hub event subscriptions create server-side state**: When a `realTimeHubSource-v1` is pushed via `updateDefinition`, the server creates an event subscription. If the Reflex is later updated without the same source (or with incorrect UUIDs), subsequent `updateDefinition` calls fail with "eventSubscriptions/{id} not found". Fix: delete the Reflex and create a fresh one.
+- **Duplicate entity UUID tracking**: The server tracks entity UUIDs across definition updates. Reusing a UUID from a previously-deleted entity in the same Reflex causes "duplicate" errors. Always use fresh UUIDs when replacing entities.
+- **Real-time Hub filter immutability**: Once an RTH source is created with specific `filterSettings.eventTypes`, the filters cannot be updated. The server returns: "Updating event subscription filters is not supported yet. Please create a new source." Must use a completely new `uniqueIdentifier` and fresh subscription.
+- **Validated working pipeline patterns**:
+  - Simulator source + AttributeTrigger + EmailMessage action (HTTP 200)
+  - Simulator source + AttributeTrigger + TeamsMessage action (HTTP 200)
+  - Real-time Hub source with workspace events (HTTP 200, creates subscription)
+  - `updateDefinition` replaces entire entity set atomically (not incremental)
 

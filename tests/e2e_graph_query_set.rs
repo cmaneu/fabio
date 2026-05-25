@@ -242,9 +242,7 @@ fn graph_query_set_update_definition() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     // update-definition returns status or the object
-    assert!(
-        data["status"] == "definition_updated" || data["displayName"] == name
-    );
+    assert!(data["status"] == "definition_updated" || data["displayName"] == name);
 
     // Cleanup
     fabio()
