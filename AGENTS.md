@@ -927,3 +927,246 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
   - Real-time Hub source with workspace events (HTTP 200, creates subscription)
   - `updateDefinition` replaces entire entity set atomically (not incremental)
 
+## Workspace API Behaviors Discovered
+- **Endpoint scope**: All workspace operations are tenant-level at `/workspaces/{id}` (no parent scope).
+- **Capacity assignment body**: `POST /workspaces/{id}/assignToCapacity` with `{"capacityId": "<id>"}`. Unassign uses empty body `{}` to `POST /workspaces/{id}/unassignFromCapacity`.
+- **Capacity assignment is idempotent**: Re-assigning the same capacity succeeds without error.
+- **Identity provisioning is LRO**: `POST /workspaces/{id}/provisionIdentity` uses `poll: true` (may return 202). Deprovision is fire-and-forget.
+- **Role assignment validation**: Roles are case-insensitive against `["Admin", "Member", "Contributor", "Viewer"]`. Principal types: `["User", "Group", "ServicePrincipal", "ServicePrincipalProfile"]`.
+- **Role assignment body**: `{"principal": {"id": "<principal_id>", "type": "<principal_type>"}, "role": "<role>"}`.
+- **Folder management**: Workspaces support folders via `/workspaces/{ws}/folders` (CRUD + move). Move body: `{"targetFolderId": "<id>" | null}` (null moves to root).
+- **Tags**: `POST /workspaces/{ws}/applyTags` and `/unapplyTags` with body `{"tagIds": [...]}`.
+- **Domain assignment**: `POST /workspaces/{ws}/assignToDomain` with `{"domainId": "<id>"}`. Unassign uses empty body.
+- **OneLake settings**: `GET /workspaces/{ws}/onelake/settings` returns tier, diagnostics, immutability. Modify via individual POST endpoints (`/modifyDefaultTier`, `/modifyDiagnostics`, `/modifyImmutabilityPolicy`).
+- **Default tier values**: `"Hot"` or `"Cold"` (PascalCase).
+- **Lifecycle policies**: Export/import via `/workspaces/{ws}/onelake/lifecycle/exportPolicy` and `/importPolicy`.
+- **Network policy**: `GET/PUT /workspaces/{ws}/networking/communicationPolicy`.
+- **Create body**: `{"displayName": "<name>", "description"?: "<desc>"}` — minimal, no capacity needed at creation time.
+
+## Item API Behaviors Discovered
+- **Type filter on list**: `GET /workspaces/{ws}/items?type={ItemType}` filters server-side. Type values are PascalCase (e.g., `Lakehouse`, `Notebook`, `Warehouse`).
+- **Valid item types for create**: `CopyJob`, `Dashboard`, `DataAgent`, `DataPipeline`, `Dataflow`, `Environment`, `Eventhouse`, `Eventstream`, `GraphQLApi`, `KQLDashboard`, `KQLDatabase`, `KQLQueryset`, `Lakehouse`, `MLExperiment`, `MLModel`, `MirroredDatabase`, `MirroredWarehouse`, `Notebook`, `Ontology`, `Paginated Report`, `Reflex`, `Report`, `SQLDatabase`, `SQLEndpoint`, `SemanticModel`, `SparkJobDefinition`, `Warehouse`. Sorted, PascalCase. Hinted on invalid type errors.
+- **Copy pattern**: `getDefinition` (LRO) from source → `GET` source metadata → `POST /workspaces/{dest}/items` with definition (LRO). Result includes new item's `id`, `displayName`, `type`.
+- **Move pattern**: Copy + `DELETE /workspaces/{source}/items/{id}`. Atomic: delete only after successful copy.
+- **Definition format query param**: `POST /workspaces/{ws}/items/{id}/getDefinition?format={fmt}` supports format selection.
+- **Update definition metadata**: `POST /workspaces/{ws}/items/{id}/updateDefinition?updateMetadata=true` updates `.platform` metadata alongside definition parts.
+- **Bulk operations (all LRO)**:
+  - `POST /workspaces/{ws}/items/bulkExportDefinitions` — exports multiple item definitions
+  - `POST /workspaces/{ws}/items/bulkImportDefinitions` — imports multiple item definitions
+  - `POST /workspaces/{ws}/items/bulkMove` — moves multiple items between folders/workspaces
+- **External data shares**: CRUD at `/workspaces/{ws}/items/{id}/externalDataShares`. Create body: `{"paths": [...], "recipient": {"tenantId": "<id>"}}`. Accept invitations at `/externalDataShares/invitations/{id}/accept`.
+- **Identity assignment**: `POST /workspaces/{ws}/items/{id}/identities/default/assign`.
+- **Tags**: `POST /workspaces/{ws}/items/{id}/applyTags` and `/unapplyTags` with `{"tagIds": [...]}`.
+
+## Lakehouse API Behaviors Discovered
+- **Load table format validation**: Only `"Csv"` and `"Parquet"` are valid (PascalCase). JSON is NOT supported by the Fabric REST API. Mode values: `"Overwrite"`, `"Append"` (PascalCase).
+- **Load table body (Csv)**: `{"relativePath": "<path>", "pathType": "File", "mode": "Overwrite", "formatOptions": {"format": "Csv", "header": true, "delimiter": ","}}`. The `format` key is INSIDE `formatOptions` (discriminated union pattern).
+- **Load table body (Parquet)**: `{"relativePath": "<path>", "pathType": "File", "mode": "Overwrite", "formatOptions": {"format": "Parquet"}}`. Do NOT include `header`/`delimiter` with Parquet — API rejects mixed format options.
+- **Upload-table workflow**: Upload file to `Files/.staging/{filename}` → POST load-table → delete staging file (best-effort cleanup).
+- **Table listing uses `"data"` key**: Unlike other list endpoints that use `"value"`, `GET /workspaces/{ws}/lakehouses/{id}/tables` returns `{"data": [...]}`.
+- **Shortcut creation**: `POST /workspaces/{ws}/items/{id}/shortcuts` with body `{"name": "<name>", "path": "<target_path>", "target": {<target_type>: <target_config>}}`.
+- **Bulk shortcut creation**: `POST /workspaces/{ws}/items/{id}/shortcuts/bulkCreate?shortcutConflictPolicy={policy}` with `{"createShortcutRequests": [...]}`. LRO.
+- **Shortcut get/delete path**: `GET/DELETE /workspaces/{ws}/items/{id}/shortcuts/{path}/{name}` — path and name are URL path segments.
+- **Enable schemas on create**: `{"displayName": "...", "creationPayload": {"enableSchemas": true}}` enables multi-schema lakehouse.
+- **Sync algorithm**: Lists both source and destination from root (avoiding DFS virtual view doubling), builds file maps keyed by relative path, compares ETags (default) or Content-MD5 (`--checksum`), copies files with different/missing ETags, optionally deletes orphan files at destination (`--delete`).
+- **Parallel execution**: All multi-file operations (upload, copy-file, move-file, delete-table, copy-table, move-table, sync) use concurrent execution with rate-limit retry.
+- **Glob patterns**: Local globs via `glob::glob()`, remote globs via listing + pattern match, table globs via table list API + pattern match.
+- **Materialized views**: `POST /workspaces/{ws}/lakehouses/{id}/jobs/refreshMaterializedLakeViews/instances` triggers refresh. Schedule management at `.../jobs/refreshMaterializedLakeViews/schedules`.
+- **Table maintenance**: `POST /workspaces/{ws}/lakehouses/{id}/jobs/tableMaintenance/instances`.
+- **Livy sessions**: `GET /workspaces/{ws}/lakehouses/{id}/livySessions` lists active sessions.
+- **Get/Update definition**: LRO via `/workspaces/{ws}/lakehouses/{id}/getDefinition` and `/updateDefinition`.
+
+## Notebook API Behaviors Discovered
+- **Creation uses generic items endpoint**: `POST /workspaces/{ws}/items` with `{"type": "Notebook", "displayName": "...", "definition": {...}}`. NOT `/notebooks`.
+- **Delete uses generic items endpoint**: `DELETE /workspaces/{ws}/items/{id}` (not `/notebooks/{id}`).
+- **ipynb format**: Definition uses `"format": "ipynb"` with part path `notebook-content.py`. The payload is a base64-encoded Jupyter notebook JSON.
+- **Cell source must be list of strings**: Each cell's `source` field is an array of strings (one per line with `\n` suffix), NOT a single string.
+- **Lakehouse binding via `trident` metadata**: `--lakehouse` flag injects `metadata.trident.lakehouse` into the ipynb JSON with `default_lakehouse`, `default_lakehouse_name`, `default_lakehouse_workspace_id`, `known_lakehouses`.
+- **Run mechanism**: `client.run_notebook(workspace, id)` → `POST /workspaces/{ws}/items/{id}/jobs/instances?jobType=RunNotebook`. Returns 202 + Location header with job instance URL.
+- **Status polling (--wait)**: Polls `GET /workspaces/{ws}/items/{id}/jobs/instances/{job_id}` every 5 seconds. Default timeout 600s.
+- **Terminal statuses**: `Completed`, `Failed`, `Cancelled`. Continue polling on `NotStarted`, `InProgress`, `Deduped`.
+- **Failure info**: Extracted from `failureReason.message` in job instance response.
+- **Cancel**: `POST /workspaces/{ws}/items/{id}/jobs/instances/{job_id}/cancel`.
+- **Get job instance (beta)**: `GET /workspaces/{ws}/notebooks/{id}/jobs/execute/instances/{job_id}?beta=true` — uses notebook-specific path with beta flag.
+- **Livy sessions**: `GET /workspaces/{ws}/notebooks/{id}/livySessions` lists active Livy sessions for a notebook.
+- **Spark cold start**: First notebook run on small capacity can take 2-5 minutes to transition from `NotStarted` to `InProgress`.
+
+## Environment API Behaviors Discovered
+- **Staging/publish workflow**: Changes are staged first, then published as a separate step. All modifications go to staging area.
+- **Publish is fire-and-forget**: `POST /workspaces/{ws}/environments/{id}/staging/publish` with empty body `{}`. Not LRO — returns immediately.
+- **Cancel publish**: `POST /workspaces/{ws}/environments/{id}/staging/cancelPublish` with empty body.
+- **Spark settings dual endpoints**: `GET .../sparkcompute` (published) vs `GET .../staging/sparkcompute` (pending changes). Update goes to staging: `PATCH .../staging/sparkcompute`.
+- **Definition file**: Part path is `environment.metadata.json`.
+- **Library management**: Published at `/libraries`, staging at `/staging/libraries`. Delete uses query param: `DELETE .../staging/libraries?libraryToDelete={name}`.
+- **External libraries**: Export via `GET .../libraries/exportExternalLibraries`. Import via `POST .../staging/libraries/importExternalLibraries`. Remove via `POST .../staging/libraries/removeExternalLibrary` with `{"libraryToRemove": "<name>"}`.
+- **Get/Update definition are LRO**: Both use `poll: true`.
+- **Create is LRO**: Returns 202, requires polling.
+
+## Mirrored Database API Behaviors Discovered
+- **Definition file**: Part path is `mirroring.json`.
+- **Start/stop mirroring**: `POST /workspaces/{ws}/mirroredDatabases/{id}/startMirroring` and `/stopMirroring` with empty body `{}`. Fire-and-forget (no LRO).
+- **Status endpoints use GET (not POST)**: Despite verb-like paths, `GET .../getMirroringStatus` and `GET .../getTablesMirroringStatus` are GET requests.
+- **Create uses type-specific endpoint**: `POST /workspaces/{ws}/mirroredDatabases` (not generic `/items`). No `"type"` field needed in body — endpoint implies type.
+- **Create is LRO**: Returns 202, requires polling.
+- **Get/Update definition are LRO**: Both use `poll: true`.
+
+## Deployment Pipeline API Behaviors Discovered
+- **Tenant-level scope**: All endpoints use `/deploymentPipelines/{id}` (NO `/workspaces/` prefix). Pipelines are not workspace-scoped.
+- **Deploy body**: `{"sourceStageId": "<id>", "targetStageId"?: "<id>", "items"?: [...], "note"?: "<text>"}`. `targetStageId` optional (defaults to next stage). `items` optional (defaults to all items).
+- **Deploy is LRO**: `POST /deploymentPipelines/{id}/deploy` with `poll: true`. May return empty/null response (treated as "accepted").
+- **Items array format**: `[{"itemId": "...", "itemType": "Notebook"}]` — PascalCase item types.
+- **Stage management**: `GET .../stages` lists stages. `GET .../stages/{stageId}/items` lists items in stage. Items have `itemDisplayName`, `itemId`, `itemType` fields.
+- **Workspace assignment**: `POST .../stages/{stageId}/assignWorkspace` with `{"workspaceId": "<id>"}`. Unassign uses empty body.
+- **Operations history**: `GET .../operations` lists past deployments. `GET .../operations/{opId}` shows details.
+- **Role assignments**: `GET/POST .../roleAssignments`. Delete uses principal ID: `DELETE .../roleAssignments/{principalId}`.
+- **Role assignment body**: `{"principal": {"id": "<id>", "type": "<type>"}, "role": "<role>"}`.
+- **Permissions**: Deploy requires "Contributor"; all other mutations require "Admin".
+
+## Domain API Behaviors Discovered
+- **Admin scope**: All domain endpoints use `/admin/domains/{id}` prefix. Requires admin privileges.
+- **Batch workspace assignment**: `POST /admin/domains/{id}/assignWorkspaces` with `{"workspacesIds": [...]}`. Unassign uses same pattern at `/unassignWorkspaces`.
+- **Assign by capacity**: `POST /admin/domains/{id}/assignWorkspacesByCapacities` with `{"capacitiesIds": [...]}`.
+- **Assign by principal**: `POST /admin/domains/{id}/assignWorkspacesByPrincipals` with body containing principals array and `type` field.
+- **List domain workspaces**: `GET /admin/domains/{id}/workspaces` returns workspaces associated with domain.
+- **Create body**: `{"displayName": "<name>", "description"?: "<desc>"}`.
+- **Update uses PATCH**: `PATCH /admin/domains/{id}` with `{"displayName"?: "...", "description"?: "..."}`.
+
+## Connection API Behaviors Discovered
+- **Tenant-level scope**: All connection endpoints use `/connections/{id}` (no workspace prefix). Connections are shared across workspaces.
+- **Connectivity types**: `ShareableCloud`, `OnPremises`, `VirtualNetworkGateway`, `PersonalCloud`.
+- **Credential types**: `Basic`, `OAuth2`, `Key`, `Anonymous`, `ServicePrincipal`, `SharedAccessSignature`.
+- **Privacy levels**: `None`, `Public`, `Organizational`, `Private`.
+- **Parameters format conversion**: User provides JSON object `{"key": "value"}` which is converted to array format `[{"dataType": "Text", "name": "key", "value": "value"}]` for the API.
+- **Create body structure**: `{"displayName": "...", "connectivityType": "...", "connectionDetails": {"type": "...", "creationMethod": "...", "parameters": [...]}, "credentialDetails": {"singleSignOnType": "None", "connectionEncryption": "NotEncrypted", "skipTestConnection": bool, "credentials": {"credentialType": "..."}}, "privacyLevel": "..."}`.
+- **Test connection**: `POST /connections/{id}/testConnection` with empty body `{}`.
+- **Role assignments**: Full CRUD at `/connections/{id}/roleAssignments/{assignmentId}`. Roles: `Owner`, `User`, `UserWithReshare`.
+- **Role assignment body**: `{"principal": {"id": "...", "type": "User|Group|ServicePrincipal"}, "role": "Owner|User|UserWithReshare"}`.
+- **List supported types**: `GET /connections/supportedConnectionTypes` returns all available connection type definitions.
+
+## Spark API Behaviors Discovered
+- **Workspace-level settings**: `GET/PATCH /workspaces/{ws}/spark/settings`.
+- **Workspace pools**: CRUD at `/workspaces/{ws}/spark/pools/{poolId}`.
+- **Capacity-level settings (beta)**: `GET/PATCH /capacities/{capId}/spark/settings?beta=true`.
+- **Capacity pools (beta)**: CRUD at `/capacities/{capId}/spark/pools/{poolId}?beta=true`.
+- **Livy sessions**: `GET /workspaces/{ws}/spark/livySessions` and `GET .../livySessions/{id}`.
+- **Pool create body**: Accepts JSON from `--file` or `--content` with pool configuration (name, node size, auto-scale settings, dynamic executor allocation).
+- **Settings update**: PATCH with JSON body from `--file` or `--content`.
+- **Beta flag required for capacity-level operations**: All capacity-scoped Spark endpoints require `?beta=true` query parameter.
+
+## Spark Job Definition API Behaviors Discovered
+- **Definition file**: Uses type-specific endpoint `/workspaces/{ws}/sparkJobDefinitions/{id}/getDefinition` and `/updateDefinition`.
+- **Run job type**: `POST /workspaces/{ws}/items/{id}/jobs/instances?jobType=sparkjob` (lowercase `sparkjob`).
+- **Create is LRO**: `POST /workspaces/{ws}/sparkJobDefinitions` with `poll: true`.
+- **Get/Update definition are LRO**: Both use `poll: true`.
+- **Definition format**: JSON content with Spark job configuration (main file path, arguments, language, etc.).
+
+## Data Pipeline API Behaviors Discovered
+- **Run job type**: `POST /workspaces/{ws}/items/{id}/jobs/instances?jobType=Pipeline` (PascalCase `Pipeline`).
+- **Definition file**: Uses `/workspaces/{ws}/dataPipelines/{id}/getDefinition` and `/updateDefinition`. Both LRO.
+- **Schedule management**: `POST /workspaces/{ws}/dataPipelines/{id}/jobs/execute/schedules` creates a schedule. Note: uses `/jobs/execute/schedules` (not `/jobs/Pipeline/schedules`).
+- **Create is LRO**: `POST /workspaces/{ws}/dataPipelines` with `poll: true`.
+
+## KQL Database API Behaviors Discovered
+- **Query endpoint routing**: Management commands (starting with `.`) use `/v1/rest/mgmt`; data queries use `/v2/rest/query`. Both at the Kusto query URI.
+- **Query body**: `{"db": "<database_name>", "csl": "<kql_text>"}`.
+- **Token scoping**: Acquires token scoped to `{kusto_uri}/.default` (not the standard Fabric scope).
+- **Query URI resolution priority**: `properties.queryServiceUri` → `properties.queryUri` → `properties.databaseUrl` → `--query-uri` override. Falls back to error with hint.
+- **Database name**: Uses `displayName` from the KQL database item metadata.
+- **V1 response format**: `{"Tables": [{"TableName": "...", "Columns": [...], "Rows": [[...], ...]}]}`. Uses first table as primary result.
+- **V2 response format**: Array of frames. Finds `DataTable` frame with `TableKind: "PrimaryResult"`. Checks `DataSetCompletion` frame for `HasErrors`.
+- **Shortcuts**: `GET /workspaces/{ws}/items/{id}/shortcuts` lists shortcuts on KQL databases.
+- **Create types**: `ReadWrite` and `ReadOnlyFollowing`. ReadWrite requires `--eventhouse-id` in creation payload. ReadOnlyFollowing requires source database reference.
+- **Get/Update definition are LRO**: Both use `poll: true` at type-specific endpoints.
+
+## OneLake Security API Behaviors Discovered
+- **Upsert-all pattern**: `PUT /workspaces/{ws}/items/{id}/dataAccessRoles` replaces ALL roles atomically. There is no individual role create/update endpoint.
+- **Delete pattern**: GET all roles → filter out target role → PUT remaining roles back. Errors if role not found.
+- **Show pattern**: GET all roles → find by name (client-side filter). No server-side individual GET.
+- **Body format**: PUT body is the complete array of role definitions. Each role has `name` and members/permissions.
+- **No individual role endpoints**: All CRUD operations go through the same PUT endpoint with the full role set.
+
+## Managed Private Endpoint API Behaviors Discovered
+- **Create body**: `{"name": "<endpoint_name>", "privateLinkResourceId": "<ARM_resource_id>", "groupId": "<subresource_type>", "requestMessage"?: "<approval_message>"}`.
+- **Group ID values**: `blob`, `sqlServer`, `dfs`, `queue`, etc. (maps to Azure resource sub-resource types).
+- **Create is LRO**: Returns 202, requires polling.
+- **No update**: Endpoints are immutable after creation. Only create and delete.
+- **Response status fields**: `provisioningState` and `connectionState` track endpoint lifecycle.
+- **Requires Admin role**: All mutations require workspace Admin.
+
+## Capacity API Behaviors Discovered
+- **Read-only resource**: Only `list` and `show` operations. No create/update/delete via this endpoint.
+- **Tenant-level scope**: `GET /capacities` (no workspace context). Individual: `GET /capacities/{id}`.
+- **Response fields**: `displayName`, `id`, `sku`, `region`, `state`.
+- **State values**: Includes `Active`, `Inactive`. Used to validate capacity availability before workspace assignment.
+
+## Job Scheduler API Behaviors Discovered
+- **Generic item-scoped**: All endpoints use `/workspaces/{ws}/items/{id}/jobs/...` pattern (works for any item type).
+- **Job type required**: Most endpoints include `{job_type}` in path: `/jobs/{job_type}/schedules`.
+- **Run on demand**: `POST /workspaces/{ws}/items/{id}/jobs/instances?jobType={job_type}` with optional body.
+- **Cancel**: `POST /workspaces/{ws}/items/{id}/jobs/instances/{instance_id}/cancel`.
+- **Schedule CRUD**: At `/workspaces/{ws}/items/{id}/jobs/{job_type}/schedules/{schedule_id}`.
+- **Create schedule body**: Includes `enabled`, `configuration` with cron or interval settings.
+- **Known job types**: Vary by item type — `RunNotebook`, `Pipeline`, `sparkjob`, `RefreshGraph`, `refreshMaterializedLakeViews`, `tableMaintenance`, etc.
+
+## Copy Job API Behaviors Discovered
+- **Definition file**: Part path is `CopyJobV1.json`.
+- **Create is LRO**: `POST /workspaces/{ws}/copyJobs` with `poll: true`.
+- **Get/Update definition are LRO**: Both use `poll: true`. Get Definition sends empty body `{}`.
+- **Required roles**: Create/Delete require "Member"; Update/Definition require "Contributor".
+
+## Dataflow API Behaviors Discovered
+- **Definition file**: Part path is `dataflow.json`.
+- **Create is LRO**: `POST /workspaces/{ws}/dataflows` with `poll: true`.
+- **Get/Update definition are LRO**: Both use `poll: true`. Get Definition sends empty body `{}`.
+- **Required roles**: Create/Delete require "Member"; Update/Definition require "Contributor".
+- **Identical structure to Copy Job**: Same LRO patterns, same role requirements, different definition file name.
+
+## SQL Database API Behaviors Discovered
+- **Creation modes**: `New` (fresh database), `Restore` (point-in-time restore from existing), `RestoreDeletedDatabase` (restore from deleted). Each mode has different `creationPayload` fields.
+- **Create body (New)**: `{"displayName": "...", "creationPayload": {"creationMode": "New", "backupRetentionDays": 7, "collation": "..."}}`.
+- **Restore body**: Requires `restorePointInTime` (ISO 8601) and `sourceDatabaseReference` with `workspaceId` + `id`.
+- **Hard delete**: `DELETE /workspaces/{ws}/sqlDatabases/{id}?hardDelete=true` permanently removes (vs soft delete for restore).
+- **List deleted**: `GET /workspaces/{ws}/sqlDatabases/restorableDeletedDatabases` lists soft-deleted databases available for restore.
+- **TDS connection resolution**: `GET /workspaces/{ws}/sqlDatabases/{id}` → extracts `properties.serverFqdn` (may include port as `host,1433`) and `properties.databaseName` (falls back to `displayName`).
+- **SQL auth token**: Uses `client.require_sql_auth()` for SQL-scoped AAD token.
+- **Connection string output**: `Server=tcp:{server},{port};Initial Catalog={database};Encrypt=True;TrustServerCertificate=False;Authentication=ActiveDirectoryDefault`.
+- **Import type inference**: `Unknown` → first non-empty observation sets type → subsequent observations widen (Int→BigInt→Float→NVarChar, never narrows). JSON number with i32 fit → Int, else BigInt. Strings try parse order: Int→BigInt→Float→Bit→Date→NVarChar(len).
+- **Import SQL generation**: `CREATE TABLE [dbo].[{name}] (...)` with nullable columns. Batched `INSERT INTO ... VALUES` (default batch_size=100, 120s timeout per batch). Optional `DROP TABLE IF EXISTS`.
+- **NVarChar length calculation**: `clamp(observed_max_len * 2, 50, 4000)` — doubles observed length with floor/ceiling.
+- **Mirroring support**: `POST .../startMirroring` and `POST .../stopMirroring` (same pattern as Mirrored Database).
+- **Audit settings**: `GET/PATCH .../settings/sqlAudit`. Body: `{"state": "Enabled|Disabled", "retentionDays": N, "auditActionsAndGroups": [...], "predicateExpression": "..."}`.
+- **Definition formats**: Supports `dacpac` and `sqlproj` via `?format={fmt}` query parameter.
+- **Revalidate CMK**: `POST .../revalidateCMK` (LRO) — revalidates customer-managed key encryption.
+- **F4+ capacity requirement**: SQL Database TDS connections require F4+ capacity. F2 fails with error 18456 State 240.
+
+## KQL Dashboard API Behaviors Discovered
+- **Definition file**: Part path is `RealTimeDashboard.json`.
+- **Endpoint pattern**: Standard CRUD at `/workspaces/{ws}/kqlDashboards/{id}`.
+- **Get/Update definition are LRO**: Both use `poll: true` at type-specific endpoints.
+- **Create is LRO**: `POST /workspaces/{ws}/kqlDashboards` with `poll: true`.
+
+## ML Model API Behaviors Discovered
+- **CRUD only**: No definition support (no getDefinition/updateDefinition).
+- **Endpoint pattern**: Standard at `/workspaces/{ws}/mlModels/{id}`.
+- **Create body**: `{"displayName": "...", "description"?: "..."}`.
+- **Create is LRO**: Returns 202, requires polling.
+
+## ML Experiment API Behaviors Discovered
+- **CRUD only**: No definition support (no getDefinition/updateDefinition).
+- **Endpoint pattern**: Standard at `/workspaces/{ws}/mlExperiments/{id}`.
+- **Create body**: `{"displayName": "...", "description"?: "..."}`.
+- **Create is LRO**: Returns 202, requires polling.
+
+## Common API Patterns Across All Command Groups
+- **List pagination**: All list endpoints use `get_list()` with `"value"` key (except lakehouse tables which use `"data"`). Supports `--all` (fetches all pages), `--continuation-token` (resumes from token), `--limit` (client-side truncation).
+- **Create responses**: Return the created object with at minimum `id`, `displayName`, `type`.
+- **Delete responses**: Return `{"status": "deleted", "id": "<id>"}`.
+- **Update validation**: All update commands require at least one field (`--name` or `--description`). Fail with `INVALID_INPUT` if neither provided.
+- **LRO standard pattern**: POST returns 202 + `Location` header. Poll every 2s, max 120s. Terminal: `status == "Succeeded"` or `"Failed"`.
+- **Error enrichment**: All commands use `enrich_forbidden()` to add required role hints on 403 errors. Not-found errors include `fabio <group> list` suggestions.
+- **Dry-run guard**: All mutations support `--dry-run` which returns the planned request body without executing. Output: `{"status": "dry_run", "message": "Would <action>..."}`.
+- **Definition operations pattern**: `POST .../getDefinition` (LRO, empty body `{}`) returns base64-encoded parts. `POST .../updateDefinition` (LRO) accepts `{"definition": {"parts": [{"path": "<file>", "payload": "<base64>", "payloadType": "InlineBase64"}]}}`.
+- **Tenant-level vs workspace-scoped resources**:
+  - Tenant-level (no workspace prefix): `/capacities`, `/connections`, `/deploymentPipelines`, `/admin/domains`, `/externalDataShares/invitations`
+  - Workspace-scoped: All other resources at `/workspaces/{ws}/<resource>`
+
