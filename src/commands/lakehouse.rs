@@ -205,9 +205,13 @@ pub enum LakehouseCommand {
         #[arg(long, hide = true)]
         wait: bool,
 
-        /// Include CSV header row
-        #[arg(long, hide = true)]
-        header: bool,
+        /// CSV file does NOT have a header row (by default, header is assumed present)
+        #[arg(long = "no-header")]
+        no_header: bool,
+
+        /// CSV delimiter character (default: comma)
+        #[arg(long, default_value = ",")]
+        delimiter: String,
     },
 
     // ── Copy/Move/Sync ───────────────────────────────────────────────────
@@ -723,10 +727,22 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             mode,
             format,
             wait: _,
-            header: _,
-        } => load_table(cli, client, workspace, id, source_path, table, mode, format)
-            .await
-            .map_err(|e| enrich_forbidden(e, "lakehouse load-table", "Contributor")),
+            no_header,
+            delimiter,
+        } => load_table(
+            cli,
+            client,
+            workspace,
+            id,
+            source_path,
+            table,
+            mode,
+            format,
+            !*no_header,
+            delimiter,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse load-table", "Contributor")),
         LakehouseCommand::CopyFile {
             source_workspace,
             source_id,
@@ -1263,6 +1279,8 @@ async fn load_table(
     table: &str,
     mode: &str,
     format: &str,
+    header: bool,
+    delimiter: &str,
 ) -> Result<()> {
     const VALID_MODES: &[&str] = &["Overwrite", "Append"];
     const VALID_FORMATS: &[&str] = &["Csv", "Parquet"];
@@ -1325,8 +1343,8 @@ async fn load_table(
     let format_options = match format {
         "Csv" => serde_json::json!({
             "format": format,
-            "header": true,
-            "delimiter": ","
+            "header": header,
+            "delimiter": delimiter
         }),
         _ => serde_json::json!({
             "format": format

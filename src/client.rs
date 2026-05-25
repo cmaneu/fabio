@@ -331,22 +331,15 @@ impl FabricClient {
 
     /// POST request to Fabric REST API, optionally polling for LRO completion.
     /// Retries once on 401 with a fresh token.
+    /// Retries up to 3 times on 429/430 (rate limited) with exponential backoff.
     pub async fn post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
-        let token = self.require_auth().await?;
+        const MAX_RATE_LIMIT_RETRIES: u32 = 3;
         let url = format!("{FABRIC_BASE_URL}{path}");
+        let mut attempt: u32 = 0;
 
-        let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
-            .json(body)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        if resp.status() == StatusCode::UNAUTHORIZED {
-            self.invalidate_fabric_token().await;
+        loop {
             let token = self.require_auth().await?;
+
             let resp = self
                 .http
                 .post(&url)
@@ -355,17 +348,42 @@ impl FabricClient {
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+            if resp.status() == StatusCode::UNAUTHORIZED {
+                self.invalidate_fabric_token().await;
+                let token = self.require_auth().await?;
+                let resp = self
+                    .http
+                    .post(&url)
+                    .header(AUTHORIZATION, format!("Bearer {token}"))
+                    .json(body)
+                    .send()
+                    .await
+                    .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+                if poll && resp.status() == StatusCode::ACCEPTED {
+                    return self.poll_lro(resp).await;
+                }
+                return handle_response(resp).await;
+            }
+
+            // Retry on rate-limit (429) or Spark capacity throttle (430)
+            let status_code = resp.status().as_u16();
+            if (status_code == 429 || status_code == 430) && attempt < MAX_RATE_LIMIT_RETRIES {
+                attempt += 1;
+                let backoff_secs = 10u64 * u64::from(attempt); // 10s, 20s, 30s
+                eprintln!(
+                    "Rate limited (HTTP {status_code}). Retrying in {backoff_secs}s (attempt {attempt}/{MAX_RATE_LIMIT_RETRIES})..."
+                );
+                sleep(Duration::from_secs(backoff_secs)).await;
+                continue;
+            }
+
             if poll && resp.status() == StatusCode::ACCEPTED {
                 return self.poll_lro(resp).await;
             }
+
             return handle_response(resp).await;
         }
-
-        if poll && resp.status() == StatusCode::ACCEPTED {
-            return self.poll_lro(resp).await;
-        }
-
-        handle_response(resp).await
     }
 
     /// POST request with raw text body (text/plain content type).

@@ -96,7 +96,7 @@ impl FabioError {
             403 => ErrorCode::Forbidden,
             404 => ErrorCode::NotFound,
             409 => ErrorCode::Conflict,
-            429 => ErrorCode::RateLimited,
+            429 | 430 => ErrorCode::RateLimited,
             _ if (500..600).contains(&status) => ErrorCode::ApiError,
             _ => ErrorCode::ApiError,
         };
