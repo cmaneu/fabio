@@ -905,6 +905,13 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
   fabio kql-database query --workspace <ws-id> --id <db-id> --kql "MyTable | take 10"
   ```
 
+## Eventhouse API Behaviors Discovered
+- **Standard CRUD**: list, show, create, update, delete at `/workspaces/{ws}/eventhouses/{id}`.
+- **Definition file**: `EventhouseProperties.json` (PascalCase, NOT `eventhouse.json`).
+- **Create is LRO**: Returns 202, requires polling. Creation can take 30-60 seconds.
+- **getDefinition is LRO**: Returns 202, requires polling.
+- **Endpoint pattern**: `/workspaces/{ws}/eventhouses/{id}`.
+
 ## Graph Model API Behaviors Discovered
 - **Job type for refresh is `RefreshGraph` (PascalCase)**: The Jobs API uses `?jobType=RefreshGraph` query parameter. The legacy path-based format (`/jobs/refreshGraph/instances`) returns `InvalidJobType`. Must use `POST /workspaces/{ws}/graphModels/{id}/jobs/instances?jobType=RefreshGraph`.
 - **Execute query requires `?preview=true`**: The `executeQuery` endpoint requires `?preview=true` query parameter (NOT `?beta=true`). Without it, returns "InvalidParameter: 'preview' is a required parameter".
@@ -1377,11 +1384,17 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Load balancing settings**: `Failover` (default), `DistributeEvenly`. Only applicable to on-premises gateways with multiple members.
 
 ## Mirrored Catalog API Behaviors Discovered
-- **Feature not available**: Creating mirrored catalogs returns `FORBIDDEN` with "The feature is not available". Likely requires a tenant-level feature flag or specific capacity SKU (F64+).
+- **Requires tenant-level feature flag (NOT capacity SKU)**: Creating mirrored catalogs returns `FeatureNotAvailable` (HTTP 403) even on F64 capacity. The error `"The feature is not available"` is controlled by a tenant admin setting (likely "Mirrored Catalog" or "Unity Catalog mirroring"), not capacity size. Both the type-specific endpoint (`POST /mirroredCatalogs`) and generic items endpoint (`POST /items` with `type: MirroredCatalog`) fail identically. The `?beta=true` query param does not help.
+- **List works without the feature flag**: `GET /workspaces/{ws}/mirroredCatalogs` and `GET /workspaces/{ws}/items?type=MirroredCatalog` both return empty results successfully (HTTP 200). Only mutations (create) are blocked.
 - **Definition file**: `mirroring.json` (same as Mirrored Database).
 - **Endpoint pattern**: `/workspaces/{ws}/mirroredCatalogs/{id}`.
+- **Additional endpoints (untestable)**: `refreshCatalogMetadata?beta=true` (POST, LRO), `mirroringStatus?beta=true` (GET), `tablesMirroringStatus?beta=true` (GET). Workspace-level: `catalogmirroring/scopes?beta=true` (GET), `catalogmirroring/tables?beta=true` (GET).
+- **Cannot test without admin enabling feature**: All mutation commands (create/update/delete/update-definition) and item-specific read commands (show/get-definition/mirroring-status) require an existing item, which cannot be created without the tenant setting.
+- **Distinct from MirroredAzureDatabricksCatalog**: `MirroredCatalog` is a separate, newer item type. `MirroredAzureDatabricksCatalog` creates successfully on F2 capacity without any Databricks account. `MirroredCatalog` (and `MirroredWarehouse`) are blocked by the same tenant feature flag — these are likely for generic/Snowflake catalog mirroring.
+- **MirroredWarehouse has same blocker**: `POST /workspaces/{ws}/items` with `type: MirroredWarehouse` also returns `FeatureNotAvailable` (403). Same tenant setting controls both.
 
 ## Mirrored Databricks Catalog API Behaviors Discovered
+- **Creates without external connection**: Unlike Snowflake Database, MirroredAzureDatabricksCatalog items can be created as empty shells (no Databricks account/workspace required upfront). The item is created successfully but cannot perform mirroring operations without a configured Databricks connection.
 - **Naming constraint**: Item names cannot contain hyphens. Names like `test-mdc-e2e` return "Invalid Display Name ... contains invalid characters". Must use alphanumeric characters and underscores only (similar to Digital Twin Builder).
 - **Create is LRO**: Returns 202, requires polling.
 - **Definition file**: `mirroring.json`.
