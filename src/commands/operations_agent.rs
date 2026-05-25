@@ -75,6 +75,9 @@ pub enum OperationsAgentCommand {
         /// Operations agent ID
         #[arg(long)]
         id: String,
+        /// Decode base64 payloads inline (adds decodedPayload field)
+        #[arg(long)]
+        decode: bool,
     },
     /// Update the definition of a operations agent
     #[command(display_order = 7)]
@@ -126,8 +129,8 @@ pub async fn execute(
         OperationsAgentCommand::Delete { workspace, id } => {
             delete(cli, client, workspace, id).await
         }
-        OperationsAgentCommand::GetDefinition { workspace, id } => {
-            get_definition(cli, client, workspace, id).await
+        OperationsAgentCommand::GetDefinition { workspace, id, decode } => {
+            get_definition(cli, client, workspace, id, *decode).await
         }
         OperationsAgentCommand::UpdateDefinition {
             workspace,
@@ -261,7 +264,7 @@ async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> 
     Ok(())
 }
 
-async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str, decode: bool) -> Result<()> {
     let data = client
         .post(
             &format!("/workspaces/{workspace}/operationsAgents/{id}/getDefinition"),
@@ -270,7 +273,12 @@ async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &
         )
         .await
         .map_err(|e| enrich_forbidden(e, "operations-agent get-definition", "Contributor"))?;
-    output::render_object(cli, &data, "definition");
+    if decode {
+        let decoded = output::decode_definition_parts(&data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
+    }
     Ok(())
 }
 
@@ -297,7 +305,7 @@ async fn update_definition(
     };
     let encoded = base64::engine::general_purpose::STANDARD.encode(script.as_bytes());
     let body = serde_json::json!({
-        "definition": { "parts": [{ "path": "definition.json", "payload": encoded, "payloadType": "InlineBase64" }] }
+        "definition": { "parts": [{ "path": "Configurations.json", "payload": encoded, "payloadType": "InlineBase64" }] }
     });
     if output::dry_run_guard(
         cli,

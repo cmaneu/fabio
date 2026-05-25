@@ -93,6 +93,16 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
   - Principle 10: Two-way I/O (`fabio feedback send/list`)
 - **SQL Database**: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
 - **SQL Database import**: Reads CSV/JSON files, infers column types (Int/BigInt/Float/Bit/Date/NVarChar), generates CREATE TABLE + batched INSERTs via TDS. Supports --drop-if-exists, --no-create-table, --batch-size.
+- **SQL Endpoint**: list/show/connection-string/refresh-metadata/get-audit-settings/update-audit-settings/set-audit-actions (read-only companion to lakehouses)
+- **Variable Library**: list/show/create/update/delete/get-definition/update-definition (variables.json + settings.json)
+- **Event Schema Set**: list/show/create/update/delete/get-definition/update-definition (EventSchemaSetDefinition.json)
+- **User Data Function**: list/show/create/update/delete/get-definition/update-definition (Python runtime)
+- **Operations Agent**: list/show/create/update/delete/get-definition/update-definition (Configurations.json, goals/instructions/dataSources/actions)
+- **Digital Twin Builder**: list/show/create/update/delete/get-definition/update-definition (links to lakehouse)
+- **Digital Twin Builder Flow**: list/show/create/update/delete/get-definition/update-definition (requires parent DTB)
+- **Cosmos DB Database**: list/show/create/update/delete/get-definition/update-definition (empty shell creation supported)
+- **Snowflake Database**: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
+- **Anomaly Detector**: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
 - **700 Rust tests** (199 unit + 501 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
@@ -189,6 +199,16 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/job_scheduler.rs`: list-instances/get-instance/run-on-demand/cancel-instance/list-schedules/get-schedule/create-schedule/update-schedule/delete-schedule
 - `src/commands/onelake_security.rs`: list/show/upsert/delete (data access roles)
 - `src/commands/managed_private_endpoint.rs`: list/show/create/delete
+- `src/commands/variable_library.rs`: list/show/create/update/delete/get-definition/update-definition (variables.json + settings.json)
+- `src/commands/event_schema_set.rs`: list/show/create/update/delete/get-definition/update-definition (EventSchemaSetDefinition.json)
+- `src/commands/user_data_function.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json, Python runtime)
+- `src/commands/operations_agent.rs`: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
+- `src/commands/digital_twin_builder.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json, links to lakehouse)
+- `src/commands/digital_twin_builder_flow.rs`: list/show/create/update/delete/get-definition/update-definition (requires parent DTB)
+- `src/commands/cosmos_db_database.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json)
+- `src/commands/snowflake_database.rs`: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
+- `src/commands/sql_endpoint.rs`: list/show/connection-string/refresh-metadata/get-audit-settings/update-audit-settings/set-audit-actions
+- `src/commands/anomaly_detector.rs`: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
 - `src/commands/profile.rs`: save/use/list/show/delete (named profiles with defaults)
 - `src/commands/jobs.rs`: list/get/prune (local async job ledger)
 - `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
@@ -1220,4 +1240,85 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Tenant-level vs workspace-scoped resources**:
   - Tenant-level (no workspace prefix): `/capacities`, `/connections`, `/deploymentPipelines`, `/admin/domains`, `/externalDataShares/invitations`
   - Workspace-scoped: All other resources at `/workspaces/{ws}/<resource>`
+
+## Variable Library API Behaviors Discovered
+- **Definition format**: Two definition files: `variables.json` (variable definitions) + `settings.json` (ordering/display).
+- **variables.json schema**: `https://developer.microsoft.com/json-schemas/fabric/item/variableLibrary/definition/variables/1.0.0/schema.json`. Structure: `{"$schema":"...","variables":[]}`. Each variable has `name`, `type`, `defaultValue`, `valueSets`.
+- **settings.json schema**: `https://developer.microsoft.com/json-schemas/fabric/item/variableLibrary/definition/settings/1.0.0/schema.json`. Structure: `{"$schema":"...","valueSetsOrder":[]}`.
+- **updateDefinition requires valid content structure**: The API validates variable definitions. Sending a well-formed JSON with incorrect variable structure returns "Item content cannot be used". Both files may need to be included for a successful update.
+- **Create is LRO**: Returns 202, requires polling.
+- **getDefinition is LRO**: Returns 202, requires polling. Returns `variables.json` + `settings.json` + `.platform`.
+- **409 Conflict on duplicate name**: Same pattern as all other items.
+- **Endpoint pattern**: `/workspaces/{ws}/variableLibraries/{id}`.
+
+## Event Schema Set API Behaviors Discovered
+- **Definition file**: `EventSchemaSetDefinition.json` (NOT `definition.json`).
+- **Definition structure**: `{"eventTypes":[],"schemas":[]}`. No `$schema` URL included (unlike most other items).
+- **updateDefinition validates content**: Sending invalid event types returns "An error occurred while processing the operation". The `eventTypes` and `schemas` arrays have specific schema requirements.
+- **Create is LRO**: Returns 202, requires polling.
+- **getDefinition is LRO**: Returns `EventSchemaSetDefinition.json` + `.platform`.
+- **Endpoint pattern**: `/workspaces/{ws}/eventSchemaSets/{id}`.
+
+## User Data Function API Behaviors Discovered
+- **Definition file**: `definition.json` (standard path).
+- **Definition schema**: `https://developer.microsoft.com/json-schemas/fabric/item/userDataFunction/definition/1.1.0/schema.json` (version 1.1.0).
+- **Definition structure**: `{"$schema":"...","runtime":"PYTHON","connectedDataSources":[],"functions":[],"libraries":{"public":[],"private":[]}}`.
+- **Runtime values**: `"PYTHON"` (likely also supports other runtimes in future).
+- **Functions array**: Defines the function code and metadata for the user data function.
+- **Libraries**: Supports public (PyPI packages) and private (uploaded wheels/archives) libraries.
+- **Create is LRO**: Returns 202, requires polling.
+- **getDefinition is LRO**: Returns `definition.json` + `.platform`.
+- **Endpoint pattern**: `/workspaces/{ws}/userDataFunctions/{id}`.
+
+## Operations Agent API Behaviors Discovered
+- **Definition file**: `Configurations.json` (same name as anomaly-detector, NOT `definition.json`).
+- **Definition format**: `OperationsAgentV1` (reported in getDefinition response).
+- **Definition schema**: `https://developer.microsoft.com/json-schemas/fabric/item/operationsAgents/definition/1.0.0/schema.json`.
+- **Definition structure**: `{"$schema":"...","configuration":{"goals":"","instructions":"","dataSources":{},"actions":{}},"shouldRun":false}`.
+- **Configuration fields**: `goals` (natural language objective), `instructions` (natural language instructions), `dataSources` (object mapping data source names to configs), `actions` (object mapping action names to configs).
+- **`shouldRun` controls activation**: Boolean that determines if the agent is actively running.
+- **updateDefinition works with single part**: Unlike variable-library, operations-agent successfully updates with just the `Configurations.json` part.
+- **Create is LRO**: Returns 202, requires polling.
+- **getDefinition is LRO**: Returns `Configurations.json` + `.platform`.
+- **Endpoint pattern**: `/workspaces/{ws}/operationsAgents/{id}`.
+
+## Digital Twin Builder API Behaviors Discovered
+- **Definition file**: `definition.json` (standard path).
+- **Definition structure**: `{"LakehouseId":"<uuid>"}`. Links the DTB to a lakehouse for data storage.
+- **Naming constraint**: Item name must start with a letter, be less than 90 characters, and contain only letters, numbers, and underscores. Hyphens are NOT allowed (unlike most other item types).
+- **Create is LRO**: Returns 202, requires polling.
+- **getDefinition is LRO**: Returns `definition.json` + `.platform`.
+- **Endpoint pattern**: `/workspaces/{ws}/digitalTwinBuilders/{id}`.
+
+## Digital Twin Builder Flow API Behaviors Discovered
+- **Create requires parent DTB**: The create API requires a `creationPayload` referencing the parent Digital Twin Builder artifact ID. Without it, returns "Parent artifact is inaccessible or required fields are missing from request".
+- **Endpoint pattern**: `/workspaces/{ws}/digitalTwinBuilderFlows/{id}`.
+- **Create is LRO**: Returns 202, requires polling (when payload is correct).
+- **getDefinition is LRO**: Returns definition + `.platform`.
+
+## Cosmos DB Database API Behaviors Discovered
+- **Creates without external connection**: Unlike Snowflake Database, Cosmos DB Database items can be created as empty shells (no Azure Cosmos DB account required upfront).
+- **Definition file**: `definition.json` (standard path).
+- **Definition schema**: `https://developer.microsoft.com/json-schemas/fabric/item/CosmosDB/definition/CosmosDB/2.0.0/schema.json` (note: schema path uses `CosmosDB/CosmosDB`).
+- **Definition structure**: `{"$schema":"...","containers":[]}`. The `containers` array defines mirrored Cosmos DB containers.
+- **Create is LRO**: Returns 202, requires polling.
+- **getDefinition is LRO**: Returns `definition.json` + `.platform`.
+- **Endpoint pattern**: `/workspaces/{ws}/cosmosDbDatabases/{id}`.
+- **Response includes `attributes` field**: Item responses include `"attributes": []`.
+
+## Snowflake Database API Behaviors Discovered
+- **Create requires connection payload**: Unlike Cosmos DB, creating a Snowflake Database with just `displayName` returns "Invalid payload." A connection reference (Snowflake account credentials/connection ID) is required in the creation request.
+- **Endpoint pattern**: `/workspaces/{ws}/snowflakeDatabases/{id}`.
+- **Create is LRO**: Returns 202, requires polling (when payload is valid).
+- **getDefinition is LRO**: Returns definition + `.platform`.
+
+## SQL Endpoint API Behaviors Discovered
+- **Read-only companion item**: SQL Endpoints are auto-created as companion items alongside Lakehouses (one per lakehouse). They cannot be created or deleted independently.
+- **No getDefinition/updateDefinition**: SQL Endpoints do not support definition operations.
+- **Available commands**: list, show, connection-string, refresh-metadata, get-audit-settings, update-audit-settings, set-audit-actions.
+- **Connection string format**: Returns the DW-style endpoint hostname (e.g., `*.datawarehouse.fabric.microsoft.com`).
+- **refresh-metadata returns table sync status**: Each table shows `status` (`NotRun`, `Succeeded`, `Failed`), `startDateTime`, `endDateTime`, `lastSuccessfulSyncDateTime`.
+- **Audit settings structure**: `{"state":"Disabled|Enabled","retentionDays":N,"auditActionsAndGroups":["GROUP1","GROUP2",...]}`.
+- **Default audit groups**: `SUCCESSFUL_DATABASE_AUTHENTICATION_GROUP`, `FAILED_DATABASE_AUTHENTICATION_GROUP`, `BATCH_COMPLETED_GROUP`.
+- **Endpoint pattern**: `/workspaces/{ws}/sqlEndpoints/{id}`.
 

@@ -299,7 +299,7 @@ async fn get_definition(
     id: &str,
     decode: bool,
 ) -> Result<()> {
-    let mut data = client
+    let data = client
         .post(
             &format!("/workspaces/{workspace}/anomalyDetectors/{id}/getDefinition"),
             &serde_json::json!({}),
@@ -309,9 +309,11 @@ async fn get_definition(
         .map_err(|e| enrich_forbidden(e, "anomaly-detector get-definition", "Contributor"))?;
 
     if decode {
-        output::decode_definition_parts(&mut data);
+        let decoded = output::decode_definition_parts(&data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
     }
-    output::render_object(cli, &data, "definition");
     Ok(())
 }
 

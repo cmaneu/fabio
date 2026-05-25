@@ -75,6 +75,9 @@ pub enum EventSchemaSetCommand {
         /// Event schema set ID
         #[arg(long)]
         id: String,
+        /// Decode base64 payloads inline (adds decodedPayload field)
+        #[arg(long)]
+        decode: bool,
     },
     /// Update the definition of a event schema set
     #[command(display_order = 7)]
@@ -124,8 +127,8 @@ pub async fn execute(
             .await
         }
         EventSchemaSetCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
-        EventSchemaSetCommand::GetDefinition { workspace, id } => {
-            get_definition(cli, client, workspace, id).await
+        EventSchemaSetCommand::GetDefinition { workspace, id, decode } => {
+            get_definition(cli, client, workspace, id, *decode).await
         }
         EventSchemaSetCommand::UpdateDefinition {
             workspace,
@@ -259,7 +262,7 @@ async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> 
     Ok(())
 }
 
-async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str, decode: bool) -> Result<()> {
     let data = client
         .post(
             &format!("/workspaces/{workspace}/eventSchemaSets/{id}/getDefinition"),
@@ -268,7 +271,12 @@ async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &
         )
         .await
         .map_err(|e| enrich_forbidden(e, "event-schema-set get-definition", "Contributor"))?;
-    output::render_object(cli, &data, "definition");
+    if decode {
+        let decoded = output::decode_definition_parts(&data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
+    }
     Ok(())
 }
 
@@ -295,7 +303,7 @@ async fn update_definition(
     };
     let encoded = base64::engine::general_purpose::STANDARD.encode(script.as_bytes());
     let body = serde_json::json!({
-        "definition": { "parts": [{ "path": "definition.json", "payload": encoded, "payloadType": "InlineBase64" }] }
+        "definition": { "parts": [{ "path": "EventSchemaSetDefinition.json", "payload": encoded, "payloadType": "InlineBase64" }] }
     });
     if output::dry_run_guard(
         cli,

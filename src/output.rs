@@ -254,6 +254,34 @@ pub fn apply_query(value: &Value, query: &str) -> Value {
     current.clone()
 }
 
+/// Decode base64-encoded definition parts inline.
+/// Adds a `decodedPayload` field alongside the original `payload` for each part.
+/// Handles both JSON payloads (parsed into objects) and plain text (kept as strings).
+pub fn decode_definition_parts(data: &Value) -> Value {
+    let base64_engine = base64::engine::general_purpose::STANDARD;
+    let mut result = data.clone();
+    if let Some(parts) = result
+        .get_mut("definition")
+        .and_then(|d| d.get_mut("parts"))
+        .and_then(|p| p.as_array_mut())
+    {
+        for part in parts {
+            if let Some(payload) = part.get("payload").and_then(|p| p.as_str()) {
+                if let Ok(decoded_bytes) = base64_engine.decode(payload) {
+                    if let Ok(decoded_str) = String::from_utf8(decoded_bytes) {
+                        if let Ok(json_val) = serde_json::from_str::<Value>(&decoded_str) {
+                            part["decodedPayload"] = json_val;
+                        } else {
+                            part["decodedPayload"] = Value::String(decoded_str);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,32 +362,4 @@ mod tests {
         args.push("agent-context");
         Cli::parse_from(args)
     }
-}
-
-/// Decode base64-encoded definition parts inline.
-/// Adds a `decodedPayload` field alongside the original `payload` for each part.
-/// Handles both JSON payloads (parsed into objects) and plain text (kept as strings).
-pub fn decode_definition_parts(data: &Value) -> Value {
-    let base64_engine = base64::engine::general_purpose::STANDARD;
-    let mut result = data.clone();
-    if let Some(parts) = result
-        .get_mut("definition")
-        .and_then(|d| d.get_mut("parts"))
-        .and_then(|p| p.as_array_mut())
-    {
-        for part in parts {
-            if let Some(payload) = part.get("payload").and_then(|p| p.as_str()) {
-                if let Ok(decoded_bytes) = base64_engine.decode(payload) {
-                    if let Ok(decoded_str) = String::from_utf8(decoded_bytes) {
-                        if let Ok(json_val) = serde_json::from_str::<Value>(&decoded_str) {
-                            part["decodedPayload"] = json_val;
-                        } else {
-                            part["decodedPayload"] = Value::String(decoded_str);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    result
 }
