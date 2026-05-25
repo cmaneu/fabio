@@ -107,6 +107,17 @@ pub enum ReflexCommand {
         #[arg(long)]
         content: Option<String>,
     },
+    /// Configure a KQL data source (portal-only operation)
+    #[command(name = "configure-kql-source", display_order = 20)]
+    ConfigureKqlSource {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Reflex ID
+        #[arg(long)]
+        id: String,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReflexCommand) -> Result<()> {
@@ -155,6 +166,15 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReflexCommand) 
                 content.as_deref(),
             )
             .await
+        }
+        ReflexCommand::ConfigureKqlSource { .. } => {
+            Err(crate::errors::FabioError::with_hint(
+                crate::errors::ErrorCode::InvalidInput,
+                "KQL source configuration is a portal-only operation.",
+                "KQL sources always fail via REST API with 'importArtifactRequest field is required'. \
+                 Configure the KQL source through the Fabric portal, then manage the definition \
+                 programmatically with: fabio reflex get-definition / update-definition",
+            ).into())
         }
     }
 }

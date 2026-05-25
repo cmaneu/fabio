@@ -16,6 +16,16 @@ struct AgentContext {
     global_flags: Vec<Flag>,
     commands: serde_json::Value,
     error_codes: Vec<ErrorCodeInfo>,
+    job_types: serde_json::Value,
+    definition_paths: serde_json::Value,
+    portal_only_operations: Vec<PortalOnlyOp>,
+}
+
+#[derive(Serialize)]
+struct PortalOnlyOp {
+    operation: &'static str,
+    item_type: &'static str,
+    reason: &'static str,
 }
 
 #[derive(Serialize)]
@@ -44,6 +54,9 @@ pub fn execute(cli: &Cli) -> Result<()> {
         global_flags: global_flags(),
         commands: commands_schema(),
         error_codes: error_codes(),
+        job_types: job_types(),
+        definition_paths: definition_paths(),
+        portal_only_operations: portal_only_operations(),
     };
 
     let value = serde_json::to_value(&context)?;
@@ -167,6 +180,66 @@ fn error_codes() -> Vec<ErrorCodeInfo> {
             code: "NETWORK_ERROR",
             description: "Network connectivity issue.",
             exit_code: 1,
+        },
+    ]
+}
+
+fn job_types() -> serde_json::Value {
+    serde_json::json!({
+        "Notebook": ["RunNotebook"],
+        "DataPipeline": ["Pipeline"],
+        "SparkJobDefinition": ["sparkjob"],
+        "Lakehouse": ["tableMaintenance", "refreshMaterializedLakeViews"],
+        "SemanticModel": ["refresh"],
+        "GraphModel": ["RefreshGraph"],
+        "Eventstream": ["RunEventstream"],
+        "MirroredDatabase": ["startMirroring", "stopMirroring"],
+        "SQLDatabase": ["startMirroring", "stopMirroring"]
+    })
+}
+
+fn definition_paths() -> serde_json::Value {
+    serde_json::json!({
+        "Reflex": "ReflexEntities.json",
+        "CopyJob": "CopyJobV1.json",
+        "Dataflow": "dataflow.json",
+        "KQLQueryset": "RealTimeQueryset.json",
+        "KQLDashboard": "RealTimeDashboard.json",
+        "Map": "map.json",
+        "Ontology": "definition.json + EntityTypes/{ID}/definition.json + DataBindings/{UUID}.json",
+        "Notebook": "notebook-content.py (format: ipynb)",
+        "DataAgent": "Files/Config/data_agent.json + Files/Config/draft/stage_config.json + Files/Config/draft/{type}-{Name}/datasource.json",
+        "Eventstream": "eventstream.json + eventstreamProperties.json",
+        "GraphQLApi": "graphql-definition.json",
+        "Report": "definition.pbir + report.json (PBIR-Legacy) or definition/ folder (PBIR)",
+        "SemanticModel": "definition.pbism + model.tmdl files or model.bim",
+        "SparkJobDefinition": "SparkJobDefinitionV1.json",
+        "Environment": "environment.metadata.json",
+        "MirroredDatabase": "mirroring.json"
+    })
+}
+
+fn portal_only_operations() -> Vec<PortalOnlyOp> {
+    vec![
+        PortalOnlyOp {
+            operation: "publish",
+            item_type: "DataAgent",
+            reason: "Publishing activates the chat endpoint. No REST API endpoint exists. Use the portal Publish button.",
+        },
+        PortalOnlyOp {
+            operation: "initialize",
+            item_type: "GraphModel",
+            reason: "First-time graph loading provisions internal VersionConfig. REST API refresh fails until the graph is opened in the portal.",
+        },
+        PortalOnlyOp {
+            operation: "configure-kql-source",
+            item_type: "Reflex",
+            reason: "KQL source via REST API always fails with 'importArtifactRequest field is required'. Configure through portal, then manage definitions programmatically.",
+        },
+        PortalOnlyOp {
+            operation: "configure-credentials",
+            item_type: "SemanticModel (DirectQuery)",
+            reason: "DirectQuery OAuth2 credentials require interactive portal binding via 'Manage connections and gateways'. Direct Lake avoids this issue.",
         },
     ]
 }

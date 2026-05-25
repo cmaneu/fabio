@@ -709,6 +709,19 @@ fn normalize_data_binding(content: &[u8]) -> Result<Vec<u8>> {
     let mut binding: Value = serde_json::from_slice(content)
         .map_err(|e| anyhow::anyhow!("Invalid JSON in DataBinding file: {e}"))?;
 
+    // Validate that the 'id' field is a valid UUID — non-UUID IDs are silently dropped by the server
+    if let Some(id_val) = binding.get("id").and_then(Value::as_str) {
+        if !is_valid_uuid(id_val) {
+            return Err(crate::errors::FabioError::with_hint(
+                crate::errors::ErrorCode::InvalidInput,
+                format!("Data binding 'id' must be UUID format, got: '{id_val}'"),
+                "Use UUID format (e.g., c0000001-0001-0001-0001-000000000001). \
+                 Non-UUID IDs are silently dropped by the Fabric API with no error.",
+            )
+            .into());
+        }
+    }
+
     // Navigate to dataBindingConfiguration.sourceTableProperties and reorder
     if let Some(config) = binding
         .get_mut("dataBindingConfiguration")
@@ -732,6 +745,19 @@ fn normalize_data_binding(content: &[u8]) -> Result<Vec<u8>> {
 
     serde_json::to_vec(&binding)
         .map_err(|e| anyhow::anyhow!("Failed to serialize normalized DataBinding: {e}"))
+}
+
+/// Check if a string is a valid UUID (8-4-4-4-12 hex format).
+fn is_valid_uuid(s: &str) -> bool {
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() != 5 {
+        return false;
+    }
+    let expected_lens = [8, 4, 4, 4, 12];
+    parts
+        .iter()
+        .zip(expected_lens.iter())
+        .all(|(part, &len)| part.len() == len && part.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 fn read_file_or_stdin(path: &str) -> Result<String> {
@@ -1023,8 +1049,8 @@ GRAPH :EventGraph {
         let bindings_dir = entity_dir.join("DataBindings");
         std::fs::create_dir_all(&bindings_dir).unwrap();
         std::fs::write(
-            bindings_dir.join("aaa-bbb-ccc.json"),
-            r#"{"id":"aaa-bbb-ccc","dataBindingConfiguration":{"dataBindingType":"NonTimeSeries"}}"#,
+            bindings_dir.join("a0000001-0001-0001-0001-000000000001.json"),
+            r#"{"id":"a0000001-0001-0001-0001-000000000001","dataBindingConfiguration":{"dataBindingType":"NonTimeSeries"}}"#,
         )
         .unwrap();
 
@@ -1037,7 +1063,7 @@ GRAPH :EventGraph {
         assert_eq!(parts[1]["path"], "EntityTypes/1234567890/definition.json");
         assert_eq!(
             parts[2]["path"],
-            "EntityTypes/1234567890/DataBindings/aaa-bbb-ccc.json"
+            "EntityTypes/1234567890/DataBindings/a0000001-0001-0001-0001-000000000001.json"
         );
 
         // Verify entity type content
@@ -1198,7 +1224,7 @@ GRAPH :EventGraph {
 
     #[test]
     fn normalize_data_binding_moves_source_type_first() {
-        let input = br#"{"id":"b0000001","dataBindingConfiguration":{"dataBindingType":"NonTimeSeries","sourceTableProperties":{"itemId":"abc","sourceTableName":"t","sourceType":"LakehouseTable","workspaceId":"ws"}}}"#;
+        let input = br#"{"id":"b0000001-0001-0001-0001-000000000001","dataBindingConfiguration":{"dataBindingType":"NonTimeSeries","sourceTableProperties":{"itemId":"abc","sourceTableName":"t","sourceType":"LakehouseTable","workspaceId":"ws"}}}"#;
         let output = normalize_data_binding(input).unwrap();
         let parsed: Value = serde_json::from_slice(&output).unwrap();
         let source_props = parsed["dataBindingConfiguration"]["sourceTableProperties"]
@@ -1210,7 +1236,7 @@ GRAPH :EventGraph {
 
     #[test]
     fn normalize_data_binding_already_ordered() {
-        let input = br#"{"id":"b0000001","dataBindingConfiguration":{"dataBindingType":"NonTimeSeries","sourceTableProperties":{"sourceType":"LakehouseTable","workspaceId":"ws","itemId":"abc","sourceTableName":"t"}}}"#;
+        let input = br#"{"id":"b0000001-0001-0001-0001-000000000001","dataBindingConfiguration":{"dataBindingType":"NonTimeSeries","sourceTableProperties":{"sourceType":"LakehouseTable","workspaceId":"ws","itemId":"abc","sourceTableName":"t"}}}"#;
         let output = normalize_data_binding(input).unwrap();
         let parsed: Value = serde_json::from_slice(&output).unwrap();
         let source_props = parsed["dataBindingConfiguration"]["sourceTableProperties"]
@@ -1223,20 +1249,37 @@ GRAPH :EventGraph {
     #[test]
     fn normalize_data_binding_no_source_type_passthrough() {
         // If sourceType is missing, normalization still succeeds (passthrough)
-        let input = br#"{"id":"b0000001","dataBindingConfiguration":{"dataBindingType":"NonTimeSeries","sourceTableProperties":{"workspaceId":"ws","itemId":"abc"}}}"#;
+        let input = br#"{"id":"b0000001-0001-0001-0001-000000000001","dataBindingConfiguration":{"dataBindingType":"NonTimeSeries","sourceTableProperties":{"workspaceId":"ws","itemId":"abc"}}}"#;
         let output = normalize_data_binding(input).unwrap();
         let parsed: Value = serde_json::from_slice(&output).unwrap();
-        assert_eq!(parsed["id"], "b0000001");
+        assert_eq!(parsed["id"], "b0000001-0001-0001-0001-000000000001");
     }
 
     #[test]
     fn normalize_data_binding_no_config_passthrough() {
         // If dataBindingConfiguration is missing, normalization still succeeds
-        let input = br#"{"id":"b0000001","custom":"field"}"#;
+        let input = br#"{"id":"b0000001-0001-0001-0001-000000000001","custom":"field"}"#;
         let output = normalize_data_binding(input).unwrap();
         let parsed: Value = serde_json::from_slice(&output).unwrap();
-        assert_eq!(parsed["id"], "b0000001");
+        assert_eq!(parsed["id"], "b0000001-0001-0001-0001-000000000001");
         assert_eq!(parsed["custom"], "field");
+    }
+
+    #[test]
+    fn normalize_data_binding_rejects_non_uuid_id() {
+        let input = br#"{"id":"not-a-uuid","dataBindingConfiguration":{}}"#;
+        let result = normalize_data_binding(input);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("UUID format"), "Error should mention UUID: {err_msg}");
+    }
+
+    #[test]
+    fn normalize_data_binding_allows_missing_id() {
+        // If id field is missing entirely, no validation needed (server will reject)
+        let input = br#"{"dataBindingConfiguration":{"dataBindingType":"NonTimeSeries"}}"#;
+        let result = normalize_data_binding(input);
+        assert!(result.is_ok());
     }
 
     // -----------------------------------------------------------------------

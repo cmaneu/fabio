@@ -880,7 +880,18 @@ impl FabricClient {
 
         loop {
             if start.elapsed() > LRO_MAX_WAIT {
-                return Err(FabioError::new(ErrorCode::Timeout, "LRO polling timed out").into());
+                return Err(FabioError::with_hint(
+                    ErrorCode::Timeout,
+                    format!(
+                        "LRO polling timed out after {}s (poll URL: {poll_url})",
+                        LRO_MAX_WAIT.as_secs()
+                    ),
+                    "The operation may still be running server-side. \
+                     Check status with: fabio jobs list --workspace <WS>, or retry with a longer \
+                     --timeout if supported. Some operations (notebook run, graph refresh) \
+                     can take several minutes on small capacities.",
+                )
+                .into());
             }
 
             sleep(LRO_POLL_INTERVAL).await;
@@ -989,7 +1000,17 @@ impl FabricClient {
 
         loop {
             if start.elapsed() > max_wait {
-                return Err(FabioError::new(ErrorCode::Timeout, "LRO polling timed out").into());
+                return Err(FabioError::with_hint(
+                    ErrorCode::Timeout,
+                    format!(
+                        "LRO polling timed out after {}s (poll URL: {poll_url})",
+                        max_wait.as_secs()
+                    ),
+                    "The operation may still be running server-side. \
+                     Check status with: fabio jobs list --workspace <WS>, or retry with a longer \
+                     --timeout if supported.",
+                )
+                .into());
             }
 
             sleep(LRO_POLL_INTERVAL).await;

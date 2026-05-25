@@ -154,6 +154,17 @@ pub enum GraphModelCommand {
         #[arg(long)]
         id: String,
     },
+    /// Initialize a graph model for querying (portal-only operation)
+    #[command(display_order = 20)]
+    Initialize {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Graph model ID
+        #[arg(long)]
+        id: String,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &GraphModelCommand) -> Result<()> {
@@ -225,6 +236,16 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GraphModelComma
         } => execute_query(cli, client, workspace, id, query).await,
         GraphModelCommand::GetQueryableGraphType { workspace, id } => {
             get_queryable_graph_type(cli, client, workspace, id).await
+        }
+        GraphModelCommand::Initialize { .. } => {
+            Err(crate::errors::FabioError::with_hint(
+                crate::errors::ErrorCode::InvalidInput,
+                "Graph model initialization is a portal-only operation.",
+                "Open the graph model in the Fabric portal to initialize it. \
+                 The REST API refresh fails with 'VersionConfig does not exist' \
+                 until the portal provisions the internal loading infrastructure. \
+                 After portal initialization, use: fabio graph-model refresh-graph --workspace <WS> --id <ID>",
+            ).into())
         }
     }
 }

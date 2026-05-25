@@ -103,6 +103,7 @@ impl FabioError {
         let hint = match code {
             ErrorCode::AuthRequired => Some("Run 'fabio auth login' to authenticate.".to_string()),
             ErrorCode::Forbidden => Some(forbidden_hint(&msg, body)),
+            ErrorCode::Conflict => Some(conflict_hint(&msg, body)),
             ErrorCode::RateLimited => {
                 Some("Too many requests. Retry after a short backoff.".to_string())
             }
@@ -183,6 +184,31 @@ fn forbidden_hint(message: &str, body: &str) -> String {
      (3) A tenant admin policy restricts this operation. \
      Check your role with: fabio workspace show --id <workspace-id>. \
      Re-authenticate with: fabio auth login."
+        .to_string()
+}
+
+/// Generate a context-aware hint for 409 Conflict errors.
+fn conflict_hint(message: &str, body: &str) -> String {
+    let msg_lower = message.to_lowercase();
+    let body_lower = body.to_lowercase();
+    let combined = format!("{msg_lower} {body_lower}");
+
+    if combined.contains("already in use") || combined.contains("already exists") {
+        return "An item with this name already exists in the workspace. \
+                Use a different name, or delete the existing item first with: \
+                fabio <resource> delete --workspace <WS> --id <ID>"
+            .to_string();
+    }
+
+    if combined.contains("capacity") {
+        return "Capacity conflict. The capacity may already be assigned or in a \
+                transitional state. Check capacity status with: fabio capacity show --id <ID>"
+            .to_string();
+    }
+
+    "Resource conflict (409). The item may already exist or be in a state that \
+     conflicts with this operation. Check existing items with: \
+     fabio <resource> list --workspace <WS>"
         .to_string()
 }
 
@@ -294,6 +320,43 @@ mod tests {
         assert!(
             hint.contains("git operations"),
             "Hint should mention git: {hint}"
+        );
+    }
+
+    #[test]
+    fn from_status_409_maps_to_conflict_with_hint() {
+        let err = FabioError::from_status(409, "item already exists");
+        assert_eq!(err.code, ErrorCode::Conflict);
+        let hint = err.hint.unwrap();
+        assert!(
+            hint.contains("already exists"),
+            "Hint should mention name conflict: {hint}"
+        );
+    }
+
+    #[test]
+    fn from_status_409_name_in_use_gives_rename_hint() {
+        let err = FabioError::from_status_with_body(
+            409,
+            "Conflict",
+            r#"{"error":{"code":"Conflict","message":"Requested 'MyReport' is already in use"}}"#,
+        );
+        assert_eq!(err.code, ErrorCode::Conflict);
+        let hint = err.hint.unwrap();
+        assert!(
+            hint.contains("already exists"),
+            "Hint should suggest different name: {hint}"
+        );
+    }
+
+    #[test]
+    fn from_status_409_generic_gives_resource_conflict_hint() {
+        let err = FabioError::from_status(409, "some conflict");
+        assert_eq!(err.code, ErrorCode::Conflict);
+        let hint = err.hint.unwrap();
+        assert!(
+            hint.contains("Resource conflict"),
+            "Hint should be generic conflict: {hint}"
         );
     }
 }
