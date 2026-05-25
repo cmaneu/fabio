@@ -458,7 +458,7 @@ fn graphql_api_query_with_field_projection() {
             &graphql_id,
             "--gql",
             "{ products { items { product_id price } } }",
-            "--query",
+            "-q",
             "products.items",
         ])
         .assert()
@@ -490,7 +490,7 @@ fn graphql_api_query_table_output() {
             &graphql_id,
             "--gql",
             "{ products { items { product_id category price } } }",
-            "--output",
+            "-o",
             "table",
         ])
         .assert()

@@ -11,7 +11,7 @@ pub enum DatamartCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
     },
 }

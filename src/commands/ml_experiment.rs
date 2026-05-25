@@ -13,14 +13,14 @@ pub enum MlExperimentCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
     },
     /// Show details of an ML experiment
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// ML experiment ID
@@ -31,7 +31,7 @@ pub enum MlExperimentCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// ML experiment display name
@@ -46,7 +46,7 @@ pub enum MlExperimentCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// ML experiment ID
@@ -65,7 +65,7 @@ pub enum MlExperimentCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// ML experiment ID

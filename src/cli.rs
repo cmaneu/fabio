@@ -23,7 +23,7 @@ use crate::commands::{
 #[allow(clippy::struct_excessive_bools)]
 pub struct Cli {
     /// Output format
-    #[arg(long, global = true, default_value = "json")]
+    #[arg(short, long, global = true, default_value = "json")]
     pub output: OutputFormat,
 
     /// Shorthand for --output json (agent-native convention)
@@ -31,7 +31,7 @@ pub struct Cli {
     pub json: bool,
 
     /// Query projection (dot-notation field extraction)
-    #[arg(long, global = true)]
+    #[arg(short, long, global = true)]
     pub query: Option<String>,
 
     /// Suppress all output

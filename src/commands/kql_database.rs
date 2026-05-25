@@ -18,14 +18,14 @@ pub enum KqlDatabaseCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
     },
     /// Show details of a KQL database
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// KQL database ID
@@ -36,7 +36,7 @@ pub enum KqlDatabaseCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// Database display name
@@ -59,7 +59,7 @@ pub enum KqlDatabaseCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// KQL database ID
@@ -78,7 +78,7 @@ pub enum KqlDatabaseCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// KQL database ID
@@ -90,7 +90,7 @@ pub enum KqlDatabaseCommand {
     #[command(display_order = 6)]
     Query {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// KQL database ID
@@ -111,7 +111,7 @@ pub enum KqlDatabaseCommand {
     #[command(name = "get-definition", display_order = 7)]
     GetDefinition {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// KQL database ID
@@ -122,7 +122,7 @@ pub enum KqlDatabaseCommand {
     #[command(name = "update-definition", display_order = 11)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// KQL database ID
@@ -143,7 +143,7 @@ pub enum KqlDatabaseCommand {
     #[command(name = "list-shortcuts", display_order = 10)]
     ListShortcuts {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// KQL database ID
@@ -154,7 +154,7 @@ pub enum KqlDatabaseCommand {
     #[command(name = "create-shortcut", display_order = 11)]
     CreateShortcut {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// KQL database ID
@@ -177,7 +177,7 @@ pub enum KqlDatabaseCommand {
     #[command(name = "get-shortcut", display_order = 12)]
     GetShortcut {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// KQL database ID
@@ -192,7 +192,7 @@ pub enum KqlDatabaseCommand {
     #[command(name = "delete-shortcut", display_order = 13)]
     DeleteShortcut {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// KQL database ID
@@ -207,7 +207,7 @@ pub enum KqlDatabaseCommand {
     #[command(name = "bulk-create-shortcuts", display_order = 14)]
     BulkCreateShortcuts {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// KQL database ID

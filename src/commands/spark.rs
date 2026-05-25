@@ -13,14 +13,14 @@ pub enum SparkCommand {
     #[command(display_order = 1)]
     GetSettings {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
     },
     /// Update workspace-level Spark settings
     #[command(display_order = 2)]
     UpdateSettings {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// Settings as JSON (merges with existing settings).
@@ -34,14 +34,14 @@ pub enum SparkCommand {
     #[command(display_order = 10)]
     ListPools {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
     },
     /// Show details of a custom Spark pool
     #[command(display_order = 11)]
     GetPool {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// Pool ID
@@ -52,7 +52,7 @@ pub enum SparkCommand {
     #[command(display_order = 12)]
     CreatePool {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// Pool name
@@ -95,7 +95,7 @@ pub enum SparkCommand {
     #[command(display_order = 13)]
     UpdatePool {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// Pool ID
@@ -110,7 +110,7 @@ pub enum SparkCommand {
     #[command(display_order = 14)]
     DeletePool {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// Pool ID
@@ -216,14 +216,14 @@ pub enum SparkCommand {
     #[command(display_order = 40)]
     ListLivySessions {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
     },
     /// Get details of a Livy session
     #[command(display_order = 41)]
     GetLivySession {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// Livy session ID

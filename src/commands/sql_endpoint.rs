@@ -13,14 +13,14 @@ pub enum SqlEndpointCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
     },
     /// Show details of a SQL endpoint
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// SQL endpoint ID
@@ -31,7 +31,7 @@ pub enum SqlEndpointCommand {
     #[command(display_order = 3)]
     ConnectionString {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// SQL endpoint ID
@@ -50,7 +50,7 @@ pub enum SqlEndpointCommand {
     #[command(display_order = 4)]
     RefreshMetadata {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// SQL endpoint ID
@@ -61,7 +61,7 @@ pub enum SqlEndpointCommand {
     #[command(display_order = 10)]
     GetAuditSettings {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// SQL endpoint ID
@@ -72,7 +72,7 @@ pub enum SqlEndpointCommand {
     #[command(display_order = 11)]
     UpdateAuditSettings {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// SQL endpoint ID
@@ -99,7 +99,7 @@ pub enum SqlEndpointCommand {
     #[command(display_order = 12)]
     SetAuditActions {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(short, long)]
         workspace: String,
 
         /// SQL endpoint ID

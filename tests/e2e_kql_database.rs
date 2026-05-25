@@ -375,7 +375,7 @@ fn kql_database_query_table_output_format() {
             &kql_db_id,
             "--kql",
             "range i from 1 to 3 step 1",
-            "--output",
+            "-o",
             "table",
         ])
         .assert()

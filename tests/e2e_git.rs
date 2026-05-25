@@ -51,7 +51,7 @@ fn find_github_connection_id() -> Option<String> {
 
     // Auto-discover from tenant
     let output = fabio()
-        .args(["connection", "list", "--output", "json"])
+        .args(["connection", "list", "-o", "json"])
         .output()
         .ok()?;
 
@@ -644,7 +644,7 @@ fn git_commit_pull_lifecycle() {
     // Clean up: delete the test notebook
     // First, find its ID from workspace items
     let assert = fabio()
-        .args(["item", "list", "--workspace", workspace, "--output", "json"])
+        .args(["item", "list", "--workspace", workspace, "-o", "json"])
         .assert()
         .success();
 
@@ -938,7 +938,7 @@ fn git_feature_branch_workflow() {
 
     // Step 8: Verify the notebook from the feature branch exists in workspace
     let assert = fabio()
-        .args(["item", "list", "--workspace", workspace, "--output", "json"])
+        .args(["item", "list", "--workspace", workspace, "-o", "json"])
         .assert()
         .success();
 
@@ -1196,7 +1196,7 @@ fn git_selective_commit() {
 
     // Delete notebooks
     let assert = fabio()
-        .args(["item", "list", "--workspace", workspace, "--output", "json"])
+        .args(["item", "list", "--workspace", workspace, "-o", "json"])
         .assert()
         .success();
     let json = parse_json(&assert);
@@ -1485,7 +1485,7 @@ fn git_commit_async_returns_operation() {
 
     // Cleanup: delete the notebook, commit (with --wait), disconnect
     let assert = fabio()
-        .args(["item", "list", "--workspace", workspace, "--output", "json"])
+        .args(["item", "list", "--workspace", workspace, "-o", "json"])
         .assert()
         .success();
     let json = parse_json(&assert);
@@ -2030,7 +2030,7 @@ impl AzdoConfig {
 
         // Auto-discover Azure DevOps connection from tenant
         let output = fabio()
-            .args(["connection", "list", "--output", "json"])
+            .args(["connection", "list", "-o", "json"])
             .output()
             .ok()?;
 

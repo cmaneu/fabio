@@ -17,7 +17,7 @@ pub enum GatewayCommand {
     #[command(display_order = 2)]
     Show {
         /// Gateway ID
-        #[arg(long)]
+        #[arg(short, long)]
         gateway: String,
     },
     /// Create a new gateway (`VirtualNetwork` type)
@@ -51,7 +51,7 @@ pub enum GatewayCommand {
     #[command(display_order = 4)]
     Update {
         /// Gateway ID
-        #[arg(long)]
+        #[arg(short, long)]
         gateway: String,
 
         /// New display name
@@ -74,7 +74,7 @@ pub enum GatewayCommand {
     #[command(display_order = 5)]
     Delete {
         /// Gateway ID
-        #[arg(long)]
+        #[arg(short, long)]
         gateway: String,
     },
 
@@ -83,14 +83,14 @@ pub enum GatewayCommand {
     #[command(display_order = 10)]
     ListMembers {
         /// Gateway ID
-        #[arg(long)]
+        #[arg(short, long)]
         gateway: String,
     },
     /// Update a gateway member
     #[command(display_order = 11)]
     UpdateMember {
         /// Gateway ID
-        #[arg(long)]
+        #[arg(short, long)]
         gateway: String,
 
         /// Member ID
@@ -109,7 +109,7 @@ pub enum GatewayCommand {
     #[command(display_order = 12)]
     DeleteMember {
         /// Gateway ID
-        #[arg(long)]
+        #[arg(short, long)]
         gateway: String,
 
         /// Member ID
@@ -122,14 +122,14 @@ pub enum GatewayCommand {
     #[command(display_order = 20)]
     ListRoleAssignments {
         /// Gateway ID
-        #[arg(long)]
+        #[arg(short, long)]
         gateway: String,
     },
     /// Add a role assignment to a gateway
     #[command(display_order = 21)]
     AddRoleAssignment {
         /// Gateway ID
-        #[arg(long)]
+        #[arg(short, long)]
         gateway: String,
 
         /// Principal ID (user/group/service principal)
@@ -148,7 +148,7 @@ pub enum GatewayCommand {
     #[command(display_order = 22)]
     ShowRoleAssignment {
         /// Gateway ID
-        #[arg(long)]
+        #[arg(short, long)]
         gateway: String,
 
         /// Role assignment ID
@@ -159,7 +159,7 @@ pub enum GatewayCommand {
     #[command(display_order = 23)]
     UpdateRoleAssignment {
         /// Gateway ID
-        #[arg(long)]
+        #[arg(short, long)]
         gateway: String,
 
         /// Role assignment ID
@@ -174,7 +174,7 @@ pub enum GatewayCommand {
     #[command(display_order = 24)]
     DeleteRoleAssignment {
         /// Gateway ID
-        #[arg(long)]
+        #[arg(short, long)]
         gateway: String,
 
         /// Role assignment ID
