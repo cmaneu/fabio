@@ -2,8 +2,8 @@
 
 mod common;
 
-use common::{TestConfig, extract_count, extract_data, fabio, parse_json, unique_name};
 use base64::Engine;
+use common::{TestConfig, extract_count, extract_data, fabio, parse_json, unique_name};
 use predicates::prelude::*;
 use serial_test::serial;
 

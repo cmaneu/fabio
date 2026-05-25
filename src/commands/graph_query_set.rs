@@ -237,7 +237,21 @@ async fn update(
             &body,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "graph-query-set update", "Contributor"))?;
+        .map_err(|e| {
+            let msg = format!("{e}");
+            if msg.contains("GraphQuerySetEmpty") {
+                FabioError::with_hint(
+                    ErrorCode::ApiError,
+                    "Cannot update: graph query set is empty (has no content).",
+                    "Graph query sets must have content before they can be renamed.\n\
+                     Note: update-definition does NOT persist query content (server limitation).\n\
+                     Add queries via the Fabric portal first, then retry this command.",
+                )
+                .into()
+            } else {
+                enrich_forbidden(e, "graph-query-set update", "Contributor")
+            }
+        })?;
     output::render_object(cli, &data, "id");
     Ok(())
 }

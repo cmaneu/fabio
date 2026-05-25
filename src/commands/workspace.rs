@@ -72,11 +72,11 @@ pub enum WorkspaceCommand {
     #[command(display_order = 20)]
     AssignCapacity {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(long, visible_alias = "workspace")]
         id: String,
 
         /// Target capacity ID
-        #[arg(short, long)]
+        #[arg(short, long, visible_alias = "capacity-id")]
         capacity: String,
     },
     /// Unassign a workspace from its capacity

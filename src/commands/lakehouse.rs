@@ -186,7 +186,7 @@ pub enum LakehouseCommand {
         id: String,
 
         /// Relative path to the source file (e.g., Files/data.csv)
-        #[arg(short = 's', long = "source-path")]
+        #[arg(short = 's', long = "source-path", visible_alias = "path")]
         source_path: String,
 
         /// Table name
@@ -1251,6 +1251,18 @@ async fn load_table(
     const VALID_MODES: &[&str] = &["Overwrite", "Append"];
     const VALID_FORMATS: &[&str] = &["Csv", "Parquet"];
 
+    // Case-insensitive normalization: accept "overwrite", "csv", etc.
+    let mode = VALID_MODES
+        .iter()
+        .find(|v| v.eq_ignore_ascii_case(mode))
+        .copied()
+        .unwrap_or(mode);
+    let format = VALID_FORMATS
+        .iter()
+        .find(|v| v.eq_ignore_ascii_case(format))
+        .copied()
+        .unwrap_or(format);
+
     if !VALID_MODES.contains(&mode) {
         return Err(crate::errors::FabioError::with_hint(
             crate::errors::ErrorCode::InvalidInput,
@@ -1337,7 +1349,7 @@ async fn load_table(
 
 /// Upload a local file to the lakehouse and load it into a Delta table in one step.
 /// Auto-detects format from file extension if `--format` is not provided.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn upload_table(
     cli: &Cli,
     client: &FabricClient,
@@ -1350,6 +1362,13 @@ async fn upload_table(
 ) -> Result<()> {
     const VALID_MODES: &[&str] = &["Overwrite", "Append"];
     const VALID_FORMATS: &[&str] = &["Csv", "Parquet"];
+
+    // Case-insensitive normalization: accept "overwrite", "csv", etc.
+    let mode = VALID_MODES
+        .iter()
+        .find(|v| v.eq_ignore_ascii_case(mode))
+        .copied()
+        .unwrap_or(mode);
 
     if !VALID_MODES.contains(&mode) {
         return Err(crate::errors::FabioError::with_hint(
@@ -1365,7 +1384,13 @@ async fn upload_table(
 
     // Auto-detect format from file extension if not explicitly provided
     let detected_format = match format {
-        Some(f) => f.to_string(),
+        Some(f) => {
+            // Case-insensitive normalization for explicit format
+            VALID_FORMATS
+                .iter()
+                .find(|v| v.eq_ignore_ascii_case(f))
+                .map_or_else(|| f.to_string(), |v| (*v).to_string())
+        }
         None => detect_format_from_extension(source_path)?,
     };
 
@@ -3041,10 +3066,41 @@ mod tests {
         const VALID_MODES: &[&str] = &["Overwrite", "Append"];
         assert!(VALID_MODES.contains(&"Overwrite"));
         assert!(VALID_MODES.contains(&"Append"));
-        assert!(!VALID_MODES.contains(&"overwrite"));
-        assert!(!VALID_MODES.contains(&"OVERWRITE"));
+        // Invalid values remain invalid even after normalization
         assert!(!VALID_MODES.contains(&"Upsert"));
         assert!(!VALID_MODES.contains(&"Replace"));
+    }
+
+    #[test]
+    fn case_insensitive_mode_normalization() {
+        const VALID_MODES: &[&str] = &["Overwrite", "Append"];
+        let normalize = |input: &str| -> String {
+            VALID_MODES
+                .iter()
+                .find(|v| v.eq_ignore_ascii_case(input))
+                .map_or_else(|| input.to_string(), |v| (*v).to_string())
+        };
+        assert_eq!(normalize("overwrite"), "Overwrite");
+        assert_eq!(normalize("OVERWRITE"), "Overwrite");
+        assert_eq!(normalize("append"), "Append");
+        assert_eq!(normalize("APPEND"), "Append");
+        assert_eq!(normalize("Upsert"), "Upsert"); // stays unchanged (invalid)
+    }
+
+    #[test]
+    fn case_insensitive_format_normalization() {
+        const VALID_FORMATS: &[&str] = &["Csv", "Parquet"];
+        let normalize = |input: &str| -> String {
+            VALID_FORMATS
+                .iter()
+                .find(|v| v.eq_ignore_ascii_case(input))
+                .map_or_else(|| input.to_string(), |v| (*v).to_string())
+        };
+        assert_eq!(normalize("csv"), "Csv");
+        assert_eq!(normalize("CSV"), "Csv");
+        assert_eq!(normalize("parquet"), "Parquet");
+        assert_eq!(normalize("PARQUET"), "Parquet");
+        assert_eq!(normalize("Json"), "Json"); // stays unchanged (invalid)
     }
 
     #[test]
@@ -3053,7 +3109,6 @@ mod tests {
         assert!(VALID_FORMATS.contains(&"Csv"));
         assert!(VALID_FORMATS.contains(&"Parquet"));
         assert!(!VALID_FORMATS.contains(&"Json"));
-        assert!(!VALID_FORMATS.contains(&"csv"));
         assert!(!VALID_FORMATS.contains(&"Avro"));
         assert!(!VALID_FORMATS.contains(&"XML"));
     }

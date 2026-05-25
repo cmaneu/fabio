@@ -516,6 +516,7 @@ async fn delete_warehouse(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 async fn query(
     cli: &Cli,
     client: &FabricClient,
@@ -584,7 +585,20 @@ async fn query(
     tds_client
         .execute(sql_text, Some(60), None)
         .await
-        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("SQL execution failed: {e}")))?;
+        .map_err(|e| {
+            let msg = format!("{e}");
+            let hint = if msg.contains("Invalid object name") && msg.contains("sys.") {
+                ". Hint: Fabric Warehouse/Lakehouse SQL does not support all SQL Server \
+                 system views. Supported: sys.tables, sys.columns, sys.schemas, \
+                 INFORMATION_SCHEMA.TABLES, INFORMATION_SCHEMA.COLUMNS"
+            } else {
+                ""
+            };
+            FabioError::new(
+                ErrorCode::ApiError,
+                format!("SQL execution failed: {e}{hint}"),
+            )
+        })?;
 
     // Collect results
     let mut all_rows: Vec<Value> = Vec::new();
@@ -685,10 +699,17 @@ async fn get_connection_string(
         }
     }
 
-    Err(FabioError::new(
-        ErrorCode::NotFound,
-        "Could not determine SQL connection string. Verify the item is a warehouse or lakehouse with a SQL endpoint.",
-    ).into())
+    Err(FabioError {
+        code: ErrorCode::NotFound,
+        message: "Could not determine SQL connection string. Verify the item is a warehouse or lakehouse with a SQL endpoint.".into(),
+        hint: Some(
+            "Only Warehouse and Lakehouse items support SQL queries via this command.\n\
+             For SQL Databases, use: fabio sql-database query\n\
+             For lakehouses, pass the lakehouse ID (not the SQL endpoint ID).\n\
+             List items: fabio item list --workspace <WS> --type Warehouse"
+                .into(),
+        ),
+    }.into())
 }
 
 /// Parse connection string into server and database components.

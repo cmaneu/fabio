@@ -1041,6 +1041,10 @@ async fn query(
                  three-part naming ([Database].[schema].[table]). Use a lakehouse SQL \
                  endpoint or warehouse instead — they support cross-database queries to \
                  SQL Databases in the same workspace."
+            } else if msg.contains("Invalid object name") && msg.contains("sys.") {
+                ". Hint: Fabric SQL Database does not support all SQL Server system views. \
+                 Supported: sys.tables, sys.columns, sys.schemas, sys.types, \
+                 INFORMATION_SCHEMA.TABLES, INFORMATION_SCHEMA.COLUMNS"
             } else {
                 ""
             };

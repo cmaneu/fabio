@@ -44,7 +44,7 @@ pub enum NotebookCommand {
         name: String,
 
         /// Notebook content (Python/PySpark code)
-        #[arg(long)]
+        #[arg(long, visible_alias = "source")]
         content: Option<String>,
 
         /// Default lakehouse ID (binds the notebook so relative paths like Files/ and Tables/ work)

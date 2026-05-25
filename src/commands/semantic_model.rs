@@ -142,6 +142,32 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         connection_id: String,
     },
+    /// Refresh a semantic model (required to frame Direct Lake models after creation)
+    #[command(display_order = 11)]
+    Refresh {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Refresh type
+        #[arg(long, default_value = "Full")]
+        r#type: String,
+    },
+    /// Take over a semantic model (converts definition-managed to service-managed for portal editing)
+    #[command(display_order = 12)]
+    Takeover {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
 }
 
 pub async fn execute(
@@ -206,6 +232,14 @@ pub async fn execute(
             id,
             connection_id,
         } => bind_connection(cli, client, workspace, id, connection_id).await,
+        SemanticModelCommand::Refresh {
+            workspace,
+            id,
+            r#type,
+        } => refresh(cli, client, workspace, id, r#type).await,
+        SemanticModelCommand::Takeover { workspace, id } => {
+            takeover(cli, client, workspace, id).await
+        }
     }
 }
 
@@ -699,8 +733,7 @@ fn enrich_dax_error(err: anyhow::Error) -> anyhow::Error {
             fabio_err.code,
             msg.clone(),
             "Direct Lake model needs framing before queries work. \
-             Trigger a refresh via the Power BI REST API: \
-             POST /groups/{ws}/datasets/{id}/refreshes with body {\"type\": \"Full\"}"
+             Run: fabio semantic-model refresh --workspace <WS> --id <ID> --type Full"
                 .to_string(),
         )
         .into();
@@ -719,6 +752,88 @@ fn enrich_dax_error(err: anyhow::Error) -> anyhow::Error {
     }
 
     err
+}
+
+async fn refresh(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    refresh_type: &str,
+) -> Result<()> {
+    const VALID_TYPES: &[&str] = &[
+        "Full",
+        "Automatic",
+        "ClearValues",
+        "Calculate",
+        "DataOnly",
+        "Defragment",
+    ];
+
+    // Case-insensitive normalization
+    let refresh_type = VALID_TYPES
+        .iter()
+        .find(|v| v.eq_ignore_ascii_case(refresh_type))
+        .copied()
+        .unwrap_or(refresh_type);
+
+    if !VALID_TYPES.contains(&refresh_type) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid refresh type: '{refresh_type}'"),
+            format!(
+                "--type must be one of: {} (got: '{refresh_type}')",
+                VALID_TYPES.join(", ")
+            ),
+        )
+        .into());
+    }
+
+    let body = serde_json::json!({ "type": refresh_type });
+
+    if output::dry_run_guard(cli, "semantic-model refresh", &body) {
+        return Ok(());
+    }
+
+    client
+        .post_powerbi(
+            &format!("/groups/{workspace}/datasets/{id}/refreshes"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model refresh", "Contributor"))?;
+
+    let obj = serde_json::json!({
+        "id": id,
+        "type": refresh_type,
+        "status": "refresh_triggered"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn takeover(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let body = serde_json::json!({});
+
+    if output::dry_run_guard(cli, "semantic-model takeover", &body) {
+        return Ok(());
+    }
+
+    client
+        .post_powerbi(
+            &format!("/groups/{workspace}/datasets/{id}/Default.TakeOver"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model takeover", "Admin"))?;
+
+    let obj = serde_json::json!({
+        "id": id,
+        "status": "takeover_complete",
+        "note": "Model is now service-managed (editable in portal)"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
 }
 
 #[cfg(test)]
