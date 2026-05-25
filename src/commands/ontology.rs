@@ -1271,7 +1271,10 @@ GRAPH :EventGraph {
         let result = normalize_data_binding(input);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("UUID format"), "Error should mention UUID: {err_msg}");
+        assert!(
+            err_msg.contains("UUID format"),
+            "Error should mention UUID: {err_msg}"
+        );
     }
 
     #[test]

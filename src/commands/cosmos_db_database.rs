@@ -129,9 +129,11 @@ pub async fn execute(
         CosmosDbDatabaseCommand::Delete { workspace, id } => {
             delete(cli, client, workspace, id).await
         }
-        CosmosDbDatabaseCommand::GetDefinition { workspace, id, decode } => {
-            get_definition(cli, client, workspace, id, *decode).await
-        }
+        CosmosDbDatabaseCommand::GetDefinition {
+            workspace,
+            id,
+            decode,
+        } => get_definition(cli, client, workspace, id, *decode).await,
         CosmosDbDatabaseCommand::UpdateDefinition {
             workspace,
             id,
@@ -263,7 +265,13 @@ async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> 
     Ok(())
 }
 
-async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str, decode: bool) -> Result<()> {
+async fn get_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    decode: bool,
+) -> Result<()> {
     let data = client
         .post(
             &format!("/workspaces/{workspace}/cosmosDbDatabases/{id}/getDefinition"),

@@ -127,9 +127,11 @@ pub async fn execute(
             .await
         }
         EventSchemaSetCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
-        EventSchemaSetCommand::GetDefinition { workspace, id, decode } => {
-            get_definition(cli, client, workspace, id, *decode).await
-        }
+        EventSchemaSetCommand::GetDefinition {
+            workspace,
+            id,
+            decode,
+        } => get_definition(cli, client, workspace, id, *decode).await,
         EventSchemaSetCommand::UpdateDefinition {
             workspace,
             id,
@@ -262,7 +264,13 @@ async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> 
     Ok(())
 }
 
-async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str, decode: bool) -> Result<()> {
+async fn get_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    decode: bool,
+) -> Result<()> {
     let data = client
         .post(
             &format!("/workspaces/{workspace}/eventSchemaSets/{id}/getDefinition"),

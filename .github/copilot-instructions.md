@@ -2,7 +2,7 @@
 
 ## Overview
 
-Fabio is an agent-first CLI for Microsoft Fabric, written in Rust (edition 2024, MSRV 1.85). It manages 37 command groups with 265+ subcommands. All output is structured JSON by default.
+Fabio is an agent-first CLI for Microsoft Fabric, written in Rust (edition 2024, MSRV 1.85). It manages 55+ command groups with 370+ subcommands across all Fabric artifact types. All output is structured JSON by default.
 
 ## Language & Framework Conventions
 
@@ -15,6 +15,7 @@ Fabio is an agent-first CLI for Microsoft Fabric, written in Rust (edition 2024,
 - Use `clap` derive macros for CLI argument parsing
 - Use `tokio` for async runtime (full features)
 - Use `serde` derive for serialization — all API response structs need `#[derive(Deserialize, Serialize)]`
+- Use `serde_json` with `preserve_order` feature (required for JSON key-order sensitive APIs)
 - Use `reqwest` with `rustls` (no OpenSSL dependency)
 - Prefer `.lines()` over splitting on `\n` (handles CRLF)
 
@@ -32,8 +33,8 @@ All code must work on Windows:
 ### Command Structure
 
 Every command module follows this pattern:
-1. Define a `Command` enum with clap `Subcommand` derive in the module
-2. Implement an `execute(cli: &Cli, cmd: &Command)` async function
+1. Define a `{Name}Command` enum with clap `Subcommand` derive in `src/commands/{name}.rs`
+2. Implement an `execute(cli: &Cli, cmd: &{Name}Command)` async function
 3. Register the module in `src/commands/mod.rs` (add `pub mod` + match arm)
 4. Add the variant to `src/cli.rs` `Command` enum
 
@@ -50,14 +51,19 @@ Every command module follows this pattern:
 - Use `ErrorCode` enum from `src/errors.rs` for machine-readable codes
 - Include `hint` field with valid values or corrected command examples
 - Map HTTP status codes: 401→`AuthRequired`, 403→`Forbidden`, 404→`NotFound`, 409→`Conflict`, 429→`RateLimited`
+- Use `enrich_forbidden()` to add required role hints on 403 errors
+- Not-found errors should include `fabio <group> list` suggestions
 
 ### HTTP Client
 
 - All API calls go through `FabricClient` in `src/client.rs`
 - GET/POST/PUT/PATCH/DELETE helpers handle auth token injection
-- LRO polling: `post(..., poll: true)` follows `Location`/`x-ms-operation-id` headers
+- LRO polling: `post(..., poll: true)` follows `Location`/`x-ms-operation-id` headers (2s interval, 120s max)
 - OneLake DFS: 3-step upload (create → append → flush)
 - OneLake Blob: server-side copy via `x-ms-copy-source` header
+- Parallel operations: `src/parallel.rs` provides concurrent execution with rate-limit retry
+- Two auth scopes: Fabric (`https://analysis.windows.net/powerbi/api/.default`) and Storage (`https://storage.azure.com/.default`)
+- SQL auth: `require_sql_auth()` for TDS connections
 
 ### Global Flags
 
@@ -69,6 +75,14 @@ All commands must respect these (handled by output helpers):
 - `--limit` — client-side truncation
 - `--all` — auto-paginate all pages
 - `--continuation-token` — resume from token
+- `--profile` — use named profile defaults
+
+### Throttling Reduction
+
+Prefer bulk/batch APIs to minimize throttling:
+- `item bulk-create`, `item bulk-delete` for multi-item operations
+- Use single list API + client-side filter rather than N individual show calls
+- Parallel execution framework handles rate-limit retry automatically
 
 ## Test Conventions
 
@@ -78,6 +92,7 @@ All commands must respect these (handled by output helpers):
 - Test harness: `tests/common/mod.rs` provides `TestConfig` with workspace/lakehouse IDs
 - Use `assert_cmd` + `predicates` for CLI binary assertions
 - Test names follow pattern: `test_{command}_{subcommand}_{scenario}`
+- Currently: 202 unit tests + 505 E2E tests = 707 total
 
 ## Code Style
 
@@ -99,6 +114,23 @@ All commands must respect these (handled by output helpers):
 - OneLake DFS: `https://onelake.dfs.fabric.microsoft.com`
 - OneLake Blob: `https://onelake.blob.fabric.microsoft.com`
 - Auth scopes: `https://analysis.windows.net/powerbi/api/.default` (Fabric), `https://storage.azure.com/.default` (Storage)
+- Kusto REST: `https://<id>.<region>.kusto.fabric.microsoft.com` (KQL databases)
+- Power BI API: `https://api.powerbi.com/v1.0/myorg` (report/dataset operations)
+
+## Command Groups (55+)
+
+### Core: auth, workspace, item, lakehouse, capacity, catalog
+### Data: notebook, warehouse, warehouse-snapshot, sql-database, sql-endpoint, data-agent, ontology, environment, data-pipeline, copy-job, dataflow
+### Analytics: report, semantic-model, paginated-report, dashboard, datamart
+### Real-Time: eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, reflex, anomaly-detector, event-schema-set
+### Data Science: ml-model, ml-experiment, operations-agent
+### Spark: spark, spark-job-definition, apache-airflow-job
+### Graph: graphql-api, graph-model, graph-query-set, digital-twin-builder, digital-twin-builder-flow, map
+### Mirroring: mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, cosmos-db-database, snowflake-database, mounted-data-factory, variable-library, user-data-function
+### Integration: git, connection, deployment-pipeline, domain, job-scheduler
+### Security: onelake-security, managed-private-endpoint, gateway
+### Admin: admin (50 subcommands, requires Fabric admin role)
+### Config: profile, jobs, feedback, operation (LRO), agent-context
 
 ## Maintenance Matrix
 

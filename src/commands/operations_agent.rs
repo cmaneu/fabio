@@ -129,9 +129,11 @@ pub async fn execute(
         OperationsAgentCommand::Delete { workspace, id } => {
             delete(cli, client, workspace, id).await
         }
-        OperationsAgentCommand::GetDefinition { workspace, id, decode } => {
-            get_definition(cli, client, workspace, id, *decode).await
-        }
+        OperationsAgentCommand::GetDefinition {
+            workspace,
+            id,
+            decode,
+        } => get_definition(cli, client, workspace, id, *decode).await,
         OperationsAgentCommand::UpdateDefinition {
             workspace,
             id,
@@ -264,7 +266,13 @@ async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> 
     Ok(())
 }
 
-async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str, decode: bool) -> Result<()> {
+async fn get_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    decode: bool,
+) -> Result<()> {
     let data = client
         .post(
             &format!("/workspaces/{workspace}/operationsAgents/{id}/getDefinition"),

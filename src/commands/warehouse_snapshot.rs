@@ -91,7 +91,17 @@ pub async fn execute(
             name,
             warehouse_id,
             description,
-        } => create(cli, client, workspace, name, warehouse_id, description.as_deref()).await,
+        } => {
+            create(
+                cli,
+                client,
+                workspace,
+                name,
+                warehouse_id,
+                description.as_deref(),
+            )
+            .await
+        }
         WarehouseSnapshotCommand::Update {
             workspace,
             id,

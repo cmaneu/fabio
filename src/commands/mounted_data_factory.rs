@@ -197,8 +197,10 @@ async fn create(
 ) -> Result<()> {
     // Build the definition with the ADF resource ID
     let content = serde_json::json!({ "dataFactoryResourceId": adf_id });
-    let encoded =
-        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, content.to_string().as_bytes());
+    let encoded = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        content.to_string().as_bytes(),
+    );
     let mut body = serde_json::json!({
         "displayName": name,
         "definition": {
