@@ -45,13 +45,18 @@ pub enum OntologyCommand {
         description: Option<String>,
 
         /// Path to definition JSON file (base64-encoded parts format)
-        #[arg(long, conflicts_with = "file")]
+        #[arg(long, conflicts_with_all = ["file", "dir"])]
         definition: Option<String>,
 
         /// Path to a local RDF file (.ttl, .owl, .rdf, .jsonld, .nt, .n3, .trig)
         /// Auto-detects format from extension and wraps into Fabric definition
-        #[arg(long, conflicts_with = "definition")]
+        #[arg(long, conflicts_with_all = ["definition", "dir"])]
         file: Option<String>,
+
+        /// Path to a directory containing Fabric ontology definition structure
+        /// (EntityTypes/, RelationshipTypes/ with definition.json, DataBindings/, etc.)
+        #[arg(long, conflicts_with_all = ["definition", "file"])]
+        dir: Option<String>,
     },
     /// Update ontology properties (name and/or description)
     Update {
@@ -98,6 +103,10 @@ pub enum OntologyCommand {
         /// Definition format
         #[arg(long)]
         format: Option<String>,
+
+        /// Decode base64 payloads in definition parts to readable JSON/text
+        #[arg(long)]
+        decode: bool,
     },
     /// Update the ontology definition (replaces current definition)
     UpdateDefinition {
@@ -110,13 +119,18 @@ pub enum OntologyCommand {
         id: String,
 
         /// Path to definition JSON file, or - for stdin
-        #[arg(long, conflicts_with = "file")]
+        #[arg(long, conflicts_with_all = ["file", "dir"])]
         definition: Option<String>,
 
         /// Path to a local RDF file (.ttl, .owl, .rdf, .jsonld, .nt, .n3, .trig)
         /// Auto-detects format from extension and wraps into Fabric definition
-        #[arg(long, conflicts_with = "definition")]
+        #[arg(long, conflicts_with_all = ["definition", "dir"])]
         file: Option<String>,
+
+        /// Path to a directory containing Fabric ontology definition structure
+        /// (EntityTypes/, RelationshipTypes/ with definition.json, DataBindings/, etc.)
+        #[arg(long, conflicts_with_all = ["definition", "file"])]
+        dir: Option<String>,
 
         /// Also update item metadata from .platform file
         #[arg(long)]
@@ -134,6 +148,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             description,
             definition,
             file,
+            dir,
         } => create(
             cli,
             client,
@@ -142,6 +157,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             description.as_deref(),
             definition.as_deref(),
             file.as_deref(),
+            dir.as_deref(),
         )
         .await
         .map_err(|e| enrich_forbidden(e, "ontology create", "Member")),
@@ -171,12 +187,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             workspace,
             id,
             format,
-        } => get_definition(cli, client, workspace, id, format.as_deref()).await,
+            decode,
+        } => get_definition(cli, client, workspace, id, format.as_deref(), *decode).await,
         OntologyCommand::UpdateDefinition {
             workspace,
             id,
             definition,
             file,
+            dir,
             update_metadata,
         } => update_definition(
             cli,
@@ -185,6 +203,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             id,
             definition.as_deref(),
             file.as_deref(),
+            dir.as_deref(),
             *update_metadata,
         )
         .await
@@ -230,6 +249,7 @@ async fn create(
     description: Option<&str>,
     definition_path: Option<&str>,
     file_path: Option<&str>,
+    dir_path: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "displayName": name,
@@ -246,6 +266,8 @@ async fn create(
         body["definition"] = def;
     } else if let Some(path) = file_path {
         body["definition"] = build_definition_from_rdf(path)?;
+    } else if let Some(path) = dir_path {
+        body["definition"] = build_definition_from_dir(path)?;
     }
 
     let data = client
@@ -313,6 +335,7 @@ async fn get_definition(
     workspace: &str,
     id: &str,
     format: Option<&str>,
+    decode: bool,
 ) -> Result<()> {
     let path = format.map_or_else(
         || format!("/workspaces/{workspace}/ontologies/{id}/getDefinition"),
@@ -321,8 +344,41 @@ async fn get_definition(
 
     let data = client.post(&path, &serde_json::json!({}), true).await?;
 
-    output::render_object(cli, &data, "definition");
+    if decode {
+        let decoded = decode_definition_parts(&data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
+    }
     Ok(())
+}
+
+/// Decode base64 payloads in definition parts to readable JSON/text.
+fn decode_definition_parts(data: &Value) -> Value {
+    let mut result = data.clone();
+
+    if let Some(parts) = result
+        .get_mut("definition")
+        .and_then(|d| d.get_mut("parts"))
+        .and_then(|p| p.as_array_mut())
+    {
+        for part in parts {
+            if let Some(payload) = part.get("payload").and_then(|p| p.as_str()) {
+                if let Ok(decoded_bytes) = BASE64.decode(payload) {
+                    if let Ok(decoded_str) = String::from_utf8(decoded_bytes) {
+                        // Try parsing as JSON for pretty output
+                        if let Ok(json_val) = serde_json::from_str::<Value>(&decoded_str) {
+                            part["decodedPayload"] = json_val;
+                        } else {
+                            part["decodedPayload"] = Value::String(decoded_str);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    result
 }
 
 async fn update_definition(
@@ -332,6 +388,7 @@ async fn update_definition(
     id: &str,
     definition_path: Option<&str>,
     file_path: Option<&str>,
+    dir_path: Option<&str>,
     update_metadata: bool,
 ) -> Result<()> {
     let def = if let Some(path) = definition_path {
@@ -340,8 +397,10 @@ async fn update_definition(
             .map_err(|e| anyhow::anyhow!("Invalid definition JSON: {e}"))?
     } else if let Some(path) = file_path {
         build_definition_from_rdf(path)?
+    } else if let Some(path) = dir_path {
+        build_definition_from_dir(path)?
     } else {
-        anyhow::bail!("Specify either --definition or --file");
+        anyhow::bail!("Specify either --definition, --file, or --dir");
     };
 
     let body = serde_json::json!({"definition": def});
@@ -403,6 +462,274 @@ fn build_definition_from_rdf(path: &str) -> Result<Value> {
             }
         ]
     }))
+}
+
+/// Build a Fabric definition payload from a directory structure.
+/// Expects the Fabric ontology definition layout:
+///   definition.json (optional, defaults to `{}`)
+///   .platform (optional)
+///   EntityTypes/{ID}/definition.json
+///   EntityTypes/{ID}/DataBindings/{UUID}.json
+///   EntityTypes/{ID}/Documents/{name}.json
+///   EntityTypes/{ID}/Overviews/definition.json
+///   EntityTypes/{ID}/ResourceLinks/definition.json
+///   RelationshipTypes/{ID}/definition.json
+///   RelationshipTypes/{ID}/Contextualizations/{UUID}.json
+fn build_definition_from_dir(dir_path: &str) -> Result<Value> {
+    let dir = Path::new(dir_path);
+    if !dir.is_dir() {
+        anyhow::bail!("'{}' is not a directory", dir_path);
+    }
+
+    let mut parts: Vec<Value> = Vec::new();
+
+    // Always include definition.json (empty if not present)
+    let def_json_path = dir.join("definition.json");
+    let def_json_content = if def_json_path.exists() {
+        std::fs::read(&def_json_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read definition.json: {e}"))?
+    } else {
+        b"{}".to_vec()
+    };
+    parts.push(serde_json::json!({
+        "path": "definition.json",
+        "payload": BASE64.encode(&def_json_content),
+        "payloadType": "InlineBase64"
+    }));
+
+    // Include .platform if present
+    let platform_path = dir.join(".platform");
+    if platform_path.exists() {
+        let content = std::fs::read(&platform_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read .platform: {e}"))?;
+        parts.push(serde_json::json!({
+            "path": ".platform",
+            "payload": BASE64.encode(&content),
+            "payloadType": "InlineBase64"
+        }));
+    }
+
+    // Scan EntityTypes/
+    let entity_types_dir = dir.join("EntityTypes");
+    if entity_types_dir.is_dir() {
+        scan_entity_types(&entity_types_dir, &mut parts)?;
+    }
+
+    // Scan RelationshipTypes/
+    let rel_types_dir = dir.join("RelationshipTypes");
+    if rel_types_dir.is_dir() {
+        scan_relationship_types(&rel_types_dir, &mut parts)?;
+    }
+
+    Ok(serde_json::json!({ "parts": parts }))
+}
+
+/// Scan EntityTypes directory and add parts for each entity type and its sub-items.
+fn scan_entity_types(entity_types_dir: &Path, parts: &mut Vec<Value>) -> Result<()> {
+    let mut entries: Vec<_> = std::fs::read_dir(entity_types_dir)
+        .map_err(|e| anyhow::anyhow!("Failed to read EntityTypes directory: {e}"))?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir())
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        let type_id = entry.file_name().to_string_lossy().to_string();
+        let type_dir = entry.path();
+
+        // EntityTypes/{ID}/definition.json
+        let def_path = type_dir.join("definition.json");
+        if def_path.exists() {
+            let content = std::fs::read(&def_path)
+                .map_err(|e| anyhow::anyhow!("Failed to read {}: {e}", def_path.display()))?;
+            parts.push(serde_json::json!({
+                "path": format!("EntityTypes/{type_id}/definition.json"),
+                "payload": BASE64.encode(&content),
+                "payloadType": "InlineBase64"
+            }));
+        }
+
+        // EntityTypes/{ID}/DataBindings/*.json (needs key-order normalization)
+        let bindings_dir = type_dir.join("DataBindings");
+        if bindings_dir.is_dir() {
+            scan_data_binding_files(
+                &bindings_dir,
+                &format!("EntityTypes/{type_id}/DataBindings"),
+                parts,
+            )?;
+        }
+
+        // EntityTypes/{ID}/Documents/*.json
+        let docs_dir = type_dir.join("Documents");
+        if docs_dir.is_dir() {
+            scan_json_files(
+                &docs_dir,
+                &format!("EntityTypes/{type_id}/Documents"),
+                parts,
+            )?;
+        }
+
+        // EntityTypes/{ID}/Overviews/definition.json
+        let overviews_path = type_dir.join("Overviews").join("definition.json");
+        if overviews_path.exists() {
+            let content = std::fs::read(&overviews_path)
+                .map_err(|e| anyhow::anyhow!("Failed to read {}: {e}", overviews_path.display()))?;
+            parts.push(serde_json::json!({
+                "path": format!("EntityTypes/{type_id}/Overviews/definition.json"),
+                "payload": BASE64.encode(&content),
+                "payloadType": "InlineBase64"
+            }));
+        }
+
+        // EntityTypes/{ID}/ResourceLinks/definition.json
+        let links_path = type_dir.join("ResourceLinks").join("definition.json");
+        if links_path.exists() {
+            let content = std::fs::read(&links_path)
+                .map_err(|e| anyhow::anyhow!("Failed to read {}: {e}", links_path.display()))?;
+            parts.push(serde_json::json!({
+                "path": format!("EntityTypes/{type_id}/ResourceLinks/definition.json"),
+                "payload": BASE64.encode(&content),
+                "payloadType": "InlineBase64"
+            }));
+        }
+    }
+
+    Ok(())
+}
+
+/// Scan `RelationshipTypes` directory and add parts.
+fn scan_relationship_types(rel_types_dir: &Path, parts: &mut Vec<Value>) -> Result<()> {
+    let mut entries: Vec<_> = std::fs::read_dir(rel_types_dir)
+        .map_err(|e| anyhow::anyhow!("Failed to read RelationshipTypes directory: {e}"))?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir())
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        let type_id = entry.file_name().to_string_lossy().to_string();
+        let type_dir = entry.path();
+
+        // RelationshipTypes/{ID}/definition.json
+        let def_path = type_dir.join("definition.json");
+        if def_path.exists() {
+            let content = std::fs::read(&def_path)
+                .map_err(|e| anyhow::anyhow!("Failed to read {}: {e}", def_path.display()))?;
+            parts.push(serde_json::json!({
+                "path": format!("RelationshipTypes/{type_id}/definition.json"),
+                "payload": BASE64.encode(&content),
+                "payloadType": "InlineBase64"
+            }));
+        }
+
+        // RelationshipTypes/{ID}/Contextualizations/*.json
+        let ctx_dir = type_dir.join("Contextualizations");
+        if ctx_dir.is_dir() {
+            scan_json_files(
+                &ctx_dir,
+                &format!("RelationshipTypes/{type_id}/Contextualizations"),
+                parts,
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Scan a directory for .json files and add them as definition parts.
+fn scan_json_files(dir: &Path, prefix: &str, parts: &mut Vec<Value>) -> Result<()> {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .map_err(|e| anyhow::anyhow!("Failed to read directory {}: {e}", dir.display()))?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path().is_file()
+                && e.path()
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        })
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        let content = std::fs::read(&entry.path())
+            .map_err(|e| anyhow::anyhow!("Failed to read {}: {e}", entry.path().display()))?;
+        parts.push(serde_json::json!({
+            "path": format!("{prefix}/{file_name}"),
+            "payload": BASE64.encode(&content),
+            "payloadType": "InlineBase64"
+        }));
+    }
+
+    Ok(())
+}
+
+/// Scan `DataBinding` JSON files and normalize key ordering.
+///
+/// The Fabric Ontology API requires `sourceType` to be the first key in
+/// `dataBindingConfiguration.sourceTableProperties` (it uses this as a JSON
+/// discriminator for the source type union). Without this ordering, the server
+/// throws an import exception.
+fn scan_data_binding_files(dir: &Path, prefix: &str, parts: &mut Vec<Value>) -> Result<()> {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .map_err(|e| anyhow::anyhow!("Failed to read directory {}: {e}", dir.display()))?
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.path().is_file()
+                && e.path()
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        })
+        .collect();
+    entries.sort_by_key(std::fs::DirEntry::file_name);
+
+    for entry in entries {
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        let content = std::fs::read(&entry.path())
+            .map_err(|e| anyhow::anyhow!("Failed to read {}: {e}", entry.path().display()))?;
+
+        let normalized = normalize_data_binding(&content)?;
+
+        parts.push(serde_json::json!({
+            "path": format!("{prefix}/{file_name}"),
+            "payload": BASE64.encode(&normalized),
+            "payloadType": "InlineBase64"
+        }));
+    }
+
+    Ok(())
+}
+
+/// Normalize a data binding JSON to ensure `sourceType` is the first key in
+/// `sourceTableProperties`. The Fabric API uses ordered JSON deserialization
+/// with `sourceType` as a discriminator field for the union type.
+fn normalize_data_binding(content: &[u8]) -> Result<Vec<u8>> {
+    let mut binding: Value = serde_json::from_slice(content)
+        .map_err(|e| anyhow::anyhow!("Invalid JSON in DataBinding file: {e}"))?;
+
+    // Navigate to dataBindingConfiguration.sourceTableProperties and reorder
+    if let Some(config) = binding
+        .get_mut("dataBindingConfiguration")
+        .and_then(Value::as_object_mut)
+    {
+        if let Some(source_props) = config
+            .get_mut("sourceTableProperties")
+            .and_then(Value::as_object_mut)
+        {
+            // Extract sourceType and rebuild map with it first
+            if let Some(source_type) = source_props.remove("sourceType") {
+                let mut reordered = serde_json::Map::new();
+                reordered.insert("sourceType".to_string(), source_type);
+                for (k, v) in source_props.iter() {
+                    reordered.insert(k.clone(), v.clone());
+                }
+                *source_props = reordered;
+            }
+        }
+    }
+
+    serde_json::to_vec(&binding)
+        .map_err(|e| anyhow::anyhow!("Failed to serialize normalized DataBinding: {e}"))
 }
 
 fn read_file_or_stdin(path: &str) -> Result<String> {
@@ -657,5 +984,364 @@ GRAPH :EventGraph {
         let payload = def["parts"][1]["payload"].as_str().unwrap();
         let decoded = BASE64.decode(payload).unwrap();
         assert_eq!(decoded, &[0u8, 1, 2, 255, 254, 253]);
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests for build_definition_from_dir
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn build_definition_from_dir_minimal() {
+        let dir = tempfile::tempdir().unwrap();
+        // Just an empty directory — should produce definition.json with {}
+        let def = build_definition_from_dir(dir.path().to_str().unwrap()).unwrap();
+        let parts = def["parts"].as_array().unwrap();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0]["path"], "definition.json");
+        let payload = BASE64
+            .decode(parts[0]["payload"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(payload, b"{}");
+    }
+
+    #[test]
+    fn build_definition_from_dir_with_entity_types() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Create entity type structure
+        let entity_dir = dir.path().join("EntityTypes").join("1234567890");
+        std::fs::create_dir_all(&entity_dir).unwrap();
+        std::fs::write(
+            entity_dir.join("definition.json"),
+            r#"{"id":"1234567890","name":"Equipment","namespace":"usertypes","namespaceType":"Custom"}"#,
+        )
+        .unwrap();
+
+        // Create data binding
+        let bindings_dir = entity_dir.join("DataBindings");
+        std::fs::create_dir_all(&bindings_dir).unwrap();
+        std::fs::write(
+            bindings_dir.join("aaa-bbb-ccc.json"),
+            r#"{"id":"aaa-bbb-ccc","dataBindingConfiguration":{"dataBindingType":"NonTimeSeries"}}"#,
+        )
+        .unwrap();
+
+        let def = build_definition_from_dir(dir.path().to_str().unwrap()).unwrap();
+        let parts = def["parts"].as_array().unwrap();
+
+        // Should have: definition.json + EntityTypes/{id}/definition.json + DataBindings/{id}.json
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0]["path"], "definition.json");
+        assert_eq!(parts[1]["path"], "EntityTypes/1234567890/definition.json");
+        assert_eq!(
+            parts[2]["path"],
+            "EntityTypes/1234567890/DataBindings/aaa-bbb-ccc.json"
+        );
+
+        // Verify entity type content
+        let payload = BASE64
+            .decode(parts[1]["payload"].as_str().unwrap())
+            .unwrap();
+        let entity: Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(entity["name"], "Equipment");
+        assert_eq!(entity["id"], "1234567890");
+    }
+
+    #[test]
+    fn build_definition_from_dir_with_relationship_types() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Create relationship type
+        let rel_dir = dir.path().join("RelationshipTypes").join("9876543210");
+        std::fs::create_dir_all(&rel_dir).unwrap();
+        std::fs::write(
+            rel_dir.join("definition.json"),
+            r#"{"id":"9876543210","name":"contains","namespace":"usertypes","namespaceType":"Custom","source":{"entityTypeId":"111"},"target":{"entityTypeId":"222"}}"#,
+        )
+        .unwrap();
+
+        // Create contextualization
+        let ctx_dir = rel_dir.join("Contextualizations");
+        std::fs::create_dir_all(&ctx_dir).unwrap();
+        std::fs::write(
+            ctx_dir.join("ctx-uuid-1.json"),
+            r#"{"id":"ctx-uuid-1","dataBindingTable":{"sourceType":"LakehouseTable"}}"#,
+        )
+        .unwrap();
+
+        let def = build_definition_from_dir(dir.path().to_str().unwrap()).unwrap();
+        let parts = def["parts"].as_array().unwrap();
+
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0]["path"], "definition.json");
+        assert_eq!(
+            parts[1]["path"],
+            "RelationshipTypes/9876543210/definition.json"
+        );
+        assert_eq!(
+            parts[2]["path"],
+            "RelationshipTypes/9876543210/Contextualizations/ctx-uuid-1.json"
+        );
+    }
+
+    #[test]
+    fn build_definition_from_dir_full_structure() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Custom definition.json
+        std::fs::write(dir.path().join("definition.json"), r#"{"custom": true}"#).unwrap();
+
+        // .platform file
+        std::fs::write(
+            dir.path().join(".platform"),
+            r#"{"metadata":{"type":"Ontology","displayName":"Test"}}"#,
+        )
+        .unwrap();
+
+        // Entity type with overviews and resource links
+        let et_dir = dir.path().join("EntityTypes").join("100");
+        std::fs::create_dir_all(et_dir.join("Overviews")).unwrap();
+        std::fs::create_dir_all(et_dir.join("ResourceLinks")).unwrap();
+        std::fs::create_dir_all(et_dir.join("Documents")).unwrap();
+        std::fs::write(
+            et_dir.join("definition.json"),
+            r#"{"id":"100","name":"Thing"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            et_dir.join("Overviews").join("definition.json"),
+            r#"{"widgets":[],"settings":{"type":"fixedTime"}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            et_dir.join("ResourceLinks").join("definition.json"),
+            r#"{"resourceLinks":[{"type":"PowerBIReport","workspaceId":"ws1","itemId":"item1"}]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            et_dir.join("Documents").join("doc1.json"),
+            r#"{"displayText":"Manual","url":"https://example.org"}"#,
+        )
+        .unwrap();
+
+        let def = build_definition_from_dir(dir.path().to_str().unwrap()).unwrap();
+        let parts = def["parts"].as_array().unwrap();
+
+        // definition.json + .platform + entity def + documents + overviews + resource links
+        assert_eq!(parts.len(), 6);
+        assert_eq!(parts[0]["path"], "definition.json");
+        assert_eq!(parts[1]["path"], ".platform");
+        assert_eq!(parts[2]["path"], "EntityTypes/100/definition.json");
+        assert_eq!(parts[3]["path"], "EntityTypes/100/Documents/doc1.json");
+        assert_eq!(
+            parts[4]["path"],
+            "EntityTypes/100/Overviews/definition.json"
+        );
+        assert_eq!(
+            parts[5]["path"],
+            "EntityTypes/100/ResourceLinks/definition.json"
+        );
+
+        // Verify custom definition.json was used (not default {})
+        let payload = BASE64
+            .decode(parts[0]["payload"].as_str().unwrap())
+            .unwrap();
+        let content: Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(content["custom"], true);
+    }
+
+    #[test]
+    fn build_definition_from_dir_not_a_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("not_a_dir.txt");
+        std::fs::write(&file, "hello").unwrap();
+
+        let err = build_definition_from_dir(file.to_str().unwrap()).unwrap_err();
+        assert!(err.to_string().contains("is not a directory"));
+    }
+
+    #[test]
+    fn build_definition_from_dir_nonexistent() {
+        let err = build_definition_from_dir("/nonexistent/path").unwrap_err();
+        assert!(err.to_string().contains("is not a directory"));
+    }
+
+    #[test]
+    fn build_definition_from_dir_multiple_entity_types_sorted() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Create entity types in non-sorted order
+        for id in &["300", "100", "200"] {
+            let et_dir = dir.path().join("EntityTypes").join(id);
+            std::fs::create_dir_all(&et_dir).unwrap();
+            std::fs::write(
+                et_dir.join("definition.json"),
+                format!(r#"{{"id":"{id}","name":"Type{id}"}}"#),
+            )
+            .unwrap();
+        }
+
+        let def = build_definition_from_dir(dir.path().to_str().unwrap()).unwrap();
+        let parts = def["parts"].as_array().unwrap();
+
+        // Should be sorted: 100, 200, 300
+        assert_eq!(parts[1]["path"], "EntityTypes/100/definition.json");
+        assert_eq!(parts[2]["path"], "EntityTypes/200/definition.json");
+        assert_eq!(parts[3]["path"], "EntityTypes/300/definition.json");
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests for normalize_data_binding
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn normalize_data_binding_moves_source_type_first() {
+        let input = br#"{"id":"b0000001","dataBindingConfiguration":{"dataBindingType":"NonTimeSeries","sourceTableProperties":{"itemId":"abc","sourceTableName":"t","sourceType":"LakehouseTable","workspaceId":"ws"}}}"#;
+        let output = normalize_data_binding(input).unwrap();
+        let parsed: Value = serde_json::from_slice(&output).unwrap();
+        let source_props = parsed["dataBindingConfiguration"]["sourceTableProperties"]
+            .as_object()
+            .unwrap();
+        let keys: Vec<&String> = source_props.keys().collect();
+        assert_eq!(keys[0], "sourceType", "sourceType must be the first key");
+    }
+
+    #[test]
+    fn normalize_data_binding_already_ordered() {
+        let input = br#"{"id":"b0000001","dataBindingConfiguration":{"dataBindingType":"NonTimeSeries","sourceTableProperties":{"sourceType":"LakehouseTable","workspaceId":"ws","itemId":"abc","sourceTableName":"t"}}}"#;
+        let output = normalize_data_binding(input).unwrap();
+        let parsed: Value = serde_json::from_slice(&output).unwrap();
+        let source_props = parsed["dataBindingConfiguration"]["sourceTableProperties"]
+            .as_object()
+            .unwrap();
+        let keys: Vec<&String> = source_props.keys().collect();
+        assert_eq!(keys[0], "sourceType");
+    }
+
+    #[test]
+    fn normalize_data_binding_no_source_type_passthrough() {
+        // If sourceType is missing, normalization still succeeds (passthrough)
+        let input = br#"{"id":"b0000001","dataBindingConfiguration":{"dataBindingType":"NonTimeSeries","sourceTableProperties":{"workspaceId":"ws","itemId":"abc"}}}"#;
+        let output = normalize_data_binding(input).unwrap();
+        let parsed: Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(parsed["id"], "b0000001");
+    }
+
+    #[test]
+    fn normalize_data_binding_no_config_passthrough() {
+        // If dataBindingConfiguration is missing, normalization still succeeds
+        let input = br#"{"id":"b0000001","custom":"field"}"#;
+        let output = normalize_data_binding(input).unwrap();
+        let parsed: Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(parsed["id"], "b0000001");
+        assert_eq!(parsed["custom"], "field");
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests for decode_definition_parts
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn decode_definition_parts_json_payload() {
+        let data = serde_json::json!({
+            "definition": {
+                "parts": [
+                    {
+                        "path": "definition.json",
+                        "payload": BASE64.encode(b"{}"),
+                        "payloadType": "InlineBase64"
+                    },
+                    {
+                        "path": "EntityTypes/123/definition.json",
+                        "payload": BASE64.encode(br#"{"id":"123","name":"Equipment"}"#),
+                        "payloadType": "InlineBase64"
+                    }
+                ]
+            }
+        });
+
+        let decoded = decode_definition_parts(&data);
+        let parts = decoded["definition"]["parts"].as_array().unwrap();
+
+        // First part: empty JSON
+        assert_eq!(parts[0]["decodedPayload"], serde_json::json!({}));
+
+        // Second part: parsed JSON object
+        assert_eq!(parts[1]["decodedPayload"]["id"], "123");
+        assert_eq!(parts[1]["decodedPayload"]["name"], "Equipment");
+    }
+
+    #[test]
+    fn decode_definition_parts_text_payload() {
+        let ttl = "@prefix ex: <http://example.org/> .\nex:A a ex:Class .";
+        let data = serde_json::json!({
+            "definition": {
+                "parts": [
+                    {
+                        "path": "ontology.ttl",
+                        "payload": BASE64.encode(ttl.as_bytes()),
+                        "payloadType": "InlineBase64"
+                    }
+                ]
+            }
+        });
+
+        let decoded = decode_definition_parts(&data);
+        let parts = decoded["definition"]["parts"].as_array().unwrap();
+
+        // Non-JSON text is stored as string
+        assert_eq!(parts[0]["decodedPayload"].as_str().unwrap(), ttl);
+    }
+
+    #[test]
+    fn decode_definition_parts_preserves_original_fields() {
+        let data = serde_json::json!({
+            "definition": {
+                "parts": [
+                    {
+                        "path": "test.json",
+                        "payload": BASE64.encode(b"{}"),
+                        "payloadType": "InlineBase64"
+                    }
+                ]
+            }
+        });
+
+        let decoded = decode_definition_parts(&data);
+        let part = &decoded["definition"]["parts"][0];
+
+        // Original fields preserved
+        assert_eq!(part["path"], "test.json");
+        assert_eq!(part["payloadType"], "InlineBase64");
+        assert!(part["payload"].is_string()); // original base64 still there
+    }
+
+    #[test]
+    fn decode_definition_parts_no_definition_field() {
+        let data = serde_json::json!({"other": "value"});
+        let decoded = decode_definition_parts(&data);
+        // Should not crash, just return the input unchanged
+        assert_eq!(decoded["other"], "value");
+    }
+
+    #[test]
+    fn decode_definition_parts_binary_payload_skipped() {
+        // Invalid UTF-8 bytes should not produce a decodedPayload
+        let data = serde_json::json!({
+            "definition": {
+                "parts": [
+                    {
+                        "path": "binary.bin",
+                        "payload": BASE64.encode(&[0xFF, 0xFE, 0x00, 0x80]),
+                        "payloadType": "InlineBase64"
+                    }
+                ]
+            }
+        });
+
+        let decoded = decode_definition_parts(&data);
+        let part = &decoded["definition"]["parts"][0];
+        // Binary content cannot be decoded to UTF-8, so no decodedPayload
+        assert!(part.get("decodedPayload").is_none());
     }
 }

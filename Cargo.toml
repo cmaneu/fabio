@@ -25,7 +25,7 @@ reqwest = { version = "0.13", features = ["json", "rustls"], default-features = 
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 
 # Azure auth
 azure_identity = { version = "1", default-features = false }
@@ -60,7 +60,7 @@ predicates = "3"
 tempfile = "3"
 wiremock = "0.6"
 serial_test = "3"
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 
 [profile.release]
 opt-level = 3

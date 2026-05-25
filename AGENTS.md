@@ -52,7 +52,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Item copy/move**: getDefinition LRO + create in dest workspace LRO; move = copy + delete source
 - **Warehouse**: list/show/create/update/delete/query (endpoint resolved, stdin/file/flag SQL input)
 - **Git integration**: status, commit, pull, connect, disconnect, initialize, switch (branch), connection/credentials management, show-tracked
-- **Ontology management**: list, show, create, update, delete, get-definition, update-definition (RDF file support)
+- **Ontology management**: list, show, create, update, delete, get-definition, update-definition (RDF file support, --dir for Fabric definition format, --decode for readable output)
 - **Environment**: list, show, create, update, delete, publish, cancel-publish, get-spark-settings, get-staging-spark-settings
 - **Data Pipeline**: list, show, create, update, delete, run (triggers Pipeline job)
 - **Eventhouse**: list, show, create, update, delete
@@ -92,7 +92,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
   - Principle 10: Two-way I/O (`fabio feedback send/list`)
 - **SQL Database**: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
 - **SQL Database import**: Reads CSV/JSON files, infers column types (Int/BigInt/Float/Bit/Date/NVarChar), generates CREATE TABLE + batched INSERTs via TDS. Supports --drop-if-exists, --no-create-table, --batch-size.
-- **648 Rust tests** (183 unit + 465 E2E integration), zero clippy warnings, rustfmt clean
+- **673 Rust tests** (199 unit + 474 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~9.4 MB, stripped, full LTO, panic=abort
@@ -237,6 +237,23 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
 - `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
 - `.github/dependabot.yml`: Cargo + GitHub Actions dependency updates
+
+## Ontology API Behaviors Discovered
+- **Definition format**: Fabric ontology uses a proprietary JSON definition format (NOT RDF). Structure: `definition.json` (root, usually `{}`), `EntityTypes/{ID}/definition.json`, `EntityTypes/{ID}/DataBindings/{UUID}.json`, `RelationshipTypes/{ID}/definition.json`.
+- **Schema URLs**: Entity types use `https://developer.microsoft.com/json-schemas/fabric/item/ontology/entityType/1.0.0/schema.json`, data bindings use `.../dataBinding/1.0.0/schema.json`, relationship types use `.../relationshipType/1.0.0/schema.json`.
+- **Data binding format**: Requires `dataBindingConfiguration` wrapper (NOT flat fields). Structure: `{"id":"<uuid>","dataBindingConfiguration":{"dataBindingType":"NonTimeSeries","sourceTableProperties":{...},"propertyBindings":[...]}}`. The `sourceTableProperties` uses `itemId` (not `lakehouseId`) and `sourceTableName` (not `tableName`).
+- **Data binding type enum**: `NonTimeSeries` (for lakehouse tables) or `TimeSeries` (requires `timestampColumnName`).
+- **Source type enum in sourceTableProperties**: `LakehouseTable` or `KustoTable` (for Eventhouse).
+- **CRITICAL: JSON key ordering sensitivity**: The Fabric Ontology API uses ordered JSON deserialization for data bindings. The `sourceType` field MUST be the first key in `sourceTableProperties`. If other keys (like `itemId`) come before `sourceType` (e.g., alphabetical order from serde_json without `preserve_order`), the API throws: `"Import of the {0} artifact '{1}' threw an exception with this message: {2}"`. The CLI normalizes key order automatically via `normalize_data_binding()`.
+- **Entity type required fields**: `id`, `namespace` (must be `"usertypes"`), `name`, `namespaceType` (must be `"Custom"`). Optional: `baseEntityTypeId`, `entityIdParts`, `displayNamePropertyId`, `visibility` (must be `"Visible"`), `properties`, `timeseriesProperties`.
+- **Property value types**: `String`, `Boolean`, `DateTime`, `Object`, `BigInt`, `Double`.
+- **Relationship type required fields**: `id`, `namespace`, `name`, `namespaceType`, `source.entityTypeId`, `target.entityTypeId`.
+- **Server auto-adds `$schema` URLs**: When you upload definitions, the server adds the appropriate `$schema` URL to the response. You don't need to include it in your upload.
+- **Server adds `untypedProperties: []`**: Entity types returned by `getDefinition` include an extra `untypedProperties` array not present in the upload.
+- **getDefinition/updateDefinition are LRO**: Both use the standard Fabric LRO polling pattern (202 + Location header).
+- **`--decode` flag**: Adds `decodedPayload` field alongside original `payload` (JSON objects or text strings). Preserves backward compatibility.
+- **`--dir` flag**: Reads Fabric ontology directory structure (`EntityTypes/`, `RelationshipTypes/` with `definition.json`, `DataBindings/`, `Documents/`, `Overviews/`, `ResourceLinks/`).
+- **`preserve_order` feature**: `serde_json` is configured with `preserve_order` to support JSON key-order normalization for data bindings.
 
 ## OneLake API Behaviors Discovered
 - Blob API copy (`x-ms-copy-source`): works for server-side file copy, async (202 with pending status)

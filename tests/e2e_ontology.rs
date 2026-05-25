@@ -1100,3 +1100,772 @@ fn ontology_update_definition_with_rdf() {
         .assert()
         .success();
 }
+
+// ---------------------------------------------------------------------------
+// Get definition with --decode flag
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ontology_get_definition_decode() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("ont_decode");
+
+    // Create with entity type definition via --definition
+    let entity_def = serde_json::json!({
+        "id": "5550000000001",
+        "namespace": "usertypes",
+        "baseEntityTypeId": null,
+        "name": "TestEntity",
+        "entityIdParts": ["5550000000011"],
+        "displayNamePropertyId": "5550000000011",
+        "namespaceType": "Custom",
+        "visibility": "Visible",
+        "properties": [{
+            "id": "5550000000011",
+            "name": "DisplayName",
+            "redefines": null,
+            "baseTypeNamespaceType": null,
+            "valueType": "String"
+        }],
+        "timeseriesProperties": []
+    });
+
+    let entity_b64 = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        serde_json::to_string(&entity_def).unwrap().as_bytes(),
+    );
+    let def_json_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, b"{}");
+
+    let def = serde_json::json!({
+        "parts": [
+            {"path": "definition.json", "payload": def_json_b64, "payloadType": "InlineBase64"},
+            {"path": "EntityTypes/5550000000001/definition.json", "payload": entity_b64, "payloadType": "InlineBase64"}
+        ]
+    });
+
+    let dir = tempfile::tempdir().unwrap();
+    let def_path = dir.path().join("definition.json");
+    std::fs::write(&def_path, serde_json::to_string(&def).unwrap()).unwrap();
+
+    // Create ontology with definition
+    let assert = fabio()
+        .args([
+            "ontology",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+            "--definition",
+            def_path.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let ont_id = data["id"].as_str().unwrap().to_string();
+
+    // Get definition with --decode
+    let assert = fabio()
+        .args([
+            "ontology",
+            "get-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--decode",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+
+    // Verify decoded payloads are present
+    let mut found_entity = false;
+    for part in parts {
+        if part["path"].as_str().unwrap_or("").contains("EntityTypes/") {
+            let decoded = &part["decodedPayload"];
+            assert!(
+                decoded.is_object(),
+                "decodedPayload should be a JSON object"
+            );
+            assert_eq!(decoded["name"], "TestEntity");
+            found_entity = true;
+        }
+    }
+    assert!(found_entity, "Should find decoded entity type in parts");
+
+    // Cleanup
+    fabio()
+        .args([
+            "ontology",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--hard",
+        ])
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// Create and update with --dir (directory-based definition)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ontology_create_with_dir() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("ont_dir");
+
+    let dir = tempfile::tempdir().unwrap();
+    let ont_dir = dir.path().join("ontology");
+    std::fs::create_dir_all(ont_dir.join("EntityTypes").join("7770000000001")).unwrap();
+
+    // definition.json
+    std::fs::write(ont_dir.join("definition.json"), "{}").unwrap();
+
+    // Entity type
+    std::fs::write(
+        ont_dir
+            .join("EntityTypes")
+            .join("7770000000001")
+            .join("definition.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "id": "7770000000001",
+            "namespace": "usertypes",
+            "baseEntityTypeId": null,
+            "name": "Machine",
+            "entityIdParts": ["7770000000011"],
+            "displayNamePropertyId": "7770000000011",
+            "namespaceType": "Custom",
+            "visibility": "Visible",
+            "properties": [{
+                "id": "7770000000011",
+                "name": "DisplayName",
+                "redefines": null,
+                "baseTypeNamespaceType": null,
+                "valueType": "String"
+            }, {
+                "id": "7770000000012",
+                "name": "SerialNumber",
+                "redefines": null,
+                "baseTypeNamespaceType": null,
+                "valueType": "String"
+            }],
+            "timeseriesProperties": []
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    // Create with --dir
+    let assert = fabio()
+        .args([
+            "ontology",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+            "--description",
+            "Created from directory structure",
+            "--dir",
+            ont_dir.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["displayName"], name);
+    let ont_id = data["id"].as_str().unwrap().to_string();
+
+    // Get definition and verify entity type was stored
+    let assert = fabio()
+        .args([
+            "ontology",
+            "get-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--decode",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+
+    let entity_part = parts
+        .iter()
+        .find(|p| {
+            p["path"]
+                .as_str()
+                .unwrap_or("")
+                .contains("EntityTypes/7770000000001/definition.json")
+        })
+        .expect("EntityType part should exist");
+    assert_eq!(entity_part["decodedPayload"]["name"], "Machine");
+
+    // Cleanup
+    fabio()
+        .args([
+            "ontology",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--hard",
+        ])
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// Update definition with --dir (entity types + relationship + data binding)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ontology_update_definition_with_dir() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("ont_updir");
+
+    // Create empty ontology
+    let assert = fabio()
+        .args([
+            "ontology",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let ont_id = data["id"].as_str().unwrap().to_string();
+
+    // Build directory with entity types, data binding, and relationship
+    let dir = tempfile::tempdir().unwrap();
+    let ont_dir = dir.path();
+
+    // Entity type 1: Equipment
+    let et1_dir = ont_dir.join("EntityTypes").join("8880000000001");
+    std::fs::create_dir_all(et1_dir.join("DataBindings")).unwrap();
+    std::fs::write(
+        et1_dir.join("definition.json"),
+        serde_json::to_string(&serde_json::json!({
+            "id": "8880000000001",
+            "namespace": "usertypes",
+            "name": "Equipment",
+            "entityIdParts": ["8880000000011"],
+            "displayNamePropertyId": "8880000000011",
+            "namespaceType": "Custom",
+            "visibility": "Visible",
+            "properties": [{
+                "id": "8880000000011",
+                "name": "DisplayName",
+                "valueType": "String"
+            }],
+            "timeseriesProperties": []
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    // Data binding for Equipment → sales table
+    std::fs::write(
+        et1_dir
+            .join("DataBindings")
+            .join("b0000001-0001-0001-0001-000000000001.json"),
+        serde_json::to_string(&serde_json::json!({
+            "id": "b0000001-0001-0001-0001-000000000001",
+            "dataBindingConfiguration": {
+                "dataBindingType": "NonTimeSeries",
+                "propertyBindings": [{
+                    "sourceColumnName": "country",
+                    "targetPropertyId": "8880000000011"
+                }],
+                "sourceTableProperties": {
+                    "sourceType": "LakehouseTable",
+                    "workspaceId": cfg.source_workspace,
+                    "itemId": cfg.source_lakehouse,
+                    "sourceTableName": "sales",
+                    "sourceSchema": "dbo"
+                }
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    // Entity type 2: Sensor
+    let et2_dir = ont_dir.join("EntityTypes").join("8880000000002");
+    std::fs::create_dir_all(&et2_dir).unwrap();
+    std::fs::write(
+        et2_dir.join("definition.json"),
+        serde_json::to_string(&serde_json::json!({
+            "id": "8880000000002",
+            "namespace": "usertypes",
+            "name": "Sensor",
+            "entityIdParts": ["8880000000021"],
+            "displayNamePropertyId": "8880000000021",
+            "namespaceType": "Custom",
+            "visibility": "Visible",
+            "properties": [{
+                "id": "8880000000021",
+                "name": "DisplayName",
+                "valueType": "String"
+            }],
+            "timeseriesProperties": []
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    // Relationship: Equipment hasSensor Sensor
+    let rel_dir = ont_dir.join("RelationshipTypes").join("9990000000001");
+    std::fs::create_dir_all(&rel_dir).unwrap();
+    std::fs::write(
+        rel_dir.join("definition.json"),
+        serde_json::to_string(&serde_json::json!({
+            "namespace": "usertypes",
+            "id": "9990000000001",
+            "name": "hasSensor",
+            "namespaceType": "Custom",
+            "source": {"entityTypeId": "8880000000001"},
+            "target": {"entityTypeId": "8880000000002"}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    // Update definition from directory
+    fabio()
+        .args([
+            "ontology",
+            "update-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--dir",
+            ont_dir.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    // Verify with get-definition --decode
+    let assert = fabio()
+        .args([
+            "ontology",
+            "get-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--decode",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+
+    let paths: Vec<&str> = parts.iter().filter_map(|p| p["path"].as_str()).collect();
+
+    assert!(
+        paths.contains(&"EntityTypes/8880000000001/definition.json"),
+        "Missing Equipment entity type"
+    );
+    assert!(
+        paths.contains(&"EntityTypes/8880000000002/definition.json"),
+        "Missing Sensor entity type"
+    );
+    assert!(
+        paths.iter().any(|p| p.contains("DataBindings/")),
+        "Missing data binding"
+    );
+    assert!(
+        paths.contains(&"RelationshipTypes/9990000000001/definition.json"),
+        "Missing relationship type"
+    );
+
+    // Verify Equipment entity type content
+    let equipment_part = parts
+        .iter()
+        .find(|p| p["path"].as_str().unwrap_or("") == "EntityTypes/8880000000001/definition.json")
+        .unwrap();
+    assert_eq!(equipment_part["decodedPayload"]["name"], "Equipment");
+
+    // Verify relationship content
+    let rel_part = parts
+        .iter()
+        .find(|p| {
+            p["path"].as_str().unwrap_or("") == "RelationshipTypes/9990000000001/definition.json"
+        })
+        .unwrap();
+    assert_eq!(rel_part["decodedPayload"]["name"], "hasSensor");
+    assert_eq!(
+        rel_part["decodedPayload"]["source"]["entityTypeId"],
+        "8880000000001"
+    );
+
+    // Cleanup
+    fabio()
+        .args([
+            "ontology",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--hard",
+        ])
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// --dir and --definition/--file are mutually exclusive (create)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[serial]
+fn ontology_create_dir_conflicts_with_definition() {
+    fabio()
+        .args([
+            "ontology",
+            "create",
+            "--workspace",
+            "fake-ws",
+            "--name",
+            "test",
+            "--dir",
+            "/tmp",
+            "--definition",
+            "def.json",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("cannot be used with"));
+}
+
+#[test]
+#[serial]
+fn ontology_create_dir_conflicts_with_file() {
+    fabio()
+        .args([
+            "ontology",
+            "create",
+            "--workspace",
+            "fake-ws",
+            "--name",
+            "test",
+            "--dir",
+            "/tmp",
+            "--file",
+            "schema.ttl",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("cannot be used with"));
+}
+
+// ---------------------------------------------------------------------------
+// --dir and --definition/--file are mutually exclusive (update-definition)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[serial]
+fn ontology_update_definition_dir_conflicts_with_definition() {
+    fabio()
+        .args([
+            "ontology",
+            "update-definition",
+            "--workspace",
+            "fake-ws",
+            "--id",
+            "fake-id",
+            "--dir",
+            "/tmp",
+            "--definition",
+            "def.json",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("cannot be used with"));
+}
+
+#[test]
+#[serial]
+fn ontology_update_definition_dir_conflicts_with_file() {
+    fabio()
+        .args([
+            "ontology",
+            "update-definition",
+            "--workspace",
+            "fake-ws",
+            "--id",
+            "fake-id",
+            "--dir",
+            "/tmp",
+            "--file",
+            "schema.ttl",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("cannot be used with"));
+}
+
+// ---------------------------------------------------------------------------
+// Full IoT scenario: create ontology with entity types + data bindings
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ontology_iot_scenario_entity_types_and_data_bindings() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("ont_iot");
+
+    // Build ontology definition with entity types bound to lakehouse sales table
+    let entity_def = serde_json::json!({
+        "id": "6660000000001",
+        "namespace": "usertypes",
+        "baseEntityTypeId": null,
+        "name": "SalesRecord",
+        "entityIdParts": ["6660000000011"],
+        "displayNamePropertyId": "6660000000011",
+        "namespaceType": "Custom",
+        "visibility": "Visible",
+        "properties": [
+            {"id": "6660000000011", "name": "DisplayName", "redefines": null, "baseTypeNamespaceType": null, "valueType": "String"},
+            {"id": "6660000000012", "name": "Country", "redefines": null, "baseTypeNamespaceType": null, "valueType": "String"},
+            {"id": "6660000000013", "name": "Revenue", "redefines": null, "baseTypeNamespaceType": null, "valueType": "Double"}
+        ],
+        "timeseriesProperties": []
+    });
+
+    let binding_def = serde_json::json!({
+        "id": "c0000001-0001-0001-0001-000000000001",
+        "dataBindingConfiguration": {
+            "dataBindingType": "NonTimeSeries",
+            "propertyBindings": [
+                {"sourceColumnName": "country", "targetPropertyId": "6660000000011"},
+                {"sourceColumnName": "country", "targetPropertyId": "6660000000012"},
+                {"sourceColumnName": "revenue", "targetPropertyId": "6660000000013"}
+            ],
+            "sourceTableProperties": {
+                "sourceType": "LakehouseTable",
+                "workspaceId": &cfg.source_workspace,
+                "itemId": &cfg.source_lakehouse,
+                "sourceTableName": "sales",
+                "sourceSchema": "dbo"
+            }
+        }
+    });
+
+    let def_json_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, b"{}");
+    let entity_b64 = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        serde_json::to_string(&entity_def).unwrap().as_bytes(),
+    );
+    let binding_b64 = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        serde_json::to_string(&binding_def).unwrap().as_bytes(),
+    );
+
+    let full_def = serde_json::json!({
+        "parts": [
+            {"path": "definition.json", "payload": def_json_b64, "payloadType": "InlineBase64"},
+            {"path": "EntityTypes/6660000000001/definition.json", "payload": entity_b64, "payloadType": "InlineBase64"},
+            {"path": "EntityTypes/6660000000001/DataBindings/c0000001-0001-0001-0001-000000000001.json", "payload": binding_b64, "payloadType": "InlineBase64"}
+        ]
+    });
+
+    let dir = tempfile::tempdir().unwrap();
+    let def_path = dir.path().join("def.json");
+    std::fs::write(&def_path, serde_json::to_string(&full_def).unwrap()).unwrap();
+
+    // Create ontology with entity types + data bindings
+    let assert = fabio()
+        .args([
+            "ontology",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+            "--description",
+            "IoT scenario with entity types and data bindings",
+            "--definition",
+            def_path.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["displayName"], name);
+    let ont_id = data["id"].as_str().unwrap().to_string();
+
+    // Verify entity types exist in definition
+    let assert = fabio()
+        .args([
+            "ontology",
+            "get-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--decode",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+
+    // Verify SalesRecord entity type
+    let entity_part = parts
+        .iter()
+        .find(|p| {
+            p["path"]
+                .as_str()
+                .unwrap_or("")
+                .contains("EntityTypes/6660000000001/definition.json")
+        })
+        .expect("SalesRecord entity type should exist");
+    assert_eq!(entity_part["decodedPayload"]["name"], "SalesRecord");
+    let properties = entity_part["decodedPayload"]["properties"]
+        .as_array()
+        .unwrap();
+    assert_eq!(properties.len(), 3);
+
+    // Verify data binding exists
+    let binding_part = parts
+        .iter()
+        .find(|p| p["path"].as_str().unwrap_or("").contains("DataBindings/"))
+        .expect("Data binding should exist");
+    let binding_config = &binding_part["decodedPayload"]["dataBindingConfiguration"];
+    assert_eq!(binding_config["dataBindingType"], "NonTimeSeries");
+    assert_eq!(
+        binding_config["sourceTableProperties"]["sourceTableName"],
+        "sales"
+    );
+
+    // Cleanup
+    fabio()
+        .args([
+            "ontology",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--hard",
+        ])
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// Get definition without --decode (original behavior preserved)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ontology_get_definition_without_decode() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("ont_nodec");
+
+    // Create
+    let assert = fabio()
+        .args([
+            "ontology",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let ont_id = data["id"].as_str().unwrap().to_string();
+
+    // Get definition WITHOUT --decode
+    let assert = fabio()
+        .args([
+            "ontology",
+            "get-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+
+    // Without --decode, parts should NOT have decodedPayload field
+    for part in parts {
+        assert!(
+            part.get("decodedPayload").is_none(),
+            "decodedPayload should not exist without --decode flag"
+        );
+        // But payload should be base64 string
+        assert!(part["payload"].is_string());
+    }
+
+    // Cleanup
+    fabio()
+        .args([
+            "ontology",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--hard",
+        ])
+        .assert()
+        .success();
+}
