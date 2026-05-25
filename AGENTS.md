@@ -352,6 +352,47 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **publish-to-web**: `POST https://api.powerbi.com/v1.0/myorg/groups/{groupId}/reports/{reportId}/publishtoweb` returns 404 for Fabric reports. Attempted with various body formats (`{"accessLevel":"View","allowFullScreen":true}`). Likely requires: (1) tenant admin to enable "Publish to web" in admin portal, AND (2) may only work with classic Power BI reports (not Fabric-native reports created via Items API).
 - **PowerBI API scope**: Report publish-to-web uses `api.powerbi.com` (not `api.fabric.microsoft.com`). Requires the same bearer token (`https://analysis.windows.net/powerbi/api/.default` scope).
 
+## Power BI File Formats Overview
+
+Power BI has multiple file formats spanning different eras and use cases. Understanding these is critical for choosing the right approach when creating or managing semantic models and reports via the Fabric REST API.
+
+| File Format | Purpose | Human Readable? | Fabric REST API Support | Era |
+|---|---|---|---|---|
+| `.pbix` | Standard Power BI report (binary) | No | Not directly (import only) | Original |
+| `.pbit` | Power BI template (no data) | Partially | Not directly | Early |
+| `.pbip` | Power BI Project (folder structure) | Yes | Maps to definition parts | 2023+ |
+| `.pbir` | Report definition entry point | Yes | Required for all report ops | 2024+ |
+| `model.bim` | Tabular model definition (JSON) | Yes | Supported via Items API | Legacy + supported |
+| `TMDL` | Tabular Model Definition Language | Yes | Supported via Items API | Current |
+| `.rdl` | Paginated report (XML) | XML | Limited | SSRS heritage |
+
+### Format Selection for Fabric REST API
+
+| Scenario | Format | Notes |
+|---|---|---|
+| Direct Lake semantic model | TMDL | Required for `mode: directLake` partitions |
+| Import-mode semantic model | `model.bim` | Must use `compatibilityLevel: 1604` + `powerBI_V3` |
+| Report with working visuals | PBIR-Legacy (`report.json`) | Only format supporting `prototypeQuery` for data rendering |
+| Report for source control | PBIR (`definition/` folder) | Better diffs but limited programmatic visual support |
+| Semantic model source control | TMDL (folder-based) | One `.tmdl` file per table, better Git diffs |
+
+### Evolution Timeline
+
+| Era | Main Formats | Fabric CLI Relevance |
+|---|---|---|
+| Early Power BI | `.pbix`, `.pbit` | Import-only, not definition-managed |
+| Enterprise tabular | `model.bim` | `fabio semantic-model create --file model.bim` |
+| Modern DevOps/Git | `.pbip`, `.pbir`, TMDL | `fabio semantic-model create --file *.tmdl`, `fabio report create/update-definition` |
+| Paginated reporting | `.rdl` | `fabio item get-definition` (limited) |
+
+### Key Constraints
+
+- **Direct Lake requires TMDL**: `model.bim` cannot express `mode: directLake` partitions. Always use TMDL for Direct Lake.
+- **model.bim requires V3**: `compatibilityLevel: 1604` and `defaultPowerBIDataSourceVersion: powerBI_V3` are mandatory.
+- **PBIR cannot render data programmatically**: PBIR format visuals with `query.queryState` store correctly but display no data in the portal. Use PBIR-Legacy with `prototypeQuery` for programmatic report creation.
+- **PBIR is the future**: PBIR will become the only supported format at GA. PBIR-Legacy is deprecated but still required for programmatic visual data rendering.
+- **definition.pbir is always required**: Both PBIR and PBIR-Legacy reports need this file for semantic model binding.
+
 ## Power BI Report Definition Formats Reference
 
 Power BI reports use one of two definition formats: **PBIR-Legacy** (single `report.json` file) or **PBIR** (individual files per visual/page in a `definition/` folder). Both formats use `definition.pbir` as the entry point for semantic model binding.
