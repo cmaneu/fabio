@@ -36,6 +36,9 @@ pub enum MountedDataFactoryCommand {
         /// Display name
         #[arg(long)]
         name: String,
+        /// Azure Data Factory resource ID (ARM path: /subscriptions/.../Microsoft.DataFactory/factories/<name>)
+        #[arg(long)]
+        adf_id: String,
         /// Optional description
         #[arg(long)]
         description: Option<String>,
@@ -108,8 +111,9 @@ pub async fn execute(
         MountedDataFactoryCommand::Create {
             workspace,
             name,
+            adf_id,
             description,
-        } => create(cli, client, workspace, name, description.as_deref()).await,
+        } => create(cli, client, workspace, name, adf_id, description.as_deref()).await,
         MountedDataFactoryCommand::Update {
             workspace,
             id,
@@ -188,16 +192,30 @@ async fn create(
     client: &FabricClient,
     workspace: &str,
     name: &str,
+    adf_id: &str,
     description: Option<&str>,
 ) -> Result<()> {
-    let mut body = serde_json::json!({ "displayName": name });
+    // Build the definition with the ADF resource ID
+    let content = serde_json::json!({ "dataFactoryResourceId": adf_id });
+    let encoded =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, content.to_string().as_bytes());
+    let mut body = serde_json::json!({
+        "displayName": name,
+        "definition": {
+            "parts": [{
+                "path": "mountedDataFactory-content.json",
+                "payload": encoded,
+                "payloadType": "InlineBase64"
+            }]
+        }
+    });
     if let Some(desc) = description {
         body["description"] = Value::String(desc.to_string());
     }
     if output::dry_run_guard(
         cli,
         "mounted-data-factory create",
-        &serde_json::json!({ "workspace": workspace, "displayName": name, "description": description }),
+        &serde_json::json!({ "workspace": workspace, "displayName": name, "adfId": adf_id, "description": description }),
     ) {
         return Ok(());
     }
@@ -316,7 +334,7 @@ async fn update_definition(
     };
     let encoded = base64::engine::general_purpose::STANDARD.encode(script.as_bytes());
     let body = serde_json::json!({
-        "definition": { "parts": [{ "path": "definition.json", "payload": encoded, "payloadType": "InlineBase64" }] }
+        "definition": { "parts": [{ "path": "mountedDataFactory-content.json", "payload": encoded, "payloadType": "InlineBase64" }] }
     });
     if output::dry_run_guard(
         cli,

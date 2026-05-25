@@ -33,9 +33,12 @@ pub enum DigitalTwinBuilderFlowCommand {
         /// Workspace ID
         #[arg(short, long)]
         workspace: String,
-        /// Display name
+        /// Display name (letters, numbers, underscores only — no hyphens)
         #[arg(long)]
         name: String,
+        /// Parent Digital Twin Builder item ID (required)
+        #[arg(long)]
+        dtb_id: String,
         /// Optional description
         #[arg(long)]
         description: Option<String>,
@@ -110,8 +113,9 @@ pub async fn execute(
         DigitalTwinBuilderFlowCommand::Create {
             workspace,
             name,
+            dtb_id,
             description,
-        } => create(cli, client, workspace, name, description.as_deref()).await,
+        } => create(cli, client, workspace, name, dtb_id, description.as_deref()).await,
         DigitalTwinBuilderFlowCommand::Update {
             workspace,
             id,
@@ -188,16 +192,26 @@ async fn create(
     client: &FabricClient,
     workspace: &str,
     name: &str,
+    dtb_id: &str,
     description: Option<&str>,
 ) -> Result<()> {
-    let mut body = serde_json::json!({ "displayName": name });
+    let mut body = serde_json::json!({
+        "displayName": name,
+        "creationPayload": {
+            "digitalTwinBuilderItemReference": {
+                "referenceType": "ById",
+                "itemId": dtb_id,
+                "workspaceId": workspace
+            }
+        }
+    });
     if let Some(desc) = description {
         body["description"] = Value::String(desc.to_string());
     }
     if output::dry_run_guard(
         cli,
         "digital-twin-builder-flow create",
-        &serde_json::json!({ "workspace": workspace, "displayName": name, "description": description }),
+        &serde_json::json!({ "workspace": workspace, "displayName": name, "dtbId": dtb_id, "description": description }),
     ) {
         return Ok(());
     }

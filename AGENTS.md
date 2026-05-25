@@ -1292,9 +1292,22 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 
 ## Digital Twin Builder Flow API Behaviors Discovered
 - **Create requires parent DTB**: The create API requires a `creationPayload` referencing the parent Digital Twin Builder artifact ID. Without it, returns "Parent artifact is inaccessible or required fields are missing from request".
+- **creationPayload format**: `{"digitalTwinBuilderItemReference": {"referenceType": "ById", "itemId": "<dtb-id>", "workspaceId": "<ws-id>"}}`. The `referenceType` must be `"ById"`.
+- **Definition file**: `definition.json` containing `{"DigitalTwinBuilderId": "<parent-dtb-id>", "OperationIds": [], "IsOnDemand": false}`.
+- **show returns properties**: `GET /digitalTwinBuilderFlows/{id}` includes `properties.digitalTwinBuilderItemReference` with the parent DTB reference.
+- **Naming constraint**: Same as DTB — letters, numbers, underscores only, no hyphens. Must start with a letter, max 90 characters.
 - **Endpoint pattern**: `/workspaces/{ws}/digitalTwinBuilderFlows/{id}`.
 - **Create is LRO**: Returns 202, requires polling (when payload is correct).
-- **getDefinition is LRO**: Returns definition + `.platform`.
+- **getDefinition is LRO**: Returns `definition.json` + `.platform`.
+
+## Mounted Data Factory API Behaviors Discovered
+- **Create requires ADF resource ID in definition**: Creation uses a `definition` body (NOT `creationPayload`) with a single part `mountedDataFactory-content.json` containing `{"dataFactoryResourceId": "<ARM-resource-id>"}`. The ARM ID format: `/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.DataFactory/factories/<name>`.
+- **Do NOT include `format` field**: Including `"format": "MountedDataFactoryV1"` in the definition causes "Requested item definition format is invalid". Send definition without format field.
+- **Definition file**: `mountedDataFactory-content.json` (NOT `definition.json`).
+- **Create is LRO**: Returns 202, requires polling.
+- **getDefinition is LRO**: Returns `mountedDataFactory-content.json` + `.platform`.
+- **Endpoint pattern**: `/workspaces/{ws}/mountedDataFactories/{id}`.
+- **Response includes `attributes: []`**: Same as other newer item types.
 
 ## Cosmos DB Database API Behaviors Discovered
 - **Creates without external connection**: Unlike Snowflake Database, Cosmos DB Database items can be created as empty shells (no Azure Cosmos DB account required upfront).

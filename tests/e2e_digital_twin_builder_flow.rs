@@ -40,6 +40,8 @@ fn digital_twin_builder_flow_dry_run_create() {
             &cfg.source_workspace,
             "--name",
             "test_dtb_flow",
+            "--dtb-id",
+            "00000000-0000-0000-0000-000000000001",
             "--dry-run",
         ])
         .assert()

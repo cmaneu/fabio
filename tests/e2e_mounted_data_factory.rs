@@ -40,6 +40,8 @@ fn mounted_data_factory_dry_run_create() {
             &cfg.source_workspace,
             "--name",
             "test-mdf",
+            "--adf-id",
+            "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.DataFactory/factories/my-adf",
             "--dry-run",
         ])
         .assert()
