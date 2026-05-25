@@ -69,6 +69,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **GraphQL API**: list, show, create, update, delete, get-definition, update-definition (schema.graphql)
 - **Report**: list, show, create (from definition file), update, delete, get-definition, update-definition
 - **Semantic Model**: list, show, create (from model.bim), update, delete, get-definition, update-definition
+- **Map**: list, show, create, update, delete, get-definition, update-definition (geospatial visualization with Azure Maps)
 - **Spark Job Definition**: list, show, create, update, delete, get-definition, update-definition, run
 - **Capacity**: list, show (inspect available capacities)
 - **Connection**: list, show, create, update, delete, list-supported-types
@@ -92,7 +93,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
   - Principle 10: Two-way I/O (`fabio feedback send/list`)
 - **SQL Database**: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
 - **SQL Database import**: Reads CSV/JSON files, infers column types (Int/BigInt/Float/Bit/Date/NVarChar), generates CREATE TABLE + batched INSERTs via TDS. Supports --drop-if-exists, --no-create-table, --batch-size.
-- **685 Rust tests** (199 unit + 486 E2E integration), zero clippy warnings, rustfmt clean
+- **693 Rust tests** (199 unit + 494 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~9.4 MB, stripped, full LTO, panic=abort
@@ -180,6 +181,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/graphql_api.rs`: list/show/create/update/delete/get-definition/update-definition (schema.graphql)
 - `src/commands/spark.rs`: get-settings/update-settings/list-pools/get-pool/create-pool/update-pool/delete-pool
 - `src/commands/spark_job_definition.rs`: list/show/create/update/delete/get-definition/update-definition/run
+- `src/commands/map.rs`: list/show/create/update/delete/get-definition/update-definition (geospatial Azure Maps)
 - `src/commands/capacity.rs`: list/show
 - `src/commands/connection.rs`: list/show/create/update/delete/list-supported-types
 - `src/commands/deployment_pipeline.rs`: list/show/create/update/delete/list-stages/list-stage-items/assign-workspace/unassign-workspace/deploy
@@ -225,6 +227,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_dataflow.rs`: Dataflow CRUD tests
 - `tests/e2e_report.rs`: Report CRUD tests
 - `tests/e2e_semantic_model.rs`: Semantic model CRUD tests
+- `tests/e2e_map.rs`: Map CRUD + definition tests
 - `tests/e2e_spark_job_definition.rs`: Spark job definition tests
 - `tests/e2e_deployment_pipeline.rs`: Deployment pipeline tests
 - `tests/e2e_domain.rs`: Domain management tests
@@ -865,4 +868,23 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Create returns item immediately**: Unlike graph models with definition, graph query set creation returns the item object directly (not LRO).
 - **Delete works regardless of content**: Even empty query sets can be deleted successfully.
 - **`getDefinition` is LRO**: Returns 202 and requires polling, same as other Fabric definition APIs.
+
+## Map API Behaviors Discovered
+- **Definition file is `map.json`**: NOT `definition.json`. The definition part path is `map.json` containing the full map configuration (basemap, data sources, layers).
+- **Schema URL**: `https://developer.microsoft.com/json-schemas/fabric/item/map/definition/2.0.0/schema.json` — the current version is 2.0.0.
+- **Definition structure**: `{"$schema":"...","basemap":{},"dataSources":[],"iconSources":[],"layerSources":[],"layerSettings":[]}`. A newly created map has all arrays empty and `basemap: {}`.
+- **getDefinition is LRO**: Returns 202 and requires polling. Returns `map.json` + `.platform` parts.
+- **updateDefinition returns item object**: Unlike other items that return null/empty on update, map `updateDefinition` returns the full item object (id, type, displayName, description, workspaceId).
+- **Server adds `refreshIntervalMs: 0`**: Layer sources automatically get `refreshIntervalMs: 0` added if not specified.
+- **Data source types**: `Lakehouse`, `KqlDatabase`, `Ontology` (workspace items with `itemType`, `workspaceId`, `itemId`) or `Connection` (with `connectionId`).
+- **Layer source types**: `table` (for lakehouse Delta tables). References a data source via `itemId` and uses `relativePath` (e.g., `Tables/my_table`).
+- **Layer settings options**: `type` (`vector` or `raster`), `pointLayerType` (`bubble`, `heatmap`, `marker`), with corresponding sub-options (`bubbleOptions`, `heatmapOptions`, `markerOptions`, `lineOptions`, `polygonOptions`, `polygonExtrusionOptions`).
+- **Geospatial columns**: Layers reference geographic data via `latitudeColumnName`/`longitudeColumnName` (for point data) or `geometryColumnName` (for GeoJSON/WKT geometry columns). These appear at both the `layerSettings` level and inside `options`.
+- **Bubble options for data-driven sizing**: Use `sizeType: "data-driven"` with `sizeProperty: "<column_name>"` to size bubbles proportional to a numeric column. `sizeType: "fixed"` with `fixedSize` for uniform sizing.
+- **Basemap styles**: `road`, `satellite_road_labels`, `grayscale_light`, `grayscale_dark`, `night`, `road_shaded_relief`, `high_contrast_dark`, `high_contrast_light`.
+- **Controls**: `zoom`, `pitch`, `compass`, `scale`, `traffic`, `style` — each boolean to enable/disable.
+- **Filters support**: Layer settings support `filters` array with types: `text`, `boolean`, `number`, `datetime`. Each filter has an `id` (UUID), `field`, `locked` flag, and type-specific value fields.
+- **Map visual IDs must be UUID format**: `layerSources[].id` and `layerSettings[].id` must be valid UUIDs.
+- **Create is LRO**: Returns 202 and requires polling (item returned after LRO completes).
+- **Conflict on duplicate names**: Creating a map with an existing name returns `409 Conflict` with message "Requested '<name>' is already in use".
 
