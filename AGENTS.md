@@ -1198,6 +1198,16 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Create body**: `{"displayName": "...", "description"?: "..."}`.
 - **Create is LRO**: Returns 202, requires polling.
 
+## Anomaly Detector API Behaviors Discovered
+- **Definition format**: `AnomalyDetectorV1`. Definition file path is `Configurations.json` (NOT `AnomalyDetector.json`).
+- **Definition schema URL**: `https://developer.microsoft.com/json-schemas/fabric/item/anomalyDetector/definition/1.0.0/schema.json`
+- **Definition structure**: `{"$id": "<schema_url>", "$schema": "https://json-schema.org/draft-07/schema#", "univariateConfigurations": []}`. The `univariateConfigurations` array holds the anomaly detection model configurations.
+- **Create is LRO**: Returns via standard LRO polling.
+- **getDefinition is LRO**: Returns 202, polled to completion. Returns `Configurations.json` + `.platform` parts.
+- **Response includes `attributes` field**: Item responses include `"attributes": []` (empty array for new items).
+- **Endpoint pattern**: Standard at `/workspaces/{ws}/anomalyDetectors/{id}`.
+- **409 Conflict on duplicate name**: Creating with an existing name returns `"Requested '<name>' is already in use"`.
+
 ## Common API Patterns Across All Command Groups
 - **List pagination**: All list endpoints use `get_list()` with `"value"` key (except lakehouse tables which use `"data"`). Supports `--all` (fetches all pages), `--continuation-token` (resumes from token), `--limit` (client-side truncation).
 - **Create responses**: Return the created object with at minimum `id`, `displayName`, `type`.

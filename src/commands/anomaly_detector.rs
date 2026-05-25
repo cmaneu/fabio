@@ -83,6 +83,10 @@ pub enum AnomalyDetectorCommand {
         /// Anomaly detector ID
         #[arg(long)]
         id: String,
+
+        /// Decode base64 payloads inline (adds decodedPayload field)
+        #[arg(long)]
+        decode: bool,
     },
     /// Update the definition of an anomaly detector
     #[command(display_order = 7)]
@@ -137,9 +141,11 @@ pub async fn execute(
         AnomalyDetectorCommand::Delete { workspace, id } => {
             delete(cli, client, workspace, id).await
         }
-        AnomalyDetectorCommand::GetDefinition { workspace, id } => {
-            get_definition(cli, client, workspace, id).await
-        }
+        AnomalyDetectorCommand::GetDefinition {
+            workspace,
+            id,
+            decode,
+        } => get_definition(cli, client, workspace, id, *decode).await,
         AnomalyDetectorCommand::UpdateDefinition {
             workspace,
             id,
@@ -286,8 +292,14 @@ async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> 
 
 // ─── Definitions ─────────────────────────────────────────────────────────────
 
-async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
-    let data = client
+async fn get_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    decode: bool,
+) -> Result<()> {
+    let mut data = client
         .post(
             &format!("/workspaces/{workspace}/anomalyDetectors/{id}/getDefinition"),
             &serde_json::json!({}),
@@ -295,6 +307,10 @@ async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &
         )
         .await
         .map_err(|e| enrich_forbidden(e, "anomaly-detector get-definition", "Contributor"))?;
+
+    if decode {
+        output::decode_definition_parts(&mut data);
+    }
     output::render_object(cli, &data, "definition");
     Ok(())
 }
@@ -326,7 +342,7 @@ async fn update_definition(
         "definition": {
             "parts": [
                 {
-                    "path": "AnomalyDetector.json",
+                    "path": "Configurations.json",
                     "payload": encoded,
                     "payloadType": "InlineBase64"
                 }
