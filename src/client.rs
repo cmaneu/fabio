@@ -219,6 +219,47 @@ impl FabricClient {
         handle_response(resp).await
     }
 
+    /// GET request returning raw text response as a JSON string value.
+    /// Used for endpoints that return non-JSON content (e.g., file downloads).
+    pub async fn get_text(&self, path: &str) -> Result<String> {
+        let token = self.require_auth().await?;
+        let url = format!("{FABRIC_BASE_URL}{path}");
+
+        let resp = self
+            .http
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .get(&url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+            let status = resp.status();
+            if !status.is_success() {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(FabioError::new(ErrorCode::ApiError, body).into());
+            }
+            return Ok(resp.text().await.unwrap_or_default());
+        }
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(FabioError::new(ErrorCode::ApiError, body).into());
+        }
+        Ok(resp.text().await.unwrap_or_default())
+    }
+
     /// GET a paginated list from Fabric REST API.
     ///
     /// When `paginate` is true, follows `continuationToken` until all pages are fetched.
@@ -322,6 +363,39 @@ impl FabricClient {
 
         if poll && resp.status() == StatusCode::ACCEPTED {
             return self.poll_lro(resp).await;
+        }
+
+        handle_response(resp).await
+    }
+
+    /// POST request with raw text body (text/plain content type).
+    pub async fn post_raw(&self, path: &str, content: &str) -> Result<Value> {
+        let token = self.require_auth().await?;
+        let url = format!("{FABRIC_BASE_URL}{path}");
+
+        let resp = self
+            .http
+            .post(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header("Content-Type", "text/plain")
+            .body(content.to_owned())
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .post(&url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header("Content-Type", "text/plain")
+                .body(content.to_owned())
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return handle_response(resp).await;
         }
 
         handle_response(resp).await
@@ -491,6 +565,39 @@ impl FabricClient {
                 .put(&url)
                 .header(AUTHORIZATION, format!("Bearer {token}"))
                 .json(body)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return handle_response(resp).await;
+        }
+
+        handle_response(resp).await
+    }
+
+    /// PUT request with raw text body (e.g., for file uploads requiring text/plain).
+    pub async fn put_raw(&self, path: &str, content: &str) -> Result<Value> {
+        let token = self.require_auth().await?;
+        let url = format!("{FABRIC_BASE_URL}{path}");
+
+        let resp = self
+            .http
+            .put(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header("Content-Type", "text/plain")
+            .body(content.to_owned())
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .put(&url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header("Content-Type", "text/plain")
+                .body(content.to_owned())
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;

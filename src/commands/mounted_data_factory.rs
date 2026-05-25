@@ -75,6 +75,9 @@ pub enum MountedDataFactoryCommand {
         /// Mounted Data Factory ID
         #[arg(long)]
         id: String,
+        /// Decode base64 payloads inline (adds decodedPayload field)
+        #[arg(long)]
+        decode: bool,
     },
     /// Update the definition of a Mounted Data Factory
     #[command(display_order = 7)]
@@ -126,9 +129,11 @@ pub async fn execute(
         MountedDataFactoryCommand::Delete { workspace, id } => {
             delete(cli, client, workspace, id).await
         }
-        MountedDataFactoryCommand::GetDefinition { workspace, id } => {
-            get_definition(cli, client, workspace, id).await
-        }
+        MountedDataFactoryCommand::GetDefinition {
+            workspace,
+            id,
+            decode,
+        } => get_definition(cli, client, workspace, id, *decode).await,
         MountedDataFactoryCommand::UpdateDefinition {
             workspace,
             id,
@@ -264,7 +269,13 @@ async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> 
     Ok(())
 }
 
-async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn get_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    decode: bool,
+) -> Result<()> {
     let data = client
         .post(
             &format!("/workspaces/{workspace}/mountedDataFactories/{id}/getDefinition"),
@@ -273,7 +284,12 @@ async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &
         )
         .await
         .map_err(|e| enrich_forbidden(e, "mounted-data-factory get-definition", "Contributor"))?;
-    output::render_object(cli, &data, "definition");
+    if decode {
+        let decoded = output::decode_definition_parts(&data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
+    }
     Ok(())
 }
 

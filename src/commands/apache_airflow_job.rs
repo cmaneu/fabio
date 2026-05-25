@@ -89,6 +89,10 @@ pub enum ApacheAirflowJobCommand {
         /// Apache Airflow job ID
         #[arg(long)]
         id: String,
+
+        /// Decode base64 payloads inline (adds decodedPayload field)
+        #[arg(long)]
+        decode: bool,
     },
     /// Update the definition of an Apache Airflow job
     #[command(display_order = 7)]
@@ -386,9 +390,11 @@ pub async fn execute(
             id,
             hard_delete,
         } => delete(cli, client, workspace, id, *hard_delete).await,
-        ApacheAirflowJobCommand::GetDefinition { workspace, id } => {
-            get_definition(cli, client, workspace, id).await
-        }
+        ApacheAirflowJobCommand::GetDefinition {
+            workspace,
+            id,
+            decode,
+        } => get_definition(cli, client, workspace, id, *decode).await,
         ApacheAirflowJobCommand::UpdateDefinition {
             workspace,
             id,
@@ -654,7 +660,13 @@ async fn delete(
 
 // ─── Definitions ─────────────────────────────────────────────────────────────
 
-async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn get_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    decode: bool,
+) -> Result<()> {
     let data = client
         .post(
             &format!("/workspaces/{workspace}/{BASE}/{id}/getDefinition"),
@@ -663,7 +675,12 @@ async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &
         )
         .await
         .map_err(|e| enrich_forbidden(e, "apache-airflow-job get-definition", "Contributor"))?;
-    output::render_object(cli, &data, "definition");
+    if decode {
+        let decoded = output::decode_definition_parts(&data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
+    }
     Ok(())
 }
 
@@ -844,10 +861,6 @@ async fn deploy_requirements(
         }
     };
 
-    let body = serde_json::json!({
-        "requirementsContent": requirements
-    });
-
     if output::dry_run_guard(
         cli,
         "apache-airflow-job deploy-requirements",
@@ -861,12 +874,11 @@ async fn deploy_requirements(
     }
 
     let data = client
-        .post(
+        .post_raw(
             &format!(
                 "/workspaces/{workspace}/{BASE}/{id}/environment/deployRequirements?beta=true"
             ),
-            &body,
-            false,
+            &requirements,
         )
         .await
         .map_err(|e| {
@@ -957,11 +969,12 @@ async fn get_file(
     id: &str,
     path: &str,
 ) -> Result<()> {
-    let data = client
-        .get(&format!(
+    let content = client
+        .get_text(&format!(
             "/workspaces/{workspace}/{BASE}/{id}/files/{path}?beta=true"
         ))
         .await?;
+    let data = serde_json::json!({ "path": path, "content": content });
     output::render_object(cli, &data, "content");
     Ok(())
 }
@@ -990,12 +1003,10 @@ async fn upload_file(
         return Ok(());
     }
 
-    // Send file content as a JSON string body; the beta API may require raw content-type
-    let body = Value::String(file_content);
     let data = client
-        .put(
+        .put_raw(
             &format!("/workspaces/{workspace}/{BASE}/{id}/files/{path}?beta=true"),
-            &body,
+            &file_content,
         )
         .await
         .map_err(|e| enrich_forbidden(e, "apache-airflow-job upload-file", "Contributor"))?;

@@ -1322,3 +1322,86 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Default audit groups**: `SUCCESSFUL_DATABASE_AUTHENTICATION_GROUP`, `FAILED_DATABASE_AUTHENTICATION_GROUP`, `BATCH_COMPLETED_GROUP`.
 - **Endpoint pattern**: `/workspaces/{ws}/sqlEndpoints/{id}`.
 
+## Apache Airflow Job API Behaviors Discovered
+- **Definition format**: Main definition file is `apacheairflowjob-content.json` with a companion `dags/requirements.txt`.
+- **Definition structure**: `{"properties":{"type":"Airflow","typeProperties":{"airflowProperties":{...},"computeProperties":{...}}}}`. Airflow properties include `airflowVersion`, `pythonVersion`, `enableAADIntegration`, `enableTriggerers`, `airflowConfigurationOverrides`, `airflowEnvironmentVariables`, `airflowRequirements`. Compute properties include `computePool`, `computeSize`, `enableAutoscale`, `enableAvailabilityZones`, `extraNodes`, `poolId`, `poolName`.
+- **Environment lifecycle**: `start-environment` and `stop-environment` control the Airflow runtime. Environment has states: `Initial`, `Starting`, `Started`, `Stopping`, `Stopped`. Can only start from `Initial`/`Stopped` states.
+- **File operations use `?beta=true`**: All file CRUD endpoints (`list-files`, `get-file`, `upload-file`, `delete-file`) require `?beta=true` query parameter.
+- **File upload requires `text/plain` content type**: `PUT /workspaces/{ws}/apacheAirflowJobs/{id}/files/{path}?beta=true` with `Content-Type: text/plain` body. JSON content-type is rejected with "Please set the 'Content-Type' header to either 'text/plain' or 'application/octet-stream'".
+- **File download returns raw text (not JSON)**: `GET /files/{path}?beta=true` returns the raw file content as text/plain. Must use `get_text()` instead of `get()` (which expects JSON parsing).
+- **deploy-requirements requires `text/plain` content type**: `POST .../environment/deployRequirements?beta=true` with raw requirements text body (not JSON). Same content-type requirement as file upload.
+- **deploy-requirements requires running environment**: Returns error if environment is in `Stopping`/`Stopped` state.
+- **list-files returns directory structure**: `{"value":[{"filePath":"dags/","sizeInBytes":null},{"filePath":"plugins/","sizeInBytes":null}]}`. Directories have null `sizeInBytes`.
+- **get-compute returns pool template details**: Includes `poolTemplateId`, `poolTemplateName`, `nodeSize`, `computeScalability.minNodeCount/maxNodeCount`, `apacheAirflowJobVersion`, `apacheAirflowJobVersionDetails.apacheAirflowVersion/pythonVersion`, `availabilityZones`, `shutdownPolicy`.
+- **Pool templates available**: `StarterPool` (ID: `00000000-...-000000000000`, Auto Pausing) and `Starter Pool (Always On)` (ID: `...000000000001`). Both are Small size, 5 nodes, Airflow 2.10.5, Python 3.12.
+- **get-workspace-settings**: Returns `{"defaultPoolTemplateId":"00000000-..."}`.
+- **Shutdown policies**: `OneHourInactivity` (auto pausing) and `AlwaysOn`.
+- **Availability zones**: `"Enabled"` or `"Disabled"` string values.
+- **get-settings returns generic error**: `"An error occured"` (API-side bug/limitation, spelling is theirs).
+- **get-environment response**: `{"status":"Started|Stopped|Starting|Stopping","airflowWebUrl":null}`. The `airflowWebUrl` may only populate once environment is fully started.
+- **Create is LRO**: Returns 202, requires polling.
+- **getDefinition is LRO**: Returns 202, requires polling.
+- **Response includes `attributes: []`**: Item responses include empty attributes array.
+- **Endpoint pattern**: `/workspaces/{ws}/apacheAirflowJobs/{id}`.
+
+## Gateway API Behaviors Discovered
+- **Tenant-level scope**: `GET /gateways` (no workspace prefix). Individual: `GET /gateways/{id}`.
+- **Create requires VNet infrastructure**: `POST /gateways` needs `--capacity-id`, `--virtual-network-id` (Azure ARM resource ID), `--subnet`. Cannot create without existing Azure VNet.
+- **Gateway type**: Only `VirtualNetwork` type supported via REST API. On-premises gateways are managed by the gateway application installer.
+- **Available commands**: list, show, create, update, delete, list-members, update-member, delete-member, list-role-assignments, add-role-assignment, show-role-assignment, update-role-assignment, delete-role-assignment.
+- **Empty list on test tenant**: No gateways available in the test workspace (requires VNet setup).
+
+## Mirrored Catalog API Behaviors Discovered
+- **Feature not available**: Creating mirrored catalogs returns `FORBIDDEN` with "The feature is not available". Likely requires a tenant-level feature flag or specific capacity SKU (F64+).
+- **Definition file**: `mirroring.json` (same as Mirrored Database).
+- **Endpoint pattern**: `/workspaces/{ws}/mirroredCatalogs/{id}`.
+
+## Mirrored Databricks Catalog API Behaviors Discovered
+- **Naming constraint**: Item names cannot contain hyphens. Names like `test-mdc-e2e` return "Invalid Display Name ... contains invalid characters". Must use alphanumeric characters and underscores only (similar to Digital Twin Builder).
+- **Create is LRO**: Returns 202, requires polling.
+- **Definition file**: `mirroring.json`.
+- **get-definition returns empty definition**: Newly created items have no meaningful content in `mirroring.json`.
+- **discover-catalogs requires connection**: Returns "The request has an invalid input" without a configured Databricks connection.
+- **refresh-metadata requires catalog configuration**: Returns "Catalog configuration for Artifact with ID ... not found" on items without a configured Databricks source.
+- **Response includes `attributes: []`**: Same as other newer item types.
+- **Endpoint pattern**: `/workspaces/{ws}/mirroredAzureDatabricksCatalogs/{id}`.
+
+## Graph Model API Behaviors Discovered (Additional)
+- **execute-query uses `--query` flag** (not `--kql`): Command syntax is `fabio graph-model execute-query --workspace <WS> --id <ID> --query "<KQL>"`.
+- **Graph must be loaded before queries**: `execute-query` on an unloaded graph returns `GraphIsNotLoaded` error.
+- **get-queryable-graph-type**: Returns `null` when graph has no queryable type (not yet loaded). Requires `?preview=true`.
+- **refresh-graph returns immediately**: `{"id":"...","status":"refresh_triggered"}`. The actual refresh runs asynchronously.
+- **Refresh requires portal initialization**: As documented previously, REST-only graph models fail refresh with `VersionConfig does not exist`.
+
+## Graph Query Set API Behaviors Discovered (Additional)
+- **Definition is read-only**: `exportedDefinition.json` content (`ArtifactContents`, `dependencies`, `ConfigurationCategories`) is always empty arrays when retrieved via API. Query content is portal-managed only.
+
+## Warehouse Snapshot API Behaviors Discovered
+- **Create requires `creationPayload` with warehouse ID**: Simple `displayName`-only creation returns "Invalid payload used for operation." Must include `{"creationPayload":{"warehouseId":"<warehouse-id>"}}`.
+- **Requires existing warehouse**: Cannot test without a warehouse item in the workspace.
+- **Endpoint pattern**: `/workspaces/{ws}/warehouseSnapshots/{id}`.
+- **Available commands**: list, show, create (with --warehouse-id), update, delete.
+
+## Dashboard/Datamart/Paginated Report API Behaviors Discovered
+- **Read-only list items**: Dashboard has only `list` command. Datamart has only `list`. Paginated Report has `list` and `update`.
+- **No creation via REST API**: These item types are created through the portal or Power BI Desktop. The REST API provides read-only access.
+- **Endpoint patterns**: `/workspaces/{ws}/dashboards`, `/workspaces/{ws}/datamarts`, `/workspaces/{ws}/paginatedReports/{id}`.
+
+## Catalog API Behaviors Discovered
+- **Single command**: `search` is the only subcommand.
+- **Requires `--content` with JSON body**: `fabio catalog search --content '{"searchString":"...","top":N}'`. Returns items matching the search string across workspaces.
+- **Endpoint**: `POST /catalog/search` (tenant-level, no workspace prefix).
+
+## Operation API Behaviors Discovered
+- **Uses `--operation-id`** (not `--id`): Unique among all command groups. Matches the operation ID returned in LRO `Location` headers.
+- **get-state**: Returns the current state of a long-running operation.
+- **get-result**: Returns the final result after operation completes.
+- **404 for nonexistent IDs**: Standard error handling for invalid operation IDs.
+- **Endpoint pattern**: `/operations/{operationId}` (tenant-level).
+
+## Admin API Behaviors Discovered
+- **Requires Fabric admin role**: All admin endpoints require elevated tenant-level permissions. Standard workspace Member/Admin roles are insufficient.
+- **Scope error message**: "The caller does not have sufficient scopes to perform this operation".
+- **50 subcommands**: Covers tenant settings, workspace management, items, users, labels, tags, external data shares, domains — all at admin scope.
+- **Cannot test without admin role**: All admin commands return FORBIDDEN in current test environment.
+

@@ -38,6 +38,10 @@ pub enum WarehouseSnapshotCommand {
         #[arg(long)]
         name: String,
 
+        /// Source warehouse ID to snapshot
+        #[arg(long)]
+        warehouse_id: String,
+
         /// Optional description
         #[arg(long)]
         description: Option<String>,
@@ -85,8 +89,9 @@ pub async fn execute(
         WarehouseSnapshotCommand::Create {
             workspace,
             name,
+            warehouse_id,
             description,
-        } => create(cli, client, workspace, name, description.as_deref()).await,
+        } => create(cli, client, workspace, name, warehouse_id, description.as_deref()).await,
         WarehouseSnapshotCommand::Update {
             workspace,
             id,
@@ -143,9 +148,15 @@ async fn create(
     client: &FabricClient,
     workspace: &str,
     name: &str,
+    warehouse_id: &str,
     description: Option<&str>,
 ) -> Result<()> {
-    let mut body = serde_json::json!({ "displayName": name });
+    let mut body = serde_json::json!({
+        "displayName": name,
+        "creationPayload": {
+            "warehouseId": warehouse_id
+        }
+    });
     if let Some(desc) = description {
         body["description"] = Value::String(desc.to_string());
     }
