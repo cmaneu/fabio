@@ -23,7 +23,7 @@ pub enum GatewayCommand {
     /// Create a new gateway (`VirtualNetwork` type)
     #[command(display_order = 3)]
     Create {
-        /// Display name
+        /// Display name (max 200 characters)
         #[arg(long)]
         name: String,
 
@@ -31,21 +31,29 @@ pub enum GatewayCommand {
         #[arg(long)]
         capacity_id: String,
 
-        /// Virtual network ID (Azure resource ID)
+        /// Azure subscription ID containing the virtual network
         #[arg(long)]
-        virtual_network_id: String,
+        subscription_id: String,
 
-        /// Subnet name
+        /// Resource group name containing the virtual network
+        #[arg(long)]
+        resource_group: String,
+
+        /// Virtual network name
+        #[arg(long)]
+        vnet_name: String,
+
+        /// Subnet name (must be delegated to Microsoft.PowerPlatform/vnetaccesslinks)
         #[arg(long)]
         subnet: String,
 
-        /// Inactivity timeout in minutes before auto-pause
-        #[arg(long)]
-        inactivity_minutes: Option<i64>,
+        /// Minutes of inactivity before auto-sleep (30, 60, 90, 120, 150, 240, 360, 480, 720, 1440)
+        #[arg(long, default_value = "120")]
+        inactivity_minutes: i64,
 
-        /// Number of gateway members
-        #[arg(long)]
-        member_count: Option<i64>,
+        /// Number of gateway members (1-9)
+        #[arg(long, default_value = "1")]
+        member_count: i64,
     },
     /// Update gateway properties
     #[command(display_order = 4)]
@@ -191,7 +199,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GatewayCommand)
         GatewayCommand::Create {
             name,
             capacity_id,
-            virtual_network_id,
+            subscription_id,
+            resource_group,
+            vnet_name,
             subnet,
             inactivity_minutes,
             member_count,
@@ -201,7 +211,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GatewayCommand)
                 client,
                 name,
                 capacity_id,
-                virtual_network_id,
+                subscription_id,
+                resource_group,
+                vnet_name,
                 subnet,
                 *inactivity_minutes,
                 *member_count,
@@ -307,30 +319,25 @@ async fn create(
     client: &FabricClient,
     name: &str,
     capacity_id: &str,
-    virtual_network_id: &str,
+    subscription_id: &str,
+    resource_group: &str,
+    vnet_name: &str,
     subnet: &str,
-    inactivity_minutes: Option<i64>,
-    member_count: Option<i64>,
+    inactivity_minutes: i64,
+    member_count: i64,
 ) -> Result<()> {
-    let mut virtual_network_azure_resource = serde_json::json!({
-        "virtualNetworkId": virtual_network_id,
-        "subnetName": subnet
-    });
-
-    if let Some(mins) = inactivity_minutes {
-        virtual_network_azure_resource["inactivityMinutesBeforeSleep"] =
-            Value::Number(serde_json::Number::from(mins));
-    }
-    if let Some(count) = member_count {
-        virtual_network_azure_resource["numberOfMemberGateways"] =
-            Value::Number(serde_json::Number::from(count));
-    }
-
     let body = serde_json::json!({
         "type": "VirtualNetwork",
         "displayName": name,
         "capacityId": capacity_id,
-        "virtualNetworkAzureResource": virtual_network_azure_resource
+        "virtualNetworkAzureResource": {
+            "subscriptionId": subscription_id,
+            "resourceGroupName": resource_group,
+            "virtualNetworkName": vnet_name,
+            "subnetName": subnet
+        },
+        "inactivityMinutesBeforeSleep": inactivity_minutes,
+        "numberOfMemberGateways": member_count
     });
 
     if output::dry_run_guard(cli, "gateway create", &body) {
@@ -367,7 +374,14 @@ async fn update(
         .into());
     }
 
-    let mut body = serde_json::json!({});
+    // Determine gateway type via GET so the update body includes the required `type` field.
+    let current = client.get(&format!("/gateways/{gateway}")).await?;
+    let gw_type = current["type"]
+        .as_str()
+        .unwrap_or("VirtualNetwork")
+        .to_string();
+
+    let mut body = serde_json::json!({ "type": gw_type });
     if let Some(n) = name {
         body["displayName"] = Value::String(n.to_string());
     }
@@ -529,8 +543,10 @@ async fn add_role_assignment(
     role: &str,
 ) -> Result<()> {
     let body = serde_json::json!({
-        "principalId": principal_id,
-        "principalType": principal_type,
+        "principal": {
+            "id": principal_id,
+            "type": principal_type
+        },
         "role": role
     });
 

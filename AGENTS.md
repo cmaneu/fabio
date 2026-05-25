@@ -1346,10 +1346,22 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 
 ## Gateway API Behaviors Discovered
 - **Tenant-level scope**: `GET /gateways` (no workspace prefix). Individual: `GET /gateways/{id}`.
-- **Create requires VNet infrastructure**: `POST /gateways` needs `--capacity-id`, `--virtual-network-id` (Azure ARM resource ID), `--subnet`. Cannot create without existing Azure VNet.
+- **Create requires VNet infrastructure**: `POST /gateways` needs capacity ID, VNet subscription/resource group/name/subnet. Subnet must be delegated to `Microsoft.PowerPlatform/vnetaccesslinks`. The `Microsoft.PowerPlatform` resource provider must be registered on the Azure subscription.
 - **Gateway type**: Only `VirtualNetwork` type supported via REST API. On-premises gateways are managed by the gateway application installer.
+- **`virtualNetworkAzureResource` uses component fields**: The API expects separate `subscriptionId`, `resourceGroupName`, `virtualNetworkName`, `subnetName` fields — NOT a full ARM resource ID.
+- **`inactivityMinutesBeforeSleep` is required**: Must be one of: 30, 60, 90, 120, 150, 240, 360, 480, 720, 1440. Default in CLI: 120.
+- **`numberOfMemberGateways` is required**: Must be between 1 and 9. Default in CLI: 1.
+- **Creation is slow**: Gateway creation takes 60-90 seconds to return. No LRO pattern (returns 201 directly, but response is delayed).
+- **Update requires `type` field**: `PATCH /gateways/{id}` body MUST include `"type": "VirtualNetwork"` (or `"OnPremises"` for on-prem). Without it, returns "The request has an invalid input". The CLI auto-fetches the current type via GET before PATCH.
+- **VNet gateways have no "members" endpoint**: `GET /gateways/{id}/members` returns NOT_FOUND for VNet gateways. Members are an on-premises gateway concept.
+- **Role assignment uses nested principal object**: `POST /gateways/{id}/roleAssignments` body format: `{"principal": {"id": "<uuid>", "type": "User|Group|ServicePrincipal"}, "role": "Admin|ConnectionCreator|ConnectionCreatorWithResharing"}`. Flat `principalId`/`principalType` format is rejected.
+- **Cannot demote last Admin**: Attempting to update the sole Admin's role to a lower level returns `DMTS_CannotDeleteLastGatewayPrincipalError`.
+- **Duplicate role assignment returns CONFLICT**: Adding a role for a principal that already has one returns 409 with "Gateway role assignemnt already exists" (note: API has typo "assignemnt").
+- **Non-existent principal returns 500**: Adding a role for a UUID that doesn't resolve to a real Entra ID principal returns "An unexpected error occurred" (internal server error, not a clean validation error).
+- **Delete is immediate**: `DELETE /gateways/{id}` returns immediately. However, the Azure VNet's `serviceAssociationLinks/PowerPlatformSAL` persists for several minutes after deletion, blocking VNet/subnet removal until Power Platform cleans up.
 - **Available commands**: list, show, create, update, delete, list-members, update-member, delete-member, list-role-assignments, add-role-assignment, show-role-assignment, update-role-assignment, delete-role-assignment.
-- **Empty list on test tenant**: No gateways available in the test workspace (requires VNet setup).
+- **Roles enum**: `Admin`, `ConnectionCreator`, `ConnectionCreatorWithResharing` (hierarchical, Admin is highest).
+- **Load balancing settings**: `Failover` (default), `DistributeEvenly`. Only applicable to on-premises gateways with multiple members.
 
 ## Mirrored Catalog API Behaviors Discovered
 - **Feature not available**: Creating mirrored catalogs returns `FORBIDDEN` with "The feature is not available". Likely requires a tenant-level feature flag or specific capacity SKU (F64+).
