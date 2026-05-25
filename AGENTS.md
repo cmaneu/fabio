@@ -92,7 +92,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
   - Principle 10: Two-way I/O (`fabio feedback send/list`)
 - **SQL Database**: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
 - **SQL Database import**: Reads CSV/JSON files, infers column types (Int/BigInt/Float/Bit/Date/NVarChar), generates CREATE TABLE + batched INSERTs via TDS. Supports --drop-if-exists, --no-create-table, --batch-size.
-- **673 Rust tests** (199 unit + 474 E2E integration), zero clippy warnings, rustfmt clean
+- **685 Rust tests** (199 unit + 486 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~9.4 MB, stripped, full LTO, panic=abort
@@ -834,6 +834,25 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
   fabio kql-database query --workspace <ws-id> --id <db-id> --kql "MyTable | take 10"
   ```
 
-## Next Steps
-- Add ODBC support to warehouse query (`odbc-api` crate)
-- Consider adding `--filter` flag for list commands
+## Graph Model API Behaviors Discovered
+- **Job type for refresh is `RefreshGraph` (PascalCase)**: The Jobs API uses `?jobType=RefreshGraph` query parameter. The legacy path-based format (`/jobs/refreshGraph/instances`) returns `InvalidJobType`. Must use `POST /workspaces/{ws}/graphModels/{id}/jobs/instances?jobType=RefreshGraph`.
+- **Execute query requires `?preview=true`**: The `executeQuery` endpoint requires `?preview=true` query parameter (NOT `?beta=true`). Without it, returns "InvalidParameter: 'preview' is a required parameter".
+- **`getQueryableGraphType` also requires `?preview=true`**: Same pattern as executeQuery. Returns 204 No Content when graph has no queryable type (not yet loaded).
+- **Fresh graph model only has `.platform` in definition**: A newly created graph model's `getDefinition` only returns the `.platform` metadata file. No `GraphModel.json` part exists until an ontology is linked.
+- **Ontology linking via definition on creation**: Pass `GraphModel.json` part in the `definition` at creation time with `{"ontologyId": "<ontology-id>"}`. The API accepts this via LRO (202) but does NOT return the `GraphModel.json` part in subsequent `getDefinition` calls — the link is stored internally.
+- **`updateDefinition` with `GraphModel.json` is silently accepted but not persisted**: The server accepts `updateDefinition` with arbitrary content in `GraphModel.json` but doesn't persist it in `getDefinition`. Ontology linking appears to be a creation-time-only operation through the definition.
+- **`queryReadiness` field values**: `None` (no graph loaded), potentially `Ready` after successful refresh. Observed in `properties.queryReadiness`.
+- **`lastDataLoadingStatus` field**: Contains `status` (`NotStarted`, `InProgress`, `Completed`, `Failed`), `lastUpdateTime`, and `jobInstanceId`. Null before first refresh.
+- **Graph must be loaded before queries**: `executeQuery` on an unloaded graph returns error `GraphNotQueryable` with message `GraphIsNotLoaded`.
+- **Graph model `show` includes properties**: Unlike many other item types, `GET /graphModels/{id}` returns `properties` with `queryReadiness` and `lastDataLoadingStatus`.
+- **`--ontology` flag on create**: fabio wraps the ontology ID in a `GraphModel.json` definition part with `{"ontologyId":"<id>"}` and includes it in the creation request body.
+- **Creation with definition is LRO**: When `definition` is included in the creation body, the API returns 202 and requires polling (unlike simple creation without definition which returns the object directly).
+
+## Graph Query Set API Behaviors Discovered
+- **Definition file is `exportedDefinition.json`**: NOT `definition.json`. The definition uses `exportedDefinition.json` path with structure: `{"dependencies":[],"indirectDependencies":[],"ArtifactContents":[],"ConfigurationCategories":[]}`.
+- **`exportedDefinition.json` is read-only (export only)**: The server accepts `updateDefinition` but consistently strips `ArtifactContents`, `dependencies`, and `ConfigurationCategories` values. The content always returns as empty arrays. Query set content is managed only through the portal UI.
+- **PATCH update fails on empty query sets**: `PATCH /graphQuerySets/{id}` with `displayName` change returns `GraphQuerySetUpdate.UserError.GraphQuerySetEmpty: Query set payload is empty, cannot update artifact`. This is a server-side limitation — must have content before renaming.
+- **Create returns item immediately**: Unlike graph models with definition, graph query set creation returns the item object directly (not LRO).
+- **Delete works regardless of content**: Even empty query sets can be deleted successfully.
+- **`getDefinition` is LRO**: Returns 202 and requires polling, same as other Fabric definition APIs.
+

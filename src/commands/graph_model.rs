@@ -2,6 +2,8 @@ use anyhow::Result;
 use base64::Engine;
 use clap::Subcommand;
 use serde_json::Value;
+use std::time::Duration;
+use tokio::time::sleep;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
@@ -42,6 +44,10 @@ pub enum GraphModelCommand {
         /// Optional description
         #[arg(long)]
         description: Option<String>,
+
+        /// Ontology ID to link the graph model to
+        #[arg(long)]
+        ontology: Option<String>,
     },
     /// Update graph model properties (name and/or description)
     #[command(display_order = 4)]
@@ -113,6 +119,14 @@ pub enum GraphModelCommand {
         /// Graph model ID
         #[arg(long)]
         id: String,
+
+        /// Wait for the refresh to complete
+        #[arg(long, default_value_t = false)]
+        wait: bool,
+
+        /// Timeout in seconds when using --wait (default: 600)
+        #[arg(long, default_value_t = 600)]
+        timeout: u64,
     },
     /// Execute a graph query
     #[command(display_order = 11)]
@@ -150,7 +164,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GraphModelComma
             workspace,
             name,
             description,
-        } => create(cli, client, workspace, name, description.as_deref()).await,
+            ontology,
+        } => create(cli, client, workspace, name, description.as_deref(), ontology.as_deref()).await,
         GraphModelCommand::Update {
             workspace,
             id,
@@ -187,9 +202,12 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GraphModelComma
             )
             .await
         }
-        GraphModelCommand::RefreshGraph { workspace, id } => {
-            refresh_graph(cli, client, workspace, id).await
-        }
+        GraphModelCommand::RefreshGraph {
+            workspace,
+            id,
+            wait,
+            timeout,
+        } => refresh_graph(cli, client, workspace, id, *wait, *timeout).await,
         GraphModelCommand::ExecuteQuery {
             workspace,
             id,
@@ -236,10 +254,25 @@ async fn create(
     workspace: &str,
     name: &str,
     description: Option<&str>,
+    ontology: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({ "displayName": name });
     if let Some(desc) = description {
         body["description"] = Value::String(desc.to_string());
+    }
+
+    // If an ontology ID is provided, include it in the definition
+    if let Some(ont_id) = ontology {
+        let ont_json = serde_json::json!({ "ontologyId": ont_id });
+        let encoded =
+            base64::engine::general_purpose::STANDARD.encode(ont_json.to_string().as_bytes());
+        body["definition"] = serde_json::json!({
+            "parts": [{
+                "path": "GraphModel.json",
+                "payload": encoded,
+                "payloadType": "InlineBase64"
+            }]
+        });
     }
 
     if output::dry_run_guard(
@@ -248,7 +281,8 @@ async fn create(
         &serde_json::json!({
             "workspace": workspace,
             "displayName": name,
-            "description": description
+            "description": description,
+            "ontology": ontology
         }),
     ) {
         return Ok(());
@@ -401,31 +435,90 @@ async fn update_definition(
 
 // ─── Extra operations ────────────────────────────────────────────────────────
 
-async fn refresh_graph(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn refresh_graph(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    wait: bool,
+    timeout_secs: u64,
+) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "graph-model refresh-graph",
-        &serde_json::json!({ "workspace": workspace, "id": id }),
+        &serde_json::json!({ "workspace": workspace, "id": id, "wait": wait, "timeout": timeout_secs }),
     ) {
         return Ok(());
     }
 
     let data = client
         .post(
-            &format!("/workspaces/{workspace}/graphModels/{id}/jobs/refreshGraph/instances"),
+            &format!(
+                "/workspaces/{workspace}/graphModels/{id}/jobs/instances?jobType=RefreshGraph"
+            ),
             &serde_json::json!({}),
             false,
         )
         .await
         .map_err(|e| enrich_forbidden(e, "graph-model refresh-graph", "Contributor"))?;
 
-    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
-        let obj = serde_json::json!({ "id": id, "status": "refresh_triggered" });
-        output::render_object(cli, &obj, "status");
-    } else {
-        output::render_object(cli, &data, "id");
+    if !wait {
+        if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+            let obj = serde_json::json!({ "id": id, "status": "refresh_triggered" });
+            output::render_object(cli, &obj, "status");
+        } else {
+            output::render_object(cli, &data, "id");
+        }
+        return Ok(());
     }
-    Ok(())
+
+    // Poll graph model status until refresh completes
+    let poll_interval = Duration::from_secs(5);
+    let max_wait = Duration::from_secs(timeout_secs);
+    let start = std::time::Instant::now();
+
+    loop {
+        if start.elapsed() > max_wait {
+            return Err(FabioError::new(
+                ErrorCode::Timeout,
+                format!(
+                    "Graph refresh timed out after {timeout_secs}s. Use 'graph-model show' to check status."
+                ),
+            )
+            .into());
+        }
+
+        sleep(poll_interval).await;
+
+        let model_data = client
+            .get(&format!("/workspaces/{workspace}/graphModels/{id}"))
+            .await?;
+
+        let status_str = model_data
+            .pointer("/properties/lastDataLoadingStatus/status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
+
+        match status_str {
+            "Completed" => {
+                let obj = serde_json::json!({
+                    "id": id,
+                    "status": "Completed",
+                    "queryReadiness": model_data.pointer("/properties/queryReadiness").and_then(|v| v.as_str()).unwrap_or("Unknown")
+                });
+                output::render_object(cli, &obj, "status");
+                return Ok(());
+            }
+            "Failed" => {
+                return Err(FabioError::new(
+                    ErrorCode::ApiError,
+                    format!("Graph refresh failed for model {id}"),
+                )
+                .into());
+            }
+            _ => {} // Continue polling (NotStarted, InProgress)
+        }
+    }
 }
 
 async fn execute_query(
@@ -439,7 +532,7 @@ async fn execute_query(
 
     let data = client
         .post(
-            &format!("/workspaces/{workspace}/graphModels/{id}/executeQuery?beta=true"),
+            &format!("/workspaces/{workspace}/graphModels/{id}/executeQuery?preview=true"),
             &body,
             false,
         )
@@ -457,7 +550,7 @@ async fn get_queryable_graph_type(
 ) -> Result<()> {
     let data = client
         .get(&format!(
-            "/workspaces/{workspace}/graphModels/{id}/getQueryableGraphType?beta=true"
+            "/workspaces/{workspace}/graphModels/{id}/getQueryableGraphType?preview=true"
         ))
         .await?;
     output::render_object(cli, &data, "data");

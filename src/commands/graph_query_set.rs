@@ -295,7 +295,7 @@ async fn update_definition(
     };
     let encoded = base64::engine::general_purpose::STANDARD.encode(script.as_bytes());
     let body = serde_json::json!({
-        "definition": { "parts": [{ "path": "definition.json", "payload": encoded, "payloadType": "InlineBase64" }] }
+        "definition": { "parts": [{ "path": "exportedDefinition.json", "payload": encoded, "payloadType": "InlineBase64" }] }
     });
     if output::dry_run_guard(
         cli,
