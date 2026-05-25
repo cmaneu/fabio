@@ -14,14 +14,14 @@ pub enum MirroredCatalogCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
     },
     /// Show details of a mirrored catalog
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored catalog ID
@@ -32,7 +32,7 @@ pub enum MirroredCatalogCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Display name
@@ -47,7 +47,7 @@ pub enum MirroredCatalogCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored catalog ID
@@ -66,7 +66,7 @@ pub enum MirroredCatalogCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored catalog ID
@@ -77,7 +77,7 @@ pub enum MirroredCatalogCommand {
     #[command(display_order = 6)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored catalog ID
@@ -88,7 +88,7 @@ pub enum MirroredCatalogCommand {
     #[command(display_order = 7)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored catalog ID
@@ -107,7 +107,7 @@ pub enum MirroredCatalogCommand {
     #[command(display_order = 10)]
     RefreshMetadata {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored catalog ID
@@ -118,21 +118,21 @@ pub enum MirroredCatalogCommand {
     #[command(display_order = 11)]
     ListScopes {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
     },
     /// List catalog mirroring tables (workspace-level)
     #[command(display_order = 12)]
     ListTables {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
     },
     /// Get mirroring status
     #[command(display_order = 13)]
     MirroringStatus {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored catalog ID
@@ -143,7 +143,7 @@ pub enum MirroredCatalogCommand {
     #[command(display_order = 14)]
     TablesMirroringStatus {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored catalog ID

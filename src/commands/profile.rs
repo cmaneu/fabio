@@ -20,11 +20,11 @@ pub enum ProfileCommand {
         name: String,
 
         /// Default workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: Option<String>,
 
         /// Default capacity ID
-        #[arg(short, long)]
+        #[arg(long)]
         capacity: Option<String>,
 
         /// Default output format for this profile

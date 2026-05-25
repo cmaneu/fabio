@@ -684,7 +684,7 @@ fn semantic_model_query_table_output() {
             &sm_id,
             "--dax",
             "EVALUATE ROW(\"X\", 1, \"Y\", 2)",
-            "-o",
+            "--output",
             "table",
         ])
         .timeout(std::time::Duration::from_secs(30))

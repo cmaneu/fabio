@@ -14,14 +14,14 @@ pub enum GraphQuerySetCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
     },
     /// Show details of a graph query set
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
         /// Graph query set ID
         #[arg(long)]
@@ -31,7 +31,7 @@ pub enum GraphQuerySetCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
         /// Display name
         #[arg(long)]
@@ -44,7 +44,7 @@ pub enum GraphQuerySetCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
         /// Graph query set ID
         #[arg(long)]
@@ -60,7 +60,7 @@ pub enum GraphQuerySetCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
         /// Graph query set ID
         #[arg(long)]
@@ -70,7 +70,7 @@ pub enum GraphQuerySetCommand {
     #[command(display_order = 6)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
         /// Graph query set ID
         #[arg(long)]
@@ -80,7 +80,7 @@ pub enum GraphQuerySetCommand {
     #[command(display_order = 7)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
         /// Graph query set ID
         #[arg(long)]

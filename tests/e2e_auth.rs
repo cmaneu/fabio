@@ -56,7 +56,7 @@ fn auth_status_json_envelope() {
 fn auth_status_table_format() {
     // auth status with --output table should produce human-readable output
     fabio()
-        .args(["auth", "status", "-o", "table"])
+        .args(["auth", "status", "--output", "table"])
         .assert()
         .success()
         .stdout(predicate::str::contains("authenticated"));

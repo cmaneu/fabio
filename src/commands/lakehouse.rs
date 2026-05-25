@@ -16,14 +16,14 @@ pub enum LakehouseCommand {
     #[command(display_order = 0)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
     },
     /// Show details of a lakehouse
     #[command(display_order = 0)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -34,7 +34,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 0)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse display name
@@ -53,7 +53,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 0)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -72,7 +72,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 0)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -85,7 +85,7 @@ pub enum LakehouseCommand {
     #[command(visible_alias = "tables", display_order = 1)]
     ListTables {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -96,7 +96,7 @@ pub enum LakehouseCommand {
     #[command(visible_alias = "files", display_order = 2)]
     ListFiles {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -104,7 +104,7 @@ pub enum LakehouseCommand {
         id: String,
 
         /// Directory path to list (default: root)
-        #[arg(short, long)]
+        #[arg(long)]
         path: Option<String>,
     },
 
@@ -113,7 +113,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 10)]
     Upload {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -121,18 +121,18 @@ pub enum LakehouseCommand {
         id: String,
 
         /// Local source path (supports glob patterns, e.g. ./data/*.csv)
-        #[arg(short = 's', long = "source-path", visible_alias = "source")]
+        #[arg(long = "source-path", visible_alias = "source")]
         source_path: String,
 
         /// Remote destination path (directory when uploading multiple files)
-        #[arg(short = 'd', long = "dest-path", visible_alias = "dest")]
+        #[arg(long = "dest-path", visible_alias = "dest")]
         dest_path: String,
     },
     /// Download a file from a lakehouse
     #[command(display_order = 11)]
     Download {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -140,18 +140,18 @@ pub enum LakehouseCommand {
         id: String,
 
         /// Remote source path
-        #[arg(short = 's', long = "source-path", visible_alias = "source")]
+        #[arg(long = "source-path", visible_alias = "source")]
         source_path: String,
 
         /// Local destination path
-        #[arg(short = 'd', long = "dest-path", visible_alias = "dest")]
+        #[arg(long = "dest-path", visible_alias = "dest")]
         dest_path: String,
     },
     /// Upload a local file and load it into a Delta table (upload + load-table in one step)
     #[command(display_order = 12)]
     UploadTable {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -159,26 +159,26 @@ pub enum LakehouseCommand {
         id: String,
 
         /// Local source file path (e.g., ./data.csv)
-        #[arg(short = 's', long = "source-path")]
+        #[arg(long = "source-path")]
         source_path: String,
 
         /// Table name
-        #[arg(short = 't', long)]
+        #[arg(long)]
         table: String,
 
         /// Load mode: Overwrite or Append
-        #[arg(short, long, default_value = "Overwrite")]
+        #[arg(long, default_value = "Overwrite")]
         mode: String,
 
         /// File format: Csv, Parquet (auto-detected from extension if omitted)
-        #[arg(short, long)]
+        #[arg(long)]
         format: Option<String>,
     },
     /// Load a file (already in the lakehouse) into a Delta table
     #[command(display_order = 13)]
     LoadTable {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -186,19 +186,19 @@ pub enum LakehouseCommand {
         id: String,
 
         /// Relative path to the source file (e.g., Files/data.csv)
-        #[arg(short = 's', long = "source-path", visible_alias = "path")]
+        #[arg(long = "source-path", visible_alias = "path")]
         source_path: String,
 
         /// Table name
-        #[arg(short = 't', long)]
+        #[arg(long)]
         table: String,
 
         /// Load mode: Overwrite or Append
-        #[arg(short, long, default_value = "Overwrite")]
+        #[arg(long, default_value = "Overwrite")]
         mode: String,
 
         /// File format: Csv, Parquet
-        #[arg(short, long, default_value = "Csv")]
+        #[arg(long, default_value = "Csv")]
         format: String,
 
         /// Wait for completion (no-op: load-table always waits via LRO polling)
@@ -215,135 +215,135 @@ pub enum LakehouseCommand {
     #[command(display_order = 20)]
     CopyFile {
         /// Source workspace ID
-        #[arg(long, visible_alias = "sw", alias = "source-workspace")]
+        #[arg(long, alias = "source-workspace")]
         source_workspace: String,
 
         /// Source lakehouse ID
-        #[arg(long, visible_alias = "si", alias = "source-id")]
+        #[arg(long, alias = "source-id")]
         source_id: String,
 
         /// Source file path (supports glob patterns, e.g. Files/data/*.csv)
-        #[arg(short = 's', long = "source-path")]
+        #[arg(long = "source-path")]
         source_path: String,
 
         /// Destination workspace ID
-        #[arg(long, visible_alias = "dw", alias = "dest-workspace")]
+        #[arg(long, alias = "dest-workspace")]
         dest_workspace: String,
 
         /// Destination lakehouse ID
-        #[arg(long, visible_alias = "di", alias = "dest-id")]
+        #[arg(long, alias = "dest-id")]
         dest_id: String,
 
         /// Destination path (directory when copying multiple files)
-        #[arg(short = 'd', long = "dest-path")]
+        #[arg(long = "dest-path")]
         dest_path: String,
     },
     /// Move files between lakehouses (supports glob patterns for parallel move)
     #[command(display_order = 21)]
     MoveFile {
         /// Source workspace ID
-        #[arg(long, visible_alias = "sw", alias = "source-workspace")]
+        #[arg(long, alias = "source-workspace")]
         source_workspace: String,
 
         /// Source lakehouse ID
-        #[arg(long, visible_alias = "si", alias = "source-id")]
+        #[arg(long, alias = "source-id")]
         source_id: String,
 
         /// Source file path (supports glob patterns, e.g. Files/data/*.csv)
-        #[arg(short = 's', long = "source-path")]
+        #[arg(long = "source-path")]
         source_path: String,
 
         /// Destination workspace ID
-        #[arg(long, visible_alias = "dw", alias = "dest-workspace")]
+        #[arg(long, alias = "dest-workspace")]
         dest_workspace: String,
 
         /// Destination lakehouse ID
-        #[arg(long, visible_alias = "di", alias = "dest-id")]
+        #[arg(long, alias = "dest-id")]
         dest_id: String,
 
         /// Destination path (directory when moving multiple files)
-        #[arg(short = 'd', long = "dest-path")]
+        #[arg(long = "dest-path")]
         dest_path: String,
     },
     /// Copy a table between lakehouses
     #[command(display_order = 22)]
     CopyTable {
         /// Source workspace ID
-        #[arg(long, visible_alias = "sw", alias = "source-workspace")]
+        #[arg(long, alias = "source-workspace")]
         source_workspace: String,
 
         /// Source lakehouse ID
-        #[arg(long, visible_alias = "si", alias = "source-id")]
+        #[arg(long, alias = "source-id")]
         source_id: String,
 
         /// Source table name (supports glob patterns)
-        #[arg(short = 's', long = "source-table")]
+        #[arg(long = "source-table")]
         source_table: String,
 
         /// Destination workspace ID
-        #[arg(long, visible_alias = "dw", alias = "dest-workspace")]
+        #[arg(long, alias = "dest-workspace")]
         dest_workspace: String,
 
         /// Destination lakehouse ID
-        #[arg(long, visible_alias = "di", alias = "dest-id")]
+        #[arg(long, alias = "dest-id")]
         dest_id: String,
 
         /// Destination table name (ignored for glob patterns)
-        #[arg(short = 'd', long = "dest-table")]
+        #[arg(long = "dest-table")]
         dest_table: Option<String>,
     },
     /// Move a table between lakehouses (copy + delete source)
     #[command(display_order = 23)]
     MoveTable {
         /// Source workspace ID
-        #[arg(long, visible_alias = "sw", alias = "source-workspace")]
+        #[arg(long, alias = "source-workspace")]
         source_workspace: String,
 
         /// Source lakehouse ID
-        #[arg(long, visible_alias = "si", alias = "source-id")]
+        #[arg(long, alias = "source-id")]
         source_id: String,
 
         /// Source table name (supports glob patterns)
-        #[arg(short = 's', long = "source-table")]
+        #[arg(long = "source-table")]
         source_table: String,
 
         /// Destination workspace ID
-        #[arg(long, visible_alias = "dw", alias = "dest-workspace")]
+        #[arg(long, alias = "dest-workspace")]
         dest_workspace: String,
 
         /// Destination lakehouse ID
-        #[arg(long, visible_alias = "di", alias = "dest-id")]
+        #[arg(long, alias = "dest-id")]
         dest_id: String,
 
         /// Destination table name (ignored for glob patterns)
-        #[arg(short = 'd', long = "dest-table")]
+        #[arg(long = "dest-table")]
         dest_table: Option<String>,
     },
     /// Sync files between lakehouses (parallel, copies new/modified files)
     #[command(display_order = 24)]
     Sync {
         /// Source workspace ID
-        #[arg(long, visible_alias = "sw", alias = "source-workspace")]
+        #[arg(long, alias = "source-workspace")]
         source_workspace: String,
 
         /// Source lakehouse ID
-        #[arg(long, visible_alias = "si", alias = "source-id")]
+        #[arg(long, alias = "source-id")]
         source_id: String,
 
         /// Source path (e.g. Files/data or Tables/mytable)
-        #[arg(short = 's', long = "source-path")]
+        #[arg(long = "source-path")]
         source_path: String,
 
         /// Destination workspace ID
-        #[arg(long, visible_alias = "dw", alias = "dest-workspace")]
+        #[arg(long, alias = "dest-workspace")]
         dest_workspace: String,
 
         /// Destination lakehouse ID
-        #[arg(long, visible_alias = "di", alias = "dest-id")]
+        #[arg(long, alias = "dest-id")]
         dest_id: String,
 
         /// Destination path
-        #[arg(short = 'd', long = "dest-path")]
+        #[arg(long = "dest-path")]
         dest_path: String,
 
         /// Delete files at destination that don't exist in source
@@ -360,7 +360,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 30)]
     DeleteFile {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -368,14 +368,14 @@ pub enum LakehouseCommand {
         id: String,
 
         /// File path to delete
-        #[arg(short, long)]
+        #[arg(long)]
         path: String,
     },
     /// Delete a table from a lakehouse
     #[command(display_order = 31)]
     DeleteTable {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -383,7 +383,7 @@ pub enum LakehouseCommand {
         id: String,
 
         /// Table name (supports glob patterns)
-        #[arg(short = 't', long = "table")]
+        #[arg(long = "table")]
         table: String,
     },
 
@@ -392,7 +392,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 40)]
     CreateShortcut {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -404,7 +404,7 @@ pub enum LakehouseCommand {
         name: String,
 
         /// Shortcut path (e.g., Tables or Files)
-        #[arg(short, long)]
+        #[arg(long)]
         path: String,
 
         /// Target type: `OneLake`, `AdlsGen2`, S3
@@ -419,7 +419,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 41)]
     GetShortcut {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -431,14 +431,14 @@ pub enum LakehouseCommand {
         name: String,
 
         /// Shortcut path
-        #[arg(short, long)]
+        #[arg(long)]
         path: String,
     },
     /// Delete a shortcut
     #[command(display_order = 42)]
     DeleteShortcut {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -450,7 +450,7 @@ pub enum LakehouseCommand {
         name: String,
 
         /// Shortcut path
-        #[arg(short, long)]
+        #[arg(long)]
         path: String,
     },
 
@@ -458,7 +458,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 43)]
     BulkCreateShortcuts {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -483,7 +483,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 50)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -498,7 +498,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 51)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -519,7 +519,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 60)]
     RefreshMaterializedViews {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -530,7 +530,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 61)]
     CreateMaterializedViewsSchedule {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -549,7 +549,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 62)]
     UpdateMaterializedViewsSchedule {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -572,7 +572,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 63)]
     DeleteMaterializedViewsSchedule {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -589,7 +589,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 70)]
     RunTableMaintenance {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -610,7 +610,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 80)]
     ListLivySessions {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID
@@ -621,7 +621,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 81)]
     GetLivySession {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Lakehouse ID

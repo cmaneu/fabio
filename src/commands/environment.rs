@@ -15,14 +15,14 @@ pub enum EnvironmentCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
     },
     /// Show details of an environment
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -33,7 +33,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment display name
@@ -48,7 +48,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -67,7 +67,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -80,7 +80,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 10)]
     Publish {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -91,7 +91,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 11)]
     CancelPublish {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -102,7 +102,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 12)]
     GetSparkSettings {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -113,7 +113,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 13)]
     GetStagingSparkSettings {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -126,7 +126,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 20)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -137,7 +137,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 21)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -158,7 +158,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 30)]
     ListLibraries {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -169,7 +169,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 31)]
     ExportLibraries {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -182,7 +182,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 40)]
     ListStagingLibraries {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -193,7 +193,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 41)]
     DeleteStagingLibrary {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -208,7 +208,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 42)]
     ExportStagingLibraries {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -219,7 +219,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 43)]
     ImportStagingLibraries {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -238,7 +238,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 44)]
     RemoveStagingLibrary {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID
@@ -255,7 +255,7 @@ pub enum EnvironmentCommand {
     #[command(display_order = 50)]
     UpdateStagingSparkCompute {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Environment ID

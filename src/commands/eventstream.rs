@@ -14,14 +14,14 @@ pub enum EventstreamCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
     },
     /// Show details of an eventstream
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -32,7 +32,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream display name
@@ -47,7 +47,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -66,7 +66,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -79,7 +79,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 6)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -90,7 +90,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 7)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -111,7 +111,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 10)]
     GetTopology {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -124,7 +124,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 11)]
     Pause {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -135,7 +135,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 12)]
     Resume {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -148,7 +148,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 20)]
     GetDestination {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -163,7 +163,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 21)]
     GetDestinationConnection {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -178,7 +178,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 22)]
     PauseDestination {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -193,7 +193,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 23)]
     ResumeDestination {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -210,7 +210,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 30)]
     GetSource {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -225,7 +225,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 31)]
     GetSourceConnection {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -240,7 +240,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 32)]
     PauseSource {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -255,7 +255,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 33)]
     ResumeSource {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -272,7 +272,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 40)]
     AddSource {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID
@@ -296,7 +296,7 @@ pub enum EventstreamCommand {
     #[command(display_order = 41)]
     AddDestination {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Eventstream ID

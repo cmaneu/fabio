@@ -76,7 +76,7 @@ pub enum WorkspaceCommand {
         id: String,
 
         /// Target capacity ID
-        #[arg(short, long, visible_alias = "capacity-id")]
+        #[arg(long, visible_alias = "capacity-id")]
         capacity: String,
     },
     /// Unassign a workspace from its capacity
@@ -174,14 +174,14 @@ pub enum WorkspaceCommand {
     #[command(display_order = 30)]
     ListFolders {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
     },
     /// Create a folder in a workspace
     #[command(display_order = 31)]
     CreateFolder {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
 
         /// Folder display name
@@ -200,7 +200,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 32)]
     ShowFolder {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
 
         /// Folder ID
@@ -211,7 +211,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 33)]
     UpdateFolder {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
 
         /// Folder ID
@@ -230,7 +230,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 34)]
     DeleteFolder {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
 
         /// Folder ID
@@ -241,7 +241,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 35)]
     MoveFolder {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
 
         /// Folder ID to move
@@ -258,7 +258,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 40)]
     ApplyTags {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
 
         /// Comma-separated tag IDs
@@ -269,7 +269,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 41)]
     UnapplyTags {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
 
         /// Comma-separated tag IDs
@@ -282,7 +282,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 45)]
     AssignToDomain {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
 
         /// Domain ID
@@ -293,7 +293,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 46)]
     UnassignFromDomain {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
     },
 
@@ -302,14 +302,14 @@ pub enum WorkspaceCommand {
     #[command(display_order = 55)]
     GetOnelakeSettings {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
     },
     /// Modify `OneLake` default tier (Hot or Cold)
     #[command(display_order = 56)]
     ModifyDefaultTier {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
 
         /// Tier: "Hot" or "Cold"
@@ -320,7 +320,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 57)]
     ModifyDiagnostics {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
 
         /// Path to JSON file with diagnostics config
@@ -335,7 +335,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 58)]
     ModifyImmutabilityPolicy {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
 
         /// Path to JSON file with policy config
@@ -350,14 +350,14 @@ pub enum WorkspaceCommand {
     #[command(display_order = 59)]
     ExportLifecyclePolicy {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
     },
     /// Import `OneLake` lifecycle policy
     #[command(display_order = 60)]
     ImportLifecyclePolicy {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
 
         /// Path to JSON file with lifecycle policy
@@ -372,7 +372,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 61)]
     ResetShortcutCache {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
     },
 
@@ -381,14 +381,14 @@ pub enum WorkspaceCommand {
     #[command(display_order = 50)]
     GetNetworkPolicy {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
     },
     /// Set workspace network communication policy
     #[command(display_order = 51)]
     SetNetworkPolicy {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(long)]
         workspace: String,
 
         /// Path to JSON file with policy configuration

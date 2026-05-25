@@ -15,14 +15,14 @@ pub enum SemanticModelCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
     },
     /// Show details of a semantic model
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Semantic model ID
@@ -33,7 +33,7 @@ pub enum SemanticModelCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Semantic model display name
@@ -56,7 +56,7 @@ pub enum SemanticModelCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Semantic model ID
@@ -75,7 +75,7 @@ pub enum SemanticModelCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Semantic model ID
@@ -86,7 +86,7 @@ pub enum SemanticModelCommand {
     #[command(name = "get-definition", display_order = 6)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Semantic model ID
@@ -97,7 +97,7 @@ pub enum SemanticModelCommand {
     #[command(name = "update-definition", display_order = 7)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Semantic model ID
@@ -112,7 +112,7 @@ pub enum SemanticModelCommand {
     #[command(display_order = 8)]
     Query {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Semantic model ID
@@ -131,7 +131,7 @@ pub enum SemanticModelCommand {
     #[command(name = "bind-connection", display_order = 10)]
     BindConnection {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Semantic model ID
@@ -146,7 +146,7 @@ pub enum SemanticModelCommand {
     #[command(display_order = 11)]
     Refresh {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Semantic model ID
@@ -161,7 +161,7 @@ pub enum SemanticModelCommand {
     #[command(display_order = 12)]
     Takeover {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Semantic model ID

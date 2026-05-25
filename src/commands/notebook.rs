@@ -18,14 +18,14 @@ pub enum NotebookCommand {
     #[command(display_order = 0)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
     },
     /// Show details of a notebook
     #[command(display_order = 0)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Notebook item ID
@@ -36,7 +36,7 @@ pub enum NotebookCommand {
     #[command(display_order = 1)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Notebook display name
@@ -55,7 +55,7 @@ pub enum NotebookCommand {
     #[command(display_order = 2)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Notebook item ID
@@ -74,7 +74,7 @@ pub enum NotebookCommand {
     #[command(display_order = 3)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Notebook item ID
@@ -85,7 +85,7 @@ pub enum NotebookCommand {
     #[command(display_order = 4)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Notebook item ID
@@ -104,7 +104,7 @@ pub enum NotebookCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Notebook item ID
@@ -117,7 +117,7 @@ pub enum NotebookCommand {
     #[command(display_order = 10)]
     Run {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Notebook item ID
@@ -136,7 +136,7 @@ pub enum NotebookCommand {
     #[command(display_order = 11)]
     Status {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Notebook item ID
@@ -151,7 +151,7 @@ pub enum NotebookCommand {
     #[command(name = "get-job-instance", display_order = 12)]
     GetJobInstance {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Notebook item ID
@@ -166,7 +166,7 @@ pub enum NotebookCommand {
     #[command(display_order = 13)]
     Stop {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Notebook item ID
@@ -183,7 +183,7 @@ pub enum NotebookCommand {
     #[command(name = "list-livy-sessions", display_order = 15)]
     ListLivySessions {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Notebook item ID
@@ -194,7 +194,7 @@ pub enum NotebookCommand {
     #[command(name = "get-livy-session", display_order = 16)]
     GetLivySession {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Notebook item ID

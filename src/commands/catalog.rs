@@ -13,7 +13,7 @@ pub enum CatalogCommand {
     #[command(display_order = 1)]
     Search {
         /// Search query string
-        #[arg(short, long)]
+        #[arg(long)]
         query: Option<String>,
 
         /// Path to JSON file with full search request body

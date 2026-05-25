@@ -15,14 +15,14 @@ pub enum MirroredDatabaseCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
     },
     /// Show details of a mirrored database
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored database ID
@@ -33,7 +33,7 @@ pub enum MirroredDatabaseCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Display name
@@ -48,7 +48,7 @@ pub enum MirroredDatabaseCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored database ID
@@ -67,7 +67,7 @@ pub enum MirroredDatabaseCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored database ID
@@ -80,7 +80,7 @@ pub enum MirroredDatabaseCommand {
     #[command(display_order = 10)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored database ID
@@ -95,7 +95,7 @@ pub enum MirroredDatabaseCommand {
     #[command(display_order = 11)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored database ID
@@ -116,7 +116,7 @@ pub enum MirroredDatabaseCommand {
     #[command(display_order = 20)]
     Start {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored database ID
@@ -127,7 +127,7 @@ pub enum MirroredDatabaseCommand {
     #[command(display_order = 21)]
     Stop {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored database ID
@@ -138,7 +138,7 @@ pub enum MirroredDatabaseCommand {
     #[command(display_order = 22)]
     Status {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored database ID
@@ -149,7 +149,7 @@ pub enum MirroredDatabaseCommand {
     #[command(display_order = 23)]
     TableStatus {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(long)]
         workspace: String,
 
         /// Mirrored database ID
