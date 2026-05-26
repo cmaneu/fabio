@@ -3,18 +3,19 @@ use clap::Subcommand;
 
 use crate::cli::Cli;
 use crate::output;
+use crate::token_cache;
 
 #[derive(Debug, Subcommand)]
 pub enum AuthCommand {
-    /// Log in to Microsoft Fabric (validates credentials)
+    /// Log in to Microsoft Fabric via device code flow (independent of Azure CLI)
     Login {
-        /// Use device code flow instead of browser
-        #[arg(long)]
-        device_code: bool,
-
-        /// Azure AD tenant ID
+        /// Azure AD tenant ID (defaults to "common" for multi-tenant)
         #[arg(long)]
         tenant: Option<String>,
+
+        /// `OAuth2` scope (defaults to Fabric API scope)
+        #[arg(long)]
+        scope: Option<String>,
     },
     /// Log out and clear cached credentials
     Logout,
@@ -24,55 +25,41 @@ pub enum AuthCommand {
 
 pub async fn execute(cli: &Cli, command: &AuthCommand) -> Result<()> {
     match command {
-        AuthCommand::Login {
-            device_code,
-            tenant,
-        } => login(cli, *device_code, tenant.as_deref()).await,
-        AuthCommand::Logout => logout(cli).await,
+        AuthCommand::Login { tenant, scope } => {
+            login(cli, tenant.as_deref(), scope.as_deref()).await
+        }
+        AuthCommand::Logout => logout(cli),
         AuthCommand::Status => status(cli).await,
     }
 }
 
-async fn login(cli: &Cli, _device_code: bool, _tenant: Option<&str>) -> Result<()> {
-    use crate::client::FabricClient;
+async fn login(cli: &Cli, tenant: Option<&str>, scope: Option<&str>) -> Result<()> {
+    let data = token_cache::device_code_login(tenant, scope).await?;
 
-    // Actually attempt token acquisition to validate credentials work
-    let client = FabricClient::new();
-    match client.require_auth().await {
-        Ok(_) => {
-            let source = client
-                .credential_source()
-                .await
-                .map_or_else(|| "unknown".to_string(), |s| s.to_string());
-            let obj = serde_json::json!({
-                "status": "logged_in",
-                "credential_source": source,
-                "message": format!("Successfully authenticated via {source}")
-            });
-            output::render_object(cli, &obj, "status");
-        }
-        Err(e) => {
-            let obj = serde_json::json!({
-                "status": "login_failed",
-                "message": e.to_string(),
-                "hint": "Run 'az login' or set AZURE_TENANT_ID + AZURE_CLIENT_ID + AZURE_CLIENT_SECRET."
-            });
-            output::render_object(cli, &obj, "status");
-            // Return error so exit code is non-zero
-            return Err(e);
-        }
-    }
+    let expires_in = data.expires_on.saturating_sub(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    );
+
+    let obj = serde_json::json!({
+        "status": "logged_in",
+        "credential_source": "fabio_device_code",
+        "tenant": data.tenant,
+        "expires_in_seconds": expires_in,
+        "message": "Successfully authenticated via device code flow. Token cached at ~/.fabio/token_cache.json"
+    });
+    output::render_object(cli, &obj, "status");
     Ok(())
 }
 
-#[allow(clippy::unused_async)]
-async fn logout(cli: &Cli) -> Result<()> {
-    // In-process token cache is cleared when the process exits.
-    // For service principal auth, user must unset env vars.
-    // For CLI auth, user should run `az logout`.
+fn logout(cli: &Cli) -> Result<()> {
+    token_cache::clear_cache()?;
+
     let obj = serde_json::json!({
         "status": "logged_out",
-        "message": "In-process token cache cleared. For full logout: run 'az logout' or unset AZURE_CLIENT_SECRET."
+        "message": "Token cache cleared. Run 'fabio auth login' to authenticate again."
     });
     output::render_object(cli, &obj, "status");
     Ok(())
@@ -86,6 +73,7 @@ async fn status(cli: &Cli) -> Result<()> {
         Ok(_) => {
             let source = client.credential_source().await;
             let source_type = source.map_or("unknown", |s| match s {
+                CredentialSource::FabioCache => "fabio_cache",
                 CredentialSource::Environment => "environment",
                 CredentialSource::ManagedIdentity => "managed_identity",
                 CredentialSource::AzureCli => "azure_cli",
@@ -103,7 +91,7 @@ async fn status(cli: &Cli) -> Result<()> {
             let obj = serde_json::json!({
                 "status": "not_authenticated",
                 "message": e.to_string(),
-                "hint": "Run 'az login' or set AZURE_TENANT_ID + AZURE_CLIENT_ID + AZURE_CLIENT_SECRET."
+                "hint": "Run 'fabio auth login' to authenticate via device code flow."
             });
             output::render_object(cli, &obj, "status");
         }

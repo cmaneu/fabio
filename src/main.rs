@@ -6,6 +6,7 @@ mod commands;
 mod errors;
 mod output;
 mod parallel;
+mod token_cache;
 
 use std::io::Write;
 

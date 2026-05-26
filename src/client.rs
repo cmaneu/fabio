@@ -36,6 +36,8 @@ pub struct PaginatedResponse {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CredentialSource {
+    /// Fabio's own cached token (from `fabio auth login` device code flow).
+    FabioCache,
     /// Service principal via `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET` env vars.
     Environment,
     /// Azure Managed Identity (system-assigned or user-assigned).
@@ -49,6 +51,7 @@ pub enum CredentialSource {
 impl std::fmt::Display for CredentialSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::FabioCache => write!(f, "fabio cache (device code)"),
             Self::Environment => write!(f, "environment (service principal)"),
             Self::ManagedIdentity => write!(f, "managed identity"),
             Self::AzureCli => write!(f, "Azure CLI"),
@@ -1216,6 +1219,22 @@ impl FabricClient {
 ///
 /// Returns the cached token and which credential source provided it.
 async fn acquire_token(scope: &str) -> Result<(CachedToken, CredentialSource)> {
+    // 0. Try fabio's own cached token (from `fabio auth login`)
+    if let Some(result) = try_fabio_cache(scope).await {
+        return result;
+    }
+
+    // If the user explicitly logged out, do NOT fall back to other credential sources.
+    // They must run `fabio auth login` to re-authenticate.
+    if crate::token_cache::is_explicitly_logged_out() {
+        return Err(FabioError::with_hint(
+            ErrorCode::AuthRequired,
+            "Not authenticated. You have explicitly logged out.",
+            "Run 'fabio auth login' to authenticate.".to_string(),
+        )
+        .into());
+    }
+
     // 1. Try environment credentials (service principal)
     if let Some(result) = try_environment_credential(scope).await {
         return result;
@@ -1228,6 +1247,29 @@ async fn acquire_token(scope: &str) -> Result<(CachedToken, CredentialSource)> {
 
     // 3. Fall back to developer tools (az cli, azd)
     try_developer_tools_credential(scope).await
+}
+
+/// Try fabio's own persistent token cache (from `fabio auth login`).
+/// Returns None if no cached token is available, Some(Ok/Err) if a token was found.
+async fn try_fabio_cache(scope: &str) -> Option<Result<(CachedToken, CredentialSource)>> {
+    use crate::token_cache;
+
+    // For the default Fabric scope, use the primary cache
+    let data = if scope == FABRIC_SCOPE {
+        token_cache::get_valid_token().await?
+    } else {
+        // For other scopes (storage, SQL, Kusto), try to get a token via refresh
+        token_cache::get_token_for_scope(scope).await?
+    };
+
+    let expires_on = std::time::UNIX_EPOCH + std::time::Duration::from_secs(data.expires_on);
+    Some(Ok((
+        CachedToken {
+            token: data.access_token,
+            expires_on,
+        },
+        CredentialSource::FabioCache,
+    )))
 }
 
 /// Try service principal authentication via environment variables.

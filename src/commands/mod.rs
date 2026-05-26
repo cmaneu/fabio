@@ -72,7 +72,7 @@ use crate::cli::{Cli, Command};
 use crate::client::FabricClient;
 
 /// Execute the CLI command.
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::large_stack_frames)]
 pub async fn execute(cli: Cli) -> Result<()> {
     let client = FabricClient::new();
 
