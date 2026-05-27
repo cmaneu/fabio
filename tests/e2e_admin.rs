@@ -1422,7 +1422,7 @@ fn admin_unassign_all_domain_workspaces_dry_run() {
 // Phase B: Tenant settings + capacity overrides (snapshot-restore)
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// Roundtrip: enable → verify → disable → verify for AdminApisIncludeDetailedMetadata
+/// Roundtrip: enable → verify → disable → verify for `AdminApisIncludeDetailedMetadata`
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
@@ -1473,7 +1473,7 @@ fn admin_tenant_setting_roundtrip() {
     assert_eq!(restored["enabled"], false);
 }
 
-/// Roundtrip: create override → list → delete → list (PlatformMonitoringTenantSetting)
+/// Roundtrip: create override → list → delete → list (`PlatformMonitoringTenantSetting`)
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
@@ -1640,4 +1640,368 @@ fn admin_sync_roles_to_subdomain() {
     let _ = fabio()
         .args(["admin", "delete-domain", "--domain-id", &parent_id])
         .output();
+}
+
+// ─── Phase C1: Domain Sandbox Roundtrip ──────────────────────────────────────
+
+/// Test full domain workspace lifecycle: assign → unassign-all → assign-by-capacities → unassign
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_domain_workspace_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let domain_name = unique_name("fabio-c1-ws-lifecycle");
+
+    // Create sandbox domain
+    let output = fabio()
+        .args(["admin", "create-domain", "--name", &domain_name])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let domain_id = json["data"]["id"].as_str().unwrap().to_string();
+
+    // Assign workspace directly
+    let output = fabio()
+        .args([
+            "admin",
+            "assign-domain-workspaces",
+            "--domain-id",
+            &domain_id,
+            "--workspace-ids",
+            &cfg.source_workspace,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    // Verify workspace is assigned
+    let output = fabio()
+        .args(["admin", "list-domain-workspaces", "--domain-id", &domain_id])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert!(json["count"].as_u64().unwrap() >= 1);
+
+    // Unassign all workspaces
+    let output = fabio()
+        .args([
+            "admin",
+            "unassign-all-domain-workspaces",
+            "--domain-id",
+            &domain_id,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    // Verify empty
+    let output = fabio()
+        .args(["admin", "list-domain-workspaces", "--domain-id", &domain_id])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["count"], 0);
+
+    // Assign by capacity
+    let output = fabio()
+        .args([
+            "admin",
+            "assign-domain-workspaces-by-capacities",
+            "--domain-id",
+            &domain_id,
+            "--capacity-ids",
+            &cfg.capacity_id,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    // Verify capacity-scoped workspaces assigned
+    let output = fabio()
+        .args(["admin", "list-domain-workspaces", "--domain-id", &domain_id])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert!(json["count"].as_u64().unwrap() >= 1);
+
+    // Unassign all again
+    let output = fabio()
+        .args([
+            "admin",
+            "unassign-all-domain-workspaces",
+            "--domain-id",
+            &domain_id,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    // Cleanup
+    let _ = fabio()
+        .args(["admin", "delete-domain", "--domain-id", &domain_id])
+        .output();
+}
+
+/// Test assign-domain-workspaces-by-principals and bulk role assign/unassign
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_domain_principal_and_roles() {
+    let domain_name = unique_name("fabio-c1-principal");
+    let caller_id = "0dde4270-4462-4e16-995c-a2fc674e04ef";
+
+    // Create sandbox domain
+    let output = fabio()
+        .args(["admin", "create-domain", "--name", &domain_name])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let domain_id = json["data"]["id"].as_str().unwrap().to_string();
+
+    // Assign workspaces by principal
+    let output = fabio()
+        .args([
+            "admin",
+            "assign-domain-workspaces-by-principals",
+            "--domain-id",
+            &domain_id,
+            "--principal-ids",
+            caller_id,
+            "--principal-type",
+            "User",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    // Verify list-domain-workspaces returns valid envelope
+    // (count may be 0 if user's workspaces are already assigned to other domains)
+    let output = fabio()
+        .args(["admin", "list-domain-workspaces", "--domain-id", &domain_id])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert_list_envelope(&json);
+
+    // Unassign all workspaces before role testing
+    let output = fabio()
+        .args([
+            "admin",
+            "unassign-all-domain-workspaces",
+            "--domain-id",
+            &domain_id,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    // Bulk assign contributor role
+    let assign_body =
+        format!(r#"{{"type":"Contributors","principals":[{{"id":"{caller_id}","type":"User"}}]}}"#);
+    let output = fabio()
+        .args([
+            "admin",
+            "bulk-assign-domain-roles",
+            "--domain-id",
+            &domain_id,
+            "--content",
+            &assign_body,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    // Verify role present
+    let output = fabio()
+        .args([
+            "admin",
+            "list-domain-role-assignments",
+            "--domain-id",
+            &domain_id,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let roles = json["data"].as_array().unwrap();
+    let has_user = roles
+        .iter()
+        .any(|r| r["principal"]["id"] == caller_id && r["role"] == "Contributor");
+    assert!(has_user, "Expected user to have Contributor role");
+
+    // Bulk unassign role
+    let unassign_body =
+        format!(r#"{{"type":"Contributors","principals":[{{"id":"{caller_id}","type":"User"}}]}}"#);
+    let output = fabio()
+        .args([
+            "admin",
+            "bulk-unassign-domain-roles",
+            "--domain-id",
+            &domain_id,
+            "--content",
+            &unassign_body,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    // Verify role removed
+    let output = fabio()
+        .args([
+            "admin",
+            "list-domain-role-assignments",
+            "--domain-id",
+            &domain_id,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let roles = json["data"].as_array().unwrap();
+    let has_user = roles
+        .iter()
+        .any(|r| r["principal"]["id"] == caller_id && r["role"] == "Contributor");
+    assert!(!has_user, "Expected user role to be removed");
+
+    // Cleanup
+    let _ = fabio()
+        .args(["admin", "delete-domain", "--domain-id", &domain_id])
+        .output();
+}
+
+// ─── Phase C2: Workspace Restore Roundtrip ───────────────────────────────────
+
+/// Test workspace create → delete → restore → verify → cleanup
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_workspace_restore_roundtrip() {
+    let cfg = TestConfig::from_env();
+    let ws_name = unique_name("fabio-c2-restore");
+
+    // Create workspace
+    let output = fabio()
+        .args(["workspace", "create", "--name", &ws_name])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let ws_id = json["data"]["id"].as_str().unwrap().to_string();
+
+    // Delete workspace
+    let output = fabio()
+        .args(["workspace", "delete", "--id", &ws_id])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    // Restore workspace
+    let restored_name = format!("{ws_name}-restored");
+    let output = fabio()
+        .args([
+            "admin",
+            "restore-workspace",
+            "--workspace",
+            &ws_id,
+            "--name",
+            &restored_name,
+            "--capacity-id",
+            &cfg.capacity_id,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    // Verify workspace is back (admin show)
+    let output = fabio()
+        .args(["admin", "show-workspace", "--workspace", &ws_id])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["state"], "Active");
+
+    // Final cleanup: delete again
+    let _ = fabio()
+        .args(["workspace", "delete", "--id", &ws_id])
+        .output();
+}
+
+// ─── Phase C3: Workload Assignment Roundtrip ─────────────────────────────────
+
+/// Test workload assignment: create tenant assignment → verify → delete → verify
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_workload_assignment_roundtrip() {
+    let workload_id = "Neo4j.GraphAnalytics";
+
+    // Create tenant assignment
+    let body = format!(r#"{{"type":"Tenant","workloadId":"{workload_id}"}}"#);
+    let output = fabio()
+        .args(["admin", "create-workload-assignment", "--content", &body])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let assignment_id = json["data"]["id"].as_str().unwrap().to_string();
+    assert_eq!(json["data"]["type"], "Tenant");
+    assert_eq!(json["data"]["workloadId"], workload_id);
+
+    // Verify assignment appears in list
+    let output = fabio()
+        .args(["admin", "list-workload-assignments"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let assignments = json["data"].as_array().unwrap();
+    let has_assignment = assignments
+        .iter()
+        .any(|a| a["id"] == assignment_id.as_str());
+    assert!(has_assignment, "Expected new assignment in list");
+
+    // Delete assignment
+    let output = fabio()
+        .args([
+            "admin",
+            "delete-workload-assignment",
+            "--assignment-id",
+            &assignment_id,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    // Verify removed
+    let output = fabio()
+        .args(["admin", "list-workload-assignments"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let assignments = json["data"].as_array().unwrap();
+    let has_assignment = assignments
+        .iter()
+        .any(|a| a["id"] == assignment_id.as_str());
+    assert!(!has_assignment, "Expected assignment to be removed");
 }

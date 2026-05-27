@@ -103,7 +103,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Cosmos DB Database**: list/show/create/update/delete/get-definition/update-definition (empty shell creation supported)
 - **Snowflake Database**: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
 - **Anomaly Detector**: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
-- **761 Rust tests** (206 unit + 555 E2E integration), zero clippy warnings, rustfmt clean
+- **765 Rust tests** (247 unit + 518 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~9.4 MB, stripped, full LTO, panic=abort
@@ -1482,5 +1482,16 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **`show-item` response includes `defaultIdentity`**: Admin item detail returns extra fields not in standard item responses: `defaultIdentity`, `creatorPrincipal`, `workspaceId`, `capacityId`, `state`, `lastUpdatedDate`.
 - **`list-external-data-shares` requires tenant setting**: Returns FORBIDDEN with message "The operation is not allowed since tenant setting 'External data sharing' is disabled" when the tenant setting is off.
 - **50 E2E tests**: All passing — covers read-only listing, tag lifecycle (create→list→update→delete), domain lifecycle, workspace assignment, bulk role assign/unassign, sync roles, capacity override roundtrip, tenant setting update roundtrip, dry-run validations for all destructive commands.
-- `tests/e2e_admin.rs`: 53 tests (50 original + 3 Phase B roundtrip tests)
+- `tests/e2e_admin.rs`: 57 tests (50 original + 3 Phase B + 4 Phase C roundtrip tests)
+- **`assign-domain-workspaces-by-capacities`**: `POST /admin/domains/{id}/assignWorkspacesByCapacities` with `{"capacitiesIds": ["<uuid>"]}`. Assigns ALL workspaces on that capacity to the domain. Returns 200 with empty body.
+- **`assign-domain-workspaces-by-principals`**: `POST /admin/domains/{id}/assignWorkspacesByPrincipals` with `{"principals": [{"id": "<uuid>", "type": "User"}]}`. Requires `--principal-type` flag. Assigns all workspaces owned/administered by those principals.
+- **`unassign-all-domain-workspaces`**: `POST /admin/domains/{id}/unassignAllWorkspaces` with empty body `{}`. Removes all workspace-domain associations atomically.
+- **Workspace restore**: `POST /admin/workspaces/{id}/restore` with `{"restoredWorkspaceName": "<name>", "capacityId": "<uuid>"}`. Returns 200 with null body. The `restoredWorkspaceName` parameter appears to be IGNORED — workspace keeps its original name. The `capacityId` may also be overridden server-side.
+- **Workload assignment body format**: Requires discriminated union with `type` field. Three shapes:
+  - Tenant: `{"type": "Tenant", "workloadId": "<id>"}`
+  - Capacity: `{"type": "Capacity", "workloadId": "<id>", "capacityId": "<uuid>"}`
+  - Workspace: `{"type": "Workspace", "workloadId": "<id>", "workspaceId": "<uuid>"}`
+- **Workload assignment response**: Returns 201 Created with `{"id": "<uuid>", "type": "Tenant|Capacity|Workspace", "workloadId": "..."}`. Capacity/workspace variants also include `capacityName`/`workspaceName`.
+- **`delete-workload-assignment`**: `DELETE /admin/workloads/assignments/{assignmentId}`. Returns 200 on success.
+- **Domain workspace assignment is additive but capped by existing domain membership**: `assign-domain-workspaces-by-principals` only assigns workspaces NOT already assigned to another domain. If all user's workspaces are already in other domains, count=0 is returned.
 
