@@ -103,7 +103,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Cosmos DB Database**: list/show/create/update/delete/get-definition/update-definition (empty shell creation supported)
 - **Snowflake Database**: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
 - **Anomaly Detector**: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
-- **758 Rust tests** (209 unit + 549 E2E integration), zero clippy warnings, rustfmt clean
+- **761 Rust tests** (206 unit + 555 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~9.4 MB, stripped, full LTO, panic=abort
@@ -1477,5 +1477,10 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Override update body**: `{"enabled": true/false, "delegateToWorkspace"?: bool, "enabledSecurityGroups"?: [...], "excludedSecurityGroups"?: [...]}`. Minimum required field: `enabled`.
 - **Override update response**: Returns `{"overrides": [<CapacityTenantSetting>]}` with full setting details including `delegatedFrom`, `settingName`, `title`, `enabled`, `canSpecifySecurityGroups`, `tenantSettingGroup`.
 - **Domain-level overrides**: Only settings with `"delegateToDomain": true` can have domain-level overrides. Same pattern as capacity overrides.
-- **50 E2E tests**: All passing — covers read-only listing, tag lifecycle (create→list→update→delete), domain lifecycle, workspace assignment, bulk role assign/unassign, sync roles, capacity override roundtrip, dry-run validations for all destructive commands.
+- **`update-tenant-setting` response**: Returns `{"tenantSettings": [...]}` — all settings in the SAME group (not just the updated one). Endpoint: `POST /admin/tenantsettings/{settingName}/update`. Body minimum: `{"enabled": true/false}`.
+- **`grant-admin-access` / `remove-admin-access`**: Returns NOT_FOUND (404) when the caller already has permanent Admin access to the workspace. These endpoints manage TEMPORARY admin access only — they create/remove time-limited admin records for workspaces the caller doesn't own.
+- **`show-item` response includes `defaultIdentity`**: Admin item detail returns extra fields not in standard item responses: `defaultIdentity`, `creatorPrincipal`, `workspaceId`, `capacityId`, `state`, `lastUpdatedDate`.
+- **`list-external-data-shares` requires tenant setting**: Returns FORBIDDEN with message "The operation is not allowed since tenant setting 'External data sharing' is disabled" when the tenant setting is off.
+- **50 E2E tests**: All passing — covers read-only listing, tag lifecycle (create→list→update→delete), domain lifecycle, workspace assignment, bulk role assign/unassign, sync roles, capacity override roundtrip, tenant setting update roundtrip, dry-run validations for all destructive commands.
+- `tests/e2e_admin.rs`: 53 tests (50 original + 3 Phase B roundtrip tests)
 

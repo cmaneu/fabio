@@ -1417,3 +1417,227 @@ fn admin_unassign_all_domain_workspaces_dry_run() {
     let json: Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["dry_run"], true);
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Phase B: Tenant settings + capacity overrides (snapshot-restore)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Roundtrip: enable → verify → disable → verify for AdminApisIncludeDetailedMetadata
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_tenant_setting_roundtrip() {
+    // Enable (it's normally disabled)
+    let output = fabio()
+        .args([
+            "admin",
+            "update-tenant-setting",
+            "--setting-name",
+            "AdminApisIncludeDetailedMetadata",
+            "--content",
+            r#"{"enabled":true}"#,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    // Response returns all settings in the same group
+    let settings = json["data"]["tenantSettings"].as_array().unwrap();
+    let updated = settings
+        .iter()
+        .find(|s| s["settingName"] == "AdminApisIncludeDetailedMetadata")
+        .expect("Should find the updated setting in response");
+    assert_eq!(updated["enabled"], true);
+
+    // Restore to disabled
+    let output = fabio()
+        .args([
+            "admin",
+            "update-tenant-setting",
+            "--setting-name",
+            "AdminApisIncludeDetailedMetadata",
+            "--content",
+            r#"{"enabled":false}"#,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let settings = json["data"]["tenantSettings"].as_array().unwrap();
+    let restored = settings
+        .iter()
+        .find(|s| s["settingName"] == "AdminApisIncludeDetailedMetadata")
+        .expect("Should find the restored setting");
+    assert_eq!(restored["enabled"], false);
+}
+
+/// Roundtrip: create override → list → delete → list (PlatformMonitoringTenantSetting)
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_capacity_override_roundtrip() {
+    let cfg = TestConfig::from_env();
+
+    // Create override
+    let output = fabio()
+        .args([
+            "admin",
+            "update-capacity-tenant-override",
+            "--setting-name",
+            "PlatformMonitoringTenantSetting",
+            "--capacity-id",
+            &cfg.capacity_id,
+            "--content",
+            r#"{"enabled":true}"#,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let overrides = json["data"]["overrides"].as_array().unwrap();
+    assert!(
+        !overrides.is_empty(),
+        "Should have at least one override in response"
+    );
+    assert_eq!(
+        overrides[0]["settingName"],
+        "PlatformMonitoringTenantSetting"
+    );
+
+    // Verify via list
+    let output = fabio()
+        .args([
+            "admin",
+            "list-capacity-tenant-overrides",
+            "--capacity-id",
+            &cfg.capacity_id,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert!(json["count"].as_u64().unwrap() >= 1);
+
+    // Delete override
+    let output = fabio()
+        .args([
+            "admin",
+            "delete-capacity-tenant-override",
+            "--setting-name",
+            "PlatformMonitoringTenantSetting",
+            "--capacity-id",
+            &cfg.capacity_id,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    // Verify deleted
+    let output = fabio()
+        .args([
+            "admin",
+            "list-capacity-tenant-overrides",
+            "--capacity-id",
+            &cfg.capacity_id,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["count"], 0);
+}
+
+/// Test sync-domain-roles-to-subdomains with parent+child domain
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_sync_roles_to_subdomain() {
+    // Create parent domain
+    let parent_name = unique_name("fabio-sync-parent");
+    let output = fabio()
+        .args(["admin", "create-domain", "--name", &parent_name])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let parent_id = json["data"]["id"].as_str().unwrap().to_string();
+
+    // Create child subdomain
+    let child_name = unique_name("fabio-sync-child");
+    let output = fabio()
+        .args([
+            "admin",
+            "create-domain",
+            "--name",
+            &child_name,
+            "--parent-id",
+            &parent_id,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let child_id = json["data"]["id"].as_str().unwrap().to_string();
+
+    // Assign a Contributor on parent
+    let output = fabio()
+        .args([
+            "admin",
+            "bulk-assign-domain-roles",
+            "--domain-id",
+            &parent_id,
+            "--content",
+            r#"{"type":"Contributors","principals":[{"id":"0dde4270-4462-4e16-995c-a2fc674e04ef","type":"User"}]}"#,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    // Sync to subdomains
+    let output = fabio()
+        .args([
+            "admin",
+            "sync-domain-roles-to-subdomains",
+            "--domain-id",
+            &parent_id,
+            "--role",
+            "Contributor",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    // Verify child has the role
+    let output = fabio()
+        .args([
+            "admin",
+            "list-domain-role-assignments",
+            "--domain-id",
+            &child_id,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let roles = json["data"].as_array().unwrap();
+    let has_user = roles.iter().any(|r| {
+        r["principal"]["id"] == "0dde4270-4462-4e16-995c-a2fc674e04ef" && r["role"] == "Contributor"
+    });
+    assert!(has_user, "Child domain should have synced Contributor role");
+
+    // Cleanup: delete child first, then parent
+    let _ = fabio()
+        .args(["admin", "delete-domain", "--domain-id", &child_id])
+        .output();
+    let _ = fabio()
+        .args(["admin", "delete-domain", "--domain-id", &parent_id])
+        .output();
+}
