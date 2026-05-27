@@ -409,6 +409,10 @@ pub enum AdminCommand {
         /// Domain ID
         #[arg(long)]
         domain_id: String,
+
+        /// Role to sync (Contributor or Admin). Note: syncing Admins is not supported by the API.
+        #[arg(long, default_value = "Contributor")]
+        role: String,
     },
     /// Assign workspaces to a domain by capacities
     #[command(display_order = 63)]
@@ -431,6 +435,10 @@ pub enum AdminCommand {
         /// Principal IDs (comma-separated)
         #[arg(long, value_delimiter = ',')]
         principal_ids: Vec<String>,
+
+        /// Principal type (User, Group, `ServicePrincipal`, `ServicePrincipalProfile`)
+        #[arg(long, default_value = "User")]
+        principal_type: String,
     },
 
     // ── Users ────────────────────────────────────────────────────────────
@@ -624,8 +632,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &AdminCommand) -
             bulk_unassign_domain_roles(cli, client, domain_id, file.as_deref(), content.as_deref())
                 .await
         }
-        AdminCommand::SyncDomainRolesToSubdomains { domain_id } => {
-            sync_domain_roles_to_subdomains(cli, client, domain_id).await
+        AdminCommand::SyncDomainRolesToSubdomains { domain_id, role } => {
+            sync_domain_roles_to_subdomains(cli, client, domain_id, role).await
         }
         AdminCommand::AssignDomainWorkspacesByCapacities {
             domain_id,
@@ -634,7 +642,17 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &AdminCommand) -
         AdminCommand::AssignDomainWorkspacesByPrincipals {
             domain_id,
             principal_ids,
-        } => assign_domain_workspaces_by_principals(cli, client, domain_id, principal_ids).await,
+            principal_type,
+        } => {
+            assign_domain_workspaces_by_principals(
+                cli,
+                client,
+                domain_id,
+                principal_ids,
+                principal_type,
+            )
+            .await
+        }
         // Users
         AdminCommand::ListUserAccess { user_id } => list_user_access(cli, client, user_id).await,
     }
@@ -1691,8 +1709,9 @@ async fn sync_domain_roles_to_subdomains(
     cli: &Cli,
     client: &FabricClient,
     domain_id: &str,
+    role: &str,
 ) -> Result<()> {
-    let body = serde_json::json!({});
+    let body = serde_json::json!({"role": role});
 
     if output::dry_run_guard(cli, "admin sync-domain-roles-to-subdomains", &body) {
         return Ok(());
@@ -1755,8 +1774,13 @@ async fn assign_domain_workspaces_by_principals(
     client: &FabricClient,
     domain_id: &str,
     principal_ids: &[String],
+    principal_type: &str,
 ) -> Result<()> {
-    let body = serde_json::json!({ "principalIds": principal_ids });
+    let principals: Vec<Value> = principal_ids
+        .iter()
+        .map(|id| serde_json::json!({ "id": id, "type": principal_type }))
+        .collect();
+    let body = serde_json::json!({ "principals": principals });
 
     if output::dry_run_guard(cli, "admin assign-domain-workspaces-by-principals", &body) {
         return Ok(());

@@ -12,7 +12,7 @@
 
 mod common;
 
-use common::{fabio, unique_name, TestConfig};
+use common::{TestConfig, fabio, unique_name};
 use serde_json::Value;
 use serial_test::serial;
 
@@ -184,10 +184,7 @@ fn admin_list_workload_assignments() {
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn admin_list_workspaces() {
-    let output = fabio()
-        .args(["admin", "list-workspaces"])
-        .output()
-        .unwrap();
+    let output = fabio().args(["admin", "list-workspaces"]).output().unwrap();
 
     if let Some(json) = assert_admin_output(&output) {
         // Should always have at least one workspace (the test workspace exists)
@@ -203,17 +200,19 @@ fn admin_list_workspaces() {
 fn admin_show_workspace() {
     let cfg = TestConfig::from_env();
     let output = fabio()
-        .args(["admin", "show-workspace", "--workspace", &cfg.source_workspace])
+        .args([
+            "admin",
+            "show-workspace",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
         .output()
         .unwrap();
 
     if let Some(json) = assert_admin_output(&output) {
         let data = &json["data"];
         assert!(data["id"].is_string(), "Expected 'id' field");
-        assert!(
-            data["name"].is_string(),
-            "Expected 'name' field"
-        );
+        assert!(data["name"].is_string(), "Expected 'name' field");
     }
 }
 
@@ -443,10 +442,7 @@ fn admin_tag_lifecycle() {
         .unwrap()
         .iter()
         .any(|t| t["id"].as_str() == Some(&tag_id));
-    assert!(
-        !still_present,
-        "Tag {tag_id} should be gone after deletion"
-    );
+    assert!(!still_present, "Tag {tag_id} should be gone after deletion");
 }
 
 /// Extract the tag ID from the create-tags response.
@@ -568,12 +564,7 @@ fn admin_domain_lifecycle() {
 
     // ── Step 5: List domain workspaces (should be empty for new domain) ──
     let output = fabio()
-        .args([
-            "admin",
-            "list-domain-workspaces",
-            "--domain-id",
-            &domain_id,
-        ])
+        .args(["admin", "list-domain-workspaces", "--domain-id", &domain_id])
         .output()
         .unwrap();
     let ws_json = assert_admin_output(&output).expect("list-domain-workspaces should succeed");
@@ -651,12 +642,7 @@ fn admin_domain_workspace_assignment_lifecycle() {
 
     // ── Verify workspace is listed under domain ──
     let output = fabio()
-        .args([
-            "admin",
-            "list-domain-workspaces",
-            "--domain-id",
-            &domain_id,
-        ])
+        .args(["admin", "list-domain-workspaces", "--domain-id", &domain_id])
         .output()
         .unwrap();
     let list_json = assert_admin_output(&output).expect("list-domain-workspaces should succeed");
@@ -683,12 +669,7 @@ fn admin_domain_workspace_assignment_lifecycle() {
 
     // ── Verify workspace is removed ──
     let output = fabio()
-        .args([
-            "admin",
-            "list-domain-workspaces",
-            "--domain-id",
-            &domain_id,
-        ])
+        .args(["admin", "list-domain-workspaces", "--domain-id", &domain_id])
         .output()
         .unwrap();
     let list_json = assert_admin_output(&output).expect("list after unassign");

@@ -103,7 +103,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Cosmos DB Database**: list/show/create/update/delete/get-definition/update-definition (empty shell creation supported)
 - **Snowflake Database**: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
 - **Anomaly Detector**: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
-- **751 Rust tests** (209 unit + 542 E2E integration), zero clippy warnings, rustfmt clean
+- **758 Rust tests** (209 unit + 549 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~9.4 MB, stripped, full LTO, panic=abort
@@ -1471,5 +1471,11 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Grant admin access may fail with NOT_FOUND**: `POST /admin/workspaces/{id}/grantAdminTemporaryAccess` returns `RequestFailed` (mapped to NOT_FOUND) for some workspaces despite the workspace being visible in the admin listing. Root cause unclear — may require specific tenant configuration.
 - **Pagination uses `continuationToken` and `continuationUri`**: Admin endpoints that support pagination return these fields in the response alongside the array data.
 - **Rate limits**: Tag operations limited to 25 requests/minute. User/item access details limited to 200 requests/hour.
-- **43 E2E tests**: All passing — covers read-only listing, tag lifecycle (create→list→update→delete), domain lifecycle, workspace assignment, dry-run validations for all destructive commands.
+- **Bulk assign/unassign domain roles**: `POST /admin/domains/{id}/roleAssignments/bulkAssign` and `/bulkUnassign` with body `{"type": "Contributors", "principals": [{"id": "<uuid>", "type": "User"}]}`. Type values: `"Contributors"` or `"Admins"`. Returns 200 with empty body (null) on success. Pass-through via `--content`.
+- **Sync roles to subdomains**: `POST /admin/domains/{id}/roleAssignments/syncToSubdomains` with body `{"role": "Contributor"}`. Required field `role` (values: `"Contributor"`, `"Admin"`). Note: "Syncing admins to subdomains is not supported" — only Contributors can be synced.
+- **Capacity tenant setting overrides**: Only settings with `"delegateToCapacity": true` in their tenant settings response can have capacity-level overrides. Attempting to override a non-delegatable setting returns "The request could not be processed due to missing or invalid information". Example delegatable setting: `PlatformMonitoringTenantSetting`.
+- **Override update body**: `{"enabled": true/false, "delegateToWorkspace"?: bool, "enabledSecurityGroups"?: [...], "excludedSecurityGroups"?: [...]}`. Minimum required field: `enabled`.
+- **Override update response**: Returns `{"overrides": [<CapacityTenantSetting>]}` with full setting details including `delegatedFrom`, `settingName`, `title`, `enabled`, `canSpecifySecurityGroups`, `tenantSettingGroup`.
+- **Domain-level overrides**: Only settings with `"delegateToDomain": true` can have domain-level overrides. Same pattern as capacity overrides.
+- **50 E2E tests**: All passing — covers read-only listing, tag lifecycle (create→list→update→delete), domain lifecycle, workspace assignment, bulk role assign/unassign, sync roles, capacity override roundtrip, dry-run validations for all destructive commands.
 
