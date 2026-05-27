@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
+use crate::errors::{ErrorCode, FabioError, enrich_admin};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -722,7 +722,7 @@ async fn update_tenant_setting(
             false,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "admin update-tenant-setting", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin update-tenant-setting"))?;
     output::render_object(cli, &data, "settingName");
     Ok(())
 }
@@ -792,9 +792,7 @@ async fn delete_capacity_tenant_override(
             "/admin/capacities/{capacity_id}/delegatedTenantSettingOverrides/{setting_name}"
         ))
         .await
-        .map_err(|e| {
-            enrich_forbidden(e, "admin delete-capacity-tenant-override", "Fabric Admin")
-        })?;
+        .map_err(|e| enrich_admin(e, "admin delete-capacity-tenant-override"))?;
 
     let obj = serde_json::json!({ "capacityId": capacity_id, "settingName": setting_name, "status": "deleted" });
     output::render_object(cli, &obj, "status");
@@ -825,7 +823,7 @@ async fn update_capacity_tenant_override(
         )
         .await
         .map_err(|e| {
-            enrich_forbidden(e, "admin update-capacity-tenant-override", "Fabric Admin")
+            enrich_admin(e, "admin update-capacity-tenant-override")
         })?;
     output::render_object(cli, &data, "tenantSettingName");
     Ok(())
@@ -911,7 +909,7 @@ async fn create_tags(
     let data = client
         .post("/admin/tags/bulkCreateTags", &body, false)
         .await
-        .map_err(|e| enrich_forbidden(e, "admin create-tags", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin create-tags"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -947,7 +945,7 @@ async fn update_tag(
     let data = client
         .patch(&format!("/admin/tags/{tag_id}"), &body)
         .await
-        .map_err(|e| enrich_forbidden(e, "admin update-tag", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin update-tag"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -964,7 +962,7 @@ async fn delete_tag(cli: &Cli, client: &FabricClient, tag_id: &str) -> Result<()
     client
         .delete(&format!("/admin/tags/{tag_id}"))
         .await
-        .map_err(|e| enrich_forbidden(e, "admin delete-tag", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin delete-tag"))?;
 
     let obj = serde_json::json!({ "tagId": tag_id, "status": "deleted" });
     output::render_object(cli, &obj, "status");
@@ -1030,7 +1028,7 @@ async fn create_workload_assignment(
     let data = client
         .post("/admin/workloads/assignments", &body, false)
         .await
-        .map_err(|e| enrich_forbidden(e, "admin create-workload-assignment", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin create-workload-assignment"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -1051,7 +1049,7 @@ async fn delete_workload_assignment(
     client
         .delete(&format!("/admin/workloads/assignments/{assignment_id}"))
         .await
-        .map_err(|e| enrich_forbidden(e, "admin delete-workload-assignment", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin delete-workload-assignment"))?;
 
     let obj = serde_json::json!({ "assignmentId": assignment_id, "status": "deleted" });
     output::render_object(cli, &obj, "status");
@@ -1145,7 +1143,7 @@ async fn grant_admin_access(cli: &Cli, client: &FabricClient, workspace: &str) -
             false,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "admin grant-admin-access", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin grant-admin-access"))?;
 
     let obj = serde_json::json!({ "workspaceId": workspace, "status": "granted" });
     output::render_object(cli, &obj, "status");
@@ -1166,7 +1164,7 @@ async fn remove_admin_access(cli: &Cli, client: &FabricClient, workspace: &str) 
             false,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "admin remove-admin-access", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin remove-admin-access"))?;
 
     let obj = serde_json::json!({ "workspaceId": workspace, "status": "removed" });
     output::render_object(cli, &obj, "status");
@@ -1196,7 +1194,7 @@ async fn restore_workspace(
             false,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "admin restore-workspace", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin restore-workspace"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -1294,7 +1292,7 @@ async fn bulk_set_labels(
     let data = client
         .post("/admin/items/bulkSetLabels", &body, false)
         .await
-        .map_err(|e| enrich_forbidden(e, "admin bulk-set-labels", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin bulk-set-labels"))?;
     output::render_object(cli, &data, "status");
     Ok(())
 }
@@ -1314,7 +1312,7 @@ async fn bulk_remove_labels(
     let data = client
         .post("/admin/items/bulkRemoveLabels", &body, false)
         .await
-        .map_err(|e| enrich_forbidden(e, "admin bulk-remove-labels", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin bulk-remove-labels"))?;
     output::render_object(cli, &data, "status");
     Ok(())
 }
@@ -1366,7 +1364,7 @@ async fn revoke_external_data_share(
             false,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "admin revoke-external-data-share", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin revoke-external-data-share"))?;
 
     let obj = serde_json::json!({ "shareId": share_id, "status": "revoked" });
     output::render_object(cli, &obj, "status");
@@ -1388,7 +1386,7 @@ async fn remove_all_sharing_links(
     let data = client
         .post("/admin/items/removeAllSharingLinks", &body, true)
         .await
-        .map_err(|e| enrich_forbidden(e, "admin remove-all-sharing-links", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin remove-all-sharing-links"))?;
     output::render_object(cli, &data, "status");
     Ok(())
 }
@@ -1408,7 +1406,7 @@ async fn bulk_remove_sharing_links(
     let data = client
         .post("/admin/items/bulkRemoveSharingLinks", &body, true)
         .await
-        .map_err(|e| enrich_forbidden(e, "admin bulk-remove-sharing-links", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin bulk-remove-sharing-links"))?;
     output::render_object(cli, &data, "status");
     Ok(())
 }
@@ -1458,7 +1456,7 @@ async fn create_domain(
     let data = client
         .post("/admin/domains", &body, false)
         .await
-        .map_err(|e| enrich_forbidden(e, "admin create-domain", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin create-domain"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -1500,7 +1498,7 @@ async fn update_domain(
     let data = client
         .patch(&format!("/admin/domains/{domain_id}"), &body)
         .await
-        .map_err(|e| enrich_forbidden(e, "admin update-domain", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin update-domain"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -1517,7 +1515,7 @@ async fn delete_domain(cli: &Cli, client: &FabricClient, domain_id: &str) -> Res
     client
         .delete(&format!("/admin/domains/{domain_id}"))
         .await
-        .map_err(|e| enrich_forbidden(e, "admin delete-domain", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin delete-domain"))?;
 
     let obj = serde_json::json!({ "domainId": domain_id, "status": "deleted" });
     output::render_object(cli, &obj, "status");
@@ -1564,7 +1562,7 @@ async fn assign_domain_workspaces(
             false,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "admin assign-domain-workspaces", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin assign-domain-workspaces"))?;
 
     let obj = serde_json::json!({
         "domainId": domain_id,
@@ -1594,7 +1592,7 @@ async fn unassign_domain_workspaces(
             false,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "admin unassign-domain-workspaces", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin unassign-domain-workspaces"))?;
 
     let obj = serde_json::json!({
         "domainId": domain_id,
@@ -1623,7 +1621,7 @@ async fn unassign_all_domain_workspaces(
             false,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "admin unassign-all-domain-workspaces", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin unassign-all-domain-workspaces"))?;
 
     let obj = serde_json::json!({ "domainId": domain_id, "status": "all_unassigned" });
     output::render_object(cli, &obj, "status");
@@ -1675,7 +1673,7 @@ async fn bulk_assign_domain_roles(
             false,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "admin bulk-assign-domain-roles", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin bulk-assign-domain-roles"))?;
     output::render_object(cli, &data, "status");
     Ok(())
 }
@@ -1700,7 +1698,7 @@ async fn bulk_unassign_domain_roles(
             false,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "admin bulk-unassign-domain-roles", "Fabric Admin"))?;
+        .map_err(|e| enrich_admin(e, "admin bulk-unassign-domain-roles"))?;
     output::render_object(cli, &data, "status");
     Ok(())
 }
@@ -1724,9 +1722,7 @@ async fn sync_domain_roles_to_subdomains(
             false,
         )
         .await
-        .map_err(|e| {
-            enrich_forbidden(e, "admin sync-domain-roles-to-subdomains", "Fabric Admin")
-        })?;
+        .map_err(|e| enrich_admin(e, "admin sync-domain-roles-to-subdomains"))?;
 
     let obj = serde_json::json!({ "domainId": domain_id, "status": "synced" });
     output::render_object(cli, &obj, "status");
@@ -1752,13 +1748,7 @@ async fn assign_domain_workspaces_by_capacities(
             false,
         )
         .await
-        .map_err(|e| {
-            enrich_forbidden(
-                e,
-                "admin assign-domain-workspaces-by-capacities",
-                "Fabric Admin",
-            )
-        })?;
+        .map_err(|e| enrich_admin(e, "admin assign-domain-workspaces-by-capacities"))?;
 
     let obj = serde_json::json!({
         "domainId": domain_id,
@@ -1793,13 +1783,7 @@ async fn assign_domain_workspaces_by_principals(
             false,
         )
         .await
-        .map_err(|e| {
-            enrich_forbidden(
-                e,
-                "admin assign-domain-workspaces-by-principals",
-                "Fabric Admin",
-            )
-        })?;
+        .map_err(|e| enrich_admin(e, "admin assign-domain-workspaces-by-principals"))?;
 
     let obj = serde_json::json!({
         "domainId": domain_id,

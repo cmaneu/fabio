@@ -141,11 +141,135 @@ pub fn enrich_forbidden(err: anyhow::Error, operation: &str, required_role: &str
     FabioError::with_hint(ErrorCode::Forbidden, fabio_err.message.clone(), hint).into()
 }
 
+/// Enrich errors from admin commands with tenant-level hints.
+///
+/// Unlike `enrich_forbidden` (workspace-scoped), admin commands require
+/// tenant-level Fabric Admin role. This function also detects specific
+/// admin error patterns and provides actionable guidance.
+pub fn enrich_admin(err: anyhow::Error, operation: &str) -> anyhow::Error {
+    let Some(fabio_err) = err.downcast_ref::<FabioError>() else {
+        return err;
+    };
+
+    let msg_lower = fabio_err.message.to_lowercase();
+
+    // Detect specific admin error patterns and provide targeted hints
+    // NOTE: More specific checks must come BEFORE generic ones (e.g., "external data sharing"
+    // before generic "tenant setting disabled" since the former contains both patterns).
+
+    if msg_lower.contains("external data sharing") && msg_lower.contains("disabled") {
+        let hint = format!(
+            "'{operation}' requires the 'External data sharing' tenant setting to be enabled. \
+             Enable it with: fabio admin update-tenant-setting \
+             --setting-name AllowExternalDataSharingSwitch --content '{{\"enabled\":true}}'"
+        );
+        return FabioError::with_hint(fabio_err.code, fabio_err.message.clone(), hint).into();
+    }
+
+    if msg_lower.contains("tenant setting") && msg_lower.contains("disabled") {
+        let hint = format!(
+            "'{operation}' failed because a required tenant setting is disabled. \
+             Enable it in the Fabric Admin Portal > Tenant Settings, or use: \
+             fabio admin update-tenant-setting --setting-name <SETTING> --content '{{\"enabled\":true}}'"
+        );
+        return FabioError::with_hint(fabio_err.code, fabio_err.message.clone(), hint).into();
+    }
+
+    if msg_lower.contains("not supported for the requested item type") {
+        let hint = format!(
+            "'{operation}' only supports specific item types. \
+             For bulk-remove-sharing-links, only 'Report' type is supported. \
+             Change the 'type' field in your request body to 'Report'."
+        );
+        return FabioError::with_hint(fabio_err.code, fabio_err.message.clone(), hint).into();
+    }
+
+    if msg_lower.contains("label is not assigned to user") || msg_lower.contains("label not found")
+    {
+        let hint = format!(
+            "'{operation}' requires Microsoft Purview sensitivity labels configured in the tenant. \
+             Prerequisites: (1) M365 E5 or equivalent licensing, \
+             (2) Purview sensitivity labels published via label policy, \
+             (3) Labels enabled for Fabric in the Admin Portal. \
+             Verify label IDs with your compliance administrator."
+        );
+        return FabioError::with_hint(fabio_err.code, fabio_err.message.clone(), hint).into();
+    }
+
+    if msg_lower.contains("feature is not available") || msg_lower.contains("featurenotavailable") {
+        let hint = format!(
+            "'{operation}' requires a feature that is not enabled in this tenant. \
+             This is typically controlled by a tenant admin setting. \
+             Check available settings with: fabio admin list-tenant-settings. \
+             Contact your Fabric administrator to enable the required feature."
+        );
+        return FabioError::with_hint(fabio_err.code, fabio_err.message.clone(), hint).into();
+    }
+
+    if msg_lower.contains("syncing admins to subdomains is not supported") {
+        let hint = format!(
+            "'{operation}' only supports syncing the 'Contributor' role to subdomains. \
+             Admin role sync is not supported by the API. \
+             Use --role Contributor (default) instead of --role Admin."
+        );
+        return FabioError::with_hint(fabio_err.code, fabio_err.message.clone(), hint).into();
+    }
+
+    // For Forbidden errors, provide tenant-admin-level guidance
+    if fabio_err.code == ErrorCode::Forbidden {
+        let hint = if msg_lower.contains("sufficient scopes") {
+            format!(
+                "'{operation}' requires the Tenant.Read.All or Tenant.ReadWrite.All delegated scope. \
+                 Ensure the authenticated identity has Fabric Admin role assigned in the \
+                 Microsoft 365 Admin Center > Roles > Fabric Administrator. \
+                 Re-authenticate with: fabio auth login"
+            )
+        } else {
+            format!(
+                "'{operation}' requires tenant-level Fabric Administrator role. \
+                 This is NOT a workspace role — it must be assigned in the Microsoft 365 \
+                 Admin Center > Roles > Fabric Administrator (or Power BI Administrator). \
+                 Verify with: fabio admin list-workspaces (if this also fails, you lack admin access). \
+                 Re-authenticate with: fabio auth login"
+            )
+        };
+        return FabioError::with_hint(ErrorCode::Forbidden, fabio_err.message.clone(), hint).into();
+    }
+
+    err
+}
+
 /// Generate a context-aware hint for 403 Forbidden errors based on the error message and body.
 fn forbidden_hint(message: &str, body: &str) -> String {
     let msg_lower = message.to_lowercase();
     let body_lower = body.to_lowercase();
     let combined = format!("{msg_lower} {body_lower}");
+
+    // Detect admin/tenant-level permission issues (check first — most specific)
+    if combined.contains("sufficient scopes")
+        || combined.contains("tenant.read")
+        || combined.contains("tenant.readwrite")
+    {
+        return "Insufficient tenant-level scopes. This operation requires Fabric Administrator \
+                role assigned in the Microsoft 365 Admin Center > Roles > Fabric Administrator. \
+                Re-authenticate with: fabio auth login"
+            .to_string();
+    }
+
+    // Detect tenant setting disabled (admin 403)
+    if combined.contains("tenant setting") && combined.contains("disabled") {
+        return "A required tenant setting is disabled. Enable it in the Fabric Admin Portal \
+                > Tenant Settings, or use: fabio admin update-tenant-setting --setting-name <NAME> \
+                --content '{\"enabled\":true}'"
+            .to_string();
+    }
+
+    // Detect feature not available (tenant feature flag)
+    if combined.contains("feature is not available") || combined.contains("featurenotavailable") {
+        return "This feature is not enabled in the tenant. Contact your Fabric administrator \
+                to enable the required feature flag in Tenant Settings."
+            .to_string();
+    }
 
     // Detect git-specific permission issues (check before generic patterns)
     if combined.contains("git") || combined.contains("source control") {
@@ -358,5 +482,137 @@ mod tests {
             hint.contains("Resource conflict"),
             "Hint should be generic conflict: {hint}"
         );
+    }
+
+    #[test]
+    fn from_status_403_detects_tenant_scopes() {
+        let err = FabioError::from_status_with_body(
+            403,
+            "The caller does not have sufficient scopes",
+            r#"{"error":{"code":"Forbidden","message":"The caller does not have sufficient scopes to perform this operation"}}"#,
+        );
+        assert_eq!(err.code, ErrorCode::Forbidden);
+        let hint = err.hint.unwrap();
+        assert!(
+            hint.contains("tenant-level") || hint.contains("Fabric Administrator"),
+            "Hint should mention tenant admin: {hint}"
+        );
+    }
+
+    #[test]
+    fn from_status_403_detects_tenant_setting_disabled() {
+        let err = FabioError::from_status_with_body(
+            403,
+            "The operation is not allowed since tenant setting 'External data sharing' is disabled",
+            "",
+        );
+        assert_eq!(err.code, ErrorCode::Forbidden);
+        let hint = err.hint.unwrap();
+        assert!(
+            hint.contains("tenant setting") && hint.contains("disabled"),
+            "Hint should mention tenant setting: {hint}"
+        );
+    }
+
+    #[test]
+    fn from_status_403_detects_feature_not_available() {
+        let err = FabioError::from_status_with_body(
+            403,
+            "FeatureNotAvailable: The feature is not available",
+            "",
+        );
+        assert_eq!(err.code, ErrorCode::Forbidden);
+        let hint = err.hint.unwrap();
+        assert!(
+            hint.contains("feature") && hint.contains("not enabled"),
+            "Hint should mention feature flag: {hint}"
+        );
+    }
+
+    #[test]
+    fn enrich_admin_forbidden_gives_tenant_hint() {
+        let err: anyhow::Error = FabioError::new(ErrorCode::Forbidden, "access denied").into();
+        let enriched = enrich_admin(err, "admin list-workspaces");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(fabio_err.code, ErrorCode::Forbidden);
+        let hint = fabio_err.hint.as_ref().unwrap();
+        assert!(
+            hint.contains("tenant-level Fabric Administrator"),
+            "Hint should mention tenant admin: {hint}"
+        );
+        assert!(
+            !hint.contains("Workspace roles: Admin > Member"),
+            "Hint should NOT mention workspace roles: {hint}"
+        );
+    }
+
+    #[test]
+    fn enrich_admin_detects_item_type_not_supported() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::ApiError,
+            "The bulk sharing link removal operation is not supported for the requested item type.",
+        )
+        .into();
+        let enriched = enrich_admin(err, "admin bulk-remove-sharing-links");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        let hint = fabio_err.hint.as_ref().unwrap();
+        assert!(
+            hint.contains("Report"),
+            "Hint should mention Report type: {hint}"
+        );
+    }
+
+    #[test]
+    fn enrich_admin_detects_purview_label_error() {
+        let err: anyhow::Error =
+            FabioError::new(ErrorCode::ApiError, "Label is not assigned to user").into();
+        let enriched = enrich_admin(err, "admin bulk-set-labels");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        let hint = fabio_err.hint.as_ref().unwrap();
+        assert!(
+            hint.contains("Purview") && hint.contains("M365 E5"),
+            "Hint should mention Purview and licensing: {hint}"
+        );
+    }
+
+    #[test]
+    fn enrich_admin_detects_external_sharing_disabled() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::Forbidden,
+            "The operation is not allowed since tenant setting 'External data sharing' is disabled",
+        )
+        .into();
+        let enriched = enrich_admin(err, "admin list-external-data-shares");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        let hint = fabio_err.hint.as_ref().unwrap();
+        assert!(
+            hint.contains("AllowExternalDataSharingSwitch"),
+            "Hint should mention the specific setting name: {hint}"
+        );
+    }
+
+    #[test]
+    fn enrich_admin_detects_sync_admin_not_supported() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::ApiError,
+            "Syncing admins to subdomains is not supported",
+        )
+        .into();
+        let enriched = enrich_admin(err, "admin sync-domain-roles-to-subdomains");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        let hint = fabio_err.hint.as_ref().unwrap();
+        assert!(
+            hint.contains("Contributor") && hint.contains("--role"),
+            "Hint should suggest Contributor role: {hint}"
+        );
+    }
+
+    #[test]
+    fn enrich_admin_passes_through_non_matching_errors() {
+        let err: anyhow::Error = FabioError::new(ErrorCode::NotFound, "item not found").into();
+        let enriched = enrich_admin(err, "admin show-item");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(fabio_err.code, ErrorCode::NotFound);
+        assert!(fabio_err.hint.is_none());
     }
 }

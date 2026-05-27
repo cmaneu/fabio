@@ -103,7 +103,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Cosmos DB Database**: list/show/create/update/delete/get-definition/update-definition (empty shell creation supported)
 - **Snowflake Database**: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
 - **Anomaly Detector**: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
-- **771 Rust tests** (247 unit + 524 E2E integration), zero clippy warnings, rustfmt clean
+- **780 Rust tests** (256 unit + 524 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~9.4 MB, stripped, full LTO, panic=abort
