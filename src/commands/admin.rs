@@ -1046,7 +1046,7 @@ async fn list_workspaces(cli: &Cli, client: &FabricClient) -> Result<()> {
     let resp = client
         .get_list(
             "/admin/workspaces",
-            "value",
+            "workspaces",
             cli.all,
             cli.continuation_token.as_deref(),
         )
@@ -1055,8 +1055,8 @@ async fn list_workspaces(cli: &Cli, client: &FabricClient) -> Result<()> {
     output::render_list_with_token(
         cli,
         &resp.items,
-        &["displayName", "id", "state", "type"],
-        &["NAME", "ID", "STATE", "TYPE"],
+        &["name", "id", "state", "type", "capacityId"],
+        &["NAME", "ID", "STATE", "TYPE", "CAPACITY"],
         "id",
         resp.continuation_token.as_deref(),
     );
@@ -1075,7 +1075,7 @@ async fn list_workspace_users(cli: &Cli, client: &FabricClient, workspace: &str)
     let resp = client
         .get_list(
             &format!("/admin/workspaces/{workspace}/users"),
-            "value",
+            "accessDetails",
             cli.all,
             cli.continuation_token.as_deref(),
         )
@@ -1084,9 +1084,9 @@ async fn list_workspace_users(cli: &Cli, client: &FabricClient, workspace: &str)
     output::render_list_with_token(
         cli,
         &resp.items,
-        &["displayName", "emailAddress", "workspaceAccessDetails"],
-        &["NAME", "EMAIL", "ACCESS"],
-        "emailAddress",
+        &["principal", "workspaceAccessDetails"],
+        &["PRINCIPAL", "ACCESS"],
+        "principal",
         resp.continuation_token.as_deref(),
     );
     Ok(())
@@ -1210,7 +1210,7 @@ async fn list_items(cli: &Cli, client: &FabricClient) -> Result<()> {
     let resp = client
         .get_list(
             "/admin/items",
-            "value",
+            "itemEntities",
             cli.all,
             cli.continuation_token.as_deref(),
         )
@@ -1219,8 +1219,8 @@ async fn list_items(cli: &Cli, client: &FabricClient) -> Result<()> {
     output::render_list_with_token(
         cli,
         &resp.items,
-        &["displayName", "id", "type", "workspaceId"],
-        &["NAME", "ID", "TYPE", "WORKSPACE"],
+        &["name", "id", "type", "workspaceId", "state"],
+        &["NAME", "ID", "TYPE", "WORKSPACE", "STATE"],
         "id",
         resp.continuation_token.as_deref(),
     );
@@ -1244,7 +1244,7 @@ async fn list_item_users(
     let resp = client
         .get_list(
             &format!("/admin/workspaces/{workspace}/items/{item_id}/users"),
-            "value",
+            "accessDetails",
             cli.all,
             cli.continuation_token.as_deref(),
         )
@@ -1253,9 +1253,9 @@ async fn list_item_users(
     output::render_list_with_token(
         cli,
         &resp.items,
-        &["displayName", "emailAddress", "itemAccessDetails"],
-        &["NAME", "EMAIL", "ACCESS"],
-        "emailAddress",
+        &["principal", "itemAccessDetails"],
+        &["PRINCIPAL", "ACCESS"],
+        "principal",
         resp.continuation_token.as_deref(),
     );
     Ok(())
@@ -1792,7 +1792,7 @@ async fn list_user_access(cli: &Cli, client: &FabricClient, user_id: &str) -> Re
     let resp = client
         .get_list(
             &format!("/admin/users/{user_id}/access"),
-            "value",
+            "accessEntities",
             cli.all,
             cli.continuation_token.as_deref(),
         )

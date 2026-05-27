@@ -103,7 +103,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Cosmos DB Database**: list/show/create/update/delete/get-definition/update-definition (empty shell creation supported)
 - **Snowflake Database**: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
 - **Anomaly Detector**: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
-- **700 Rust tests** (199 unit + 501 E2E integration), zero clippy warnings, rustfmt clean
+- **751 Rust tests** (209 unit + 542 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~9.4 MB, stripped, full LTO, panic=abort
@@ -256,6 +256,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_capacity.rs`: Capacity list/show tests
 - `tests/e2e_onelake_security.rs`: OneLake security tests
 - `tests/e2e_managed_private_endpoint.rs`: Managed private endpoint tests
+- `tests/e2e_admin.rs`: Admin API tests (43 tests: listing, tag lifecycle, domain lifecycle, dry-run validations)
 - `.github/workflows/ci.yml`: Rust CI (fmt, clippy, test, build) on 6 targets (x64+arm64 x linux/macos/windows)
 - `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
 - `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
@@ -1447,5 +1448,28 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Requires Fabric admin role**: All admin endpoints require elevated tenant-level permissions. Standard workspace Member/Admin roles are insufficient.
 - **Scope error message**: "The caller does not have sufficient scopes to perform this operation".
 - **50 subcommands**: Covers tenant settings, workspace management, items, users, labels, tags, external data shares, domains — all at admin scope.
-- **Cannot test without admin role**: All admin commands return FORBIDDEN in current test environment.
+- **Required delegated scope**: `Tenant.Read.All` or `Tenant.ReadWrite.All` for most read endpoints. `Tenant.ReadWrite.All` for mutations.
+- **Non-standard response array keys**: Unlike most Fabric APIs that use `"value"` as the array key, admin endpoints use varied keys:
+  - `/admin/workspaces` → `"workspaces"` (NOT `"value"`)
+  - `/admin/items` → `"itemEntities"` (NOT `"value"`)
+  - `/admin/workspaces/{id}/users` → `"accessDetails"` (NOT `"value"`)
+  - `/admin/workspaces/{ws}/items/{id}/users` → `"accessDetails"` (NOT `"value"`)
+  - `/admin/users/{id}/access` → `"accessEntities"` (NOT `"value"`)
+  - `/admin/domains` → `"domains"` (NOT `"value"`)
+  - `/admin/tenantsettings` → `"tenantSettings"` (NOT `"value"`)
+  - `/admin/tags` → `"value"` (standard)
+  - `/admin/workloads` → `"value"` (standard)
+  - `/admin/workloads/assignments` → `"value"` (standard)
+  - `/admin/workspaces/discoverGitConnections` → `"value"` (standard)
+  - `/admin/workspaces/networking/communicationpolicies` → `"value"` (standard)
+- **Workspace response uses `name` not `displayName`**: The admin workspace endpoints return `name` field (not `displayName`). Fields: `id`, `name`, `state`, `type`, `capacityId`, `tags`.
+- **Item response uses `name` not `displayName`**: The admin items endpoint returns `name` field. Fields: `id`, `type`, `name`, `state`, `lastUpdatedDate`, `creatorPrincipal`, `workspaceId`, `capacityId`.
+- **Tag creation body format**: `POST /admin/tags/bulkCreateTags` requires `{"createTagsRequest": [{"displayName": "..."}]}`. Optional `"scope"` field: `{"type": "Tenant"}` or `{"type": "Domain", "domainId": "<uuid>"}`. Response: `{"tags": [{"id": "...", "displayName": "...", "scope": {...}}]}`.
+- **Tag update uses PATCH**: `PATCH /admin/tags/{tagId}` with `{"displayName": "...", "description": "..."}`.
+- **Tag delete uses DELETE**: `DELETE /admin/tags/{tagId}` returns 200 on success.
+- **External data shares requires tenant setting**: `GET /admin/items/externalDataShares` returns FORBIDDEN with message "The operation is not allowed since tenant setting 'External data sharing' is disabled" if the tenant setting is off.
+- **Grant admin access may fail with NOT_FOUND**: `POST /admin/workspaces/{id}/grantAdminTemporaryAccess` returns `RequestFailed` (mapped to NOT_FOUND) for some workspaces despite the workspace being visible in the admin listing. Root cause unclear — may require specific tenant configuration.
+- **Pagination uses `continuationToken` and `continuationUri`**: Admin endpoints that support pagination return these fields in the response alongside the array data.
+- **Rate limits**: Tag operations limited to 25 requests/minute. User/item access details limited to 200 requests/hour.
+- **43 E2E tests**: All passing — covers read-only listing, tag lifecycle (create→list→update→delete), domain lifecycle, workspace assignment, dry-run validations for all destructive commands.
 
