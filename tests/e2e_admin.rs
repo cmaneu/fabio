@@ -1261,3 +1261,178 @@ fn admin_remove_admin_access_dry_run() {
     let json: Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["dry_run"], true);
 }
+
+// ─── Tier 0: list-user-access ───────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_list_user_access() {
+    // Use a well-known dummy user ID — will return empty list or FORBIDDEN
+    let output = fabio()
+        .args([
+            "admin",
+            "list-user-access",
+            "--user-id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .output()
+        .unwrap();
+
+    if let Some(json) = assert_admin_output(&output) {
+        assert_list_envelope(&json);
+    }
+}
+
+// ─── Tier 3: Domain Assign-by-Capacities/Principals Dry-Run ─────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_assign_domain_workspaces_by_capacities_dry_run() {
+    let cfg = TestConfig::from_env();
+    let output = fabio()
+        .args([
+            "admin",
+            "assign-domain-workspaces-by-capacities",
+            "--domain-id",
+            "00000000-0000-0000-0000-000000000000",
+            "--capacity-ids",
+            &cfg.capacity_id,
+            "--dry-run",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["dry_run"], true);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_assign_domain_workspaces_by_principals_dry_run() {
+    let output = fabio()
+        .args([
+            "admin",
+            "assign-domain-workspaces-by-principals",
+            "--domain-id",
+            "00000000-0000-0000-0000-000000000000",
+            "--principal-ids",
+            "11111111-1111-1111-1111-111111111111",
+            "--dry-run",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["dry_run"], true);
+}
+
+// ─── Tier 3: Domain Role Bulk Assign/Unassign Dry-Run ───────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_bulk_assign_domain_roles_dry_run() {
+    let body = serde_json::json!({
+        "principals": [
+            { "id": "11111111-1111-1111-1111-111111111111", "type": "User", "role": "Contributors" }
+        ]
+    });
+
+    let output = fabio()
+        .args([
+            "admin",
+            "bulk-assign-domain-roles",
+            "--domain-id",
+            "00000000-0000-0000-0000-000000000000",
+            "--content",
+            &body.to_string(),
+            "--dry-run",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["dry_run"], true);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_bulk_unassign_domain_roles_dry_run() {
+    let body = serde_json::json!({
+        "principals": [
+            { "id": "11111111-1111-1111-1111-111111111111", "type": "User" }
+        ]
+    });
+
+    let output = fabio()
+        .args([
+            "admin",
+            "bulk-unassign-domain-roles",
+            "--domain-id",
+            "00000000-0000-0000-0000-000000000000",
+            "--content",
+            &body.to_string(),
+            "--dry-run",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["dry_run"], true);
+}
+
+// ─── Tier 3: Sync Domain Roles / Unassign-All Dry-Run ───────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_sync_domain_roles_to_subdomains_dry_run() {
+    let output = fabio()
+        .args([
+            "admin",
+            "sync-domain-roles-to-subdomains",
+            "--domain-id",
+            "00000000-0000-0000-0000-000000000000",
+            "--dry-run",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["dry_run"], true);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_unassign_all_domain_workspaces_dry_run() {
+    let output = fabio()
+        .args([
+            "admin",
+            "unassign-all-domain-workspaces",
+            "--domain-id",
+            "00000000-0000-0000-0000-000000000000",
+            "--dry-run",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["dry_run"], true);
+}
