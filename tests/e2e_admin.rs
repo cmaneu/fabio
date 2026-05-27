@@ -2005,3 +2005,151 @@ fn admin_workload_assignment_roundtrip() {
         .any(|a| a["id"] == assignment_id.as_str());
     assert!(!has_assignment, "Expected assignment to be removed");
 }
+
+// ─── Phase D: Labels, Sharing Links, External Data Shares ────────────────────
+
+/// Test remove-all-sharing-links returns LRO Succeeded status
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_remove_all_sharing_links() {
+    let output = fabio()
+        .args([
+            "admin",
+            "remove-all-sharing-links",
+            "--content",
+            r#"{"sharingLinkType":"OrgLink"}"#,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    // LRO returns status=Succeeded with percentComplete=100
+    assert_eq!(json["data"]["status"], "Succeeded");
+    assert_eq!(json["data"]["percentComplete"], 100);
+}
+
+/// Test bulk-remove-sharing-links with Report type returns per-item status
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_bulk_remove_sharing_links_report() {
+    let output = fabio()
+        .args([
+            "admin",
+            "bulk-remove-sharing-links",
+            "--content",
+            r#"{"items":[{"id":"00000000-0000-0000-0000-000000000001","type":"Report"}],"sharingLinkType":"OrgLink"}"#,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    // Returns per-item status array
+    let statuses = json["data"]["itemRemoveSharingLinksStatus"]
+        .as_array()
+        .unwrap();
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0]["status"], "NotFound");
+}
+
+/// Test bulk-remove-sharing-links rejects non-Report types
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_bulk_remove_sharing_links_unsupported_type() {
+    let cfg = TestConfig::from_env();
+    let body = format!(
+        r#"{{"items":[{{"id":"{}","type":"Lakehouse"}}],"sharingLinkType":"OrgLink"}}"#,
+        cfg.source_lakehouse
+    );
+    let output = fabio()
+        .args(["admin", "bulk-remove-sharing-links", "--content", &body])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let json: Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(json["error"]["code"], "API_ERROR");
+    assert!(
+        json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("not supported")
+    );
+}
+
+/// Test revoke-external-data-share returns `NOT_FOUND` for non-existent share
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_revoke_external_data_share_not_found() {
+    let cfg = TestConfig::from_env();
+    let output = fabio()
+        .args([
+            "admin",
+            "revoke-external-data-share",
+            "--workspace",
+            &cfg.source_workspace,
+            "--item-id",
+            &cfg.source_lakehouse,
+            "--share-id",
+            "00000000-0000-0000-0000-000000000001",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let json: Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(json["error"]["code"], "NOT_FOUND");
+}
+
+/// Test bulk-remove-labels returns per-item status (`NotFound` when no label set)
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_bulk_remove_labels() {
+    let cfg = TestConfig::from_env();
+    let body = format!(
+        r#"{{"items":[{{"id":"{}","type":"Lakehouse"}}]}}"#,
+        cfg.source_lakehouse
+    );
+    let output = fabio()
+        .args(["admin", "bulk-remove-labels", "--content", &body])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    // Returns per-item status — NotFound when item has no label
+    let statuses = json["data"]["itemsChangeLabelStatus"].as_array().unwrap();
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0]["status"], "NotFound");
+}
+
+/// Test bulk-set-labels returns error without Purview labels configured
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_bulk_set_labels_no_purview() {
+    let cfg = TestConfig::from_env();
+    let body = format!(
+        r#"{{"items":[{{"id":"{}","type":"Lakehouse"}}],"labelId":"00000000-0000-0000-0000-000000000001"}}"#,
+        cfg.source_lakehouse
+    );
+    let output = fabio()
+        .args(["admin", "bulk-set-labels", "--content", &body])
+        .output()
+        .unwrap();
+    // May succeed (200) with error status per item, or fail at API level
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Either stdout has per-item error or stderr has API error about labels
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("Label") || combined.contains("label"),
+        "Expected label-related error, got stdout={stdout} stderr={stderr}"
+    );
+}

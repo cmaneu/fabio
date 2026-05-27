@@ -1386,7 +1386,7 @@ async fn remove_all_sharing_links(
     }
 
     let data = client
-        .post("/admin/items/removeAllSharingLinks", &body, false)
+        .post("/admin/items/removeAllSharingLinks", &body, true)
         .await
         .map_err(|e| enrich_forbidden(e, "admin remove-all-sharing-links", "Fabric Admin"))?;
     output::render_object(cli, &data, "status");
@@ -1406,7 +1406,7 @@ async fn bulk_remove_sharing_links(
     }
 
     let data = client
-        .post("/admin/items/bulkRemoveSharingLinks", &body, false)
+        .post("/admin/items/bulkRemoveSharingLinks", &body, true)
         .await
         .map_err(|e| enrich_forbidden(e, "admin bulk-remove-sharing-links", "Fabric Admin"))?;
     output::render_object(cli, &data, "status");

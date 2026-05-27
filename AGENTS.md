@@ -103,7 +103,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Cosmos DB Database**: list/show/create/update/delete/get-definition/update-definition (empty shell creation supported)
 - **Snowflake Database**: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
 - **Anomaly Detector**: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
-- **765 Rust tests** (247 unit + 518 E2E integration), zero clippy warnings, rustfmt clean
+- **771 Rust tests** (247 unit + 524 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~9.4 MB, stripped, full LTO, panic=abort
@@ -256,7 +256,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_capacity.rs`: Capacity list/show tests
 - `tests/e2e_onelake_security.rs`: OneLake security tests
 - `tests/e2e_managed_private_endpoint.rs`: Managed private endpoint tests
-- `tests/e2e_admin.rs`: Admin API tests (43 tests: listing, tag lifecycle, domain lifecycle, dry-run validations)
+- `tests/e2e_admin.rs`: Admin API tests (63 tests: listing, tag lifecycle, domain lifecycle, dry-run validations, sharing links, labels, external data shares)
 - `.github/workflows/ci.yml`: Rust CI (fmt, clippy, test, build) on 6 targets (x64+arm64 x linux/macos/windows)
 - `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
 - `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
@@ -1482,7 +1482,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **`show-item` response includes `defaultIdentity`**: Admin item detail returns extra fields not in standard item responses: `defaultIdentity`, `creatorPrincipal`, `workspaceId`, `capacityId`, `state`, `lastUpdatedDate`.
 - **`list-external-data-shares` requires tenant setting**: Returns FORBIDDEN with message "The operation is not allowed since tenant setting 'External data sharing' is disabled" when the tenant setting is off.
 - **50 E2E tests**: All passing — covers read-only listing, tag lifecycle (create→list→update→delete), domain lifecycle, workspace assignment, bulk role assign/unassign, sync roles, capacity override roundtrip, tenant setting update roundtrip, dry-run validations for all destructive commands.
-- `tests/e2e_admin.rs`: 57 tests (50 original + 3 Phase B + 4 Phase C roundtrip tests)
+- `tests/e2e_admin.rs`: 63 tests (50 original + 3 Phase B + 4 Phase C + 6 Phase D live tests)
 - **`assign-domain-workspaces-by-capacities`**: `POST /admin/domains/{id}/assignWorkspacesByCapacities` with `{"capacitiesIds": ["<uuid>"]}`. Assigns ALL workspaces on that capacity to the domain. Returns 200 with empty body.
 - **`assign-domain-workspaces-by-principals`**: `POST /admin/domains/{id}/assignWorkspacesByPrincipals` with `{"principals": [{"id": "<uuid>", "type": "User"}]}`. Requires `--principal-type` flag. Assigns all workspaces owned/administered by those principals.
 - **`unassign-all-domain-workspaces`**: `POST /admin/domains/{id}/unassignAllWorkspaces` with empty body `{}`. Removes all workspace-domain associations atomically.
@@ -1494,4 +1494,11 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Workload assignment response**: Returns 201 Created with `{"id": "<uuid>", "type": "Tenant|Capacity|Workspace", "workloadId": "..."}`. Capacity/workspace variants also include `capacityName`/`workspaceName`.
 - **`delete-workload-assignment`**: `DELETE /admin/workloads/assignments/{assignmentId}`. Returns 200 on success.
 - **Domain workspace assignment is additive but capped by existing domain membership**: `assign-domain-workspaces-by-principals` only assigns workspaces NOT already assigned to another domain. If all user's workspaces are already in other domains, count=0 is returned.
+- **`remove-all-sharing-links` is LRO**: `POST /admin/items/removeAllSharingLinks` with `{"sharingLinkType":"OrgLink"}`. Returns 202, polls to completion. LRO response: `{"status":"Succeeded","percentComplete":100,"error":null}`. Safe no-op when no links exist.
+- **`bulk-remove-sharing-links` is LRO**: `POST /admin/items/bulkRemoveSharingLinks`. Returns 202, polls to completion. Response includes `itemRemoveSharingLinksStatus` per-item array with `status` (`NotFound` for non-existent items). Only supports Report type — other types return "not supported for the requested item type".
+- **`sharingLinkType` enum values**: `OrgLink`, `GuestLink`, `AnonymousLink`, `SpecificPeopleLink`.
+- **`bulk-remove-labels` returns per-item status**: Response: `{"itemsChangeLabelStatus":[{"status":"NotFound"}]}` when item has no label set. Does not require Purview labels to execute (unlike `bulk-set-labels`).
+- **`bulk-set-labels` requires Microsoft Purview**: Returns "Label is not assigned to user" when Purview sensitivity labels are not configured in the tenant. Requires M365 E5 licensing + Purview label policy.
+- **`revoke-external-data-share`**: Returns NOT_FOUND for non-existent share IDs. Endpoint: `POST /admin/workspaces/{ws}/items/{item}/externalDataShares/{share}/revoke`.
+- **`list-external-data-shares` requires tenant setting**: Only works after enabling "External data sharing" (`AllowExternalDataSharingSwitch`) in tenant admin settings. Returns FORBIDDEN otherwise.
 
