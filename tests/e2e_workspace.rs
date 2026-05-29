@@ -1266,3 +1266,781 @@ fn workspace_list_with_roles_filter() {
     let count = extract_count(&json);
     assert!(count > 0, "expected at least one workspace with Admin role");
 }
+
+// ===========================================================================
+// workspace export-lifecycle-policy (read-only)
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_export_lifecycle_policy() {
+    let cfg = TestConfig::from_env();
+    let output = fabio()
+        .args([
+            "workspace",
+            "export-lifecycle-policy",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .output()
+        .unwrap();
+
+    // Accept success (policy exists) or API_ERROR (no policy configured)
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        assert!(
+            json["data"].is_object(),
+            "expected lifecycle policy object in data"
+        );
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("API_ERROR")
+                || stderr.contains("NOT_FOUND")
+                || stderr.contains("ItemNotFound")
+                || stderr.contains("FeatureNotAvailable"),
+            "unexpected error: {stderr}"
+        );
+    }
+}
+
+// ===========================================================================
+// workspace modify-default-tier roundtrip (Hot → Cool → Hot)
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_modify_default_tier_roundtrip() {
+    let cfg = TestConfig::from_env();
+
+    // Step 1: Get current tier from OneLake settings (nested at lifecycle.defaultTier)
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-onelake-settings",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let original_tier = data["lifecycle"]["defaultTier"]
+        .as_str()
+        .unwrap_or("Hot")
+        .to_string();
+
+    // Step 2: Change to a different tier
+    let new_tier = if original_tier == "Hot" { "Cool" } else { "Hot" };
+    let assert = fabio()
+        .args([
+            "workspace",
+            "modify-default-tier",
+            "--workspace",
+            &cfg.source_workspace,
+            "--tier",
+            new_tier,
+        ])
+        .assert()
+        .success();
+
+    // The modify response returns {"data":{"defaultTier":"<new_tier>"}}
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(
+        data["defaultTier"].as_str().unwrap_or(""),
+        new_tier,
+        "modify response should confirm new tier"
+    );
+
+    // Step 3: Verify via get-onelake-settings
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-onelake-settings",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let current_tier = data["lifecycle"]["defaultTier"].as_str().unwrap_or("");
+    assert_eq!(
+        current_tier, new_tier,
+        "tier should have changed to {new_tier}"
+    );
+
+    // Step 4: Restore original tier
+    fabio()
+        .args([
+            "workspace",
+            "modify-default-tier",
+            "--workspace",
+            &cfg.source_workspace,
+            "--tier",
+            &original_tier,
+        ])
+        .assert()
+        .success();
+}
+
+// ===========================================================================
+// workspace modify-default-tier --dry-run
+// ===========================================================================
+
+#[test]
+fn workspace_modify_default_tier_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "modify-default-tier",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--tier",
+            "Cold",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "workspace modify-default-tier");
+}
+
+// ===========================================================================
+// workspace apply-tags / unapply-tags lifecycle (creates tag via admin)
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant + admin access"]
+#[serial]
+fn workspace_tags_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let tag_name = unique_name("fabio-ws-tag");
+
+    // Step 1: Create a tag via admin API
+    let create_body = serde_json::json!({
+        "createTagsRequest": [{ "displayName": tag_name }]
+    });
+    let output = fabio()
+        .args([
+            "admin",
+            "create-tags",
+            "--content",
+            &create_body.to_string(),
+        ])
+        .output()
+        .unwrap();
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("FORBIDDEN") || stderr.contains("insufficient scopes") {
+            eprintln!("SKIP: no admin access for workspace tags test");
+            return;
+        }
+        panic!("admin create-tags failed: {stderr}");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let create_json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    // Extract tag ID — response format: {"data":{"tags":[{"id":"...","displayName":"..."}]}}
+    let tag_id = create_json["data"]["tags"]
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|t| t["id"].as_str())
+        .unwrap_or_default()
+        .to_string();
+
+    if tag_id.is_empty() {
+        // Try alternate response format
+        let tag_id_alt = create_json["data"]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .and_then(|t| t["id"].as_str())
+            .unwrap_or_default()
+            .to_string();
+        assert!(
+            !tag_id_alt.is_empty(),
+            "Failed to extract tag ID from response: {create_json}"
+        );
+        // Use alternate path
+        workspace_tags_lifecycle_inner(&cfg, &tag_id_alt, &tag_name);
+        return;
+    }
+
+    workspace_tags_lifecycle_inner(&cfg, &tag_id, &tag_name);
+}
+
+fn workspace_tags_lifecycle_inner(cfg: &TestConfig, tag_id: &str, _tag_name: &str) {
+    // Step 2: Apply tag to workspace
+    fabio()
+        .args([
+            "workspace",
+            "apply-tags",
+            "--workspace",
+            &cfg.source_workspace,
+            "--tag-ids",
+            tag_id,
+        ])
+        .assert()
+        .success();
+
+    // Step 3: Unapply tag from workspace
+    fabio()
+        .args([
+            "workspace",
+            "unapply-tags",
+            "--workspace",
+            &cfg.source_workspace,
+            "--tag-ids",
+            tag_id,
+        ])
+        .assert()
+        .success();
+
+    // Step 4: Cleanup - delete the tag
+    fabio()
+        .args(["admin", "delete-tag", "--tag-id", tag_id])
+        .assert()
+        .success();
+}
+
+// ===========================================================================
+// workspace apply-tags --dry-run
+// ===========================================================================
+
+#[test]
+fn workspace_apply_tags_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "apply-tags",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--tag-ids",
+            "00000000-0000-0000-0000-000000000099",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "workspace apply-tags");
+}
+
+// ===========================================================================
+// workspace unapply-tags --dry-run
+// ===========================================================================
+
+#[test]
+fn workspace_unapply_tags_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "unapply-tags",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--tag-ids",
+            "00000000-0000-0000-0000-000000000099",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "workspace unapply-tags");
+}
+
+// ===========================================================================
+// workspace assign-to-domain / unassign-from-domain lifecycle
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant + admin access"]
+#[serial]
+fn workspace_domain_assignment_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let domain_name = unique_name("fabio-ws-domain");
+
+    // Step 1: Create a domain via admin API
+    let output = fabio()
+        .args([
+            "admin",
+            "create-domain",
+            "--name",
+            &domain_name,
+            "--description",
+            "E2E test domain for workspace assignment - safe to delete",
+        ])
+        .output()
+        .unwrap();
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("FORBIDDEN") || stderr.contains("insufficient scopes") {
+            eprintln!("SKIP: no admin access for workspace domain assignment test");
+            return;
+        }
+        panic!("admin create-domain failed: {stderr}");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let create_json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let domain_id = create_json["data"]["id"]
+        .as_str()
+        .expect("Created domain should have 'id'")
+        .to_string();
+
+    // Step 2: Assign workspace to domain
+    fabio()
+        .args([
+            "workspace",
+            "assign-to-domain",
+            "--workspace",
+            &cfg.source_workspace,
+            "--domain-id",
+            &domain_id,
+        ])
+        .assert()
+        .success();
+
+    // Step 3: Unassign workspace from domain
+    fabio()
+        .args([
+            "workspace",
+            "unassign-from-domain",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    // Step 4: Cleanup - delete the domain
+    fabio()
+        .args(["admin", "delete-domain", "--domain-id", &domain_id])
+        .assert()
+        .success();
+}
+
+// ===========================================================================
+// workspace assign-to-domain --dry-run
+// ===========================================================================
+
+#[test]
+fn workspace_assign_to_domain_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "assign-to-domain",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--domain-id",
+            "00000000-0000-0000-0000-000000000099",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "workspace assign-to-domain");
+}
+
+// ===========================================================================
+// workspace unassign-from-domain --dry-run
+// ===========================================================================
+
+#[test]
+fn workspace_unassign_from_domain_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "unassign-from-domain",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "workspace unassign-from-domain");
+}
+
+// ===========================================================================
+// workspace modify-diagnostics --dry-run
+// ===========================================================================
+
+#[test]
+fn workspace_modify_diagnostics_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "modify-diagnostics",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--content",
+            r#"{"enabled":true}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "workspace modify-diagnostics");
+}
+
+// ===========================================================================
+// workspace modify-diagnostics live
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_modify_diagnostics_live() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "workspace",
+            "modify-diagnostics",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            r#"{"diagnostics":{"enabled":false}}"#,
+        ])
+        .assert();
+
+    // Accept success or API_ERROR (feature may not be enabled)
+    let output = assert.get_output();
+    let code = output.status.code().unwrap_or(1);
+    if code != 0 {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("API_ERROR")
+                || stderr.contains("FeatureNotAvailable")
+                || stderr.contains("InvalidInput")
+                || stderr.contains("BadRequest"),
+            "unexpected error: {stderr}"
+        );
+    }
+}
+
+// ===========================================================================
+// workspace modify-immutability-policy --dry-run
+// ===========================================================================
+
+#[test]
+fn workspace_modify_immutability_policy_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "modify-immutability-policy",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--content",
+            r#"{"immutabilityPolicy":{"enabled":false}}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(
+        data["would_execute"],
+        "workspace modify-immutability-policy"
+    );
+}
+
+// ===========================================================================
+// workspace modify-immutability-policy live
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_modify_immutability_policy_live() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "workspace",
+            "modify-immutability-policy",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            r#"{"immutabilityPolicy":{"enabled":false}}"#,
+        ])
+        .assert();
+
+    // Accept success or API_ERROR (feature may not be enabled or payload invalid)
+    let output = assert.get_output();
+    let code = output.status.code().unwrap_or(1);
+    if code != 0 {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("API_ERROR")
+                || stderr.contains("FeatureNotAvailable")
+                || stderr.contains("InvalidInput")
+                || stderr.contains("BadRequest"),
+            "unexpected error: {stderr}"
+        );
+    }
+}
+
+// ===========================================================================
+// workspace import-lifecycle-policy --dry-run
+// ===========================================================================
+
+#[test]
+fn workspace_import_lifecycle_policy_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "import-lifecycle-policy",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--content",
+            r#"{"rules":[]}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "workspace import-lifecycle-policy");
+}
+
+// ===========================================================================
+// workspace import-lifecycle-policy missing input
+// ===========================================================================
+
+#[test]
+fn workspace_import_lifecycle_policy_missing_input() {
+    fabio()
+        .args([
+            "workspace",
+            "import-lifecycle-policy",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("INVALID_INPUT"));
+}
+
+// ===========================================================================
+// workspace set-network-policy --dry-run
+// ===========================================================================
+
+#[test]
+fn workspace_set_network_policy_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "set-network-policy",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--content",
+            r#"{"inbound":{},"outbound":{}}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "workspace set-network-policy");
+}
+
+// ===========================================================================
+// workspace set-network-policy missing input
+// ===========================================================================
+
+#[test]
+fn workspace_set_network_policy_missing_input() {
+    fabio()
+        .args([
+            "workspace",
+            "set-network-policy",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("INVALID_INPUT"));
+}
+
+// ===========================================================================
+// workspace deprovision-identity --dry-run
+// ===========================================================================
+
+#[test]
+fn workspace_deprovision_identity_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "deprovision-identity",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "workspace deprovision-identity");
+}
+
+// ===========================================================================
+// workspace modify-diagnostics missing input
+// ===========================================================================
+
+#[test]
+fn workspace_modify_diagnostics_missing_input() {
+    fabio()
+        .args([
+            "workspace",
+            "modify-diagnostics",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("INVALID_INPUT"));
+}
+
+// ===========================================================================
+// workspace modify-immutability-policy missing input
+// ===========================================================================
+
+#[test]
+fn workspace_modify_immutability_policy_missing_input() {
+    fabio()
+        .args([
+            "workspace",
+            "modify-immutability-policy",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("INVALID_INPUT"));
+}
+
+// ===========================================================================
+// workspace set-network-policy roundtrip (read current → write back same)
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_set_network_policy_roundtrip() {
+    let cfg = TestConfig::from_env();
+
+    // Step 1: Get current network policy
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-network-policy",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let policy_str = serde_json::to_string(data).unwrap();
+
+    // Step 2: Write back the same policy (idempotent roundtrip)
+    let assert = fabio()
+        .args([
+            "workspace",
+            "set-network-policy",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            &policy_str,
+        ])
+        .assert();
+
+    // Accept success or error (some tenants restrict PUT on network policy)
+    let output = assert.get_output();
+    let code = output.status.code().unwrap_or(1);
+    if code != 0 {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("API_ERROR")
+                || stderr.contains("FORBIDDEN")
+                || stderr.contains("FeatureNotAvailable")
+                || stderr.contains("BadRequest"),
+            "unexpected error: {stderr}"
+        );
+    }
+}
+
+// ===========================================================================
+// workspace import-lifecycle-policy live (may fail if no policy exists)
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_import_lifecycle_policy_live() {
+    let cfg = TestConfig::from_env();
+
+    // Try to import a minimal lifecycle policy
+    let policy = serde_json::json!({
+        "rules": []
+    });
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "import-lifecycle-policy",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            &policy.to_string(),
+        ])
+        .assert();
+
+    // Accept success or error (feature may not be enabled or payload format unknown)
+    let output = assert.get_output();
+    let code = output.status.code().unwrap_or(1);
+    if code != 0 {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("API_ERROR")
+                || stderr.contains("NOT_FOUND")
+                || stderr.contains("FeatureNotAvailable")
+                || stderr.contains("BadRequest")
+                || stderr.contains("InvalidInput"),
+            "unexpected error: {stderr}"
+        );
+    }
+}
