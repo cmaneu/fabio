@@ -2044,3 +2044,433 @@ fn workspace_import_lifecycle_policy_live() {
         );
     }
 }
+
+// ─── OAP Networking Tests ────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_set_git_outbound_policy_live() {
+    let cfg = TestConfig::from_env();
+
+    // Try to set the git outbound policy (requires workspace-level OAP / F64+ capacity)
+    let policy = serde_json::json!({
+        "defaultAction": "Deny",
+        "rules": []
+    });
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "set-git-outbound-policy",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            &policy.to_string(),
+        ])
+        .assert();
+
+    let output = assert.get_output();
+    let code = output.status.code().unwrap_or(1);
+    if code == 0 {
+        // If it succeeded (F64+ with OAP enabled), verify we can read it back
+        let verify = fabio()
+            .args([
+                "workspace",
+                "get-git-outbound-policy",
+                "--workspace",
+                &cfg.source_workspace,
+            ])
+            .assert()
+            .success();
+        let json = parse_json(&verify);
+        let data = extract_data(&json);
+        assert_eq!(data["defaultAction"], "Deny");
+    } else {
+        // On Trial/F2 capacity: OAP not available — accept known error
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("FORBIDDEN")
+                || stderr.contains("Outbound Access Protection")
+                || stderr.contains("NOT_FOUND"),
+            "unexpected error: {stderr}"
+        );
+    }
+}
+
+#[test]
+fn workspace_set_git_outbound_policy_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "set-git-outbound-policy",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--content",
+            r#"{"defaultAction":"Allow","rules":[]}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert!(data["would_execute"]
+        .as_str()
+        .unwrap()
+        .contains("set-git-outbound-policy"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_get_inbound_azure_resource_rules_live() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-inbound-azure-resource-rules",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert();
+
+    let output = assert.get_output();
+    let code = output.status.code().unwrap_or(1);
+    if code == 0 {
+        // Success: should have rules array
+        let json = parse_json(&assert);
+        let data = extract_data(&json);
+        assert!(
+            data.get("rules").is_some() || data.is_object(),
+            "expected rules or object in response"
+        );
+    } else {
+        // NOT_FOUND expected when no Private Endpoint infrastructure exists
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("NOT_FOUND") || stderr.contains("FORBIDDEN"),
+            "unexpected error: {stderr}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_set_inbound_azure_resource_rules_live() {
+    let cfg = TestConfig::from_env();
+
+    let rules = serde_json::json!({"rules": []});
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "set-inbound-azure-resource-rules",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            &rules.to_string(),
+        ])
+        .assert();
+
+    let output = assert.get_output();
+    let code = output.status.code().unwrap_or(1);
+    if code != 0 {
+        // NOT_FOUND expected without Private Endpoint infrastructure
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("NOT_FOUND") || stderr.contains("FORBIDDEN"),
+            "unexpected error: {stderr}"
+        );
+    }
+}
+
+#[test]
+fn workspace_set_inbound_azure_resource_rules_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "set-inbound-azure-resource-rules",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--content",
+            r#"{"rules":[]}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert!(data["would_execute"]
+        .as_str()
+        .unwrap()
+        .contains("set-inbound-azure-resource-rules"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_get_outbound_cloud_connection_rules_live() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-outbound-cloud-connection-rules",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert();
+
+    let output = assert.get_output();
+    let code = output.status.code().unwrap_or(1);
+    if code == 0 {
+        let json = parse_json(&assert);
+        let data = extract_data(&json);
+        assert!(data.is_object(), "expected object in response");
+    } else {
+        // NOT_FOUND or FORBIDDEN expected without OAP enabled at workspace level
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("NOT_FOUND")
+                || stderr.contains("FORBIDDEN")
+                || stderr.contains("Outbound Access Protection"),
+            "unexpected error: {stderr}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_set_outbound_cloud_connection_rules_live() {
+    let cfg = TestConfig::from_env();
+
+    let rules = serde_json::json!({"defaultAction": "Allow", "rules": []});
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "set-outbound-cloud-connection-rules",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            &rules.to_string(),
+        ])
+        .assert();
+
+    let output = assert.get_output();
+    let code = output.status.code().unwrap_or(1);
+    if code != 0 {
+        // NOT_FOUND or FORBIDDEN expected without OAP (needs F64+ capacity)
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("NOT_FOUND")
+                || stderr.contains("FORBIDDEN")
+                || stderr.contains("Outbound Access Protection"),
+            "unexpected error: {stderr}"
+        );
+    }
+}
+
+#[test]
+fn workspace_set_outbound_cloud_connection_rules_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "set-outbound-cloud-connection-rules",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--content",
+            r#"{"defaultAction":"Allow","rules":[]}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert!(data["would_execute"]
+        .as_str()
+        .unwrap()
+        .contains("set-outbound-cloud-connection-rules"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_get_outbound_gateway_rules_live() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-outbound-gateway-rules",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert();
+
+    let output = assert.get_output();
+    let code = output.status.code().unwrap_or(1);
+    if code == 0 {
+        let json = parse_json(&assert);
+        let data = extract_data(&json);
+        assert!(data.is_object(), "expected object in response");
+    } else {
+        // FORBIDDEN expected without OAP (needs F64+ capacity for outbound restriction)
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("FORBIDDEN")
+                || stderr.contains("NOT_FOUND")
+                || stderr.contains("Outbound Access Protection"),
+            "unexpected error: {stderr}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_set_outbound_gateway_rules_live() {
+    let cfg = TestConfig::from_env();
+
+    let rules = serde_json::json!({"defaultAction": "Allow", "rules": []});
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "set-outbound-gateway-rules",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            &rules.to_string(),
+        ])
+        .assert();
+
+    let output = assert.get_output();
+    let code = output.status.code().unwrap_or(1);
+    if code != 0 {
+        // FORBIDDEN expected without OAP (needs F64+ capacity)
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("FORBIDDEN")
+                || stderr.contains("NOT_FOUND")
+                || stderr.contains("Outbound Access Protection"),
+            "unexpected error: {stderr}"
+        );
+    }
+}
+
+#[test]
+fn workspace_set_outbound_gateway_rules_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "set-outbound-gateway-rules",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--content",
+            r#"{"defaultAction":"Allow","rules":[]}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert!(data["would_execute"]
+        .as_str()
+        .unwrap()
+        .contains("set-outbound-gateway-rules"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_inbound_restriction_roundtrip() {
+    let cfg = TestConfig::from_env();
+
+    // Read current state
+    let before = fabio()
+        .args([
+            "workspace",
+            "get-network-policy",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+    let before_json = parse_json(&before);
+    let before_data = extract_data(&before_json);
+
+    // Enable inbound restriction (Deny)
+    let deny_policy = serde_json::json!({
+        "inbound": {"publicAccessRules": {"defaultAction": "Deny"}},
+        "outbound": {"publicAccessRules": {"defaultAction": "Allow"}}
+    });
+
+    let set_result = fabio()
+        .args([
+            "workspace",
+            "set-network-policy",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            &deny_policy.to_string(),
+        ])
+        .assert();
+
+    let set_output = set_result.get_output();
+    if set_output.status.code().unwrap_or(1) != 0 {
+        let stderr = String::from_utf8_lossy(&set_output.stderr);
+        // If inbound restriction not supported, skip test
+        assert!(
+            stderr.contains("FORBIDDEN") || stderr.contains("not allowed"),
+            "unexpected error: {stderr}"
+        );
+        return;
+    }
+
+    // Verify inbound is now Deny
+    let verify = fabio()
+        .args([
+            "workspace",
+            "get-network-policy",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+    let verify_json = parse_json(&verify);
+    let verify_data = extract_data(&verify_json);
+    assert_eq!(
+        verify_data["inbound"]["publicAccessRules"]["defaultAction"], "Deny",
+        "expected inbound to be Deny after setting"
+    );
+
+    // Restore original state
+    let restore_policy = serde_json::json!({
+        "inbound": {"publicAccessRules": {"defaultAction": before_data["inbound"]["publicAccessRules"]["defaultAction"]}},
+        "outbound": {"publicAccessRules": {"defaultAction": before_data["outbound"]["publicAccessRules"]["defaultAction"]}}
+    });
+
+    fabio()
+        .args([
+            "workspace",
+            "set-network-policy",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            &restore_policy.to_string(),
+        ])
+        .assert()
+        .success();
+}
