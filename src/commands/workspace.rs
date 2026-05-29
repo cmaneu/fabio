@@ -770,18 +770,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
             file,
             content,
         } => {
-            set_outbound_gateway_rules(
-                cli,
-                client,
-                workspace,
-                file.as_deref(),
-                content.as_deref(),
-            )
-            .await
+            set_outbound_gateway_rules(cli, client, workspace, file.as_deref(), content.as_deref())
+                .await
         }
-        WorkspaceCommand::GetSettings { workspace } => {
-            get_settings(cli, client, workspace).await
-        }
+        WorkspaceCommand::GetSettings { workspace } => get_settings(cli, client, workspace).await,
         WorkspaceCommand::UpdateSettings {
             workspace,
             file,
@@ -804,12 +796,7 @@ async fn list(cli: &Cli, client: &FabricClient, roles: Option<&str>) -> Result<(
         |r| format!("/workspaces?roles={r}"),
     );
     let resp = client
-        .get_list(
-            &path,
-            "value",
-            cli.all,
-            cli.continuation_token.as_deref(),
-        )
+        .get_list(&path, "value", cli.all, cli.continuation_token.as_deref())
         .await?;
 
     output::render_list_with_token(
@@ -1503,7 +1490,9 @@ async fn modify_default_tier(
 
     let data = client
         .post(
-            &format!("/workspaces/{workspace}/onelake/settings/modifyDefaultTier?defaultTier={tier}"),
+            &format!(
+                "/workspaces/{workspace}/onelake/settings/modifyDefaultTier?defaultTier={tier}"
+            ),
             &serde_json::json!({}),
             false,
         )
@@ -1710,9 +1699,7 @@ async fn set_firewall_rules(
 
     let data = client
         .put(
-            &format!(
-                "/workspaces/{workspace}/networking/communicationPolicy/inbound/firewall"
-            ),
+            &format!("/workspaces/{workspace}/networking/communicationPolicy/inbound/firewall"),
             &body,
         )
         .await
@@ -1723,11 +1710,7 @@ async fn set_firewall_rules(
 
 // ─── Git Outbound Policy ─────────────────────────────────────────────────────
 
-async fn get_git_outbound_policy(
-    cli: &Cli,
-    client: &FabricClient,
-    workspace: &str,
-) -> Result<()> {
+async fn get_git_outbound_policy(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
     let data = client
         .get(&format!(
             "/workspaces/{workspace}/networking/communicationPolicy/outbound/git"
@@ -1753,9 +1736,7 @@ async fn set_git_outbound_policy(
 
     let data = client
         .put(
-            &format!(
-                "/workspaces/{workspace}/networking/communicationPolicy/outbound/git"
-            ),
+            &format!("/workspaces/{workspace}/networking/communicationPolicy/outbound/git"),
             &body,
         )
         .await
@@ -1776,9 +1757,7 @@ async fn get_inbound_azure_resource_rules(
             "/workspaces/{workspace}/networking/communicationPolicy/inbound/azureResourceInstances"
         ))
         .await
-        .map_err(|e| {
-            enrich_forbidden(e, "workspace get-inbound-azure-resource-rules", "Viewer")
-        })?;
+        .map_err(|e| enrich_forbidden(e, "workspace get-inbound-azure-resource-rules", "Viewer"))?;
     output::render_object(cli, &data, "workspaceId");
     Ok(())
 }
@@ -1837,7 +1816,11 @@ async fn set_outbound_cloud_connection_rules(
     file: Option<&str>,
     content: Option<&str>,
 ) -> Result<()> {
-    let body = read_json_body(file, content, "workspace set-outbound-cloud-connection-rules")?;
+    let body = read_json_body(
+        file,
+        content,
+        "workspace set-outbound-cloud-connection-rules",
+    )?;
 
     if output::dry_run_guard(cli, "workspace set-outbound-cloud-connection-rules", &body) {
         return Ok(());
@@ -1890,9 +1873,7 @@ async fn set_outbound_gateway_rules(
 
     let data = client
         .put(
-            &format!(
-                "/workspaces/{workspace}/networking/communicationPolicy/outbound/gateways"
-            ),
+            &format!("/workspaces/{workspace}/networking/communicationPolicy/outbound/gateways"),
             &body,
         )
         .await
@@ -2143,8 +2124,7 @@ mod tests {
     #[test]
     fn update_settings_body_is_passed_directly() {
         // Verify the JSON body is used directly (user controls full body shape)
-        let body: Value =
-            serde_json::from_str(r#"{"automaticMetadataSync":"Enabled"}"#).unwrap();
+        let body: Value = serde_json::from_str(r#"{"automaticMetadataSync":"Enabled"}"#).unwrap();
         assert_eq!(body["automaticMetadataSync"], "Enabled");
         // No wrapping — user controls the full PATCH body structure
         assert!(body.get("properties").is_none());

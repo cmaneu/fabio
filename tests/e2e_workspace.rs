@@ -1335,7 +1335,11 @@ fn workspace_modify_default_tier_roundtrip() {
         .to_string();
 
     // Step 2: Change to a different tier
-    let new_tier = if original_tier == "Hot" { "Cool" } else { "Hot" };
+    let new_tier = if original_tier == "Hot" {
+        "Cool"
+    } else {
+        "Hot"
+    };
     let assert = fabio()
         .args([
             "workspace",
@@ -2134,10 +2138,12 @@ fn workspace_set_git_outbound_policy_dry_run() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["dry_run"], true);
-    assert!(data["would_execute"]
-        .as_str()
-        .unwrap()
-        .contains("set-git-outbound-policy"));
+    assert!(
+        data["would_execute"]
+            .as_str()
+            .unwrap()
+            .contains("set-git-outbound-policy")
+    );
 }
 
 #[test]
@@ -2224,10 +2230,12 @@ fn workspace_set_inbound_azure_resource_rules_dry_run() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["dry_run"], true);
-    assert!(data["would_execute"]
-        .as_str()
-        .unwrap()
-        .contains("set-inbound-azure-resource-rules"));
+    assert!(
+        data["would_execute"]
+            .as_str()
+            .unwrap()
+            .contains("set-inbound-azure-resource-rules")
+    );
 }
 
 #[test]
@@ -2314,10 +2322,12 @@ fn workspace_set_outbound_cloud_connection_rules_dry_run() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["dry_run"], true);
-    assert!(data["would_execute"]
-        .as_str()
-        .unwrap()
-        .contains("set-outbound-cloud-connection-rules"));
+    assert!(
+        data["would_execute"]
+            .as_str()
+            .unwrap()
+            .contains("set-outbound-cloud-connection-rules")
+    );
 }
 
 #[test]
@@ -2404,10 +2414,12 @@ fn workspace_set_outbound_gateway_rules_dry_run() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["dry_run"], true);
-    assert!(data["would_execute"]
-        .as_str()
-        .unwrap()
-        .contains("set-outbound-gateway-rules"));
+    assert!(
+        data["would_execute"]
+            .as_str()
+            .unwrap()
+            .contains("set-outbound-gateway-rules")
+    );
 }
 
 #[test]
@@ -2513,10 +2525,14 @@ fn workspace_update_settings_live() {
     let original_desc = show_data["description"].as_str().unwrap_or("").to_string();
 
     // Update description via update-settings
-    let new_desc = format!("fabio-e2e-{}", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() % 100_000);
+    let new_desc = format!(
+        "fabio-e2e-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+            % 100_000
+    );
     let body = serde_json::json!({ "description": new_desc });
 
     let assert = fabio()
