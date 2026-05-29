@@ -659,6 +659,65 @@ impl FabricClient {
 
     /// POST request to Power BI REST API (different base URL, same Fabric auth scope).
     /// Used for Power BI-specific operations like Publish to Web.
+    /// PATCH request to Power BI REST API (retries once on 401).
+    pub async fn patch_powerbi(&self, path: &str, body: &Value) -> Result<Value> {
+        let token = self.require_auth().await?;
+        let url = format!("https://api.powerbi.com/v1.0/myorg{path}");
+
+        let resp = self
+            .http
+            .patch(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .patch(&url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .json(body)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return handle_response(resp).await;
+        }
+
+        handle_response(resp).await
+    }
+
+    pub async fn get_powerbi(&self, path: &str) -> Result<Value> {
+        let token = self.require_auth().await?;
+        let url = format!("https://api.powerbi.com/v1.0/myorg{path}");
+
+        let resp = self
+            .http
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .get(&url)
+                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return handle_response(resp).await;
+        }
+
+        handle_response(resp).await
+    }
+
     pub async fn post_powerbi(&self, path: &str, body: &Value) -> Result<Value> {
         let token = self.require_auth().await?;
         let url = format!("https://api.powerbi.com/v1.0/myorg{path}");

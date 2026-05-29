@@ -273,7 +273,10 @@ fn commands_schema() -> serde_json::Value {
             "subcommands": {
                 "list": {
                     "description": "List all workspaces",
-                    "mutates": false
+                    "mutates": false,
+                    "flags": {
+                        "--roles": {"type": "string", "description": "Filter by role: Admin, Member, Contributor, Viewer (comma-separated)"}
+                    }
                 },
                 "show": {
                     "description": "Show details of a workspace",
@@ -304,6 +307,117 @@ fn commands_schema() -> serde_json::Value {
                     "flags": {
                         "--id": {"type": "string", "required": true, "description": "Workspace ID"},
                         "--capacity": {"type": "string", "required": true, "description": "Target capacity ID"}
+                    }
+                },
+                "get-settings": {
+                    "description": "Get workspace settings (properties including automaticMetadataSync)",
+                    "mutates": false,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"}
+                    }
+                },
+                "update-settings": {
+                    "description": "Update workspace settings via PATCH (pass full JSON body with properties to update)",
+                    "mutates": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--file": {"type": "string", "description": "Path to JSON file with settings"},
+                        "--content": {"type": "string", "description": "Inline JSON body for PATCH (e.g. {\"displayName\":\"new\"})"}
+                    }
+                },
+                "get-firewall-rules": {
+                    "description": "Get workspace IP firewall rules",
+                    "mutates": false,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"}
+                    }
+                },
+                "set-firewall-rules": {
+                    "description": "Set workspace IP firewall rules (replaces all existing rules, max 256)",
+                    "mutates": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--file": {"type": "string", "description": "Path to JSON file with rules"},
+                        "--content": {"type": "string", "description": "Inline JSON (e.g. {\"rules\":[{\"displayName\":\"Office\",\"value\":\"10.0.0.0/24\"}]})"}
+                    }
+                },
+                "get-git-outbound-policy": {
+                    "description": "Get workspace git outbound policy",
+                    "mutates": false,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"}
+                    }
+                },
+                "set-git-outbound-policy": {
+                    "description": "Set workspace git outbound policy (requires OAP enabled)",
+                    "mutates": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--file": {"type": "string", "description": "Path to JSON file"},
+                        "--content": {"type": "string", "description": "Inline JSON (e.g. {\"defaultAction\":\"Allow\",\"rules\":[]})"}
+                    }
+                },
+                "get-inbound-azure-resource-rules": {
+                    "description": "Get workspace inbound Azure resource instance rules",
+                    "mutates": false,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"}
+                    }
+                },
+                "set-inbound-azure-resource-rules": {
+                    "description": "Set workspace inbound Azure resource instance rules",
+                    "mutates": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--file": {"type": "string", "description": "Path to JSON file"},
+                        "--content": {"type": "string", "description": "Inline JSON with resource rules"}
+                    }
+                },
+                "get-outbound-cloud-connection-rules": {
+                    "description": "Get workspace outbound cloud connection rules (requires OAP enabled)",
+                    "mutates": false,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"}
+                    }
+                },
+                "set-outbound-cloud-connection-rules": {
+                    "description": "Set workspace outbound cloud connection rules (requires OAP enabled)",
+                    "mutates": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--file": {"type": "string", "description": "Path to JSON file"},
+                        "--content": {"type": "string", "description": "Inline JSON with cloud connection rules"}
+                    }
+                },
+                "get-outbound-gateway-rules": {
+                    "description": "Get workspace outbound gateway rules (requires OAP enabled)",
+                    "mutates": false,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"}
+                    }
+                },
+                "set-outbound-gateway-rules": {
+                    "description": "Set workspace outbound gateway rules (requires OAP enabled)",
+                    "mutates": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--file": {"type": "string", "description": "Path to JSON file"},
+                        "--content": {"type": "string", "description": "Inline JSON with gateway rules"}
+                    }
+                },
+                "set-dataset-storage-format": {
+                    "description": "Set default dataset storage format (Small or Large) via Power BI API",
+                    "mutates": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--format": {"type": "string", "required": true, "description": "Storage format: Small or Large"}
+                    }
+                },
+                "get-dataset-storage-format": {
+                    "description": "Get default dataset storage format via Power BI API",
+                    "mutates": false,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"}
                     }
                 }
             }

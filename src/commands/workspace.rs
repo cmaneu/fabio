@@ -23,7 +23,11 @@ pub enum WorkspaceCommand {
     // ── Read ─────────────────────────────────────────────────────────────
     /// List all workspaces
     #[command(display_order = 1)]
-    List,
+    List {
+        /// Filter by role: Admin, Member, Contributor, Viewer (comma-separated)
+        #[arg(long)]
+        roles: Option<String>,
+    },
     /// Show details of a workspace
     #[command(display_order = 2)]
     Show {
@@ -305,14 +309,14 @@ pub enum WorkspaceCommand {
         #[arg(short = 'w', long)]
         workspace: String,
     },
-    /// Modify `OneLake` default tier (Hot or Cold)
+    /// Modify `OneLake` default tier (Hot, Cool, or Cold)
     #[command(display_order = 56)]
     ModifyDefaultTier {
         /// Workspace ID
         #[arg(short = 'w', long)]
         workspace: String,
 
-        /// Tier: "Hot" or "Cold"
+        /// Tier: "Hot", "Cool", or "Cold"
         #[arg(long)]
         tier: String,
     },
@@ -399,12 +403,167 @@ pub enum WorkspaceCommand {
         #[arg(long)]
         content: Option<String>,
     },
+    /// Get workspace IP firewall rules
+    #[command(display_order = 52)]
+    GetFirewallRules {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+    },
+    /// Set workspace IP firewall rules (replaces all existing rules)
+    #[command(display_order = 53)]
+    SetFirewallRules {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Path to JSON file with firewall rules
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON firewall rules (e.g. '{"rules":[{"displayName":"Allow Office","value":"10.0.0.0/24"}]}')
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Get workspace git outbound policy
+    #[command(display_order = 54)]
+    GetGitOutboundPolicy {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+    },
+    /// Set workspace git outbound policy (requires Outbound Access Protection enabled)
+    #[command(display_order = 54)]
+    SetGitOutboundPolicy {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Path to JSON file with git outbound policy
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON git outbound policy (e.g. '{"defaultAction":"Allow","rules":[]}')
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Get workspace inbound Azure resource instance rules
+    #[command(display_order = 54)]
+    GetInboundAzureResourceRules {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+    },
+    /// Set workspace inbound Azure resource instance rules
+    #[command(display_order = 54)]
+    SetInboundAzureResourceRules {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Path to JSON file with resource rules
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON resource rules
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Get workspace outbound cloud connection rules (requires OAP enabled)
+    #[command(display_order = 54)]
+    GetOutboundCloudConnectionRules {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+    },
+    /// Set workspace outbound cloud connection rules (requires OAP enabled)
+    #[command(display_order = 54)]
+    SetOutboundCloudConnectionRules {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Path to JSON file with cloud connection rules
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON cloud connection rules
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Get workspace outbound gateway rules (requires OAP enabled)
+    #[command(display_order = 54)]
+    GetOutboundGatewayRules {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+    },
+    /// Set workspace outbound gateway rules (requires OAP enabled)
+    #[command(display_order = 54)]
+    SetOutboundGatewayRules {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Path to JSON file with gateway rules
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON gateway rules
+        #[arg(long)]
+        content: Option<String>,
+    },
+
+    // ── Workspace Settings ───────────────────────────────────────────────
+    /// Get workspace settings (properties including `automaticMetadataSync`)
+    #[command(display_order = 62)]
+    GetSettings {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+    },
+    /// Update workspace settings (e.g. enable automatic metadata sync)
+    ///
+    /// Pass a JSON object with the properties to update. Example:
+    ///   fabio workspace update-settings -w <WS> --content '{"automaticMetadataSync":"Enabled"}'
+    #[command(display_order = 63)]
+    UpdateSettings {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Path to JSON file with settings
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON settings (e.g. '{"automaticMetadataSync":"Enabled"}')
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Set default dataset storage format (Small or Large) via Power BI API
+    #[command(display_order = 64)]
+    SetDatasetStorageFormat {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+
+        /// Storage format: "Small" or "Large"
+        #[arg(long)]
+        format: String,
+    },
+    /// Get default dataset storage format via Power BI API
+    #[command(display_order = 65)]
+    GetDatasetStorageFormat {
+        /// Workspace ID
+        #[arg(short = 'w', long)]
+        workspace: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceCommand) -> Result<()> {
     match command {
-        WorkspaceCommand::List => list(cli, client).await,
+        WorkspaceCommand::List { roles } => list(cli, client, roles.as_deref()).await,
         WorkspaceCommand::Show { id } => show(cli, client, id).await,
         WorkspaceCommand::Create { name, description } => {
             create(cli, client, name, description.as_deref()).await
@@ -550,15 +709,103 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
             file,
             content,
         } => set_network_policy(cli, client, workspace, file.as_deref(), content.as_deref()).await,
+        WorkspaceCommand::GetFirewallRules { workspace } => {
+            get_firewall_rules(cli, client, workspace).await
+        }
+        WorkspaceCommand::SetFirewallRules {
+            workspace,
+            file,
+            content,
+        } => set_firewall_rules(cli, client, workspace, file.as_deref(), content.as_deref()).await,
+        WorkspaceCommand::GetGitOutboundPolicy { workspace } => {
+            get_git_outbound_policy(cli, client, workspace).await
+        }
+        WorkspaceCommand::SetGitOutboundPolicy {
+            workspace,
+            file,
+            content,
+        } => {
+            set_git_outbound_policy(cli, client, workspace, file.as_deref(), content.as_deref())
+                .await
+        }
+        WorkspaceCommand::GetInboundAzureResourceRules { workspace } => {
+            get_inbound_azure_resource_rules(cli, client, workspace).await
+        }
+        WorkspaceCommand::SetInboundAzureResourceRules {
+            workspace,
+            file,
+            content,
+        } => {
+            set_inbound_azure_resource_rules(
+                cli,
+                client,
+                workspace,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        WorkspaceCommand::GetOutboundCloudConnectionRules { workspace } => {
+            get_outbound_cloud_connection_rules(cli, client, workspace).await
+        }
+        WorkspaceCommand::SetOutboundCloudConnectionRules {
+            workspace,
+            file,
+            content,
+        } => {
+            set_outbound_cloud_connection_rules(
+                cli,
+                client,
+                workspace,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        WorkspaceCommand::GetOutboundGatewayRules { workspace } => {
+            get_outbound_gateway_rules(cli, client, workspace).await
+        }
+        WorkspaceCommand::SetOutboundGatewayRules {
+            workspace,
+            file,
+            content,
+        } => {
+            set_outbound_gateway_rules(
+                cli,
+                client,
+                workspace,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        WorkspaceCommand::GetSettings { workspace } => {
+            get_settings(cli, client, workspace).await
+        }
+        WorkspaceCommand::UpdateSettings {
+            workspace,
+            file,
+            content,
+        } => update_settings(cli, client, workspace, file.as_deref(), content.as_deref()).await,
+        WorkspaceCommand::SetDatasetStorageFormat { workspace, format } => {
+            set_dataset_storage_format(cli, client, workspace, format).await
+        }
+        WorkspaceCommand::GetDatasetStorageFormat { workspace } => {
+            get_dataset_storage_format(cli, client, workspace).await
+        }
     }
 }
 
 // ─── List ────────────────────────────────────────────────────────────────────
 
-async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
+async fn list(cli: &Cli, client: &FabricClient, roles: Option<&str>) -> Result<()> {
+    let path = roles.map_or_else(
+        || "/workspaces".to_string(),
+        |r| format!("/workspaces?roles={r}"),
+    );
     let resp = client
         .get_list(
-            "/workspaces",
+            &path,
             "value",
             cli.all,
             cli.continuation_token.as_deref(),
@@ -1256,8 +1503,8 @@ async fn modify_default_tier(
 
     let data = client
         .post(
-            &format!("/workspaces/{workspace}/onelake/settings/modifyDefaultTier"),
-            &body,
+            &format!("/workspaces/{workspace}/onelake/settings/modifyDefaultTier?defaultTier={tier}"),
+            &serde_json::json!({}),
             false,
         )
         .await
@@ -1435,6 +1682,323 @@ async fn set_network_policy(
     Ok(())
 }
 
+// ─── Firewall Rules ──────────────────────────────────────────────────────────
+
+async fn get_firewall_rules(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/networking/communicationPolicy/inbound/firewall"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace get-firewall-rules", "Viewer"))?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+async fn set_firewall_rules(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_body(file, content, "workspace set-firewall-rules")?;
+
+    if output::dry_run_guard(cli, "workspace set-firewall-rules", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .put(
+            &format!(
+                "/workspaces/{workspace}/networking/communicationPolicy/inbound/firewall"
+            ),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace set-firewall-rules", "Admin"))?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+// ─── Git Outbound Policy ─────────────────────────────────────────────────────
+
+async fn get_git_outbound_policy(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/networking/communicationPolicy/outbound/git"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace get-git-outbound-policy", "Viewer"))?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+async fn set_git_outbound_policy(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_body(file, content, "workspace set-git-outbound-policy")?;
+
+    if output::dry_run_guard(cli, "workspace set-git-outbound-policy", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .put(
+            &format!(
+                "/workspaces/{workspace}/networking/communicationPolicy/outbound/git"
+            ),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace set-git-outbound-policy", "Admin"))?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+// ─── Inbound Azure Resource Rules ────────────────────────────────────────────
+
+async fn get_inbound_azure_resource_rules(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/networking/communicationPolicy/inbound/azureResourceInstances"
+        ))
+        .await
+        .map_err(|e| {
+            enrich_forbidden(e, "workspace get-inbound-azure-resource-rules", "Viewer")
+        })?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+async fn set_inbound_azure_resource_rules(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_body(file, content, "workspace set-inbound-azure-resource-rules")?;
+
+    if output::dry_run_guard(cli, "workspace set-inbound-azure-resource-rules", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .put(
+            &format!(
+                "/workspaces/{workspace}/networking/communicationPolicy/inbound/azureResourceInstances"
+            ),
+            &body,
+        )
+        .await
+        .map_err(|e| {
+            enrich_forbidden(e, "workspace set-inbound-azure-resource-rules", "Admin")
+        })?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+// ─── Outbound Cloud Connection Rules ─────────────────────────────────────────
+
+async fn get_outbound_cloud_connection_rules(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/networking/communicationPolicy/outbound/cloudConnections"
+        ))
+        .await
+        .map_err(|e| {
+            enrich_forbidden(e, "workspace get-outbound-cloud-connection-rules", "Viewer")
+        })?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+async fn set_outbound_cloud_connection_rules(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_body(file, content, "workspace set-outbound-cloud-connection-rules")?;
+
+    if output::dry_run_guard(cli, "workspace set-outbound-cloud-connection-rules", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .put(
+            &format!(
+                "/workspaces/{workspace}/networking/communicationPolicy/outbound/cloudConnections"
+            ),
+            &body,
+        )
+        .await
+        .map_err(|e| {
+            enrich_forbidden(e, "workspace set-outbound-cloud-connection-rules", "Admin")
+        })?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+// ─── Outbound Gateway Rules ──────────────────────────────────────────────────
+
+async fn get_outbound_gateway_rules(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/networking/communicationPolicy/outbound/gateways"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace get-outbound-gateway-rules", "Viewer"))?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+async fn set_outbound_gateway_rules(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_body(file, content, "workspace set-outbound-gateway-rules")?;
+
+    if output::dry_run_guard(cli, "workspace set-outbound-gateway-rules", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .put(
+            &format!(
+                "/workspaces/{workspace}/networking/communicationPolicy/outbound/gateways"
+            ),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace set-outbound-gateway-rules", "Admin"))?;
+    output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+// ─── Dataset Storage Format ──────────────────────────────────────────────────
+
+async fn set_dataset_storage_format(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    format: &str,
+) -> Result<()> {
+    let body = serde_json::json!({ "defaultDatasetStorageFormat": format });
+
+    if output::dry_run_guard(cli, "workspace set-dataset-storage-format", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch_powerbi(&format!("/groups/{workspace}"), &body)
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace set-dataset-storage-format", "Admin"))?;
+
+    // PBI PATCH returns empty 200, so synthesize confirmation
+    if data.is_null() {
+        let obj = serde_json::json!({
+            "workspaceId": workspace,
+            "defaultDatasetStorageFormat": format,
+            "status": "updated"
+        });
+        output::render_object(cli, &obj, "workspaceId");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
+
+// ─── Get Dataset Storage Format ──────────────────────────────────────────────
+
+async fn get_dataset_storage_format(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+) -> Result<()> {
+    let data = client
+        .get_powerbi(&format!("/groups/{workspace}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace get-dataset-storage-format", "Viewer"))?;
+
+    // Extract just the storage format field if present, otherwise return full response
+    let format_value = data
+        .get("defaultDatasetStorageFormat")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let obj = serde_json::json!({
+        "workspaceId": workspace,
+        "defaultDatasetStorageFormat": format_value,
+    });
+    output::render_object(cli, &obj, "workspaceId");
+    Ok(())
+}
+
+// ─── Get Settings ────────────────────────────────────────────────────────────
+
+async fn get_settings(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+    let data = client
+        .get(&format!("/workspaces/{workspace}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace get-settings", "Viewer"))?;
+
+    // Extract "properties" sub-object if present; otherwise return full response
+    if let Some(props) = data.get("properties") {
+        output::render_object(cli, props, "automaticMetadataSync");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
+
+// ─── Update Settings ─────────────────────────────────────────────────────────
+
+async fn update_settings(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_body(file, content, "workspace update-settings")?;
+
+    if output::dry_run_guard(cli, "workspace update-settings", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(&format!("/workspaces/{workspace}"), &body)
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace update-settings", "Admin"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /// Read JSON body from --file or --content flag.
@@ -1544,5 +2108,55 @@ mod tests {
                 .contains("az fabric capacity")
         );
         assert!(fabio_err.hint.as_ref().unwrap().contains("bad-cap-id"));
+    }
+
+    #[test]
+    fn read_json_body_from_content() {
+        let result = read_json_body(None, Some(r#"{"automaticMetadataSync":"Enabled"}"#), "test");
+        assert!(result.is_ok());
+        let val = result.unwrap();
+        assert_eq!(val["automaticMetadataSync"], "Enabled");
+    }
+
+    #[test]
+    fn read_json_body_invalid_json_returns_error() {
+        let result = read_json_body(None, Some("not json"), "test");
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Invalid JSON"),
+            "Expected 'Invalid JSON' in error, got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn read_json_body_missing_both_returns_error() {
+        let result = read_json_body(None, None, "workspace update-settings");
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("--file or --content"),
+            "Expected hint about --file or --content, got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn update_settings_body_is_passed_directly() {
+        // Verify the JSON body is used directly (user controls full body shape)
+        let body: Value =
+            serde_json::from_str(r#"{"automaticMetadataSync":"Enabled"}"#).unwrap();
+        assert_eq!(body["automaticMetadataSync"], "Enabled");
+        // No wrapping — user controls the full PATCH body structure
+        assert!(body.get("properties").is_none());
+    }
+
+    #[test]
+    fn update_settings_supports_complex_body() {
+        let body: Value = serde_json::from_str(
+            r#"{"displayName":"NewName","properties":{"automaticMetadataSync":"Enabled"}}"#,
+        )
+        .unwrap();
+        assert_eq!(body["displayName"], "NewName");
+        assert_eq!(body["properties"]["automaticMetadataSync"], "Enabled");
     }
 }

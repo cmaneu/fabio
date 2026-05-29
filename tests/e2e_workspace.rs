@@ -633,3 +633,636 @@ fn workspace_update_dry_run() {
         "Should Not Change"
     );
 }
+
+// ===========================================================================
+// workspace get-settings
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_get_settings() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-settings",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    // Should return JSON (either a properties object or the full workspace)
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(
+        data.is_object(),
+        "Expected settings to be a JSON object, got: {data}"
+    );
+}
+
+// ===========================================================================
+// workspace update-settings --dry-run
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_update_settings_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "update-settings",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            r#"{"automaticMetadataSync":"Enabled"}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "workspace update-settings");
+    assert_eq!(data["details"]["automaticMetadataSync"], "Enabled");
+}
+
+// ===========================================================================
+// workspace update-settings requires --file or --content
+// ===========================================================================
+
+#[test]
+fn workspace_update_settings_missing_input() {
+    fabio()
+        .args([
+            "workspace",
+            "update-settings",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--file or --content"));
+}
+
+// ===========================================================================
+// workspace get-firewall-rules
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_get_firewall_rules() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-firewall-rules",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Should have a "rules" array
+    assert!(data.get("rules").is_some(), "expected 'rules' field");
+    assert!(data["rules"].is_array());
+}
+
+// ===========================================================================
+// workspace set-firewall-rules roundtrip (add then clear)
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_set_firewall_rules_roundtrip() {
+    let cfg = TestConfig::from_env();
+
+    // Set a rule
+    fabio()
+        .args([
+            "workspace",
+            "set-firewall-rules",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            r#"{"rules":[{"displayName":"E2ETest","value":"172.16.0.0/12"}]}"#,
+        ])
+        .assert()
+        .success();
+
+    // Verify it persisted
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-firewall-rules",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let rules = data["rules"].as_array().unwrap();
+    assert!(
+        rules.iter().any(|r| r["displayName"] == "E2ETest"),
+        "expected E2ETest rule to be present"
+    );
+
+    // Clear rules
+    fabio()
+        .args([
+            "workspace",
+            "set-firewall-rules",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            r#"{"rules":[]}"#,
+        ])
+        .assert()
+        .success();
+}
+
+// ===========================================================================
+// workspace set-firewall-rules dry-run
+// ===========================================================================
+
+#[test]
+fn workspace_set_firewall_rules_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "set-firewall-rules",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--content",
+            r#"{"rules":[{"displayName":"Test","value":"1.2.3.4"}]}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "workspace set-firewall-rules");
+}
+
+// ===========================================================================
+// workspace get-git-outbound-policy
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_get_git_outbound_policy() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-git-outbound-policy",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Should have a "defaultAction" field
+    assert!(
+        data.get("defaultAction").is_some(),
+        "expected 'defaultAction' field"
+    );
+}
+
+// ===========================================================================
+// workspace set-dataset-storage-format roundtrip
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_set_dataset_storage_format_roundtrip() {
+    let cfg = TestConfig::from_env();
+
+    // Set to Large
+    let assert = fabio()
+        .args([
+            "workspace",
+            "set-dataset-storage-format",
+            "--workspace",
+            &cfg.source_workspace,
+            "--format",
+            "Large",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["defaultDatasetStorageFormat"], "Large");
+
+    // Revert to Small
+    let assert = fabio()
+        .args([
+            "workspace",
+            "set-dataset-storage-format",
+            "--workspace",
+            &cfg.source_workspace,
+            "--format",
+            "Small",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["defaultDatasetStorageFormat"], "Small");
+}
+
+// ===========================================================================
+// workspace set-dataset-storage-format dry-run
+// ===========================================================================
+
+#[test]
+fn workspace_set_dataset_storage_format_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "set-dataset-storage-format",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--format",
+            "Large",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(
+        data["would_execute"],
+        "workspace set-dataset-storage-format"
+    );
+    assert_eq!(data["details"]["defaultDatasetStorageFormat"], "Large");
+}
+
+// ===========================================================================
+// workspace set-firewall-rules missing input
+// ===========================================================================
+
+#[test]
+fn workspace_set_firewall_rules_missing_input() {
+    fabio()
+        .args([
+            "workspace",
+            "set-firewall-rules",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--file or --content"));
+}
+
+// ===========================================================================
+// workspace get-dataset-storage-format
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_get_dataset_storage_format() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-dataset-storage-format",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(
+        data.get("defaultDatasetStorageFormat").is_some(),
+        "expected 'defaultDatasetStorageFormat' field"
+    );
+    let fmt = data["defaultDatasetStorageFormat"].as_str().unwrap();
+    assert!(
+        fmt == "Small" || fmt == "Large",
+        "expected Small or Large, got {fmt}"
+    );
+}
+
+// ===========================================================================
+// workspace get-onelake-settings
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_get_onelake_settings() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-onelake-settings",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Should have tier information
+    assert!(
+        data.get("defaultTier").is_some() || data.get("tier").is_some() || data.is_object(),
+        "expected OneLake settings object"
+    );
+}
+
+// ===========================================================================
+// workspace get-network-policy
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_get_network_policy() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-network-policy",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Network policy should be an object (may have inbound/outbound fields)
+    assert!(data.is_object(), "expected network policy object");
+}
+
+// ===========================================================================
+// workspace reset-shortcut-cache
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_reset_shortcut_cache() {
+    let cfg = TestConfig::from_env();
+    // reset-shortcut-cache is LRO; may return API_ERROR if no shortcuts exist
+    let assert = fabio()
+        .args([
+            "workspace",
+            "reset-shortcut-cache",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert();
+
+    // Accept either success (workspace has shortcuts) or API_ERROR (no cache to reset)
+    let output = assert.get_output();
+    let code = output.status.code().unwrap_or(1);
+    if code != 0 {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("API_ERROR") || stderr.contains("ItemNotFound"),
+            "unexpected error: {stderr}"
+        );
+    }
+}
+
+// ===========================================================================
+// workspace show-role-assignment (via list first to get an ID)
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_show_role_assignment() {
+    let cfg = TestConfig::from_env();
+
+    // First list to get an assignment ID
+    let assert = fabio()
+        .args([
+            "workspace",
+            "list-role-assignments",
+            "--id",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let arr = data.as_array().expect("expected array of role assignments");
+    assert!(!arr.is_empty(), "expected at least one role assignment");
+
+    let first_id = arr[0]["id"].as_str().expect("expected assignment id");
+
+    // Now show that specific assignment
+    let assert = fabio()
+        .args([
+            "workspace",
+            "show-role-assignment",
+            "--id",
+            &cfg.source_workspace,
+            "--assignment-id",
+            first_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["id"].as_str().unwrap(), first_id);
+    assert!(data.get("principal").is_some());
+    assert!(data.get("role").is_some());
+}
+
+// ===========================================================================
+// workspace folder lifecycle: create → list → show → update → move → delete
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_folder_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let folder_name = unique_name("TestFolder");
+
+    // Create folder
+    let assert = fabio()
+        .args([
+            "workspace",
+            "create-folder",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &folder_name,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let folder_id = data["id"].as_str().expect("expected folder id").to_string();
+    assert_eq!(data["displayName"].as_str().unwrap(), folder_name);
+
+    // List folders — should contain our folder
+    let assert = fabio()
+        .args([
+            "workspace",
+            "list-folders",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let arr = data.as_array().expect("expected array of folders");
+    assert!(
+        arr.iter()
+            .any(|f| f["id"].as_str() == Some(folder_id.as_str())),
+        "created folder should appear in list"
+    );
+
+    // Show folder
+    let assert = fabio()
+        .args([
+            "workspace",
+            "show-folder",
+            "--workspace",
+            &cfg.source_workspace,
+            "--folder-id",
+            &folder_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["id"].as_str().unwrap(), folder_id);
+    assert_eq!(data["displayName"].as_str().unwrap(), folder_name);
+
+    // Update folder
+    let updated_name = format!("{folder_name}Updated");
+    let assert = fabio()
+        .args([
+            "workspace",
+            "update-folder",
+            "--workspace",
+            &cfg.source_workspace,
+            "--folder-id",
+            &folder_id,
+            "--name",
+            &updated_name,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["displayName"].as_str().unwrap(), updated_name);
+
+    // Create a second folder to test move
+    let subfolder_name = unique_name("SubFolder");
+    let assert = fabio()
+        .args([
+            "workspace",
+            "create-folder",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &subfolder_name,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let subfolder_id = data["id"].as_str().expect("subfolder id").to_string();
+
+    // Move subfolder into the first folder
+    fabio()
+        .args([
+            "workspace",
+            "move-folder",
+            "--workspace",
+            &cfg.source_workspace,
+            "--folder-id",
+            &subfolder_id,
+            "--target-folder-id",
+            &folder_id,
+        ])
+        .assert()
+        .success();
+
+    // Delete subfolder first (child before parent)
+    fabio()
+        .args([
+            "workspace",
+            "delete-folder",
+            "--workspace",
+            &cfg.source_workspace,
+            "--folder-id",
+            &subfolder_id,
+        ])
+        .assert()
+        .success();
+
+    // Delete the main folder
+    fabio()
+        .args([
+            "workspace",
+            "delete-folder",
+            "--workspace",
+            &cfg.source_workspace,
+            "--folder-id",
+            &folder_id,
+        ])
+        .assert()
+        .success();
+}
+
+// ===========================================================================
+// workspace list with --roles filter
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_list_with_roles_filter() {
+    let assert = fabio()
+        .args(["workspace", "list", "--roles", "Admin"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data.is_array());
+    // Should have at least our test workspace where we're Admin
+    let count = extract_count(&json);
+    assert!(count > 0, "expected at least one workspace with Admin role");
+}

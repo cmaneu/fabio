@@ -35,7 +35,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (267 subcommands across 37 groups): auth, workspace, item, lakehouse, capacity, notebook, warehouse, data-agent, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, git, connection, deployment-pipeline, domain, job-scheduler, onelake-security, managed-private-endpoint, profile, jobs, feedback + agent-context
+- **Full Rust implementation** (290 subcommands across 37 groups): auth, workspace, item, lakehouse, capacity, notebook, warehouse, data-agent, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, git, connection, deployment-pipeline, domain, job-scheduler, onelake-security, managed-private-endpoint, profile, jobs, feedback + agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`
@@ -50,6 +50,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Notebook run**: Captures job instance ID from Location header, status/stop via Jobs API
 - **Notebook `--wait` flag**: Polls job status every 5s until Completed/Failed/Cancelled, with configurable `--timeout` (default 600s)
 - **Item copy/move**: getDefinition LRO + create in dest workspace LRO; move = copy + delete source
+- **Workspace**: 46 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies)
 - **Warehouse**: list/show/create/update/delete/query (endpoint resolved, stdin/file/flag SQL input)
 - **Git integration**: status, commit, pull, connect, disconnect, initialize, switch (branch), connection/credentials management, show-tracked
 - **Ontology management**: list, show, create, update, delete, get-definition, update-definition (RDF file support, --dir for Fabric definition format, --decode for readable output)
@@ -163,7 +164,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, run_notebook
 - `src/commands/mod.rs`: Command dispatch
 - `src/commands/auth.rs`: login/logout/status (DefaultAzureCredential chain)
-- `src/commands/workspace.rs`: 13 subcommands (CRUD + capacity + identity + role assignments)
+- `src/commands/workspace.rs`: 46 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies)
 - `src/commands/item.rs`: 10 subcommands (CRUD + copy/move + definitions + list-connections)
 - `src/commands/lakehouse.rs`: 20 subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut)
 - `src/commands/notebook.rs`: create/get-definition/run (with --wait/--timeout)/status/stop/delete
@@ -215,7 +216,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/agent_context.rs`: Machine-readable command schema for AI agents
 - `tests/common/mod.rs`: Shared E2E test harness (TestConfig, helpers)
 - `tests/e2e_auth.rs`: Auth integration tests
-- `tests/e2e_workspace.rs`: Workspace CRUD + assign-capacity tests
+- `tests/e2e_workspace.rs`: Workspace CRUD + assign-capacity + networking + OneLake settings + folders + storage format + roles filter tests
 - `tests/e2e_global_options.rs`: --query, --quiet, --output format tests
 - `tests/e2e_item.rs`: Item list/show/create/delete/copy/move tests
 - `tests/e2e_lakehouse.rs`: Tables/files/upload/download tests
@@ -1013,9 +1014,23 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Tags**: `POST /workspaces/{ws}/applyTags` and `/unapplyTags` with body `{"tagIds": [...]}`.
 - **Domain assignment**: `POST /workspaces/{ws}/assignToDomain` with `{"domainId": "<id>"}`. Unassign uses empty body.
 - **OneLake settings**: `GET /workspaces/{ws}/onelake/settings` returns tier, diagnostics, immutability. Modify via individual POST endpoints (`/modifyDefaultTier`, `/modifyDiagnostics`, `/modifyImmutabilityPolicy`).
-- **Default tier values**: `"Hot"` or `"Cold"` (PascalCase).
 - **Lifecycle policies**: Export/import via `/workspaces/{ws}/onelake/lifecycle/exportPolicy` and `/importPolicy`.
 - **Network policy**: `GET/PUT /workspaces/{ws}/networking/communicationPolicy`.
+- **Firewall rules**: `GET/PUT /workspaces/{ws}/networking/communicationPolicy/inbound/firewall`. Body: `{"rules":[{"displayName":"<name>","value":"<CIDR>"}]}`. Max 256 rules. PUT replaces all rules.
+- **Git outbound policy**: `GET/PUT /workspaces/{ws}/networking/communicationPolicy/outbound/git`. Body: `{"defaultAction":"Allow|Deny","rules":[]}`. Requires Outbound Access Protection (OAP) enabled at tenant level.
+- **Inbound Azure resource rules**: `GET/PUT /workspaces/{ws}/networking/communicationPolicy/inbound/azureResourceInstances`. Requires inbound network restriction enabled.
+- **Outbound cloud connection rules**: `GET/PUT /workspaces/{ws}/networking/communicationPolicy/outbound/cloudConnections`. Requires OAP enabled.
+- **Outbound gateway rules**: `GET/PUT /workspaces/{ws}/networking/communicationPolicy/outbound/gateways`. Requires OAP enabled.
+- **Dataset storage format (Power BI API)**: `GET /v1.0/myorg/groups/{id}` returns `defaultDatasetStorageFormat` field (value: `"Small"` or `"Large"`). `PATCH /v1.0/myorg/groups/{id}` with `{"defaultDatasetStorageFormat":"Large"}` changes it. PATCH returns empty 200.
+- **`modifyDefaultTier` uses query parameter**: `POST /workspaces/{ws}/onelake/modifyDefaultTier?defaultTier=Hot` with empty body `{}`. NOT a JSON body field. Supported values: `Hot`, `Cool`, `Cold`.
+- **Default tier values (corrected)**: `"Hot"`, `"Cool"`, or `"Cold"` (PascalCase). All three tiers are supported.
+- **List workspaces `roles` filter**: `GET /workspaces?roles=Admin,Member` supports server-side filtering by the caller's role in the workspace. Comma-separated values.
+- **Reset shortcut cache is LRO**: `POST /workspaces/{ws}/onelake/resetShortcutCache` returns 200 or 202 (LRO). Requires `OneLake.ReadWrite.All` scope. Returns `API_ERROR` ("missing or invalid information") on workspaces that have no cached shortcut data — this is a no-op error, not a permission issue.
+- **Folder create body**: `POST /workspaces/{ws}/folders` with `{"displayName": "<name>", "description"?: "<desc>", "parentFolderId"?: "<id>"}`. Returns created folder with `id`, `displayName`.
+- **Folder move body**: `POST /workspaces/{ws}/folders/{id}/move` with `{"targetFolderId": "<id>"}`. Use `null` or omit to move to workspace root.
+- **Folder update returns updated object**: `PATCH /workspaces/{ws}/folders/{id}` with `{"displayName"?: "...", "description"?: "..."}` returns the updated folder object.
+- **Folder delete requires empty children**: Deleting a folder with items/subfolders inside returns an error. Delete children first.
+- **Network policy GET returns full topology**: `GET /workspaces/{ws}/networking/communicationPolicy` returns an object with `inbound` and `outbound` sections showing all configured rules.
 - **Create body**: `{"displayName": "<name>", "description"?: "<desc>"}` — minimal, no capacity needed at creation time.
 
 ## Item API Behaviors Discovered
