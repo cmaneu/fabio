@@ -2492,3 +2492,143 @@ fn workspace_inbound_restriction_roundtrip() {
         .assert()
         .success();
 }
+
+// ===========================================================================
+// workspace update-settings live roundtrip
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_update_settings_live() {
+    let cfg = TestConfig::from_env();
+
+    // Get current workspace description
+    let show_assert = fabio()
+        .args(["workspace", "show", "--id", &cfg.source_workspace])
+        .assert()
+        .success();
+    let show_json = parse_json(&show_assert);
+    let show_data = extract_data(&show_json);
+    let original_desc = show_data["description"].as_str().unwrap_or("").to_string();
+
+    // Update description via update-settings
+    let new_desc = format!("fabio-e2e-{}", std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() % 100_000);
+    let body = serde_json::json!({ "description": new_desc });
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "update-settings",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            &body.to_string(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data.is_object(), "expected JSON object response");
+
+    // Verify the description changed
+    let verify = fabio()
+        .args(["workspace", "show", "--id", &cfg.source_workspace])
+        .assert()
+        .success();
+    let verify_json = parse_json(&verify);
+    let verify_data = extract_data(&verify_json);
+    assert_eq!(
+        verify_data["description"].as_str().unwrap_or(""),
+        new_desc,
+        "description should have been updated"
+    );
+
+    // Restore original description
+    let restore_body = serde_json::json!({ "description": original_desc });
+    fabio()
+        .args([
+            "workspace",
+            "update-settings",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            &restore_body.to_string(),
+        ])
+        .assert()
+        .success();
+}
+
+// ===========================================================================
+// workspace provision-identity / deprovision-identity live roundtrip
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_identity_roundtrip() {
+    let cfg = TestConfig::from_env();
+
+    // Step 1: Provision identity on the workspace
+    let output = fabio()
+        .args([
+            "workspace",
+            "provision-identity",
+            "--id",
+            &cfg.source_workspace,
+        ])
+        .output()
+        .unwrap();
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Some tenants/capacities may not support workspace identity
+        if stderr.contains("FORBIDDEN")
+            || stderr.contains("not enabled")
+            || stderr.contains("FeatureNotAvailable")
+        {
+            eprintln!("SKIP: workspace identity provisioning not available on this tenant");
+            return;
+        }
+        panic!("provision-identity failed unexpectedly: {stderr}");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let data = extract_data(&json);
+    // Should return servicePrincipalId or similar
+    assert!(
+        data.is_object(),
+        "Expected JSON object from provision-identity, got: {data}"
+    );
+
+    // Step 2: Deprovision identity
+    let depr_output = fabio()
+        .args([
+            "workspace",
+            "deprovision-identity",
+            "--id",
+            &cfg.source_workspace,
+        ])
+        .output()
+        .unwrap();
+
+    if !depr_output.status.success() {
+        let stderr = String::from_utf8_lossy(&depr_output.stderr);
+        // If already deprovisioned or not supported, just skip
+        if stderr.contains("NOT_FOUND") || stderr.contains("FORBIDDEN") {
+            eprintln!("NOTE: deprovision returned error (may already be deprovisioned): {stderr}");
+            return;
+        }
+        panic!("deprovision-identity failed unexpectedly: {stderr}");
+    }
+
+    let depr_stdout = String::from_utf8_lossy(&depr_output.stdout);
+    let depr_json: serde_json::Value = serde_json::from_str(&depr_stdout).unwrap();
+    let depr_data = extract_data(&depr_json);
+    assert_eq!(depr_data["status"], "deprovisioned");
+}
