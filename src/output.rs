@@ -83,7 +83,10 @@ pub fn render_list_with_token(
             if let Some(token) = continuation_token {
                 envelope["continuationToken"] = Value::String(token.to_string());
             }
-            println!("{}", serde_json::to_string(&envelope).unwrap());
+            println!(
+                "{}",
+                serde_json::to_string(&envelope).unwrap_or_else(|_| r#"{"error":{"code":"SERIALIZATION_ERROR","message":"Failed to serialize output"}}"#.to_string())
+            );
         }
         OutputFormat::Table => {
             // For table/plain with query, we need to apply query to each item
@@ -155,7 +158,10 @@ pub fn render_object(cli: &Cli, obj: &Value, plain_key: &str) {
             let envelope = ObjectEnvelope {
                 data: output_data.into_owned(),
             };
-            println!("{}", serde_json::to_string(&envelope).unwrap());
+            println!(
+                "{}",
+                serde_json::to_string(&envelope).unwrap_or_else(|_| r#"{"error":{"code":"SERIALIZATION_ERROR","message":"Failed to serialize output"}}"#.to_string())
+            );
         }
         OutputFormat::Table => {
             // For single objects, render as key-value pairs
@@ -179,7 +185,10 @@ pub fn render_object(cli: &Cli, obj: &Value, plain_key: &str) {
                 match output_data.as_ref() {
                     Value::String(s) => println!("{s}"),
                     Value::Null => {}
-                    other => println!("{}", serde_json::to_string_pretty(other).unwrap()),
+                    other => println!(
+                        "{}",
+                        serde_json::to_string_pretty(other).unwrap_or_else(|_| "null".to_string())
+                    ),
                 }
             }
         }
@@ -195,7 +204,15 @@ pub fn render_error(err: &FabioError) {
             hint: err.hint.clone(),
         },
     };
-    eprintln!("{}", serde_json::to_string(&envelope).unwrap());
+    eprintln!(
+        "{}",
+        serde_json::to_string(&envelope).unwrap_or_else(|_| {
+            format!(
+                r#"{{"error":{{"code":"{}","message":"(serialization failed)"}}}}"#,
+                err.code
+            )
+        })
+    );
 }
 
 /// Check if dry-run is active and render a preview response.

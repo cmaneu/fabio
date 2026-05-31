@@ -138,13 +138,23 @@ pub fn save_token(data: &TokenData) -> Result<()> {
         }
     }
     let json = serde_json::to_string_pretty(data)?;
-    std::fs::write(&path, json)?;
 
-    // Restrict permissions on Unix
+    // Write atomically with restricted permissions to avoid TOCTOU window
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&path)?;
+        file.write_all(json.as_bytes())?;
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(&path, json)?;
     }
 
     // Remove logout marker on successful login
@@ -254,7 +264,27 @@ pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Res
         )
     })?;
 
-    // Step 2: Display instructions to the user
+    // Step 2: Display instructions to the user (validate URI is from Microsoft)
+    let valid_verification_hosts = ["login.microsoftonline.com", "microsoft.com", "aka.ms"];
+    let uri_lower = dc.verification_uri.to_lowercase();
+    let uri_trusted = uri_lower.starts_with("https://")
+        && valid_verification_hosts.iter().any(|host| {
+            uri_lower.strip_prefix("https://").is_some_and(|rest| {
+                let domain = rest.split('/').next().unwrap_or("");
+                domain == *host || domain.ends_with(&format!(".{host}"))
+            })
+        });
+    if !uri_trusted {
+        return Err(FabioError::new(
+            ErrorCode::AuthRequired,
+            format!(
+                "Device code verification URI is not a trusted Microsoft domain: {}",
+                dc.verification_uri
+            ),
+        )
+        .into());
+    }
+
     if dc.message.is_empty() {
         eprintln!(
             "To sign in, open: {}\nEnter the code: {}",
@@ -355,12 +385,18 @@ pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Res
             }
         }
 
-        // Unknown error
-        return Err(FabioError::new(
-            ErrorCode::AuthRequired,
-            format!("Unexpected token response (HTTP {status}): {body}"),
-        )
-        .into());
+        // Unknown error — only include status code, not raw response body
+        // (which may contain internal traces, correlation IDs, or injected content)
+        let sanitized = serde_json::from_str::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| {
+                v.get("error_description")
+                    .or_else(|| v.get("error"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(String::from)
+            })
+            .unwrap_or_else(|| format!("HTTP {status} (unrecognized error format)"));
+        return Err(FabioError::new(ErrorCode::AuthRequired, sanitized).into());
     }
 }
 

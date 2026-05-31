@@ -72,7 +72,7 @@ where
         let op = op.clone();
         let sem = semaphore.clone();
         join_set.spawn(async move {
-            let _permit = sem.acquire().await.expect("semaphore closed");
+            let _permit = sem.acquire().await.unwrap_or_else(|_| unreachable!());
             let result = retry_with_backoff(|| op(item.clone())).await;
             OpResult { index, result }
         });

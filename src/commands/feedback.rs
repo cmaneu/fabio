@@ -44,6 +44,11 @@ fn send(cli: &Cli, message: &str) -> Result<()> {
     let path = feedback_path();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).ok();
+        }
     }
 
     let entry = FeedbackEntry {
@@ -51,6 +56,16 @@ fn send(cli: &Cli, message: &str) -> Result<()> {
         message: message.to_string(),
     };
 
+    #[cfg(unix)]
+    let mut file = {
+        use std::os::unix::fs::OpenOptionsExt;
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .mode(0o600)
+            .open(&path)?
+    };
+    #[cfg(not(unix))]
     let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
     let line = serde_json::to_string(&entry)?;
     writeln!(file, "{line}")?;

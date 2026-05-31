@@ -1252,6 +1252,16 @@ async fn download(
     source_path: &str,
     dest_path: &str,
 ) -> Result<()> {
+    // Security: reject symlinks at destination to prevent arbitrary file overwrite
+    if let Ok(meta) = std::fs::symlink_metadata(dest_path) {
+        if meta.file_type().is_symlink() {
+            return Err(crate::errors::FabioError::invalid_input(format!(
+                "Destination path is a symlink (refusing to follow): {dest_path}"
+            ))
+            .into());
+        }
+    }
+
     let data = client
         .download_onelake_file(workspace, id, source_path)
         .await?;
@@ -1751,7 +1761,10 @@ fn expand_local_glob(pattern: &str) -> Result<Vec<String>> {
                 let entry = entry.map_err(|e| {
                     crate::errors::FabioError::invalid_input(format!("Directory read error: {e}"))
                 })?;
-                if entry.file_type().is_ok_and(|ft| ft.is_file()) {
+                if entry
+                    .file_type()
+                    .is_ok_and(|ft| ft.is_file() && !ft.is_symlink())
+                {
                     files.push(entry.path().to_string_lossy().to_string());
                 }
             }
@@ -1772,7 +1785,12 @@ fn expand_local_glob(pattern: &str) -> Result<Vec<String>> {
             crate::errors::FabioError::invalid_input(format!("Invalid glob pattern: {e}"))
         })?
         .filter_map(Result::ok)
-        .filter(|p| p.is_file())
+        .filter(|p| {
+            p.is_file()
+                && !p
+                    .symlink_metadata()
+                    .is_ok_and(|m| m.file_type().is_symlink())
+        })
         .map(|p| p.to_string_lossy().to_string())
         .collect();
 

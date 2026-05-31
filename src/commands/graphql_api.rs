@@ -495,12 +495,16 @@ async fn graphql_query(
                 .and_then(|e| e.get("message"))
                 .and_then(Value::as_str)
                 .unwrap_or("GraphQL query returned errors");
-            return Err(FabioError::with_hint(
-                ErrorCode::ApiError,
-                message.to_string(),
-                format!("Full errors: {errors}"),
-            )
-            .into());
+            // Truncate full error details to avoid leaking server-side internals
+            let errors_str = errors.to_string();
+            let hint = if errors_str.len() > 500 {
+                format!("Errors (truncated): {}...", &errors_str[..500])
+            } else {
+                format!("Full errors: {errors_str}")
+            };
+            return Err(
+                FabioError::with_hint(ErrorCode::ApiError, message.to_string(), hint).into(),
+            );
         }
         // Partial response (data + errors) — render the full response including errors
         output::render_object(cli, &data, "data");

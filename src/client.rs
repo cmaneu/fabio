@@ -33,6 +33,16 @@ const LRO_MAX_WAIT: Duration = Duration::from_secs(120);
 /// Minimum remaining lifetime before a token is considered expired and re-acquired.
 const TOKEN_REFRESH_MARGIN: Duration = Duration::from_secs(300); // 5 minutes
 
+/// URL-encode each segment of a `OneLake` path while preserving `/` separators.
+/// Prevents query string injection (`?`), fragment injection (`#`), and ensures
+/// spaces and special characters are properly handled in DFS/Blob API URLs.
+fn encode_onelake_path(path: &str) -> String {
+    path.split('/')
+        .map(|seg| urlencoding::encode(seg))
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// Response from a paginated list endpoint.
 pub struct PaginatedResponse {
     /// Collected items across all fetched pages.
@@ -115,7 +125,7 @@ impl FabricClient {
             .timeout(Duration::from_secs(60))
             .redirect(reqwest::redirect::Policy::none())
             .build()
-            .expect("Failed to build HTTP client");
+            .unwrap_or_else(|_| Client::new());
 
         Self {
             http,
@@ -231,7 +241,8 @@ impl FabricClient {
         data: Vec<u8>,
     ) -> Result<Value> {
         let mut token = self.require_storage_auth().await?;
-        let base = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{path}");
+        let encoded_path = encode_onelake_path(path);
+        let base = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{encoded_path}");
 
         // Step 1: Create
         let resp = self
@@ -290,7 +301,8 @@ impl FabricClient {
         path: &str,
     ) -> Result<Vec<u8>> {
         let token = self.require_storage_auth().await?;
-        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{path}");
+        let encoded_path = encode_onelake_path(path);
+        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{encoded_path}");
 
         let resp = self
             .http
@@ -387,8 +399,14 @@ impl FabricClient {
         dst_path: &str,
     ) -> Result<Value> {
         let token = self.require_storage_auth().await?;
-        let source_url = format!("{ONELAKE_BLOB_URL}/{src_workspace}/{src_item}/{src_path}");
-        let dest_url = format!("{ONELAKE_BLOB_URL}/{dst_workspace}/{dst_item}/{dst_path}");
+        let source_url = format!(
+            "{ONELAKE_BLOB_URL}/{src_workspace}/{src_item}/{}",
+            encode_onelake_path(src_path)
+        );
+        let dest_url = format!(
+            "{ONELAKE_BLOB_URL}/{dst_workspace}/{dst_item}/{}",
+            encode_onelake_path(dst_path)
+        );
 
         let resp = self
             .http
@@ -445,7 +463,8 @@ impl FabricClient {
         path: &str,
     ) -> Result<Value> {
         let token = self.require_storage_auth().await?;
-        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{path}");
+        let encoded_path = encode_onelake_path(path);
+        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{encoded_path}");
 
         let resp = self
             .http
@@ -565,11 +584,29 @@ impl FabricClient {
         paginate: bool,
         start_token: Option<&str>,
     ) -> Result<PaginatedResponse> {
+        // Safety limit: prevent unbounded memory growth when --all fetches
+        // an unexpectedly large result set (e.g., 100K+ items on large tenants).
+        const MAX_PAGES: usize = 500;
+
         let token = self.require_auth().await?;
         let mut all_items: Vec<Value> = Vec::new();
         let mut continuation_token: Option<String> = start_token.map(String::from);
+        let mut page_count: usize = 0;
 
         loop {
+            page_count += 1;
+            if paginate && page_count > MAX_PAGES {
+                eprintln!(
+                    "Warning: pagination stopped after {MAX_PAGES} pages ({} items). \
+                     Use --continuation-token to resume.",
+                    all_items.len()
+                );
+                return Ok(PaginatedResponse {
+                    items: all_items,
+                    continuation_token,
+                });
+            }
+
             let url = continuation_token.as_ref().map_or_else(
                 || format!("{FABRIC_BASE_URL}{path}"),
                 |ct| {
@@ -1534,7 +1571,23 @@ async fn handle_response(resp: Response) -> Result<Value> {
     }
 
     if status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
+        // Read response body with size limit (protects against chunked transfer
+        // encoding that bypasses Content-Length check above).
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| FabioError::api_error(format!("Failed to read response body: {e}")))?;
+        if bytes.len() as u64 > MAX_API_RESPONSE_SIZE {
+            return Err(FabioError::new(
+                ErrorCode::ApiError,
+                format!(
+                    "Response body too large ({} bytes, max {MAX_API_RESPONSE_SIZE}).",
+                    bytes.len()
+                ),
+            )
+            .into());
+        }
+        let text = String::from_utf8_lossy(&bytes);
         if text.is_empty() {
             return Ok(Value::Null);
         }
