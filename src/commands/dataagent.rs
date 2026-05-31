@@ -453,35 +453,35 @@ async fn run_assistant_query(
         .build()
         .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
-    let auth_header = format!("Bearer {token}");
+    let auth_header = token;
 
     // Step 1: Create assistant + thread
-    let assistant_id = create_assistant(&http, base_url, &auth_header).await?;
-    let thread_id = create_thread(&http, base_url, &auth_header).await?;
+    let assistant_id = create_assistant(&http, base_url, auth_header).await?;
+    let thread_id = create_thread(&http, base_url, auth_header).await?;
 
     // Step 2: Post message and run
-    post_message(&http, base_url, &auth_header, &thread_id, question).await?;
-    let run_id = create_run(&http, base_url, &auth_header, &thread_id, &assistant_id).await?;
+    post_message(&http, base_url, auth_header, &thread_id, question).await?;
+    let run_id = create_run(&http, base_url, auth_header, &thread_id, &assistant_id).await?;
 
-    // Step 3: Poll for completion
-    poll_run_completion(&http, base_url, &auth_header, &thread_id, &run_id).await?;
+    // Step 3: Poll until complete
+    poll_run_completion(&http, base_url, auth_header, &thread_id, &run_id).await?;
 
-    // Step 4: Retrieve run steps (SQL queries, tool calls) if verbose
+    // Step 4 (optional): Retrieve run steps for verbose mode
     let steps = if verbose {
-        Some(retrieve_run_steps(&http, base_url, &auth_header, &thread_id, &run_id).await?)
+        Some(retrieve_run_steps(&http, base_url, auth_header, &thread_id, &run_id).await?)
     } else {
         None
     };
 
-    // Step 5: Retrieve response
-    let response_text = retrieve_response(&http, base_url, &auth_header, &thread_id).await?;
+    // Step 5: Get response
+    let response_text = retrieve_response(&http, base_url, auth_header, &thread_id).await?;
 
     // Step 6: Clean up thread (best effort)
     let _ = http
         .delete(format!(
             "{base_url}/threads/{thread_id}?api-version=2024-05-01-preview"
         ))
-        .header("Authorization", &auth_header)
+        .header("Authorization", auth_header)
         .send()
         .await;
 

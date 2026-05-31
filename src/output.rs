@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use base64::Engine as _;
 use comfy_table::{Cell, Table};
 use serde::Serialize;
@@ -63,17 +65,17 @@ pub fn render_list_with_token(
         None => data,
     };
 
-    #[allow(clippy::redundant_clone)]
     match cli.effective_output() {
         OutputFormat::Json => {
-            let display_items = if let Value::Array(ref arr) = output_data {
-                arr.clone()
-            } else {
-                vec![output_data.clone()]
+            // Consume output_data by move — no redundant clones
+            let display_items = match output_data {
+                Value::Array(arr) => arr,
+                other => vec![other],
             };
+            let count = display_items.len();
             let mut envelope = serde_json::json!({
-                "data": Value::Array(display_items.clone()),
-                "count": display_items.len()
+                "data": display_items,
+                "count": count
             });
             if truncated {
                 envelope["truncated"] = Value::Bool(true);
@@ -84,35 +86,41 @@ pub fn render_list_with_token(
             }
             println!("{}", serde_json::to_string(&envelope).unwrap());
         }
-        OutputFormat::Table => {
-            if let Value::Array(ref arr) = output_data {
-                render_table(arr, columns, headers);
-            } else {
-                render_table(limited_items, columns, headers);
-            }
-            if truncated {
-                println!(
-                    "... truncated ({} of {} items, use --limit to adjust)",
-                    limited_items.len(),
-                    items.len()
-                );
-            }
-            if continuation_token.is_some() {
-                println!("... more pages available (use --all to fetch all)");
-            }
-        }
-        OutputFormat::Plain => {
-            let arr = if let Value::Array(ref a) = output_data {
-                a.as_slice()
-            } else {
-                limited_items
-            };
-            for item in arr {
-                if let Some(val) = item.get(plain_key) {
-                    println!("{}", format_value(val));
-                } else {
-                    println!("{}", format_value(item));
+        output_format => {
+            // Table/Plain paths: borrow output_data by reference (no clone)
+            match output_format {
+                OutputFormat::Table => {
+                    if let Value::Array(ref arr) = output_data {
+                        render_table(arr, columns, headers);
+                    } else {
+                        render_table(limited_items, columns, headers);
+                    }
+                    if truncated {
+                        println!(
+                            "... truncated ({} of {} items, use --limit to adjust)",
+                            limited_items.len(),
+                            items.len()
+                        );
+                    }
+                    if continuation_token.is_some() {
+                        println!("... more pages available (use --all to fetch all)");
+                    }
                 }
+                OutputFormat::Plain => {
+                    let arr = if let Value::Array(ref a) = output_data {
+                        a.as_slice()
+                    } else {
+                        limited_items
+                    };
+                    for item in arr {
+                        if let Some(val) = item.get(plain_key) {
+                            println!("{}", format_value(val));
+                        } else {
+                            println!("{}", format_value(item));
+                        }
+                    }
+                }
+                OutputFormat::Json => unreachable!(),
             }
         }
     }
@@ -124,19 +132,22 @@ pub fn render_object(cli: &Cli, obj: &Value, plain_key: &str) {
         return;
     }
 
-    let output_data = cli
+    // Use Cow to avoid cloning when no query is applied (Table/Plain paths)
+    let output_data: Cow<'_, Value> = cli
         .query
         .as_ref()
-        .map_or_else(|| obj.clone(), |q| apply_query(obj, q));
+        .map_or(Cow::Borrowed(obj), |q| Cow::Owned(apply_query(obj, q)));
 
     match cli.effective_output() {
         OutputFormat::Json => {
-            let envelope = ObjectEnvelope { data: output_data };
+            let envelope = ObjectEnvelope {
+                data: output_data.into_owned(),
+            };
             println!("{}", serde_json::to_string(&envelope).unwrap());
         }
         OutputFormat::Table => {
             // For single objects, render as key-value pairs
-            if let Value::Object(map) = &output_data {
+            if let Value::Object(map) = output_data.as_ref() {
                 let mut table = Table::new();
                 table.set_header(vec!["KEY", "VALUE"]);
                 for (key, val) in map {
@@ -145,7 +156,7 @@ pub fn render_object(cli: &Cli, obj: &Value, plain_key: &str) {
                 println!("{table}");
             } else {
                 // Scalar result from query
-                println!("{}", format_value(&output_data));
+                println!("{}", format_value(output_data.as_ref()));
             }
         }
         OutputFormat::Plain => {
@@ -153,7 +164,7 @@ pub fn render_object(cli: &Cli, obj: &Value, plain_key: &str) {
                 println!("{}", format_value(val));
             } else {
                 // If output is a scalar or the key doesn't exist, print raw
-                match &output_data {
+                match output_data.as_ref() {
                     Value::String(s) => println!("{s}"),
                     Value::Null => {}
                     other => println!("{}", serde_json::to_string_pretty(other).unwrap()),

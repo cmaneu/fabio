@@ -702,6 +702,17 @@ fn scan_data_binding_files(dir: &Path, prefix: &str, parts: &mut Vec<Value>) -> 
     Ok(())
 }
 
+/// Helper struct for ordered serialization of `sourceTableProperties`.
+/// Guarantees `sourceType` is serialized first (struct field order), which is
+/// required by the Fabric API's ordered JSON deserializer.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OrderedSourceTableProperties {
+    source_type: Value,
+    #[serde(flatten)]
+    other: std::collections::BTreeMap<String, Value>,
+}
+
 /// Normalize a data binding JSON to ensure `sourceType` is the first key in
 /// `sourceTableProperties`. The Fabric API uses ordered JSON deserialization
 /// with `sourceType` as a discriminator field for the union type.
@@ -731,14 +742,22 @@ fn normalize_data_binding(content: &[u8]) -> Result<Vec<u8>> {
             .get_mut("sourceTableProperties")
             .and_then(Value::as_object_mut)
         {
-            // Extract sourceType and rebuild map with it first
+            // Extract sourceType and rebuild using struct serialization for guaranteed order
             if let Some(source_type) = source_props.remove("sourceType") {
-                let mut reordered = serde_json::Map::new();
-                reordered.insert("sourceType".to_string(), source_type);
-                for (k, v) in source_props.iter() {
-                    reordered.insert(k.clone(), v.clone());
+                let remaining: std::collections::BTreeMap<String, Value> = source_props
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                let ordered = OrderedSourceTableProperties {
+                    source_type,
+                    other: remaining,
+                };
+                // Serialize the ordered struct back to a Value and replace
+                let ordered_value = serde_json::to_value(&ordered)
+                    .map_err(|e| anyhow::anyhow!("Failed to reorder sourceTableProperties: {e}"))?;
+                if let Value::Object(new_map) = ordered_value {
+                    *source_props = new_map;
                 }
-                *source_props = reordered;
             }
         }
     }

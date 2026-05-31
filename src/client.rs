@@ -64,10 +64,21 @@ impl std::fmt::Display for CredentialSource {
 #[derive(Clone)]
 struct CachedToken {
     token: String,
+    /// Pre-formatted "Bearer {token}" header value to avoid per-request allocation.
+    bearer_header: String,
     expires_on: std::time::SystemTime,
 }
 
 impl CachedToken {
+    fn new(token: String, expires_on: std::time::SystemTime) -> Self {
+        let bearer_header = format!("Bearer {token}");
+        Self {
+            token,
+            bearer_header,
+            expires_on,
+        }
+    }
+
     fn is_expired(&self) -> bool {
         let now = std::time::SystemTime::now();
         self.expires_on
@@ -103,44 +114,48 @@ impl FabricClient {
     }
 
     /// Ensure we have a valid Fabric API token (auto-refreshes if near expiry).
+    /// Returns the pre-formatted "Bearer {token}" header value.
     pub async fn require_auth(&self) -> Result<String> {
         {
             let guard = self.fabric_token.read().await;
             if let Some(ref cached) = *guard {
                 if !cached.is_expired() {
-                    return Ok(cached.token.clone());
+                    return Ok(cached.bearer_header.clone());
                 }
             }
         }
 
         let (token, source) = acquire_token(FABRIC_SCOPE).await?;
+        let bearer = token.bearer_header.clone();
         let mut guard = self.fabric_token.write().await;
-        *guard = Some(token.clone());
+        *guard = Some(token);
         drop(guard);
 
         let mut src_guard = self.credential_source.write().await;
         *src_guard = Some(source);
         drop(src_guard);
 
-        Ok(token.token)
+        Ok(bearer)
     }
 
     /// Get a storage token for `OneLake` operations (auto-refreshes if near expiry).
+    /// Returns the pre-formatted "Bearer {token}" header value.
     pub async fn require_storage_auth(&self) -> Result<String> {
         {
             let guard = self.storage_token.read().await;
             if let Some(ref cached) = *guard {
                 if !cached.is_expired() {
-                    return Ok(cached.token.clone());
+                    return Ok(cached.bearer_header.clone());
                 }
             }
         }
 
         let (token, _source) = acquire_token(STORAGE_SCOPE).await?;
+        let bearer = token.bearer_header.clone();
         let mut guard = self.storage_token.write().await;
-        *guard = Some(token.clone());
+        *guard = Some(token);
         drop(guard);
-        Ok(token.token)
+        Ok(bearer)
     }
 
     /// Get a SQL token for TDS connections (scope: `database.windows.net`).
@@ -155,10 +170,11 @@ impl FabricClient {
         }
 
         let (token, _source) = acquire_token(SQL_SCOPE).await?;
+        let raw_token = token.token.clone();
         let mut guard = self.sql_token.write().await;
-        *guard = Some(token.clone());
+        *guard = Some(token);
         drop(guard);
-        Ok(token.token)
+        Ok(raw_token)
     }
 
     /// Get a token for an arbitrary scope (used for Kusto queries with dynamic query URIs).
@@ -186,10 +202,271 @@ impl FabricClient {
     }
 
     /// Invalidate the cached Storage token (forces re-acquisition on next request).
-    #[allow(dead_code)]
     async fn invalidate_storage_token(&self) {
         let mut guard = self.storage_token.write().await;
         *guard = None;
+    }
+
+    /// Upload a file to `OneLake` via DFS (create + append + flush).
+    /// Retries once on 401 with a fresh storage token.
+    pub async fn upload_onelake_file(
+        &self,
+        workspace: &str,
+        item: &str,
+        path: &str,
+        data: &[u8],
+    ) -> Result<Value> {
+        let mut token = self.require_storage_auth().await?;
+        let base = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{path}");
+
+        // Step 1: Create
+        let resp = self
+            .http
+            .put(format!("{base}?resource=file"))
+            .header(AUTHORIZATION, &token)
+            .header("Content-Length", "0")
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_storage_token().await;
+            token = self.require_storage_auth().await?;
+            self.http
+                .put(format!("{base}?resource=file"))
+                .header(AUTHORIZATION, &token)
+                .header("Content-Length", "0")
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        }
+
+        // Step 2: Append
+        self.http
+            .patch(format!("{base}?action=append&position=0"))
+            .header(AUTHORIZATION, &token)
+            .header("Content-Length", data.len().to_string())
+            .body(data.to_vec())
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        // Step 3: Flush
+        self.http
+            .patch(format!("{base}?action=flush&position={}", data.len()))
+            .header(AUTHORIZATION, &token)
+            .header("Content-Length", "0")
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        Ok(serde_json::json!({
+            "path": path,
+            "size": data.len(),
+            "status": "uploaded"
+        }))
+    }
+
+    /// Download a file from `OneLake` via DFS. Retries once on 401.
+    pub async fn download_onelake_file(
+        &self,
+        workspace: &str,
+        item: &str,
+        path: &str,
+    ) -> Result<Vec<u8>> {
+        let token = self.require_storage_auth().await?;
+        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{path}");
+
+        let resp = self
+            .http
+            .get(&url)
+            .header(AUTHORIZATION, &token)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_storage_token().await;
+            let token = self.require_storage_auth().await?;
+            let resp = self
+                .http
+                .get(&url)
+                .header(AUTHORIZATION, &token)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            if !resp.status().is_success() {
+                let status = resp.status().as_u16();
+                let text = resp.text().await.unwrap_or_default();
+                return Err(FabioError::from_status(status, text).into());
+            }
+            return Ok(resp.bytes().await?.to_vec());
+        }
+
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(FabioError::from_status(status, text).into());
+        }
+
+        Ok(resp.bytes().await?.to_vec())
+    }
+
+    /// List files in `OneLake` via DFS. Retries once on 401.
+    pub async fn list_onelake_files(
+        &self,
+        workspace: &str,
+        item: &str,
+        directory: Option<&str>,
+    ) -> Result<Vec<Value>> {
+        let token = self.require_storage_auth().await?;
+        let mut url =
+            format!("{ONELAKE_DFS_URL}/{workspace}/{item}?resource=filesystem&recursive=true");
+        if let Some(dir) = directory {
+            let _ = write!(url, "&directory={dir}");
+        }
+
+        let resp = self
+            .http
+            .get(&url)
+            .header(AUTHORIZATION, &token)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_storage_token().await;
+            let token = self.require_storage_auth().await?;
+            let resp = self
+                .http
+                .get(&url)
+                .header(AUTHORIZATION, &token)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            let body = handle_response(resp).await?;
+            let paths = body
+                .get("paths")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            return Ok(paths);
+        }
+
+        let body = handle_response(resp).await?;
+        let paths = body
+            .get("paths")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+
+        Ok(paths)
+    }
+
+    /// Server-side file copy via `OneLake` Blob API. Retries once on 401.
+    pub async fn copy_onelake_file(
+        &self,
+        src_workspace: &str,
+        src_item: &str,
+        src_path: &str,
+        dst_workspace: &str,
+        dst_item: &str,
+        dst_path: &str,
+    ) -> Result<Value> {
+        let token = self.require_storage_auth().await?;
+        let source_url = format!("{ONELAKE_BLOB_URL}/{src_workspace}/{src_item}/{src_path}");
+        let dest_url = format!("{ONELAKE_BLOB_URL}/{dst_workspace}/{dst_item}/{dst_path}");
+
+        let resp = self
+            .http
+            .put(&dest_url)
+            .header(AUTHORIZATION, &token)
+            .header("x-ms-copy-source", &source_url)
+            .header("Content-Length", "0")
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_storage_token().await;
+            let token = self.require_storage_auth().await?;
+            let resp = self
+                .http
+                .put(&dest_url)
+                .header(AUTHORIZATION, &token)
+                .header("x-ms-copy-source", &source_url)
+                .header("Content-Length", "0")
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            if !resp.status().is_success() && resp.status() != StatusCode::ACCEPTED {
+                let status = resp.status().as_u16();
+                let text = resp.text().await.unwrap_or_default();
+                return Err(FabioError::from_status(status, text).into());
+            }
+            return Ok(serde_json::json!({
+                "source": src_path,
+                "destination": dst_path,
+                "status": "copied"
+            }));
+        }
+
+        if !resp.status().is_success() && resp.status() != StatusCode::ACCEPTED {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(FabioError::from_status(status, text).into());
+        }
+
+        Ok(serde_json::json!({
+            "source": src_path,
+            "destination": dst_path,
+            "status": "copied"
+        }))
+    }
+
+    /// Delete a file from `OneLake` via DFS. Retries once on 401.
+    pub async fn delete_onelake_file(
+        &self,
+        workspace: &str,
+        item: &str,
+        path: &str,
+    ) -> Result<Value> {
+        let token = self.require_storage_auth().await?;
+        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{path}");
+
+        let resp = self
+            .http
+            .delete(&url)
+            .header(AUTHORIZATION, &token)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_storage_token().await;
+            let token = self.require_storage_auth().await?;
+            let resp = self
+                .http
+                .delete(&url)
+                .header(AUTHORIZATION, &token)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            if !resp.status().is_success() {
+                let status = resp.status().as_u16();
+                let text = resp.text().await.unwrap_or_default();
+                return Err(FabioError::from_status(status, text).into());
+            }
+        } else if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(FabioError::from_status(status, text).into());
+        }
+
+        Ok(serde_json::json!({
+            "path": path,
+            "status": "deleted"
+        }))
     }
 
     /// GET request to Fabric REST API (retries once on 401 with fresh token).
@@ -200,7 +477,7 @@ impl FabricClient {
         let resp = self
             .http
             .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -212,7 +489,7 @@ impl FabricClient {
             let resp = self
                 .http
                 .get(&url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -231,7 +508,7 @@ impl FabricClient {
         let resp = self
             .http
             .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -242,7 +519,7 @@ impl FabricClient {
             let resp = self
                 .http
                 .get(&url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -291,7 +568,7 @@ impl FabricClient {
             let resp = self
                 .http
                 .get(&url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -346,7 +623,7 @@ impl FabricClient {
             let resp = self
                 .http
                 .post(&url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .json(body)
                 .send()
                 .await
@@ -358,7 +635,7 @@ impl FabricClient {
                 let resp = self
                     .http
                     .post(&url)
-                    .header(AUTHORIZATION, format!("Bearer {token}"))
+                    .header(AUTHORIZATION, &token)
                     .json(body)
                     .send()
                     .await
@@ -373,7 +650,14 @@ impl FabricClient {
             let status_code = resp.status().as_u16();
             if (status_code == 429 || status_code == 430) && attempt < MAX_RATE_LIMIT_RETRIES {
                 attempt += 1;
-                let backoff_secs = 10u64 * u64::from(attempt); // 10s, 20s, 30s
+                // Respect Retry-After header if present, otherwise use fixed backoff
+                let backoff_secs = resp
+                    .headers()
+                    .get("Retry-After")
+                    .or_else(|| resp.headers().get("retry-after"))
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or_else(|| 10u64 * u64::from(attempt)); // fallback: 10s, 20s, 30s
                 eprintln!(
                     "Rate limited (HTTP {status_code}). Retrying in {backoff_secs}s (attempt {attempt}/{MAX_RATE_LIMIT_RETRIES})..."
                 );
@@ -397,7 +681,7 @@ impl FabricClient {
         let resp = self
             .http
             .post(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .header("Content-Type", "text/plain")
             .body(content.to_owned())
             .send()
@@ -410,7 +694,7 @@ impl FabricClient {
             let resp = self
                 .http
                 .post(&url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .header("Content-Type", "text/plain")
                 .body(content.to_owned())
                 .send()
@@ -436,7 +720,7 @@ impl FabricClient {
         let resp = self
             .http
             .post(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .json(body)
             .send()
             .await
@@ -448,7 +732,7 @@ impl FabricClient {
             let resp = self
                 .http
                 .post(&url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .json(body)
                 .send()
                 .await
@@ -505,7 +789,7 @@ impl FabricClient {
         let resp = self
             .http
             .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -516,7 +800,7 @@ impl FabricClient {
             let resp = self
                 .http
                 .get(&url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -541,7 +825,7 @@ impl FabricClient {
         let resp = self
             .http
             .patch(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .json(body)
             .send()
             .await
@@ -553,7 +837,7 @@ impl FabricClient {
             let resp = self
                 .http
                 .patch(&url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .json(body)
                 .send()
                 .await
@@ -572,7 +856,7 @@ impl FabricClient {
         let resp = self
             .http
             .put(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .json(body)
             .send()
             .await
@@ -584,7 +868,7 @@ impl FabricClient {
             let resp = self
                 .http
                 .put(&url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .json(body)
                 .send()
                 .await
@@ -603,7 +887,7 @@ impl FabricClient {
         let resp = self
             .http
             .put(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .header("Content-Type", "text/plain")
             .body(content.to_owned())
             .send()
@@ -616,7 +900,7 @@ impl FabricClient {
             let resp = self
                 .http
                 .put(&url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .header("Content-Type", "text/plain")
                 .body(content.to_owned())
                 .send()
@@ -636,7 +920,7 @@ impl FabricClient {
         let resp = self
             .http
             .delete(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -647,7 +931,7 @@ impl FabricClient {
             let resp = self
                 .http
                 .delete(&url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -667,7 +951,7 @@ impl FabricClient {
         let resp = self
             .http
             .patch(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .json(body)
             .send()
             .await
@@ -679,7 +963,7 @@ impl FabricClient {
             let resp = self
                 .http
                 .patch(&url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .json(body)
                 .send()
                 .await
@@ -697,7 +981,7 @@ impl FabricClient {
         let resp = self
             .http
             .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -708,7 +992,7 @@ impl FabricClient {
             let resp = self
                 .http
                 .get(&url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -725,7 +1009,7 @@ impl FabricClient {
         let resp = self
             .http
             .post(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .json(body)
             .send()
             .await
@@ -737,7 +1021,7 @@ impl FabricClient {
             let resp = self
                 .http
                 .post(&url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .json(body)
                 .send()
                 .await
@@ -748,179 +1032,7 @@ impl FabricClient {
         handle_response(resp).await
     }
 
-    /// Upload a file to `OneLake` via DFS (create + append + flush).
-    pub async fn upload_onelake_file(
-        &self,
-        workspace: &str,
-        item: &str,
-        path: &str,
-        data: &[u8],
-    ) -> Result<Value> {
-        let token = self.require_storage_auth().await?;
-        let base = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{path}");
-
-        // Step 1: Create
-        self.http
-            .put(format!("{base}?resource=file"))
-            .header(AUTHORIZATION, format!("Bearer {token}"))
-            .header("Content-Length", "0")
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        // Step 2: Append
-        self.http
-            .patch(format!("{base}?action=append&position=0"))
-            .header(AUTHORIZATION, format!("Bearer {token}"))
-            .header("Content-Length", data.len().to_string())
-            .body(data.to_vec())
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        // Step 3: Flush
-        self.http
-            .patch(format!("{base}?action=flush&position={}", data.len()))
-            .header(AUTHORIZATION, format!("Bearer {token}"))
-            .header("Content-Length", "0")
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        Ok(serde_json::json!({
-            "path": path,
-            "size": data.len(),
-            "status": "uploaded"
-        }))
-    }
-
-    /// Download a file from `OneLake` via DFS.
-    pub async fn download_onelake_file(
-        &self,
-        workspace: &str,
-        item: &str,
-        path: &str,
-    ) -> Result<Vec<u8>> {
-        let token = self.require_storage_auth().await?;
-        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{path}");
-
-        let resp = self
-            .http
-            .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status, text).into());
-        }
-
-        Ok(resp.bytes().await?.to_vec())
-    }
-
-    /// List files in `OneLake` via DFS.
-    pub async fn list_onelake_files(
-        &self,
-        workspace: &str,
-        item: &str,
-        directory: Option<&str>,
-    ) -> Result<Vec<Value>> {
-        let token = self.require_storage_auth().await?;
-        let mut url =
-            format!("{ONELAKE_DFS_URL}/{workspace}/{item}?resource=filesystem&recursive=true");
-        if let Some(dir) = directory {
-            let _ = write!(url, "&directory={dir}");
-        }
-
-        let resp = self
-            .http
-            .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        let body = handle_response(resp).await?;
-        let paths = body
-            .get("paths")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-
-        Ok(paths)
-    }
-
-    /// Server-side file copy via `OneLake` Blob API.
-    pub async fn copy_onelake_file(
-        &self,
-        src_workspace: &str,
-        src_item: &str,
-        src_path: &str,
-        dst_workspace: &str,
-        dst_item: &str,
-        dst_path: &str,
-    ) -> Result<Value> {
-        let token = self.require_storage_auth().await?;
-        let source_url = format!("{ONELAKE_BLOB_URL}/{src_workspace}/{src_item}/{src_path}");
-        let dest_url = format!("{ONELAKE_BLOB_URL}/{dst_workspace}/{dst_item}/{dst_path}");
-
-        let resp = self
-            .http
-            .put(&dest_url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
-            .header("x-ms-copy-source", &source_url)
-            .header("Content-Length", "0")
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        if !resp.status().is_success() && resp.status() != StatusCode::ACCEPTED {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status, text).into());
-        }
-
-        Ok(serde_json::json!({
-            "source": src_path,
-            "destination": dst_path,
-            "status": "copied"
-        }))
-    }
-
-    /// Delete a file from `OneLake` via DFS.
-    pub async fn delete_onelake_file(
-        &self,
-        workspace: &str,
-        item: &str,
-        path: &str,
-    ) -> Result<Value> {
-        let token = self.require_storage_auth().await?;
-        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{path}");
-
-        let resp = self
-            .http
-            .delete(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status, text).into());
-        }
-
-        Ok(serde_json::json!({
-            "path": path,
-            "status": "deleted"
-        }))
-    }
-
-    /// Get file properties from `OneLake` via DFS HEAD request.
+    /// Get file properties from `OneLake` via DFS HEAD request. Retries once on 401.
     /// Returns headers including `Content-MD5` and `ETag`.
     pub async fn get_file_properties(
         &self,
@@ -934,11 +1046,29 @@ impl FabricClient {
         let resp = self
             .http
             .head(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_storage_token().await;
+            let token = self.require_storage_auth().await?;
+            let resp = self
+                .http
+                .head(&url)
+                .header(AUTHORIZATION, &token)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return Self::extract_file_properties(resp, path).await;
+        }
+
+        Self::extract_file_properties(resp, path).await
+    }
+
+    /// Extract file properties from a HEAD response.
+    async fn extract_file_properties(resp: Response, path: &str) -> Result<Value> {
         if !resp.status().is_success() {
             let status = resp.status().as_u16();
             let text = resp.text().await.unwrap_or_default();
@@ -970,7 +1100,7 @@ impl FabricClient {
         }))
     }
 
-    /// Delete a directory recursively from `OneLake` via DFS.
+    /// Delete a directory recursively from `OneLake` via DFS. Retries once on 401.
     pub async fn delete_onelake_directory(
         &self,
         workspace: &str,
@@ -983,12 +1113,27 @@ impl FabricClient {
         let resp = self
             .http
             .delete(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
-        if !resp.status().is_success() {
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_storage_token().await;
+            let token = self.require_storage_auth().await?;
+            let resp = self
+                .http
+                .delete(&url)
+                .header(AUTHORIZATION, &token)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            if !resp.status().is_success() {
+                let status = resp.status().as_u16();
+                let text = resp.text().await.unwrap_or_default();
+                return Err(FabioError::from_status(status, text).into());
+            }
+        } else if !resp.status().is_success() {
             let status = resp.status().as_u16();
             let text = resp.text().await.unwrap_or_default();
             return Err(FabioError::from_status(status, text).into());
@@ -1010,7 +1155,7 @@ impl FabricClient {
         let resp = self
             .http
             .post(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(AUTHORIZATION, &token)
             .json(&serde_json::json!({}))
             .send()
             .await
@@ -1042,6 +1187,21 @@ impl FabricClient {
 
     /// Poll a long-running operation until completion.
     async fn poll_lro(&self, initial_response: Response) -> Result<Value> {
+        self.poll_lro_impl(initial_response, LRO_MAX_WAIT).await
+    }
+
+    /// Poll a long-running operation with a custom timeout.
+    async fn poll_lro_with_timeout(
+        &self,
+        initial_response: Response,
+        max_wait: Duration,
+    ) -> Result<Value> {
+        self.poll_lro_impl(initial_response, max_wait).await
+    }
+
+    /// Unified LRO polling implementation with token refresh for long-running operations.
+    #[allow(clippy::too_many_lines)]
+    async fn poll_lro_impl(&self, initial_response: Response, max_wait: Duration) -> Result<Value> {
         let location = initial_response
             .headers()
             .get("location")
@@ -1062,16 +1222,16 @@ impl FabricClient {
             return handle_response(initial_response).await;
         };
 
-        let token = self.require_auth().await?;
+        let mut token = self.require_auth().await?;
         let start = std::time::Instant::now();
 
         loop {
-            if start.elapsed() > LRO_MAX_WAIT {
+            if start.elapsed() > max_wait {
                 return Err(FabioError::with_hint(
                     ErrorCode::Timeout,
                     format!(
                         "LRO polling timed out after {}s (poll URL: {poll_url})",
-                        LRO_MAX_WAIT.as_secs()
+                        max_wait.as_secs()
                     ),
                     "The operation may still be running server-side. \
                      Check status with: fabio jobs list --workspace <WS>, or retry with a longer \
@@ -1083,10 +1243,15 @@ impl FabricClient {
 
             sleep(LRO_POLL_INTERVAL).await;
 
+            // Refresh token if elapsed > 4 minutes (prevents expiry during long polls)
+            if start.elapsed() > Duration::from_secs(240) {
+                token = self.require_auth().await?;
+            }
+
             let resp = self
                 .http
                 .get(&poll_url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
+                .header(AUTHORIZATION, &token)
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -1115,7 +1280,7 @@ impl FabricClient {
                             let final_resp = self
                                 .http
                                 .get(loc)
-                                .header(AUTHORIZATION, format!("Bearer {token}"))
+                                .header(AUTHORIZATION, &token)
                                 .send()
                                 .await
                                 .map_err(|e| {
@@ -1152,119 +1317,6 @@ impl FabricClient {
                 }
             }
             // Unexpected status
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status.as_u16(), text).into());
-        }
-    }
-
-    /// Poll a long-running operation with a custom timeout.
-    async fn poll_lro_with_timeout(
-        &self,
-        initial_response: Response,
-        max_wait: Duration,
-    ) -> Result<Value> {
-        let location = initial_response
-            .headers()
-            .get("location")
-            .or_else(|| initial_response.headers().get("Location"))
-            .and_then(|v| v.to_str().ok())
-            .map(String::from);
-
-        let operation_id = initial_response
-            .headers()
-            .get("x-ms-operation-id")
-            .and_then(|v| v.to_str().ok())
-            .map(String::from);
-
-        let Some(poll_url) = location
-            .or_else(|| operation_id.map(|op_id| format!("{FABRIC_BASE_URL}/operations/{op_id}")))
-        else {
-            return handle_response(initial_response).await;
-        };
-
-        let token = self.require_auth().await?;
-        let start = std::time::Instant::now();
-
-        loop {
-            if start.elapsed() > max_wait {
-                return Err(FabioError::with_hint(
-                    ErrorCode::Timeout,
-                    format!(
-                        "LRO polling timed out after {}s (poll URL: {poll_url})",
-                        max_wait.as_secs()
-                    ),
-                    "The operation may still be running server-side. \
-                     Check status with: fabio jobs list --workspace <WS>, or retry with a longer \
-                     --timeout if supported.",
-                )
-                .into());
-            }
-
-            sleep(LRO_POLL_INTERVAL).await;
-
-            let resp = self
-                .http
-                .get(&poll_url)
-                .header(AUTHORIZATION, format!("Bearer {token}"))
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-            let status = resp.status();
-            if status == StatusCode::OK
-                || status == StatusCode::CREATED
-                || status == StatusCode::ACCEPTED
-            {
-                let resource_location = resp
-                    .headers()
-                    .get("location")
-                    .or_else(|| resp.headers().get("Location"))
-                    .and_then(|v| v.to_str().ok())
-                    .map(String::from);
-
-                let body: Value = resp.json().await.unwrap_or(Value::Null);
-                let op_status = body.get("status").and_then(Value::as_str).unwrap_or("");
-
-                match op_status {
-                    "Succeeded" | "succeeded" => {
-                        if let Some(ref loc) = resource_location {
-                            let final_resp = self
-                                .http
-                                .get(loc)
-                                .header(AUTHORIZATION, format!("Bearer {token}"))
-                                .send()
-                                .await
-                                .map_err(|e| {
-                                    FabioError::new(ErrorCode::NetworkError, e.to_string())
-                                })?;
-                            if final_resp.status().is_success() {
-                                let final_body: Value =
-                                    final_resp.json().await.unwrap_or(Value::Null);
-                                if !final_body.is_null() {
-                                    return Ok(final_body);
-                                }
-                            }
-                        }
-                        return Ok(body);
-                    }
-                    "Failed" | "failed" => {
-                        let msg = body
-                            .get("error")
-                            .and_then(|e| e.get("message"))
-                            .and_then(Value::as_str)
-                            .unwrap_or("LRO failed");
-                        return Err(FabioError::api_error(msg).into());
-                    }
-                    _ => {
-                        if op_status.is_empty()
-                            && (status == StatusCode::OK || status == StatusCode::CREATED)
-                        {
-                            return Ok(body);
-                        }
-                        continue;
-                    }
-                }
-            }
             let text = resp.text().await.unwrap_or_default();
             return Err(FabioError::from_status(status.as_u16(), text).into());
         }
@@ -1323,10 +1375,7 @@ async fn try_fabio_cache(scope: &str) -> Option<Result<(CachedToken, CredentialS
 
     let expires_on = std::time::UNIX_EPOCH + std::time::Duration::from_secs(data.expires_on);
     Some(Ok((
-        CachedToken {
-            token: data.access_token,
-            expires_on,
-        },
+        CachedToken::new(data.access_token, expires_on),
         CredentialSource::FabioCache,
     )))
 }
@@ -1362,10 +1411,7 @@ async fn try_environment_credential(
         Ok(token) => {
             let expires_on = std::time::SystemTime::from(token.expires_on);
             Some(Ok((
-                CachedToken {
-                    token: token.token.secret().to_string(),
-                    expires_on,
-                },
+                CachedToken::new(token.token.secret().to_string(), expires_on),
                 CredentialSource::Environment,
             )))
         }
@@ -1404,10 +1450,7 @@ async fn try_managed_identity_credential(
         Ok(token) => {
             let expires_on = std::time::SystemTime::from(token.expires_on);
             Some(Ok((
-                CachedToken {
-                    token: token.token.secret().to_string(),
-                    expires_on,
-                },
+                CachedToken::new(token.token.secret().to_string(), expires_on),
                 CredentialSource::ManagedIdentity,
             )))
         }
@@ -1422,10 +1465,7 @@ async fn try_developer_tools_credential(scope: &str) -> Result<(CachedToken, Cre
         if let Ok(token) = credential.get_token(&[scope], None).await {
             let expires_on = std::time::SystemTime::from(token.expires_on);
             return Ok((
-                CachedToken {
-                    token: token.token.secret().to_string(),
-                    expires_on,
-                },
+                CachedToken::new(token.token.secret().to_string(), expires_on),
                 CredentialSource::AzureCli,
             ));
         }
@@ -1436,10 +1476,7 @@ async fn try_developer_tools_credential(scope: &str) -> Result<(CachedToken, Cre
         if let Ok(token) = credential.get_token(&[scope], None).await {
             let expires_on = std::time::SystemTime::from(token.expires_on);
             return Ok((
-                CachedToken {
-                    token: token.token.secret().to_string(),
-                    expires_on,
-                },
+                CachedToken::new(token.token.secret().to_string(), expires_on),
                 CredentialSource::AzureDeveloperCli,
             ));
         }

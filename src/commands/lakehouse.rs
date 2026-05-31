@@ -2311,12 +2311,76 @@ async fn copy_table(
     let tables = expand_table_glob(client, src_ws, src_id, src_table).await?;
 
     if tables.len() > 1 {
-        // Multiple tables — process each (dest_table is ignored for globs)
-        eprintln!("  Copying {} tables...", tables.len());
+        use crate::parallel::{self, BatchSummary};
+
+        // Multiple tables — list files once and copy all in parallel
+        let concurrency = parallel::default_concurrency();
+        eprintln!(
+            "  Copying {} tables with concurrency={concurrency}...",
+            tables.len()
+        );
+
+        // Single root listing shared across all table copies
+        let files = client.list_onelake_files(src_ws, src_id, None).await?;
+
+        // Build all copy tasks across all tables
+        let mut copy_tasks: Vec<(String, String)> = Vec::new();
         for tbl in &tables {
-            copy_single_table(cli, client, src_ws, src_id, tbl, dst_ws, dst_id, tbl, true).await?;
+            let prefix = format!("{src_id}/Tables/{tbl}/");
+            for file in &files {
+                if let Some(name) = file.get("name").and_then(Value::as_str) {
+                    let is_dir = file
+                        .get("isDirectory")
+                        .and_then(Value::as_str)
+                        .unwrap_or("false")
+                        == "true";
+                    if is_dir {
+                        continue;
+                    }
+                    if let Some(relative) = name.strip_prefix(&prefix) {
+                        let src_path = format!("Tables/{tbl}/{relative}");
+                        let dst_path = format!("Tables/{tbl}/{relative}");
+                        copy_tasks.push((src_path, dst_path));
+                    }
+                }
+            }
         }
-        return Ok(());
+
+        if copy_tasks.is_empty() {
+            let obj = serde_json::json!({
+                "tablesCopied": tables.len(),
+                "filesCopied": 0,
+                "status": "copied"
+            });
+            output::render_object(cli, &obj, "status");
+            return Ok(());
+        }
+
+        let item_names: Vec<String> = copy_tasks.iter().map(|(s, _)| s.clone()).collect();
+        let src_ws = src_ws.to_string();
+        let src_id = src_id.to_string();
+        let dst_ws = dst_ws.to_string();
+        let dst_id = dst_id.to_string();
+        let client = client.clone();
+
+        let results =
+            parallel::execute_parallel(copy_tasks, concurrency, move |(src_path, dst_path)| {
+                let client = client.clone();
+                let src_ws = src_ws.clone();
+                let src_id = src_id.clone();
+                let dst_ws = dst_ws.clone();
+                let dst_id = dst_id.clone();
+                async move {
+                    client
+                        .copy_onelake_file(&src_ws, &src_id, &src_path, &dst_ws, &dst_id, &dst_path)
+                        .await?;
+                    Ok(())
+                }
+            })
+            .await;
+
+        let summary = BatchSummary::from_results(&results, &item_names);
+        return render_batch_result(cli, &summary, "copied");
     }
 
     let table_name = &tables[0];
@@ -2447,7 +2511,7 @@ async fn copy_single_table(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn move_table(
     cli: &Cli,
     client: &FabricClient,
@@ -2461,17 +2525,110 @@ async fn move_table(
     let tables = expand_table_glob(client, src_ws, src_id, src_table).await?;
 
     if tables.len() > 1 {
-        // Multiple tables — move each (dest_table is ignored for globs)
-        eprintln!("  Moving {} tables...", tables.len());
+        use crate::parallel::{self, BatchSummary};
+
+        // Multiple tables — copy all files in parallel, then delete sources in parallel
+        let concurrency = parallel::default_concurrency();
+        eprintln!(
+            "  Moving {} tables with concurrency={concurrency}...",
+            tables.len()
+        );
+
+        // Single root listing shared across all table copies
+        let files = client.list_onelake_files(src_ws, src_id, None).await?;
+
+        // Build all copy tasks across all tables
+        let mut copy_tasks: Vec<(String, String)> = Vec::new();
         for tbl in &tables {
-            copy_single_table(cli, client, src_ws, src_id, tbl, dst_ws, dst_id, tbl, false).await?;
-            let path = format!("Tables/{tbl}");
-            client
-                .delete_onelake_directory(src_ws, src_id, &path)
-                .await?;
-            eprintln!("  ✓ moved table '{tbl}'");
+            let prefix = format!("{src_id}/Tables/{tbl}/");
+            for file in &files {
+                if let Some(name) = file.get("name").and_then(Value::as_str) {
+                    let is_dir = file
+                        .get("isDirectory")
+                        .and_then(Value::as_str)
+                        .unwrap_or("false")
+                        == "true";
+                    if is_dir {
+                        continue;
+                    }
+                    if let Some(relative) = name.strip_prefix(&prefix) {
+                        let src_path = format!("Tables/{tbl}/{relative}");
+                        let dst_path = format!("Tables/{tbl}/{relative}");
+                        copy_tasks.push((src_path, dst_path));
+                    }
+                }
+            }
         }
-        return Ok(());
+
+        // Phase 1: Copy all files in parallel
+        if !copy_tasks.is_empty() {
+            let item_names: Vec<String> = copy_tasks.iter().map(|(s, _)| s.clone()).collect();
+            let src_ws_c = src_ws.to_string();
+            let src_id_c = src_id.to_string();
+            let dst_ws_c = dst_ws.to_string();
+            let dst_id_c = dst_id.to_string();
+            let client_c = client.clone();
+
+            let results =
+                parallel::execute_parallel(copy_tasks, concurrency, move |(src_path, dst_path)| {
+                    let client = client_c.clone();
+                    let src_ws = src_ws_c.clone();
+                    let src_id = src_id_c.clone();
+                    let dst_ws = dst_ws_c.clone();
+                    let dst_id = dst_id_c.clone();
+                    async move {
+                        client
+                            .copy_onelake_file(
+                                &src_ws, &src_id, &src_path, &dst_ws, &dst_id, &dst_path,
+                            )
+                            .await?;
+                        Ok(())
+                    }
+                })
+                .await;
+
+            let summary = BatchSummary::from_results(&results, &item_names);
+            if !summary.all_succeeded() {
+                let obj = serde_json::json!({
+                    "filesCopied": summary.succeeded,
+                    "filesFailed": summary.failed,
+                    "failures": summary.failures,
+                    "status": "partial_failure"
+                });
+                output::render_object(cli, &obj, "status");
+                return Err(crate::errors::FabioError::new(
+                    crate::errors::ErrorCode::ApiError,
+                    format!(
+                        "Move aborted: copy phase partially failed ({}/{} files copied). Source tables not deleted.",
+                        summary.succeeded, summary.total
+                    ),
+                )
+                .into());
+            }
+        }
+
+        // Phase 2: Delete all source tables in parallel (only after ALL copies succeeded)
+        let del_item_names = tables.clone();
+        let src_ws_d = src_ws.to_string();
+        let src_id_d = src_id.to_string();
+        let client_d = client.clone();
+
+        let del_results = parallel::execute_parallel(tables, concurrency, move |tbl| {
+            let client = client_d.clone();
+            let src_ws = src_ws_d.clone();
+            let src_id = src_id_d.clone();
+            async move {
+                let path = format!("Tables/{tbl}");
+                client
+                    .delete_onelake_directory(&src_ws, &src_id, &path)
+                    .await?;
+                Ok(())
+            }
+        })
+        .await;
+
+        let del_summary = BatchSummary::from_results(&del_results, &del_item_names);
+        return render_batch_result(cli, &del_summary, "moved");
     }
 
     let table_name = &tables[0];
