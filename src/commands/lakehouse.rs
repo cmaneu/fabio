@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::Result;
 use clap::Subcommand;
@@ -1187,7 +1188,7 @@ async fn upload(
             ))
         })?;
         let result = client
-            .upload_onelake_file(workspace, id, dest_path, &data)
+            .upload_onelake_file(workspace, id, dest_path, data)
             .await?;
         output::render_object(cli, &result, "status");
         return Ok(());
@@ -1200,7 +1201,6 @@ async fn upload(
         local_files.len()
     );
 
-    let item_names: Vec<String> = local_files.clone();
     let upload_tasks: Vec<(String, String)> = local_files
         .into_iter()
         .map(|local| {
@@ -1213,15 +1213,16 @@ async fn upload(
             (local, remote)
         })
         .collect();
+    let item_names: Vec<String> = upload_tasks.iter().map(|(l, _)| l.clone()).collect();
 
-    let workspace = workspace.to_string();
-    let id = id.to_string();
+    let workspace: Arc<str> = Arc::from(workspace);
+    let id: Arc<str> = Arc::from(id);
     let client = client.clone();
 
     let results = parallel::execute_parallel(upload_tasks, concurrency, move |(local, remote)| {
         let client = client.clone();
-        let workspace = workspace.clone();
-        let id = id.clone();
+        let workspace = Arc::clone(&workspace);
+        let id = Arc::clone(&id);
         async move {
             let data = tokio::fs::read(&local).await.map_err(|e| {
                 anyhow::anyhow!(
@@ -1232,7 +1233,7 @@ async fn upload(
                 )
             })?;
             client
-                .upload_onelake_file(&workspace, &id, &remote, &data)
+                .upload_onelake_file(&workspace, &id, &remote, data)
                 .await?;
             Ok(())
         }
@@ -1471,7 +1472,7 @@ async fn upload_table(
 
     eprintln!("  Uploading {source_path} to {staging_path}...");
     client
-        .upload_onelake_file(workspace, id, &staging_path, &data)
+        .upload_onelake_file(workspace, id, &staging_path, data)
         .await?;
 
     // Step 2: Load the uploaded file into the Delta table
@@ -1578,7 +1579,6 @@ async fn copy_file(
         matched_files.len()
     );
 
-    let item_names: Vec<String> = matched_files.clone();
     let copy_tasks: Vec<(String, String)> = matched_files
         .into_iter()
         .map(|src| {
@@ -1587,19 +1587,20 @@ async fn copy_file(
             (src, dest)
         })
         .collect();
+    let item_names: Vec<String> = copy_tasks.iter().map(|(s, _)| s.clone()).collect();
 
-    let src_ws = src_ws.to_string();
-    let src_id = src_id.to_string();
-    let dst_ws = dst_ws.to_string();
-    let dst_id = dst_id.to_string();
+    let src_ws: Arc<str> = Arc::from(src_ws);
+    let src_id: Arc<str> = Arc::from(src_id);
+    let dst_ws: Arc<str> = Arc::from(dst_ws);
+    let dst_id: Arc<str> = Arc::from(dst_id);
     let client = client.clone();
 
     let results = parallel::execute_parallel(copy_tasks, concurrency, move |(src, dest)| {
         let client = client.clone();
-        let src_ws = src_ws.clone();
-        let src_id = src_id.clone();
-        let dst_ws = dst_ws.clone();
-        let dst_id = dst_id.clone();
+        let src_ws = Arc::clone(&src_ws);
+        let src_id = Arc::clone(&src_id);
+        let dst_ws = Arc::clone(&dst_ws);
+        let dst_id = Arc::clone(&dst_id);
         async move {
             client
                 .copy_onelake_file(&src_ws, &src_id, &src, &dst_ws, &dst_id, &dest)
@@ -1664,7 +1665,6 @@ async fn move_file(
         matched_files.len()
     );
 
-    let item_names: Vec<String> = matched_files.clone();
     let copy_tasks: Vec<(String, String)> = matched_files
         .iter()
         .map(|src| {
@@ -1673,19 +1673,20 @@ async fn move_file(
             (src.clone(), dest)
         })
         .collect();
+    let item_names: Vec<String> = matched_files.clone();
 
-    let src_ws_owned = src_ws.to_string();
-    let src_id_owned = src_id.to_string();
-    let dst_ws_owned = dst_ws.to_string();
-    let dst_id_owned = dst_id.to_string();
+    let src_ws_arc: Arc<str> = Arc::from(src_ws);
+    let src_id_arc: Arc<str> = Arc::from(src_id);
+    let dst_ws_arc: Arc<str> = Arc::from(dst_ws);
+    let dst_id_arc: Arc<str> = Arc::from(dst_id);
     let client_clone = client.clone();
 
     let results = parallel::execute_parallel(copy_tasks, concurrency, move |(src, dest)| {
         let client = client_clone.clone();
-        let sw = src_ws_owned.clone();
-        let si = src_id_owned.clone();
-        let dw = dst_ws_owned.clone();
-        let di = dst_id_owned.clone();
+        let sw = Arc::clone(&src_ws_arc);
+        let si = Arc::clone(&src_id_arc);
+        let dw = Arc::clone(&dst_ws_arc);
+        let di = Arc::clone(&dst_id_arc);
         async move {
             client
                 .copy_onelake_file(&sw, &si, &src, &dw, &di, &dest)
@@ -1702,15 +1703,15 @@ async fn move_file(
     }
 
     // All copies succeeded — now delete sources in parallel
-    let src_ws_owned = src_ws.to_string();
-    let src_id_owned = src_id.to_string();
+    let src_ws_arc: Arc<str> = Arc::from(src_ws);
+    let src_id_arc: Arc<str> = Arc::from(src_id);
     let client_clone = client.clone();
 
     let delete_results =
         parallel::execute_parallel(matched_files.clone(), concurrency, move |src| {
             let client = client_clone.clone();
-            let sw = src_ws_owned.clone();
-            let si = src_id_owned.clone();
+            let sw = Arc::clone(&src_ws_arc);
+            let si = Arc::clone(&src_id_arc);
             async move {
                 client.delete_onelake_file(&sw, &si, &src).await?;
                 Ok(())
@@ -2013,18 +2014,18 @@ async fn sync_files(
             .map(|rel| (format!("{src_path}/{rel}"), format!("{dst_path}/{rel}")))
             .collect();
         let item_names: Vec<String> = to_copy.clone();
-        let sw = src_ws.to_string();
-        let si = src_id.to_string();
-        let dw = dst_ws.to_string();
-        let di = dst_id.to_string();
+        let sw: Arc<str> = Arc::from(src_ws);
+        let si: Arc<str> = Arc::from(src_id);
+        let dw: Arc<str> = Arc::from(dst_ws);
+        let di: Arc<str> = Arc::from(dst_id);
         let cc = client.clone();
 
         let results = parallel::execute_parallel(copy_tasks, concurrency, move |(src, dst)| {
             let c = cc.clone();
-            let sw = sw.clone();
-            let si = si.clone();
-            let dw = dw.clone();
-            let di = di.clone();
+            let sw = Arc::clone(&sw);
+            let si = Arc::clone(&si);
+            let dw = Arc::clone(&dw);
+            let di = Arc::clone(&di);
             async move {
                 c.copy_onelake_file(&sw, &si, &src, &dw, &di, &dst).await?;
                 Ok(())
@@ -2044,14 +2045,14 @@ async fn sync_files(
             .map(|rel| format!("{dst_path}/{rel}"))
             .collect();
         let item_names: Vec<String> = to_delete.clone();
-        let dw = dst_ws.to_string();
-        let di = dst_id.to_string();
+        let dw: Arc<str> = Arc::from(dst_ws);
+        let di: Arc<str> = Arc::from(dst_id);
         let cc = client.clone();
 
         let results = parallel::execute_parallel(delete_tasks, concurrency, move |path| {
             let c = cc.clone();
-            let dw = dw.clone();
-            let di = di.clone();
+            let dw = Arc::clone(&dw);
+            let di = Arc::clone(&di);
             async move {
                 c.delete_onelake_file(&dw, &di, &path).await?;
                 Ok(())
@@ -2180,13 +2181,13 @@ async fn compute_checksum_diff(
         .iter()
         .map(|rel| format!("{src_path}/{rel}"))
         .collect();
-    let sw = src_ws.to_string();
-    let si = src_id.to_string();
+    let sw: Arc<str> = Arc::from(src_ws);
+    let si: Arc<str> = Arc::from(src_id);
     let cc = client.clone();
     let src_results = parallel::execute_parallel(src_tasks, concurrency, move |path| {
         let c = cc.clone();
-        let sw = sw.clone();
-        let si = si.clone();
+        let sw = Arc::clone(&sw);
+        let si = Arc::clone(&si);
         async move {
             let props = c.get_file_properties(&sw, &si, &path).await?;
             Ok(props)
@@ -2199,13 +2200,13 @@ async fn compute_checksum_diff(
         .iter()
         .map(|rel| format!("{dst_path}/{rel}"))
         .collect();
-    let dw = dst_ws.to_string();
-    let di = dst_id.to_string();
+    let dw: Arc<str> = Arc::from(dst_ws);
+    let di: Arc<str> = Arc::from(dst_id);
     let cc = client.clone();
     let dst_results = parallel::execute_parallel(dst_tasks, concurrency, move |path| {
         let c = cc.clone();
-        let dw = dw.clone();
-        let di = di.clone();
+        let dw = Arc::clone(&dw);
+        let di = Arc::clone(&di);
         async move {
             let props = c.get_file_properties(&dw, &di, &path).await?;
             Ok(props)
@@ -2275,14 +2276,14 @@ async fn delete_table(
     );
 
     let item_names = tables.clone();
-    let workspace = workspace.to_string();
-    let id = id.to_string();
+    let workspace: Arc<str> = Arc::from(workspace);
+    let id: Arc<str> = Arc::from(id);
     let client = client.clone();
 
     let results = parallel::execute_parallel(tables, concurrency, move |tbl| {
         let client = client.clone();
-        let workspace = workspace.clone();
-        let id = id.clone();
+        let workspace = Arc::clone(&workspace);
+        let id = Arc::clone(&id);
         async move {
             let path = format!("Tables/{tbl}");
             client
@@ -2357,19 +2358,19 @@ async fn copy_table(
         }
 
         let item_names: Vec<String> = copy_tasks.iter().map(|(s, _)| s.clone()).collect();
-        let src_ws = src_ws.to_string();
-        let src_id = src_id.to_string();
-        let dst_ws = dst_ws.to_string();
-        let dst_id = dst_id.to_string();
+        let src_ws: Arc<str> = Arc::from(src_ws);
+        let src_id: Arc<str> = Arc::from(src_id);
+        let dst_ws: Arc<str> = Arc::from(dst_ws);
+        let dst_id: Arc<str> = Arc::from(dst_id);
         let client = client.clone();
 
         let results =
             parallel::execute_parallel(copy_tasks, concurrency, move |(src_path, dst_path)| {
                 let client = client.clone();
-                let src_ws = src_ws.clone();
-                let src_id = src_id.clone();
-                let dst_ws = dst_ws.clone();
-                let dst_id = dst_id.clone();
+                let src_ws = Arc::clone(&src_ws);
+                let src_id = Arc::clone(&src_id);
+                let dst_ws = Arc::clone(&dst_ws);
+                let dst_id = Arc::clone(&dst_id);
                 async move {
                     client
                         .copy_onelake_file(&src_ws, &src_id, &src_path, &dst_ws, &dst_id, &dst_path)
@@ -2453,19 +2454,19 @@ async fn copy_single_table(
 
     let item_names: Vec<String> = copy_tasks.iter().map(|(s, _)| s.clone()).collect();
 
-    let src_ws = src_ws.to_string();
-    let src_id = src_id.to_string();
-    let dst_ws = dst_ws.to_string();
-    let dst_id = dst_id.to_string();
+    let src_ws: Arc<str> = Arc::from(src_ws);
+    let src_id: Arc<str> = Arc::from(src_id);
+    let dst_ws: Arc<str> = Arc::from(dst_ws);
+    let dst_id: Arc<str> = Arc::from(dst_id);
     let client = client.clone();
 
     let results =
         parallel::execute_parallel(copy_tasks, concurrency, move |(src_path, dst_path)| {
             let client = client.clone();
-            let src_ws = src_ws.clone();
-            let src_id = src_id.clone();
-            let dst_ws = dst_ws.clone();
-            let dst_id = dst_id.clone();
+            let src_ws = Arc::clone(&src_ws);
+            let src_id = Arc::clone(&src_id);
+            let dst_ws = Arc::clone(&dst_ws);
+            let dst_id = Arc::clone(&dst_id);
             async move {
                 client
                     .copy_onelake_file(&src_ws, &src_id, &src_path, &dst_ws, &dst_id, &dst_path)
@@ -2563,19 +2564,19 @@ async fn move_table(
         // Phase 1: Copy all files in parallel
         if !copy_tasks.is_empty() {
             let item_names: Vec<String> = copy_tasks.iter().map(|(s, _)| s.clone()).collect();
-            let src_ws_c = src_ws.to_string();
-            let src_id_c = src_id.to_string();
-            let dst_ws_c = dst_ws.to_string();
-            let dst_id_c = dst_id.to_string();
+            let src_ws_c: Arc<str> = Arc::from(src_ws);
+            let src_id_c: Arc<str> = Arc::from(src_id);
+            let dst_ws_c: Arc<str> = Arc::from(dst_ws);
+            let dst_id_c: Arc<str> = Arc::from(dst_id);
             let client_c = client.clone();
 
             let results =
                 parallel::execute_parallel(copy_tasks, concurrency, move |(src_path, dst_path)| {
                     let client = client_c.clone();
-                    let src_ws = src_ws_c.clone();
-                    let src_id = src_id_c.clone();
-                    let dst_ws = dst_ws_c.clone();
-                    let dst_id = dst_id_c.clone();
+                    let src_ws = Arc::clone(&src_ws_c);
+                    let src_id = Arc::clone(&src_id_c);
+                    let dst_ws = Arc::clone(&dst_ws_c);
+                    let dst_id = Arc::clone(&dst_id_c);
                     async move {
                         client
                             .copy_onelake_file(
@@ -2609,14 +2610,14 @@ async fn move_table(
 
         // Phase 2: Delete all source tables in parallel (only after ALL copies succeeded)
         let del_item_names = tables.clone();
-        let src_ws_d = src_ws.to_string();
-        let src_id_d = src_id.to_string();
+        let src_ws_d: Arc<str> = Arc::from(src_ws);
+        let src_id_d: Arc<str> = Arc::from(src_id);
         let client_d = client.clone();
 
         let del_results = parallel::execute_parallel(tables, concurrency, move |tbl| {
             let client = client_d.clone();
-            let src_ws = src_ws_d.clone();
-            let src_id = src_id_d.clone();
+            let src_ws = Arc::clone(&src_ws_d);
+            let src_id = Arc::clone(&src_id_d);
             async move {
                 let path = format!("Tables/{tbl}");
                 client
@@ -2817,7 +2818,7 @@ async fn get_definition(
         .await
         .map_err(|e| enrich_forbidden(e, "lakehouse get-definition", "Contributor"))?;
     if decode {
-        let decoded = output::decode_definition_parts(&data);
+        let decoded = output::decode_definition_parts(data);
         output::render_object(cli, &decoded, "definition");
     } else {
         output::render_object(cli, &data, "definition");

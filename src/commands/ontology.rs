@@ -346,7 +346,7 @@ async fn get_definition(
     let data = client.post(&path, &serde_json::json!({}), true).await?;
 
     if decode {
-        let decoded = decode_definition_parts(&data);
+        let decoded = decode_definition_parts(data);
         output::render_object(cli, &decoded, "definition");
     } else {
         output::render_object(cli, &data, "definition");
@@ -355,10 +355,8 @@ async fn get_definition(
 }
 
 /// Decode base64 payloads in definition parts to readable JSON/text.
-fn decode_definition_parts(data: &Value) -> Value {
-    let mut result = data.clone();
-
-    if let Some(parts) = result
+fn decode_definition_parts(mut data: Value) -> Value {
+    if let Some(parts) = data
         .get_mut("definition")
         .and_then(|d| d.get_mut("parts"))
         .and_then(|p| p.as_array_mut())
@@ -379,7 +377,7 @@ fn decode_definition_parts(data: &Value) -> Value {
         }
     }
 
-    result
+    data
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1327,7 +1325,7 @@ GRAPH :EventGraph {
             }
         });
 
-        let decoded = decode_definition_parts(&data);
+        let decoded = decode_definition_parts(data);
         let parts = decoded["definition"]["parts"].as_array().unwrap();
 
         // First part: empty JSON
@@ -1353,7 +1351,7 @@ GRAPH :EventGraph {
             }
         });
 
-        let decoded = decode_definition_parts(&data);
+        let decoded = decode_definition_parts(data);
         let parts = decoded["definition"]["parts"].as_array().unwrap();
 
         // Non-JSON text is stored as string
@@ -1374,7 +1372,7 @@ GRAPH :EventGraph {
             }
         });
 
-        let decoded = decode_definition_parts(&data);
+        let decoded = decode_definition_parts(data);
         let part = &decoded["definition"]["parts"][0];
 
         // Original fields preserved
@@ -1386,7 +1384,7 @@ GRAPH :EventGraph {
     #[test]
     fn decode_definition_parts_no_definition_field() {
         let data = serde_json::json!({"other": "value"});
-        let decoded = decode_definition_parts(&data);
+        let decoded = decode_definition_parts(data);
         // Should not crash, just return the input unchanged
         assert_eq!(decoded["other"], "value");
     }
@@ -1406,7 +1404,7 @@ GRAPH :EventGraph {
             }
         });
 
-        let decoded = decode_definition_parts(&data);
+        let decoded = decode_definition_parts(data);
         let part = &decoded["definition"]["parts"][0];
         // Binary content cannot be decoded to UTF-8, so no decodedPayload
         assert!(part.get("decodedPayload").is_none());

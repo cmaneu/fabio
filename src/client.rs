@@ -209,12 +209,13 @@ impl FabricClient {
 
     /// Upload a file to `OneLake` via DFS (create + append + flush).
     /// Retries once on 401 with a fresh storage token.
+    /// Accepts owned `Vec<u8>` to avoid copying the payload.
     pub async fn upload_onelake_file(
         &self,
         workspace: &str,
         item: &str,
         path: &str,
-        data: &[u8],
+        data: Vec<u8>,
     ) -> Result<Value> {
         let mut token = self.require_storage_auth().await?;
         let base = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{path}");
@@ -242,18 +243,19 @@ impl FabricClient {
         }
 
         // Step 2: Append
+        let data_len = data.len();
         self.http
             .patch(format!("{base}?action=append&position=0"))
             .header(AUTHORIZATION, &token)
-            .header("Content-Length", data.len().to_string())
-            .body(data.to_vec())
+            .header("Content-Length", data_len.to_string())
+            .body(data)
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
         // Step 3: Flush
         self.http
-            .patch(format!("{base}?action=flush&position={}", data.len()))
+            .patch(format!("{base}?action=flush&position={data_len}"))
             .header(AUTHORIZATION, &token)
             .header("Content-Length", "0")
             .send()
@@ -262,7 +264,7 @@ impl FabricClient {
 
         Ok(serde_json::json!({
             "path": path,
-            "size": data.len(),
+            "size": data_len,
             "status": "uploaded"
         }))
     }
@@ -344,21 +346,19 @@ impl FabricClient {
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            let body = handle_response(resp).await?;
-            let paths = body
-                .get("paths")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
+            let mut body = handle_response(resp).await?;
+            let paths = match body.get_mut("paths").map(Value::take) {
+                Some(Value::Array(arr)) => arr,
+                _ => Vec::new(),
+            };
             return Ok(paths);
         }
 
-        let body = handle_response(resp).await?;
-        let paths = body
-            .get("paths")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let mut body = handle_response(resp).await?;
+        let paths = match body.get_mut("paths").map(Value::take) {
+            Some(Value::Array(arr)) => arr,
+            _ => Vec::new(),
+        };
 
         Ok(paths)
     }
@@ -573,23 +573,20 @@ impl FabricClient {
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
-            let body = handle_response(resp).await?;
+            let mut body = handle_response(resp).await?;
 
             // Extract items from the specified array field (try primary, then fallback to "value")
-            let items = body
-                .get(array_field)
-                .and_then(Value::as_array)
-                .or_else(|| {
-                    if array_field == "value" {
-                        None
-                    } else {
-                        body.get("value").and_then(Value::as_array)
-                    }
-                })
-                .cloned()
-                .unwrap_or_default();
-
-            all_items.extend(items);
+            // Use .take() to move ownership without cloning the entire Vec<Value>.
+            let items = body.get_mut(array_field).map(Value::take).or_else(|| {
+                if array_field == "value" {
+                    None
+                } else {
+                    body.get_mut("value").map(Value::take)
+                }
+            });
+            if let Some(Value::Array(arr)) = items {
+                all_items.extend(arr);
+            }
 
             // Check for continuation token
             let next_token = body

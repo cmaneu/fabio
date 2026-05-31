@@ -676,7 +676,7 @@ async fn get_definition(
         .await
         .map_err(|e| enrich_forbidden(e, "apache-airflow-job get-definition", "Contributor"))?;
     if decode {
-        let decoded = output::decode_definition_parts(&data);
+        let decoded = output::decode_definition_parts(data);
         output::render_object(cli, &decoded, "definition");
     } else {
         output::render_object(cli, &data, "definition");

@@ -59,15 +59,14 @@ pub fn render_list_with_token(
         .map_or(items, |limit| &items[..items.len().min(limit)]);
     let truncated = cli.limit.is_some_and(|l| items.len() > l);
 
-    let data = Value::Array(limited_items.to_vec());
-    let output_data = match cli.query {
-        Some(ref q) => apply_query(&data, q),
-        None => data,
-    };
-
     match cli.effective_output() {
         OutputFormat::Json => {
-            // Consume output_data by move — no redundant clones
+            // Only construct Value::Array for the JSON path
+            let data = Value::Array(limited_items.to_vec());
+            let output_data = match cli.query {
+                Some(ref q) => apply_query(&data, q),
+                None => data,
+            };
             let display_items = match output_data {
                 Value::Array(arr) => arr,
                 other => vec![other],
@@ -86,41 +85,54 @@ pub fn render_list_with_token(
             }
             println!("{}", serde_json::to_string(&envelope).unwrap());
         }
-        output_format => {
-            // Table/Plain paths: borrow output_data by reference (no clone)
-            match output_format {
-                OutputFormat::Table => {
-                    if let Value::Array(ref arr) = output_data {
-                        render_table(arr, columns, headers);
+        OutputFormat::Table => {
+            // For table/plain with query, we need to apply query to each item
+            if let Some(ref q) = cli.query {
+                let data = Value::Array(limited_items.to_vec());
+                let output_data = apply_query(&data, q);
+                if let Value::Array(ref arr) = output_data {
+                    render_table(arr, columns, headers);
+                } else {
+                    render_table(limited_items, columns, headers);
+                }
+            } else {
+                render_table(limited_items, columns, headers);
+            }
+            if truncated {
+                println!(
+                    "... truncated ({} of {} items, use --limit to adjust)",
+                    limited_items.len(),
+                    items.len()
+                );
+            }
+            if continuation_token.is_some() {
+                println!("... more pages available (use --all to fetch all)");
+            }
+        }
+        OutputFormat::Plain => {
+            if let Some(ref q) = cli.query {
+                let data = Value::Array(limited_items.to_vec());
+                let output_data = apply_query(&data, q);
+                let arr = if let Value::Array(ref a) = output_data {
+                    a.as_slice()
+                } else {
+                    limited_items
+                };
+                for item in arr {
+                    if let Some(val) = item.get(plain_key) {
+                        println!("{}", format_value(val));
                     } else {
-                        render_table(limited_items, columns, headers);
-                    }
-                    if truncated {
-                        println!(
-                            "... truncated ({} of {} items, use --limit to adjust)",
-                            limited_items.len(),
-                            items.len()
-                        );
-                    }
-                    if continuation_token.is_some() {
-                        println!("... more pages available (use --all to fetch all)");
+                        println!("{}", format_value(item));
                     }
                 }
-                OutputFormat::Plain => {
-                    let arr = if let Value::Array(ref a) = output_data {
-                        a.as_slice()
+            } else {
+                for item in limited_items {
+                    if let Some(val) = item.get(plain_key) {
+                        println!("{}", format_value(val));
                     } else {
-                        limited_items
-                    };
-                    for item in arr {
-                        if let Some(val) = item.get(plain_key) {
-                            println!("{}", format_value(val));
-                        } else {
-                            println!("{}", format_value(item));
-                        }
+                        println!("{}", format_value(item));
                     }
                 }
-                OutputFormat::Json => unreachable!(),
             }
         }
     }
@@ -268,10 +280,10 @@ pub fn apply_query(value: &Value, query: &str) -> Value {
 /// Decode base64-encoded definition parts inline.
 /// Adds a `decodedPayload` field alongside the original `payload` for each part.
 /// Handles both JSON payloads (parsed into objects) and plain text (kept as strings).
-pub fn decode_definition_parts(data: &Value) -> Value {
+/// Accepts owned `Value` to avoid cloning the entire response.
+pub fn decode_definition_parts(mut data: Value) -> Value {
     let base64_engine = base64::engine::general_purpose::STANDARD;
-    let mut result = data.clone();
-    if let Some(parts) = result
+    if let Some(parts) = data
         .get_mut("definition")
         .and_then(|d| d.get_mut("parts"))
         .and_then(|p| p.as_array_mut())
@@ -290,7 +302,7 @@ pub fn decode_definition_parts(data: &Value) -> Value {
             }
         }
     }
-    result
+    data
 }
 
 #[cfg(test)]
