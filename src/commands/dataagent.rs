@@ -366,12 +366,14 @@ async fn query(
     };
 
     // Get the published URL: explicit flag, settings API, or constructed fallback.
-    let resolved_url = match published_url {
-        Some(url) => {
-            client::validate_trusted_url(url, "--published-url")?;
-            url.to_string()
-        }
-        None => get_published_url(client, workspace, id).await?,
+    let resolved_url = if let Some(url) = published_url {
+        client::validate_trusted_url(url, "--published-url")?;
+        url.to_string()
+    } else {
+        let url = get_published_url(client, workspace, id).await?;
+        // Validate API-returned URL to prevent token exfiltration via crafted settings
+        client::validate_trusted_url(&url, "publishedUrl (from agent settings)")?;
+        url
     };
 
     // Use the OpenAI Assistants protocol against the published URL

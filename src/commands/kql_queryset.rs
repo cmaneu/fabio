@@ -501,6 +501,10 @@ async fn run(
             )
         })?;
 
+    // Validate clusterUri from definition against trusted domains (prevents token
+    // exfiltration via crafted updateDefinition with a malicious clusterUri)
+    client::validate_trusted_url(&cluster_uri, "clusterUri (from queryset definition)")?;
+
     let db_name = data_source
         .get("databaseName")
         .and_then(Value::as_str)

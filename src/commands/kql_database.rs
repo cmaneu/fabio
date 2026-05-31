@@ -658,6 +658,8 @@ async fn resolve_query_uri(
     if let Some(uri) = query_uri {
         let uri = uri.trim_end_matches('/').to_string();
         if !uri.is_empty() {
+            // Validate URI from API properties against trusted domains
+            client::validate_trusted_url(&uri, "queryServiceUri (from database properties)")?;
             return Ok((uri, db_name));
         }
     }

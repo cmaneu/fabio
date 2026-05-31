@@ -1227,9 +1227,9 @@ fn infer_type_from_json(val: &Value) -> InferredType {
     }
 }
 
-/// Escape a SQL string value (double single quotes).
+/// Escape a SQL string value (strip null bytes and double single quotes).
 fn sql_escape(val: &str) -> String {
-    val.replace('\'', "''")
+    val.replace('\0', "").replace('\'', "''")
 }
 
 /// Format a value as a SQL literal.
@@ -1777,6 +1777,13 @@ mod tests {
     fn sql_escape_quotes() {
         assert_eq!(sql_escape("it's"), "it''s");
         assert_eq!(sql_escape("no quotes"), "no quotes");
+    }
+
+    #[test]
+    fn sql_escape_null_bytes() {
+        assert_eq!(sql_escape("hello\0world"), "helloworld");
+        assert_eq!(sql_escape("\0"), "");
+        assert_eq!(sql_escape("it\0's"), "it''s");
     }
 
     #[test]

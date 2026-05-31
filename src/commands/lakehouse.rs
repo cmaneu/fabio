@@ -2123,6 +2123,10 @@ async fn build_file_map(
             continue;
         }
         if let Some(relative) = name.strip_prefix(&prefix) {
+            // Reject paths with traversal sequences from API responses
+            if relative.contains("../") || relative.contains("..\\") || relative == ".." {
+                continue;
+            }
             let size = file
                 .get("contentLength")
                 .and_then(Value::as_str)
