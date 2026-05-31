@@ -130,6 +130,12 @@ pub fn save_token(data: &TokenData) -> Result<()> {
     let path = cache_path()?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
+        // Restrict directory permissions on Unix
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
+        }
     }
     let json = serde_json::to_string_pretty(data)?;
     std::fs::write(&path, json)?;

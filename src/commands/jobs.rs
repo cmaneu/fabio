@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use clap::Subcommand;
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -78,14 +79,34 @@ impl JobLedger {
         let path = Self::ledger_path();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
+            }
         }
         let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
+        // Advisory lock to prevent concurrent append corruption
+        file.lock_exclusive()?;
         let line = serde_json::to_string(entry)?;
         writeln!(file, "{line}")?;
+        // Lock released on drop
+        drop(file);
+        // Restrict file permissions on Unix
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+        }
         Ok(())
     }
 
     pub fn update(id: &str, status: &str, error: Option<&str>) -> Result<()> {
+        let path = Self::ledger_path();
+        // Acquire exclusive lock for the read-modify-write operation
+        let lock_file = OpenOptions::new().create(true).append(true).open(&path)?;
+        lock_file.lock_exclusive()?;
+
         let entries = Self::read_all()?;
         let updated: Vec<JobEntry> = entries
             .into_iter()
@@ -111,7 +132,11 @@ impl JobLedger {
                 e
             })
             .collect();
-        Self::write_all(&updated)
+        Self::write_all(&updated)?;
+
+        // Lock released on drop
+        drop(lock_file);
+        Ok(())
     }
 
     fn read_all() -> Result<Vec<JobEntry>> {
@@ -134,11 +159,21 @@ impl JobLedger {
         let path = Self::ledger_path();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
+            }
         }
         let mut file = fs::File::create(&path)?;
         for entry in entries {
             let line = serde_json::to_string(entry)?;
             writeln!(file, "{line}")?;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
         }
         Ok(())
     }

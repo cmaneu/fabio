@@ -8,7 +8,7 @@ use serde_json::Value;
 use tokio::time::sleep;
 
 use crate::cli::Cli;
-use crate::client::FabricClient;
+use crate::client::{self, FabricClient};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -367,7 +367,10 @@ async fn query(
 
     // Get the published URL: explicit flag, settings API, or constructed fallback.
     let resolved_url = match published_url {
-        Some(url) => url.to_string(),
+        Some(url) => {
+            client::validate_trusted_url(url, "--published-url")?;
+            url.to_string()
+        }
         None => get_published_url(client, workspace, id).await?,
     };
 

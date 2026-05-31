@@ -5,7 +5,7 @@ use reqwest::header::AUTHORIZATION;
 use serde_json::Value;
 
 use crate::cli::Cli;
-use crate::client::FabricClient;
+use crate::client::{self, FabricClient};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -481,7 +481,11 @@ async fn run(
     let data_source = resolve_data_source(data_sources, ds_id)?;
 
     let cluster_uri = query_uri_override
-        .map(|u| u.trim_end_matches('/').to_string())
+        .map(|u| {
+            client::validate_trusted_url(u, "--query-uri")?;
+            Ok::<_, anyhow::Error>(u.trim_end_matches('/').to_string())
+        })
+        .transpose()?
         .or_else(|| {
             data_source
                 .get("clusterUri")

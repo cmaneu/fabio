@@ -12,6 +12,10 @@ use azure_core::credentials::TokenCredential;
 
 use crate::errors::{ErrorCode, FabioError};
 
+/// Maximum length of raw response body to include in error messages.
+/// Prevents leaking unbounded server-side error details.
+const MAX_ERROR_BODY_LEN: usize = 500;
+
 const FABRIC_BASE_URL: &str = "https://api.fabric.microsoft.com/v1";
 const ONELAKE_DFS_URL: &str = "https://onelake.dfs.fabric.microsoft.com";
 const ONELAKE_BLOB_URL: &str = "https://onelake.blob.fabric.microsoft.com";
@@ -325,7 +329,7 @@ impl FabricClient {
         let mut url =
             format!("{ONELAKE_DFS_URL}/{workspace}/{item}?resource=filesystem&recursive=true");
         if let Some(dir) = directory {
-            let _ = write!(url, "&directory={dir}");
+            let _ = write!(url, "&directory={}", urlencoding::encode(dir));
         }
 
         let resp = self
@@ -561,7 +565,10 @@ impl FabricClient {
                 || format!("{FABRIC_BASE_URL}{path}"),
                 |ct| {
                     let separator = if path.contains('?') { '&' } else { '?' };
-                    format!("{FABRIC_BASE_URL}{path}{separator}continuationToken={ct}")
+                    format!(
+                        "{FABRIC_BASE_URL}{path}{separator}continuationToken={}",
+                        urlencoding::encode(ct)
+                    )
                 },
             );
 
@@ -1227,13 +1234,15 @@ impl FabricClient {
                 return Err(FabioError::with_hint(
                     ErrorCode::Timeout,
                     format!(
-                        "LRO polling timed out after {}s (poll URL: {poll_url})",
+                        "LRO polling timed out after {}s",
                         max_wait.as_secs()
                     ),
-                    "The operation may still be running server-side. \
-                     Check status with: fabio jobs list --workspace <WS>, or retry with a longer \
-                     --timeout if supported. Some operations (notebook run, graph refresh) \
-                     can take several minutes on small capacities.",
+                    format!(
+                        "The operation may still be running server-side (poll URL: {poll_url}). \
+                         Check status with: fabio jobs list --workspace <WS>, or retry with a longer \
+                         --timeout if supported. Some operations (notebook run, graph refresh) \
+                         can take several minutes on small capacities."
+                    ),
                 )
                 .into());
             }
@@ -1523,7 +1532,104 @@ async fn handle_response(resp: Response) -> Result<Value> {
                 .map(String::from)
                 .or_else(|| v.get("message").and_then(Value::as_str).map(String::from))
         })
-        .unwrap_or_else(|| format!("HTTP {status_code}: {text}"));
+        .unwrap_or_else(|| {
+            // Truncate raw response body to prevent leaking unbounded server error details
+            let truncated = if text.len() > MAX_ERROR_BODY_LEN {
+                format!("{}...(truncated)", &text[..MAX_ERROR_BODY_LEN])
+            } else {
+                text.clone()
+            };
+            format!("HTTP {status_code}: {truncated}")
+        });
 
     Err(FabioError::from_status_with_body(status_code, message, &text).into())
+}
+
+/// Validate that a user-provided URL targets a trusted Microsoft domain.
+///
+/// This prevents bearer token exfiltration to attacker-controlled servers when
+/// agents construct CLI commands with `--query-uri` or `--published-url` flags.
+///
+/// Allowed domains:
+/// - `*.fabric.microsoft.com`
+/// - `*.kusto.fabric.microsoft.com`
+/// - `*.kusto.windows.net`
+/// - `*.analysis.windows.net`
+/// - `*.powerbi.com`
+/// - `*.pbidedicated.windows.net`
+pub fn validate_trusted_url(url: &str, flag_name: &str) -> Result<()> {
+    let lower = url.to_lowercase();
+
+    // Must be HTTPS
+    if !lower.starts_with("https://") {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("{flag_name} must use HTTPS (got: {url})"),
+            "Only HTTPS URLs to trusted Microsoft endpoints are allowed.",
+        )
+        .into());
+    }
+
+    // Extract host from URL
+    let host = lower
+        .strip_prefix("https://")
+        .and_then(|rest| rest.split('/').next())
+        .and_then(|h| h.split(':').next())
+        .unwrap_or("");
+
+    let trusted_suffixes = [
+        ".fabric.microsoft.com",
+        ".kusto.windows.net",
+        ".analysis.windows.net",
+        ".powerbi.com",
+        ".pbidedicated.windows.net",
+        "api.fabric.microsoft.com",
+        "api.powerbi.com",
+    ];
+
+    let is_trusted = trusted_suffixes
+        .iter()
+        .any(|suffix| host.ends_with(suffix) || host == suffix.trim_start_matches('.'));
+
+    if !is_trusted {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "{flag_name} targets an untrusted domain ({host}). \
+                 Bearer tokens are only sent to trusted Microsoft endpoints."
+            ),
+            format!(
+                "Allowed domains: *.fabric.microsoft.com, *.kusto.windows.net, \
+                 *.analysis.windows.net, *.powerbi.com, *.pbidedicated.windows.net. \
+                 Received: {url}"
+            ),
+        )
+        .into());
+    }
+
+    Ok(())
+}
+
+/// Validate that a string is a valid UUID format.
+///
+/// Prevents path injection when IDs are interpolated into URL paths.
+/// Accepts standard UUID format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (lowercase hex + hyphens).
+#[allow(dead_code)]
+pub fn validate_uuid(value: &str, param_name: &str) -> Result<()> {
+    let is_valid = value.len() == 36
+        && value.chars().enumerate().all(|(i, c)| match i {
+            8 | 13 | 18 | 23 => c == '-',
+            _ => c.is_ascii_hexdigit(),
+        });
+
+    if !is_valid {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("{param_name} must be a valid UUID (got: {value})"),
+            "Expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (lowercase hex with hyphens).",
+        )
+        .into());
+    }
+
+    Ok(())
 }

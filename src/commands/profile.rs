@@ -88,9 +88,21 @@ impl ProfileStore {
         let path = Self::config_path();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
+            // Restrict directory permissions on Unix to prevent other users from listing contents
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
+            }
         }
         let json = serde_json::to_string_pretty(self)?;
         fs::write(&path, json)?;
+        // Restrict file permissions on Unix (profiles may contain workspace/capacity IDs)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+        }
         Ok(())
     }
 }

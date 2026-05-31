@@ -7,7 +7,7 @@ use reqwest::header::AUTHORIZATION;
 use serde_json::Value;
 
 use crate::cli::Cli;
-use crate::client::FabricClient;
+use crate::client::{self, FabricClient};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -619,8 +619,9 @@ async fn resolve_query_uri(
         .unwrap_or_default()
         .to_string();
 
-    // If user provided a query URI override, use it
+    // If user provided a query URI override, validate and use it
     if let Some(uri) = override_uri {
+        client::validate_trusted_url(uri, "--query-uri")?;
         let uri = uri.trim_end_matches('/').to_string();
         return Ok((uri, db_name));
     }
