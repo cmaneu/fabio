@@ -240,6 +240,8 @@ impl FabricClient {
         path: &str,
         data: Vec<u8>,
     ) -> Result<Value> {
+        validate_uuid(workspace, "workspace")?;
+        validate_uuid(item, "item")?;
         let mut token = self.require_storage_auth().await?;
         let encoded_path = encode_onelake_path(path);
         let base = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{encoded_path}");
@@ -300,6 +302,8 @@ impl FabricClient {
         item: &str,
         path: &str,
     ) -> Result<Vec<u8>> {
+        validate_uuid(workspace, "workspace")?;
+        validate_uuid(item, "item")?;
         let token = self.require_storage_auth().await?;
         let encoded_path = encode_onelake_path(path);
         let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{encoded_path}");
@@ -346,6 +350,8 @@ impl FabricClient {
         item: &str,
         directory: Option<&str>,
     ) -> Result<Vec<Value>> {
+        validate_uuid(workspace, "workspace")?;
+        validate_uuid(item, "item")?;
         let token = self.require_storage_auth().await?;
         let mut url =
             format!("{ONELAKE_DFS_URL}/{workspace}/{item}?resource=filesystem&recursive=true");
@@ -398,6 +404,10 @@ impl FabricClient {
         dst_item: &str,
         dst_path: &str,
     ) -> Result<Value> {
+        validate_uuid(src_workspace, "source-workspace")?;
+        validate_uuid(src_item, "source-item")?;
+        validate_uuid(dst_workspace, "dest-workspace")?;
+        validate_uuid(dst_item, "dest-item")?;
         let token = self.require_storage_auth().await?;
         let source_url = format!(
             "{ONELAKE_BLOB_URL}/{src_workspace}/{src_item}/{}",
@@ -462,6 +472,8 @@ impl FabricClient {
         item: &str,
         path: &str,
     ) -> Result<Value> {
+        validate_uuid(workspace, "workspace")?;
+        validate_uuid(item, "item")?;
         let token = self.require_storage_auth().await?;
         let encoded_path = encode_onelake_path(path);
         let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{encoded_path}");
@@ -700,14 +712,15 @@ impl FabricClient {
             let status_code = resp.status().as_u16();
             if (status_code == 429 || status_code == 430) && attempt < MAX_RATE_LIMIT_RETRIES {
                 attempt += 1;
-                // Respect Retry-After header if present, otherwise use fixed backoff
+                // Respect Retry-After header if present, otherwise use fixed backoff.
+                // Cap at 300s to prevent a malicious server from parking the CLI indefinitely.
                 let backoff_secs = resp
                     .headers()
                     .get("Retry-After")
                     .or_else(|| resp.headers().get("retry-after"))
                     .and_then(|v| v.to_str().ok())
                     .and_then(|s| s.parse::<u64>().ok())
-                    .unwrap_or_else(|| 10u64 * u64::from(attempt)); // fallback: 10s, 20s, 30s
+                    .map_or_else(|| 10u64 * u64::from(attempt), |s| s.min(300)); // fallback: 10s, 20s, 30s
                 eprintln!(
                     "Rate limited (HTTP {status_code}). Retrying in {backoff_secs}s (attempt {attempt}/{MAX_RATE_LIMIT_RETRIES})..."
                 );
@@ -1090,8 +1103,11 @@ impl FabricClient {
         item: &str,
         path: &str,
     ) -> Result<Value> {
+        validate_uuid(workspace, "workspace")?;
+        validate_uuid(item, "item")?;
         let token = self.require_storage_auth().await?;
-        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{path}");
+        let encoded_path = encode_onelake_path(path);
+        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{encoded_path}");
 
         let resp = self
             .http
@@ -1157,8 +1173,11 @@ impl FabricClient {
         item: &str,
         path: &str,
     ) -> Result<Value> {
+        validate_uuid(workspace, "workspace")?;
+        validate_uuid(item, "item")?;
         let token = self.require_storage_auth().await?;
-        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{path}?recursive=true");
+        let encoded_path = encode_onelake_path(path);
+        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{encoded_path}?recursive=true");
 
         let resp = self
             .http
@@ -1724,7 +1743,6 @@ pub fn validate_trusted_url(url: &str, flag_name: &str) -> Result<()> {
 ///
 /// Prevents path injection when IDs are interpolated into URL paths.
 /// Accepts standard UUID format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (lowercase hex + hyphens).
-#[allow(dead_code)]
 pub fn validate_uuid(value: &str, param_name: &str) -> Result<()> {
     let is_valid = value.len() == 36
         && value.chars().enumerate().all(|(i, c)| match i {

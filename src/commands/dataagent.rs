@@ -455,6 +455,7 @@ async fn run_assistant_query(
 ) -> Result<QueryResult> {
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(360))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 

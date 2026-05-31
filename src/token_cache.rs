@@ -154,7 +154,12 @@ pub fn save_token(data: &TokenData) -> Result<()> {
     }
     #[cfg(not(unix))]
     {
-        std::fs::write(&path, json)?;
+        // On Windows: write to a temp file in the same directory, then rename
+        // atomically. This prevents partial-write exposure. Windows inherits
+        // parent directory ACLs — the ~/.fabio directory should be user-only.
+        let temp_path = path.with_extension("tmp");
+        std::fs::write(&temp_path, &json)?;
+        std::fs::rename(&temp_path, &path)?;
     }
 
     // Remove logout marker on successful login
@@ -226,7 +231,11 @@ pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Res
     let tenant = tenant.unwrap_or(DEFAULT_TENANT);
     let scope = scope.unwrap_or(FABRIC_SCOPE);
 
-    let http = reqwest::Client::new();
+    // Disable redirects on token endpoint client to prevent credential forwarding
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
 
     // Step 1: Request device code
     let device_code_url =
@@ -402,7 +411,11 @@ pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Res
 
 /// Refresh an access token using a refresh token.
 async fn refresh_access_token(refresh_token: &str, tenant: &str, scope: &str) -> Result<TokenData> {
-    let http = reqwest::Client::new();
+    // Disable redirects to prevent credential forwarding via POST body
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     let token_url = format!("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token");
 
     let resp = http
@@ -423,12 +436,19 @@ async fn refresh_access_token(refresh_token: &str, tenant: &str, scope: &str) ->
         })?;
 
     if !resp.status().is_success() {
+        let status = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(FabioError::new(
-            ErrorCode::AuthRequired,
-            format!("Token refresh failed: {text}"),
-        )
-        .into());
+        // Extract only structured error fields — never expose raw response body
+        let sanitized = serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|v| {
+                v.get("error_description")
+                    .or_else(|| v.get("error"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(String::from)
+            })
+            .unwrap_or_else(|| format!("HTTP {status} (token refresh failed)"));
+        return Err(FabioError::new(ErrorCode::AuthRequired, sanitized).into());
     }
 
     let token_resp: TokenResponse = resp.json().await.map_err(|e| {
