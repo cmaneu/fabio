@@ -196,13 +196,12 @@ pub fn parse_source_directory(source_dir: &Path) -> Result<SourceWorkspace> {
                     creation_payload_path.display()
                 )
             })?;
-            let parsed: serde_json::Value =
-                serde_json::from_str(&content).with_context(|| {
-                    format!(
-                        "Invalid JSON in creationPayload.json: {}",
-                        creation_payload_path.display()
-                    )
-                })?;
+            let parsed: serde_json::Value = serde_json::from_str(&content).with_context(|| {
+                format!(
+                    "Invalid JSON in creationPayload.json: {}",
+                    creation_payload_path.display()
+                )
+            })?;
             Some(parsed)
         } else {
             None

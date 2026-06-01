@@ -141,8 +141,10 @@ pub async fn execute_changeset(
                     Ok(deployed_id) => {
                         let mut change_result = (*change).clone();
                         if let Some(ref id) = deployed_id {
-                            created_ids
-                                .insert((change.item_type.clone(), change.name.clone()), id.clone());
+                            created_ids.insert(
+                                (change.item_type.clone(), change.name.clone()),
+                                id.clone(),
+                            );
                             change_result.deployed_id = Some(id.clone());
                         }
                         succeeded.push(change_result);
@@ -370,9 +372,7 @@ pub async fn execute_post_hooks(
                     cli.quiet,
                     &format!("post-hook: refreshing semantic model \"{}\"", change.name),
                 );
-                let path = format!(
-                    "/workspaces/{workspace_id}/semanticModels/{item_id}/refreshes"
-                );
+                let path = format!("/workspaces/{workspace_id}/semanticModels/{item_id}/refreshes");
                 let body = json!({"type": "Full"});
                 match client.post(&path, &body, false).await {
                     Ok(_) => {
@@ -407,9 +407,8 @@ pub async fn execute_post_hooks(
                     cli.quiet,
                     &format!("post-hook: publishing environment \"{}\"", change.name),
                 );
-                let path = format!(
-                    "/workspaces/{workspace_id}/environments/{item_id}/staging/publish"
-                );
+                let path =
+                    format!("/workspaces/{workspace_id}/environments/{item_id}/staging/publish");
                 let body = json!({});
                 match client.post(&path, &body, false).await {
                     Ok(_) => {
@@ -544,12 +543,11 @@ async fn deploy_change(
                     "type": change.item_type
                 })
             } else {
-                let definition =
-                    if let Some(ref fmt) = source_item.metadata.definition_format {
-                        json!({ "format": fmt, "parts": parts })
-                    } else {
-                        json!({ "parts": parts })
-                    };
+                let definition = if let Some(ref fmt) = source_item.metadata.definition_format {
+                    json!({ "format": fmt, "parts": parts })
+                } else {
+                    json!({ "parts": parts })
+                };
                 json!({
                     "displayName": change.name,
                     "type": change.item_type,
@@ -650,20 +648,17 @@ async fn deploy_change(
 
             // Step 2: Update definition if there are parts
             if !parts.is_empty() {
-                let definition =
-                    if let Some(ref fmt) = source_item.metadata.definition_format {
-                        json!({ "format": fmt, "parts": parts })
-                    } else {
-                        json!({ "parts": parts })
-                    };
+                let definition = if let Some(ref fmt) = source_item.metadata.definition_format {
+                    json!({ "format": fmt, "parts": parts })
+                } else {
+                    json!({ "parts": parts })
+                };
 
                 let body = json!({ "definition": definition });
 
                 client
                     .post(
-                        &format!(
-                            "/workspaces/{workspace_id}/items/{deployed_id}/updateDefinition"
-                        ),
+                        &format!("/workspaces/{workspace_id}/items/{deployed_id}/updateDefinition"),
                         &body,
                         true,
                     )
@@ -1136,7 +1131,7 @@ mod tests {
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
-            creation_payload: None,
+                creation_payload: None,
             }],
             logical_id_index: HashMap::from([(
                 "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_owned(),
@@ -1173,7 +1168,7 @@ mod tests {
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
-            creation_payload: None,
+                creation_payload: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::from([(("Notebook".to_owned(), "MyNB".to_owned()), 0)]),
@@ -1206,7 +1201,7 @@ mod tests {
                     parts: vec![],
                     content_hash: "sha256:abc".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
-            creation_payload: None,
+                    creation_payload: None,
                 },
                 SourceItem {
                     metadata: PlatformMetadata {
@@ -1219,7 +1214,7 @@ mod tests {
                     parts: vec![],
                     content_hash: "sha256:def".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
-            creation_payload: None,
+                    creation_payload: None,
                 },
                 SourceItem {
                     metadata: PlatformMetadata {
@@ -1232,7 +1227,7 @@ mod tests {
                     parts: vec![],
                     content_hash: "sha256:ghi".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
-            creation_payload: None,
+                    creation_payload: None,
                 },
             ],
             logical_id_index: HashMap::from([
@@ -1325,7 +1320,7 @@ mod tests {
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
-            creation_payload: None,
+                creation_payload: None,
             }],
             logical_id_index: HashMap::from([("lid-lh1".to_owned(), 0)]),
             type_name_index: HashMap::from([(("Lakehouse".to_owned(), "LH1".to_owned()), 0)]),

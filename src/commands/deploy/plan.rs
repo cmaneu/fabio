@@ -367,7 +367,10 @@ pub async fn build_changeset(
         // Find candidate deployed items of the same type
         let candidates: Vec<&&DeployedItem> = unmatched_deployed
             .iter()
-            .filter(|d| d.item_type.eq_ignore_ascii_case(&source_item.metadata.item_type))
+            .filter(|d| {
+                d.item_type
+                    .eq_ignore_ascii_case(&source_item.metadata.item_type)
+            })
             .collect();
 
         let mut rename_found = false;
@@ -375,7 +378,9 @@ pub async fn build_changeset(
         if !candidates.is_empty() {
             // Check each candidate's definition for a matching logical ID
             for candidate in &candidates {
-                if matched_deployed.contains(&(candidate.item_type.clone(), candidate.display_name.clone())) {
+                if matched_deployed
+                    .contains(&(candidate.item_type.clone(), candidate.display_name.clone()))
+                {
                     continue;
                 }
 
@@ -384,10 +389,8 @@ pub async fn build_changeset(
                 {
                     if lid == *source_lid {
                         // Found a rename: same logical ID, different name
-                        matched_deployed.insert((
-                            candidate.item_type.clone(),
-                            candidate.display_name.clone(),
-                        ));
+                        matched_deployed
+                            .insert((candidate.item_type.clone(), candidate.display_name.clone()));
 
                         changeset.changes.push(Change {
                             name: source_item.metadata.display_name.clone(),
@@ -921,8 +924,7 @@ mod tests {
         // Source has two items: Notebook references Lakehouse's logical ID
         // Both are in deployment scope (both will be created) → no warnings
         let lakehouse_lid = "lid-lakehouse-001";
-        let notebook_payload =
-            format!(r#"{{"defaultLakehouse":"{lakehouse_lid}"}}"#);
+        let notebook_payload = format!(r#"{{"defaultLakehouse":"{lakehouse_lid}"}}"#);
 
         let source = SourceWorkspace {
             items: vec![
@@ -984,7 +986,6 @@ mod tests {
             previous_name: None,
         });
 
-
         validate_references(&source, &mut changeset);
 
         assert!(
@@ -998,8 +999,7 @@ mod tests {
     fn test_validate_references_warns_on_unresolvable_reference() {
         // Source has Notebook that references a logical ID of an item NOT in deployment scope
         let external_lid = "lid-external-lakehouse";
-        let notebook_payload =
-            format!(r#"{{"defaultLakehouse":"{external_lid}"}}"#);
+        let notebook_payload = format!(r#"{{"defaultLakehouse":"{external_lid}"}}"#);
 
         let source = SourceWorkspace {
             items: vec![
@@ -1064,7 +1064,6 @@ mod tests {
             previous_name: None,
         });
 
-
         validate_references(&source, &mut changeset);
 
         assert_eq!(changeset.warnings.len(), 1);
@@ -1076,8 +1075,7 @@ mod tests {
     fn test_validate_references_skip_items_are_resolvable() {
         // An item that is Skipped (already deployed, unchanged) should count as resolvable
         let lakehouse_lid = "lid-lakehouse-skip";
-        let notebook_payload =
-            format!(r#"{{"defaultLakehouse":"{lakehouse_lid}"}}"#);
+        let notebook_payload = format!(r#"{{"defaultLakehouse":"{lakehouse_lid}"}}"#);
 
         let source = SourceWorkspace {
             items: vec![
@@ -1142,7 +1140,6 @@ mod tests {
             previous_name: None,
         });
 
-
         validate_references(&source, &mut changeset);
 
         assert!(
@@ -1160,7 +1157,7 @@ mod tests {
                 metadata: PlatformMetadata {
                     item_type: "Notebook".to_owned(),
                     display_name: "Simple".to_owned(),
-                    logical_id: None,  // No logical ID → skip validation
+                    logical_id: None, // No logical ID → skip validation
                     description: None,
                     definition_format: None,
                 },
@@ -1188,7 +1185,6 @@ mod tests {
             source_hash: None,
             previous_name: None,
         });
-
 
         validate_references(&source, &mut changeset);
 

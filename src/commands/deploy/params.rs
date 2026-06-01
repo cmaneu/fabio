@@ -1347,7 +1347,7 @@ mod tests {
                     }],
                     content_hash: "sha256:a".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
-                creation_payload: None,
+                    creation_payload: None,
                 },
                 SourceItem {
                     metadata: super::super::platform::PlatformMetadata {
@@ -1364,7 +1364,7 @@ mod tests {
                     }],
                     content_hash: "sha256:b".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
-                creation_payload: None,
+                    creation_payload: None,
                 },
             ],
             logical_id_index: HashMap::new(),
@@ -1587,7 +1587,7 @@ mod tests {
                     }],
                     content_hash: "sha256:a".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
-                creation_payload: None,
+                    creation_payload: None,
                 },
                 SourceItem {
                     metadata: super::super::platform::PlatformMetadata {
@@ -1604,7 +1604,7 @@ mod tests {
                     }],
                     content_hash: "sha256:b".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
-                creation_payload: None,
+                    creation_payload: None,
                 },
             ],
             logical_id_index: HashMap::new(),
@@ -2055,7 +2055,7 @@ mod tests {
                     }],
                     content_hash: "sha256:a".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
-                creation_payload: None,
+                    creation_payload: None,
                 },
                 SourceItem {
                     metadata: super::super::platform::PlatformMetadata {
@@ -2072,7 +2072,7 @@ mod tests {
                     }],
                     content_hash: "sha256:b".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
-                creation_payload: None,
+                    creation_payload: None,
                 },
             ],
             logical_id_index: HashMap::new(),
@@ -2275,7 +2275,7 @@ mod tests {
                     }],
                     content_hash: "sha256:a".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
-                creation_payload: None,
+                    creation_payload: None,
                 },
                 SourceItem {
                     metadata: super::super::platform::PlatformMetadata {
@@ -2292,7 +2292,7 @@ mod tests {
                     }],
                     content_hash: "sha256:b".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
-                creation_payload: None,
+                    creation_payload: None,
                 },
             ],
             logical_id_index: HashMap::new(),
@@ -2508,9 +2508,10 @@ mod tests {
             find_replace: vec![],
             key_value_replace: vec![KeyValueReplaceRule {
                 find_key: "$.parentEventhouseItemId".to_owned(),
-                replace_value: HashMap::from([
-                    ("prod".to_owned(), serde_json::json!("new-eh-id-456")),
-                ]),
+                replace_value: HashMap::from([(
+                    "prod".to_owned(),
+                    serde_json::json!("new-eh-id-456"),
+                )]),
                 item_type: None,
                 item_name: None,
                 file_path: None,

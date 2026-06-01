@@ -1453,12 +1453,7 @@ fn deploy_plan_file_roundtrip_apply() {
 
     // Step 2: Apply from plan file
     let assert = fabio()
-        .args([
-            "deploy",
-            "apply",
-            "--plan",
-            plan_file.to_str().unwrap(),
-        ])
+        .args(["deploy", "apply", "--plan", plan_file.to_str().unwrap()])
         .timeout(Duration::from_secs(180))
         .assert()
         .success();
@@ -1588,12 +1583,7 @@ fn deploy_plan_staleness_detection() {
 
     // Step 3: Apply from plan file WITHOUT --force → should FAIL (stale)
     let assert = fabio()
-        .args([
-            "deploy",
-            "apply",
-            "--plan",
-            plan_file.to_str().unwrap(),
-        ])
+        .args(["deploy", "apply", "--plan", plan_file.to_str().unwrap()])
         .timeout(Duration::from_secs(60))
         .assert()
         .failure();
@@ -1801,12 +1791,7 @@ fn deploy_apply_logical_id_resolution() {
 
     // Verify both items exist
     let assert = fabio()
-        .args([
-            "item",
-            "list",
-            "--workspace",
-            &cfg.dest_workspace,
-        ])
+        .args(["item", "list", "--workspace", &cfg.dest_workspace])
         .assert()
         .success();
     let json = parse_json(&assert);
@@ -1848,8 +1833,9 @@ fn deploy_apply_logical_id_resolution() {
         .expect("Should find notebook content part");
 
     let payload_b64 = content_part["payload"].as_str().unwrap();
-    let payload_bytes =
-        base64::engine::general_purpose::STANDARD.decode(payload_b64).unwrap();
+    let payload_bytes = base64::engine::general_purpose::STANDARD
+        .decode(payload_b64)
+        .unwrap();
     let payload_str = String::from_utf8(payload_bytes).unwrap();
 
     // The logical ID should be resolved to the actual deployed lakehouse ID
@@ -2166,7 +2152,10 @@ fn deploy_plan_detects_rename() {
     let json = parse_json(&assert);
     let items = extract_data(&json).as_array().unwrap().clone();
     let created = items.iter().find(|i| i["displayName"] == original_name);
-    assert!(created.is_some(), "Expected deployed notebook '{original_name}'");
+    assert!(
+        created.is_some(),
+        "Expected deployed notebook '{original_name}'"
+    );
     let nb_id = created.unwrap()["id"].as_str().unwrap().to_owned();
 
     // Step 2: Rename the source (simulate renaming in source code)
@@ -2257,7 +2246,10 @@ fn deploy_plan_detects_rename() {
     let json = parse_json(&assert);
     let items = extract_data(&json).as_array().unwrap().clone();
     let renamed = items.iter().find(|i| i["displayName"] == renamed_name);
-    assert!(renamed.is_some(), "Expected renamed notebook '{renamed_name}'");
+    assert!(
+        renamed.is_some(),
+        "Expected renamed notebook '{renamed_name}'"
+    );
     let old = items.iter().find(|i| i["displayName"] == original_name);
     assert!(old.is_none(), "Original name should no longer exist");
 
