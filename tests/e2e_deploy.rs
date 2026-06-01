@@ -5,6 +5,7 @@
 
 mod common;
 
+use base64::Engine;
 use common::{TestConfig, extract_data, fabio, parse_json, unique_name};
 use serial_test::serial;
 use std::time::Duration;
@@ -1376,4 +1377,592 @@ fn deploy_plan_with_semantic_model_binding_parameters() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert!(data["workspace_id"].is_string());
+}
+
+// ── Phase 4: Plan File Roundtrip ─────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_file_roundtrip_apply() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let source_dir = dir.path().join("source");
+    let plan_file = dir.path().join("plan.json");
+    let name = unique_name("deploy_rt");
+
+    // Create a minimal notebook source
+    let nb_dir = source_dir.join(format!("{name}.Notebook"));
+    std::fs::create_dir_all(&nb_dir).unwrap();
+
+    let platform = serde_json::json!({
+        "metadata": {
+            "type": "Notebook",
+            "displayName": name
+        },
+        "config": {
+            "version": "2.0",
+            "logicalId": "rt-lid-001",
+            "definitionFormat": "ipynb"
+        }
+    });
+    std::fs::write(
+        nb_dir.join(".platform"),
+        serde_json::to_string_pretty(&platform).unwrap(),
+    )
+    .unwrap();
+
+    let ipynb = serde_json::json!({
+        "nbformat": 4,
+        "nbformat_minor": 5,
+        "metadata": { "language_info": { "name": "python" } },
+        "cells": [{
+            "cell_type": "code",
+            "source": ["# roundtrip test\n"],
+            "metadata": {},
+            "outputs": []
+        }]
+    });
+    std::fs::write(
+        nb_dir.join("notebook-content.py"),
+        serde_json::to_string(&ipynb).unwrap(),
+    )
+    .unwrap();
+
+    // Step 1: Plan --out (save plan to file)
+    fabio()
+        .args([
+            "deploy",
+            "plan",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+            "--out",
+            plan_file.to_str().unwrap(),
+        ])
+        .timeout(Duration::from_secs(120))
+        .assert()
+        .success();
+
+    assert!(plan_file.exists(), "Plan file should exist");
+    let plan_content = std::fs::read_to_string(&plan_file).unwrap();
+    let plan: serde_json::Value = serde_json::from_str(&plan_content).unwrap();
+    assert_eq!(plan["version"], 1);
+    assert!(plan["workspace_fingerprint"].is_string());
+
+    // Step 2: Apply from plan file
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--plan",
+            plan_file.to_str().unwrap(),
+        ])
+        .timeout(Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "succeeded");
+    assert_eq!(data["succeeded"].as_u64().unwrap(), 1);
+
+    // Verify item exists
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--type",
+            "Notebook",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    let created = items.iter().find(|i| i["displayName"] == name);
+    assert!(created.is_some(), "Expected deployed notebook '{name}'");
+
+    // Cleanup
+    let nb_id = created.unwrap()["id"].as_str().unwrap();
+    fabio()
+        .args([
+            "item",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            nb_id,
+        ])
+        .timeout(Duration::from_secs(60))
+        .assert()
+        .success();
+}
+
+// ── Phase 4: Plan Staleness Detection ────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_staleness_detection() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let source_dir = dir.path().join("source");
+    let plan_file = dir.path().join("plan.json");
+    let name = unique_name("deploy_stale");
+    let stale_name = unique_name("stale_item");
+
+    // Create a minimal notebook source
+    let nb_dir = source_dir.join(format!("{name}.Notebook"));
+    std::fs::create_dir_all(&nb_dir).unwrap();
+
+    let platform = serde_json::json!({
+        "metadata": {
+            "type": "Notebook",
+            "displayName": name
+        },
+        "config": {
+            "version": "2.0",
+            "logicalId": "stale-lid-001",
+            "definitionFormat": "ipynb"
+        }
+    });
+    std::fs::write(
+        nb_dir.join(".platform"),
+        serde_json::to_string_pretty(&platform).unwrap(),
+    )
+    .unwrap();
+
+    let ipynb = serde_json::json!({
+        "nbformat": 4,
+        "nbformat_minor": 5,
+        "metadata": { "language_info": { "name": "python" } },
+        "cells": [{
+            "cell_type": "code",
+            "source": ["# staleness test\n"],
+            "metadata": {},
+            "outputs": []
+        }]
+    });
+    std::fs::write(
+        nb_dir.join("notebook-content.py"),
+        serde_json::to_string(&ipynb).unwrap(),
+    )
+    .unwrap();
+
+    // Step 1: Save plan (captures workspace fingerprint)
+    fabio()
+        .args([
+            "deploy",
+            "plan",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+            "--out",
+            plan_file.to_str().unwrap(),
+        ])
+        .timeout(Duration::from_secs(120))
+        .assert()
+        .success();
+
+    // Step 2: Modify the workspace state (create a new item to change fingerprint)
+    let assert = fabio()
+        .args([
+            "item",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &stale_name,
+            "--type",
+            "Notebook",
+        ])
+        .timeout(Duration::from_secs(120))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let stale_item_id = extract_data(&json)["id"].as_str().unwrap().to_owned();
+
+    // Step 3: Apply from plan file WITHOUT --force → should FAIL (stale)
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--plan",
+            plan_file.to_str().unwrap(),
+        ])
+        .timeout(Duration::from_secs(60))
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("Workspace state has changed")
+            || stderr.contains("workspace_fingerprint")
+            || stderr.contains("fingerprint"),
+        "Expected staleness error, got: {stderr}"
+    );
+
+    // Step 4: Apply with --force → should SUCCEED despite stale fingerprint
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--plan",
+            plan_file.to_str().unwrap(),
+            "--force",
+        ])
+        .timeout(Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "succeeded");
+
+    // Cleanup: delete both items
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--type",
+            "Notebook",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    if let Some(deployed) = items.iter().find(|i| i["displayName"] == name) {
+        let id = deployed["id"].as_str().unwrap();
+        fabio()
+            .args([
+                "item",
+                "delete",
+                "--workspace",
+                &cfg.dest_workspace,
+                "--id",
+                id,
+            ])
+            .timeout(Duration::from_secs(60))
+            .assert()
+            .success();
+    }
+    fabio()
+        .args([
+            "item",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &stale_item_id,
+        ])
+        .timeout(Duration::from_secs(60))
+        .assert()
+        .success();
+}
+
+// ── Phase 4: Logical ID Resolution (Live) ────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_apply_logical_id_resolution() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let source_dir = dir.path().join("source");
+    let lh_name = unique_name("deploy_lh");
+    let nb_name = unique_name("deploy_nb_ref");
+
+    // Use a stable logical ID for the lakehouse that we'll embed in the notebook
+    let lh_logical_id = "e2e-logical-id-lakehouse-001";
+
+    // Create a lakehouse source item
+    let lh_dir = source_dir.join(format!("{lh_name}.Lakehouse"));
+    std::fs::create_dir_all(&lh_dir).unwrap();
+    let lh_platform = serde_json::json!({
+        "metadata": {
+            "type": "Lakehouse",
+            "displayName": lh_name
+        },
+        "config": {
+            "version": "2.0",
+            "logicalId": lh_logical_id
+        }
+    });
+    std::fs::write(
+        lh_dir.join(".platform"),
+        serde_json::to_string_pretty(&lh_platform).unwrap(),
+    )
+    .unwrap();
+    // Lakehouse has no definition content (empty definition creates shell)
+
+    // Create a notebook source item whose definition references the lakehouse's logical ID
+    let nb_dir = source_dir.join(format!("{nb_name}.Notebook"));
+    std::fs::create_dir_all(&nb_dir).unwrap();
+
+    let nb_platform = serde_json::json!({
+        "metadata": {
+            "type": "Notebook",
+            "displayName": nb_name
+        },
+        "config": {
+            "version": "2.0",
+            "logicalId": "e2e-logical-id-notebook-001",
+            "definitionFormat": "ipynb"
+        }
+    });
+    std::fs::write(
+        nb_dir.join(".platform"),
+        serde_json::to_string_pretty(&nb_platform).unwrap(),
+    )
+    .unwrap();
+
+    // The notebook content references the lakehouse logical ID
+    // (This simulates a notebook that uses the lakehouse's ID in its metadata)
+    let ipynb = serde_json::json!({
+        "nbformat": 4,
+        "nbformat_minor": 5,
+        "metadata": {
+            "language_info": { "name": "python" },
+            "trident": {
+                "lakehouse": {
+                    "default_lakehouse": lh_logical_id,
+                    "default_lakehouse_name": lh_name,
+                    "known_lakehouses": [{
+                        "id": lh_logical_id
+                    }]
+                }
+            }
+        },
+        "cells": [{
+            "cell_type": "code",
+            "source": [&format!("# Uses lakehouse: {lh_logical_id}\n")],
+            "metadata": {},
+            "outputs": []
+        }]
+    });
+    std::fs::write(
+        nb_dir.join("notebook-content.py"),
+        serde_json::to_string(&ipynb).unwrap(),
+    )
+    .unwrap();
+
+    // Plan should show 2 creates
+    let assert = fabio()
+        .args([
+            "deploy",
+            "plan",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+        ])
+        .timeout(Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(
+        data["summary"]["create"].as_u64().unwrap(),
+        2,
+        "Expected 2 creates (lakehouse + notebook)"
+    );
+
+    // Apply (real deployment) — lakehouse deploys first (lower priority number),
+    // then notebook gets the resolved lakehouse ID in its definition
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+        ])
+        .timeout(Duration::from_secs(300))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "succeeded");
+    assert_eq!(
+        data["succeeded"].as_u64().unwrap(),
+        2,
+        "Both items should deploy successfully"
+    );
+    assert_eq!(data["failed"].as_u64().unwrap(), 0);
+
+    // Verify both items exist
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.dest_workspace,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+
+    let lh_item = items.iter().find(|i| i["displayName"] == lh_name);
+    assert!(lh_item.is_some(), "Lakehouse '{lh_name}' should exist");
+    let lh_id = lh_item.unwrap()["id"].as_str().unwrap();
+
+    let nb_item = items.iter().find(|i| i["displayName"] == nb_name);
+    assert!(nb_item.is_some(), "Notebook '{nb_name}' should exist");
+    let nb_id = nb_item.unwrap()["id"].as_str().unwrap();
+
+    // Verify the notebook's definition has the REAL lakehouse ID (not the logical ID)
+    let assert = fabio()
+        .args([
+            "item",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            nb_id,
+        ])
+        .timeout(Duration::from_secs(120))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let def_data = extract_data(&json);
+
+    // Find the notebook content part and check it contains the real lakehouse ID
+    let parts = def_data["definition"]["parts"].as_array().unwrap();
+    let content_part = parts
+        .iter()
+        .find(|p| {
+            p["path"]
+                .as_str()
+                .is_some_and(|path| path.contains("notebook"))
+        })
+        .expect("Should find notebook content part");
+
+    let payload_b64 = content_part["payload"].as_str().unwrap();
+    let payload_bytes =
+        base64::engine::general_purpose::STANDARD.decode(payload_b64).unwrap();
+    let payload_str = String::from_utf8(payload_bytes).unwrap();
+
+    // The logical ID should be resolved to the actual deployed lakehouse ID
+    assert!(
+        payload_str.contains(lh_id),
+        "Notebook definition should contain the real lakehouse ID '{lh_id}', but got: {}...",
+        &payload_str[..payload_str.len().min(200)]
+    );
+    assert!(
+        !payload_str.contains(lh_logical_id),
+        "Notebook definition should NOT contain the logical ID '{lh_logical_id}'"
+    );
+
+    // Cleanup: delete both items (notebook first to avoid dependency issues)
+    fabio()
+        .args([
+            "item",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            nb_id,
+        ])
+        .timeout(Duration::from_secs(60))
+        .assert()
+        .success();
+    fabio()
+        .args([
+            "item",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            lh_id,
+        ])
+        .timeout(Duration::from_secs(60))
+        .assert()
+        .success();
+}
+
+// ── Phase 4: Plan workspace_fingerprint field validation ─────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_file_contains_fingerprint() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let export_dir = dir.path().join("exported");
+    let plan_file = dir.path().join("plan.json");
+
+    // Export
+    fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            export_dir.to_str().unwrap(),
+        ])
+        .timeout(Duration::from_secs(300))
+        .assert()
+        .success();
+
+    // Plan with --out
+    fabio()
+        .args([
+            "deploy",
+            "plan",
+            "--source",
+            export_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.source_workspace,
+            "--force-all",
+            "--out",
+            plan_file.to_str().unwrap(),
+        ])
+        .timeout(Duration::from_secs(120))
+        .assert()
+        .success();
+
+    // Parse plan file and verify structure
+    let content = std::fs::read_to_string(&plan_file).unwrap();
+    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    assert_eq!(plan["version"], 1, "Plan version should be 1");
+    assert!(
+        plan["workspace_id"].is_string(),
+        "Plan should have workspace_id"
+    );
+    assert!(
+        plan["workspace_fingerprint"].is_string(),
+        "Plan should have workspace_fingerprint"
+    );
+
+    let fingerprint = plan["workspace_fingerprint"].as_str().unwrap();
+    assert!(
+        fingerprint.starts_with("sha256:"),
+        "Fingerprint should start with 'sha256:', got: {fingerprint}"
+    );
+    assert_eq!(
+        fingerprint.len(),
+        7 + 64,
+        "Fingerprint should be sha256: + 64 hex chars"
+    );
+
+    assert!(
+        plan["changeset"]["changes"].is_array(),
+        "Plan should have changeset.changes array"
+    );
+    assert!(
+        plan["source_path"].is_string(),
+        "Plan should have source_path"
+    );
 }

@@ -2178,6 +2178,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_all_parameter_types_combined() {
         // Test that all parameter types can run together without interference
         let pipeline_content = serde_json::json!({

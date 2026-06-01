@@ -613,4 +613,107 @@ mod tests {
         let fp = compute_workspace_fingerprint(&[]);
         assert!(fp.starts_with("sha256:"));
     }
+
+    #[test]
+    fn test_compute_workspace_fingerprint_sensitive_to_name_change() {
+        let items1 = vec![DeployedItem {
+            id: "aaa".to_owned(),
+            display_name: "ItemA".to_owned(),
+            item_type: "Notebook".to_owned(),
+            definition_hash: None,
+        }];
+        let items2 = vec![DeployedItem {
+            id: "aaa".to_owned(),
+            display_name: "ItemB".to_owned(), // only name changed
+            item_type: "Notebook".to_owned(),
+            definition_hash: None,
+        }];
+
+        let fp1 = compute_workspace_fingerprint(&items1);
+        let fp2 = compute_workspace_fingerprint(&items2);
+        assert_ne!(fp1, fp2, "Fingerprint should change when item name changes");
+    }
+
+    #[test]
+    fn test_compute_workspace_fingerprint_sensitive_to_type_change() {
+        let items1 = vec![DeployedItem {
+            id: "aaa".to_owned(),
+            display_name: "Item".to_owned(),
+            item_type: "Notebook".to_owned(),
+            definition_hash: None,
+        }];
+        let items2 = vec![DeployedItem {
+            id: "aaa".to_owned(),
+            display_name: "Item".to_owned(),
+            item_type: "Lakehouse".to_owned(), // only type changed
+            definition_hash: None,
+        }];
+
+        let fp1 = compute_workspace_fingerprint(&items1);
+        let fp2 = compute_workspace_fingerprint(&items2);
+        assert_ne!(fp1, fp2, "Fingerprint should change when item type changes");
+    }
+
+    #[test]
+    fn test_compute_workspace_fingerprint_sensitive_to_added_item() {
+        let items1 = vec![DeployedItem {
+            id: "aaa".to_owned(),
+            display_name: "Item".to_owned(),
+            item_type: "Notebook".to_owned(),
+            definition_hash: None,
+        }];
+        let items2 = vec![
+            DeployedItem {
+                id: "aaa".to_owned(),
+                display_name: "Item".to_owned(),
+                item_type: "Notebook".to_owned(),
+                definition_hash: None,
+            },
+            DeployedItem {
+                id: "bbb".to_owned(),
+                display_name: "Item2".to_owned(),
+                item_type: "Lakehouse".to_owned(),
+                definition_hash: None,
+            },
+        ];
+
+        let fp1 = compute_workspace_fingerprint(&items1);
+        let fp2 = compute_workspace_fingerprint(&items2);
+        assert_ne!(fp1, fp2, "Fingerprint should change when item is added");
+    }
+
+    #[test]
+    fn test_compute_workspace_fingerprint_ignores_definition_hash() {
+        // definition_hash is not part of fingerprint (it's a field on the struct
+        // but fingerprint only uses id, type, name)
+        let items1 = vec![DeployedItem {
+            id: "aaa".to_owned(),
+            display_name: "Item".to_owned(),
+            item_type: "Notebook".to_owned(),
+            definition_hash: None,
+        }];
+        let items2 = vec![DeployedItem {
+            id: "aaa".to_owned(),
+            display_name: "Item".to_owned(),
+            item_type: "Notebook".to_owned(),
+            definition_hash: Some("sha256:different".to_owned()),
+        }];
+
+        let fp1 = compute_workspace_fingerprint(&items1);
+        let fp2 = compute_workspace_fingerprint(&items2);
+        assert_eq!(
+            fp1, fp2,
+            "Fingerprint should not change when only definition_hash differs"
+        );
+    }
+
+    #[test]
+    fn test_hash_api_parts_empty_list() {
+        let parts: Vec<Value> = vec![];
+        let hash = hash_api_parts(&parts);
+        assert!(hash.starts_with("sha256:"));
+        // Empty input should still produce a consistent hash
+        let hash2 = hash_api_parts(&parts);
+        assert_eq!(hash, hash2);
+    }
 }

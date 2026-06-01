@@ -424,18 +424,25 @@ async fn deploy_change(
 
     match change.action {
         ChangeAction::Create => {
-            // Build definition with optional format
-            let definition = if let Some(ref fmt) = source_item.metadata.definition_format {
-                json!({ "format": fmt, "parts": parts })
+            // Omit definition entirely when there are no parts (e.g. Lakehouse, MLModel)
+            let body = if parts.is_empty() {
+                json!({
+                    "displayName": change.name,
+                    "type": change.item_type
+                })
             } else {
-                json!({ "parts": parts })
+                let definition =
+                    if let Some(ref fmt) = source_item.metadata.definition_format {
+                        json!({ "format": fmt, "parts": parts })
+                    } else {
+                        json!({ "parts": parts })
+                    };
+                json!({
+                    "displayName": change.name,
+                    "type": change.item_type,
+                    "definition": definition
+                })
             };
-
-            let body = json!({
-                "displayName": change.name,
-                "type": change.item_type,
-                "definition": definition
-            });
 
             if dry_run {
                 return Ok(None);
@@ -458,7 +465,11 @@ async fn deploy_change(
                 )
             })?;
 
-            // Build definition with optional format
+            // Skip updateDefinition when there are no parts (nothing to update)
+            if parts.is_empty() {
+                return Ok(Some(deployed_id.to_owned()));
+            }
+
             let definition = if let Some(ref fmt) = source_item.metadata.definition_format {
                 json!({ "format": fmt, "parts": parts })
             } else {
@@ -990,5 +1001,180 @@ mod tests {
         let map = build_resolution_map(&source, &created_ids);
         // No entry — item has no logical_id so it can't be referenced
         assert!(map.is_empty());
+    }
+
+    #[test]
+    fn test_build_resolution_map_multiple_items() {
+        use super::super::platform::{PlatformMetadata, SourceWorkspace};
+
+        let source = SourceWorkspace {
+            items: vec![
+                SourceItem {
+                    metadata: PlatformMetadata {
+                        item_type: "Lakehouse".to_owned(),
+                        display_name: "LH1".to_owned(),
+                        logical_id: Some("lid-lh1".to_owned()),
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![],
+                    content_hash: "sha256:abc".to_owned(),
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+                SourceItem {
+                    metadata: PlatformMetadata {
+                        item_type: "Lakehouse".to_owned(),
+                        display_name: "LH2".to_owned(),
+                        logical_id: Some("lid-lh2".to_owned()),
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![],
+                    content_hash: "sha256:def".to_owned(),
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+                SourceItem {
+                    metadata: PlatformMetadata {
+                        item_type: "Notebook".to_owned(),
+                        display_name: "NB1".to_owned(),
+                        logical_id: Some("lid-nb1".to_owned()),
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![],
+                    content_hash: "sha256:ghi".to_owned(),
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+            ],
+            logical_id_index: HashMap::from([
+                ("lid-lh1".to_owned(), 0),
+                ("lid-lh2".to_owned(), 1),
+                ("lid-nb1".to_owned(), 2),
+            ]),
+            type_name_index: HashMap::from([
+                (("Lakehouse".to_owned(), "LH1".to_owned()), 0),
+                (("Lakehouse".to_owned(), "LH2".to_owned()), 1),
+                (("Notebook".to_owned(), "NB1".to_owned()), 2),
+            ]),
+        };
+
+        let created_ids = HashMap::from([
+            (
+                ("Lakehouse".to_owned(), "LH1".to_owned()),
+                "deployed-id-lh1".to_owned(),
+            ),
+            (
+                ("Notebook".to_owned(), "NB1".to_owned()),
+                "deployed-id-nb1".to_owned(),
+            ),
+        ]);
+
+        let map = build_resolution_map(&source, &created_ids);
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get("lid-lh1"), Some(&"deployed-id-lh1".to_owned()));
+        assert_eq!(map.get("lid-nb1"), Some(&"deployed-id-nb1".to_owned()));
+        // LH2 not in created_ids → not in resolution map
+        assert!(!map.contains_key("lid-lh2"));
+    }
+
+    #[test]
+    fn test_resolve_logical_ids_multiple_different_ids() {
+        let content = r#"{"lh": "lid-aaa", "nb": "lid-bbb", "other": "no-match"}"#;
+        let payload = BASE64.encode(content.as_bytes());
+        let map = HashMap::from([
+            ("lid-aaa".to_owned(), "deployed-aaa".to_owned()),
+            ("lid-bbb".to_owned(), "deployed-bbb".to_owned()),
+        ]);
+
+        let result = resolve_logical_ids_in_payload(&payload, &map);
+        let decoded = String::from_utf8(BASE64.decode(&result).unwrap()).unwrap();
+        assert!(decoded.contains("deployed-aaa"));
+        assert!(decoded.contains("deployed-bbb"));
+        assert!(!decoded.contains("lid-aaa"));
+        assert!(!decoded.contains("lid-bbb"));
+        assert!(decoded.contains("no-match")); // untouched
+    }
+
+    #[test]
+    fn test_resolve_logical_ids_non_utf8_payload() {
+        // Binary payload that is not valid UTF-8
+        let binary = vec![0xFF, 0xFE, 0x00, 0x01, 0x80, 0x90];
+        let payload = BASE64.encode(&binary);
+        let map = HashMap::from([("whatever".to_owned(), "replaced".to_owned())]);
+
+        let result = resolve_logical_ids_in_payload(&payload, &map);
+        assert_eq!(result, payload); // returned unchanged
+    }
+
+    #[test]
+    fn test_resolve_logical_ids_partial_match_substring() {
+        // Ensure that a logical ID that is a substring of another doesn't cause issues
+        let content = r#"{"id1": "abc-123", "id2": "abc-123-extended"}"#;
+        let payload = BASE64.encode(content.as_bytes());
+        let map = HashMap::from([("abc-123".to_owned(), "REPLACED".to_owned())]);
+
+        let result = resolve_logical_ids_in_payload(&payload, &map);
+        let decoded = String::from_utf8(BASE64.decode(&result).unwrap()).unwrap();
+        // Both occurrences of "abc-123" get replaced (including substring within longer string)
+        assert!(decoded.contains("REPLACED"));
+        assert!(!decoded.contains("abc-123\""));
+    }
+
+    #[test]
+    fn test_build_resolution_map_ignores_items_not_in_source() {
+        use super::super::platform::{PlatformMetadata, SourceWorkspace};
+
+        let source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: PlatformMetadata {
+                    item_type: "Lakehouse".to_owned(),
+                    display_name: "LH1".to_owned(),
+                    logical_id: Some("lid-lh1".to_owned()),
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![],
+                content_hash: "sha256:abc".to_owned(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::from([("lid-lh1".to_owned(), 0)]),
+            type_name_index: HashMap::from([(("Lakehouse".to_owned(), "LH1".to_owned()), 0)]),
+        };
+
+        // created_ids has an item that doesn't exist in source type_name_index
+        let created_ids = HashMap::from([
+            (
+                ("Lakehouse".to_owned(), "LH1".to_owned()),
+                "deployed-lh1".to_owned(),
+            ),
+            (
+                ("Notebook".to_owned(), "Ghost".to_owned()),
+                "deployed-ghost".to_owned(),
+            ),
+        ]);
+
+        let map = build_resolution_map(&source, &created_ids);
+        assert_eq!(map.len(), 1);
+        assert_eq!(map.get("lid-lh1"), Some(&"deployed-lh1".to_owned()));
+    }
+
+    #[test]
+    fn test_extract_error_code_fabio_error() {
+        use crate::errors::{ErrorCode, FabioError};
+        let err = FabioError {
+            code: ErrorCode::NotFound,
+            message: "Not found".to_owned(),
+            hint: None,
+        };
+        let anyhow_err: anyhow::Error = err.into();
+        let code = extract_error_code(&anyhow_err);
+        assert_eq!(code, "NotFound");
+    }
+
+    #[test]
+    fn test_extract_error_code_unknown_error() {
+        let err = anyhow::anyhow!("some random error");
+        let code = extract_error_code(&err);
+        assert_eq!(code, "UNKNOWN");
     }
 }
