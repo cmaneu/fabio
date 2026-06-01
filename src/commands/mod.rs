@@ -12,6 +12,7 @@ pub mod data_pipeline;
 pub mod dataagent;
 pub mod dataflow;
 pub mod datamart;
+pub mod deploy;
 pub mod deployment_pipeline;
 pub mod digital_twin_builder;
 pub mod digital_twin_builder_flow;
@@ -177,6 +178,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
             deployment_pipeline::execute(&cli, &client, command).await
         }
         Command::Domain { command } => domain::execute(&cli, &client, command).await,
+        Command::Deploy { command } => deploy::execute(&cli, &client, command).await,
         Command::JobScheduler { command } => job_scheduler::execute(&cli, &client, command).await,
         // Security & Governance
         Command::OnelakeSecurity { command } => {

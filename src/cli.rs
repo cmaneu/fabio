@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
     admin, anomaly_detector, apache_airflow_job, auth, capacity, catalog, connection, copy_job,
-    cosmos_db_database, dashboard, data_pipeline, dataagent, dataflow, datamart,
+    cosmos_db_database, dashboard, data_pipeline, dataagent, dataflow, datamart, deploy,
     deployment_pipeline, digital_twin_builder, digital_twin_builder_flow, domain, environment,
     event_schema_set, eventhouse, eventstream, feedback, gateway, git, graph_model,
     graph_query_set, graphql_api, item, job_scheduler, jobs, kql_dashboard, kql_database,
@@ -429,8 +429,14 @@ pub enum Command {
         #[command(subcommand)]
         command: domain::DomainCommand,
     },
-    /// Manage item job scheduling (run, cancel, schedules)
+    /// Deploy item definitions from a local directory to a workspace
     #[command(display_order = 44)]
+    Deploy {
+        #[command(subcommand)]
+        command: deploy::DeployCommand,
+    },
+    /// Manage item job scheduling (run, cancel, schedules)
+    #[command(display_order = 45)]
     JobScheduler {
         #[command(subcommand)]
         command: job_scheduler::JobSchedulerCommand,
