@@ -35,7 +35,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (290 subcommands across 37 groups): auth, workspace, item, lakehouse, capacity, notebook, warehouse, data-agent, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, git, connection, deployment-pipeline, domain, job-scheduler, onelake-security, managed-private-endpoint, profile, jobs, feedback + agent-context
+- **Full Rust implementation** (290 subcommands across 37 groups): auth, workspace, item, lakehouse, capacity, notebook, warehouse, data-agent, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, git, connection, deployment-pipeline, domain, job-scheduler, onelake-security, managed-private-endpoint, profile, jobs, feedback + agent-context + deploy
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`
@@ -104,7 +104,8 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Cosmos DB Database**: list/show/create/update/delete/get-definition/update-definition (empty shell creation supported)
 - **Snowflake Database**: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
 - **Anomaly Detector**: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
-- **836 Rust tests** (283 unit/offline + 553 E2E integration), zero clippy warnings, rustfmt clean
+- **Deploy**: plan/apply/export/init-params (CI/CD deployment engine: content-hash diffing, parameter substitution, rename detection, creationPayload, post-deploy hooks, logical ID resolution)
+- **909 Rust tests** (409 unit/offline + 500 E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~9.4 MB, stripped, full LTO, panic=abort
@@ -136,6 +137,17 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `unsafe_code = "forbid"` in lints
 - **KQL Queryset definition format**: Uses `RealTimeQueryset.json` (NOT `RawQueryset.kql`). JSON structure: `{"queryset":{"version":"1.0.0","dataSources":[{"id","clusterUri","type","databaseName"}],"tabs":[{"id","content","title","dataSourceId"}]}}`. The `content` field holds the KQL query text with `\n` for newlines.
 - **KQL Queryset run**: Fetches definition via LRO, decodes `RealTimeQueryset.json`, selects tab by name or index, resolves data source (clusterUri + databaseName), executes via Kusto REST API. Tab selection is case-insensitive by title.
+- **Deploy diff strategy**: Content hash vs live workspace (not git diff) — detects portal edits, works without git, idempotent convergence
+- **Deploy parallelism**: Semaphore-bounded `tokio::spawn` per-item within type batch (default 8); sequential for DataPipeline; deletes always sequential
+- **Deploy parameter format**: JSON (not YAML) — no extra crate dependency, agent-native consistency
+- **Deploy plan staleness**: Workspace fingerprint = SHA256 of sorted `(id, type, name)` tuples; mismatch → error unless `--force`
+- **Deploy logical ID resolution**: String replacement in base64 payloads; resolves items created earlier in same session
+- **Deploy rename detection**: Two-pass matching — first by (type, name), then unmatched source items with logical IDs get candidates checked via `fetch_deployed_logical_id()` which reads `.platform` part from deployed item definition
+- **Deploy creationPayload**: Separate `creationPayload.json` file in item directory; merged into creation body as `creationPayload` field; parameter substitution applied
+- **Deploy post-hooks**: Opt-out via `--no-post-hooks`; hooks never fire during `--dry-run`; failures are non-fatal (reported in output, don't fail the deploy). SemanticModel → `POST /refreshes`, Environment → `POST /staging/publish`
+- **Deploy empty definitions**: Items with no parts (Lakehouse, MLModel) omit `definition` field on create; skip `updateDefinition` on update
+- **Deploy ordering**: 42 item types in `DEPLOY_ORDER`; deployed in dependency order (storage → compute → code → models → reactive → APIs → ML → graph → viz)
+- **Deploy no state file**: Stateless — always queries live workspace. No `.tfstate` equivalent.
 
 ## Critical Context
 - User's tenant: set locally via secure environment configuration (redacted)
@@ -157,7 +169,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `Cargo.toml`: Project config, dependencies, clippy/lints config, release profile (LTO+strip)
 - `rust-toolchain.toml`: stable channel, rustfmt+clippy components
 - `src/main.rs`: Entry point, `#![recursion_limit = "256"]`, tokio async main, error handling dispatch
-- `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 37 subcommand groups
+- `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 38 subcommand groups
 - `src/errors.rs`: ErrorCode enum + FabioError struct with thiserror
 - `src/output.rs`: render_list_with_token, render_object, render_error (respects --quiet/--query), apply_query, dry_run_guard, unit tests
 - `src/parallel.rs`: Parallel execution framework for concurrent file/table operations with rate-limit retry
@@ -210,6 +222,15 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/snowflake_database.rs`: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
 - `src/commands/sql_endpoint.rs`: list/show/connection-string/refresh-metadata/get-audit-settings/update-audit-settings/set-audit-actions
 - `src/commands/anomaly_detector.rs`: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
+- `src/commands/deploy/mod.rs`: DeployCommand enum (plan/apply/export/init-params); execute dispatch; workspace name resolution
+- `src/commands/deploy/apply.rs`: execute_changeset, execute_post_hooks, Rename handling (PATCH + updateDefinition), build_resolution_map, resolve_logical_ids_in_payload
+- `src/commands/deploy/plan.rs`: build_changeset (two-pass with rename), validate_references, fetch_deployed_logical_id, compute_workspace_fingerprint
+- `src/commands/deploy/params.rs`: Parameter substitution: find_replace, key_value_replace, spark_pool, semantic_model_binding
+- `src/commands/deploy/init_params.rs`: scan_for_candidates, diff_for_parameters (GUID discovery, cross-environment diffing)
+- `src/commands/deploy/changeset.rs`: Change, ChangeAction (Create/Update/Rename/Delete/Skip), Changeset (with warnings/errors), DeployResult
+- `src/commands/deploy/ordering.rs`: DEPLOY_ORDER (42 types), deploy_priority, delete_priority, topological_sort
+- `src/commands/deploy/platform.rs`: parse_source_directory (creationPayload.json parsing), SourceItem, SourceWorkspace, PlatformMetadata
+- `src/commands/deploy/export.rs`: export_workspace (getDefinition LRO per item, write .platform + parts)
 - `src/commands/profile.rs`: save/use/list/show/delete (named profiles with defaults)
 - `src/commands/jobs.rs`: list/get/prune (local async job ledger)
 - `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
@@ -258,6 +279,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_onelake_security.rs`: OneLake security tests
 - `tests/e2e_managed_private_endpoint.rs`: Managed private endpoint tests
 - `tests/e2e_admin.rs`: Admin API tests (63 tests: listing, tag lifecycle, domain lifecycle, dry-run validations, sharing links, labels, external data shares)
+- `tests/e2e_deploy.rs`: Deploy plan/apply/export tests (34 tests: create, update, rename, creationPayload, parameters, staleness, logical ID resolution, post-hooks, init-params)
 - `.github/workflows/ci.yml`: Rust CI (fmt, clippy, test, build) on 6 targets (x64+arm64 x linux/macos/windows)
 - `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
 - `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
@@ -1526,4 +1548,172 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **`bulk-set-labels` requires Microsoft Purview**: Returns "Label is not assigned to user" when Purview sensitivity labels are not configured in the tenant. Requires M365 E5 licensing + Purview label policy.
 - **`revoke-external-data-share`**: Returns NOT_FOUND for non-existent share IDs. Endpoint: `POST /admin/workspaces/{ws}/items/{item}/externalDataShares/{share}/revoke`.
 - **`list-external-data-shares` requires tenant setting**: Only works after enabling "External data sharing" (`AllowExternalDataSharingSwitch`) in tenant admin settings. Returns FORBIDDEN otherwise.
+
+## Deploy Command Design & Behaviors
+
+The `fabio deploy` command group is a CI/CD deployment engine for Fabric workspaces. It provides stateless, content-hash-based convergence similar to Terraform but without a state file — always queries the live workspace for the current state.
+
+### Architecture
+
+```
+fabio deploy export   → getDefinition per item → write .platform + parts
+fabio deploy plan     → parse source + list workspace → diff → changeset
+fabio deploy apply    → execute changeset (create/update/rename/delete)
+fabio deploy init-params → scan/diff definitions → generate parameters.json
+```
+
+### Source Directory Format
+
+Each item is a directory named `{DisplayName}.{ItemType}/` containing:
+- `.platform` (required) — metadata JSON: `{"metadata":{"type":"...","displayName":"..."},"config":{"version":"2.0","logicalId":"...","definitionFormat":"..."}}`
+- Definition part files (e.g., `notebook-content.py`, `report.json`, `model.tmdl`) — base64-encoded when sent to API
+- `creationPayload.json` (optional) — merged into item creation body as `creationPayload` field (e.g., `{"enableSchemas":true}` for Lakehouse, `{"eventhouseId":"..."}` for KQLDatabase)
+
+### Changeset Actions
+
+| Action | Trigger | Execution |
+|--------|---------|-----------|
+| `Create` | Source item has no match in workspace (by type+name) | POST create + updateDefinition |
+| `Update` | Content hash differs between source and deployed | POST updateDefinition |
+| `Rename` | Source logicalId matches deployed item but name differs | PATCH displayName + updateDefinition |
+| `Delete` | Deployed item has no match in source (requires `--delete-orphans`) | DELETE |
+| `Skip` | Content hash matches — item is already in sync | No-op |
+
+### Content Hash Calculation
+
+- Source hash: SHA256 of sorted (path, payload) pairs from all definition parts
+- Deployed hash: SHA256 of API response parts from `getDefinition` (or from `definitionProperties.definitionHash` if exposed)
+- Comparison is deterministic: same content → same hash → Skip action
+
+### Rename Detection (Two-Pass Matching)
+
+1. **First pass**: Match source items to deployed items by `(type, displayName)` — standard create/update/skip
+2. **Second pass**: For unmatched source items WITH a `logicalId`, check unmatched deployed items of the same type by calling `getDefinition` and reading the `.platform` part to extract the deployed item's `logicalId`. If they match → `Rename` action
+
+### Logical ID Resolution
+
+When items reference each other by logical ID (e.g., a notebook referencing a lakehouse), the deploy engine resolves these at apply time:
+1. `build_resolution_map()`: Maps logical IDs → deployed item GUIDs (from existing workspace + newly created items)
+2. `resolve_logical_ids_in_payload()`: Base64-decodes each definition part, performs string replacement of logical IDs with real GUIDs, re-encodes
+3. Items are deployed in dependency order (via `DEPLOY_ORDER`) so that referenced items exist before referencing items are created
+
+### Parameter Substitution
+
+The `--parameters <file> --env <name>` flags enable environment-aware value replacement. Four substitution strategies:
+
+1. **`find_replace`**: Simple string replacement in definition payloads and creationPayload. Rules: `[{"find":"<pattern>","replace":{"dev":"val1","prod":"val2"}}]`
+2. **`key_value_replace`**: JSONPath-targeted replacement in specific files. Rules: `[{"file":"<path>","path":"$.<jsonpath>","replace":{"dev":"val1","prod":"val2"}}]`
+3. **`spark_pool`**: Replaces Spark pool references in notebook/SparkJobDefinition metadata. Rules: `[{"pool_name":{"dev":"pool1","prod":"pool2"}}]`
+4. **`semantic_model_binding`**: Replaces semantic model connection strings. Rules: `[{"server":{"dev":"s1","prod":"s2"},"database":{"dev":"d1","prod":"d2"}}]`
+
+### Init-Params (Scaffold Generation)
+
+`fabio deploy init-params` helps bootstrap `parameters.json`:
+- **Scan mode** (`--source` only): Finds all GUIDs in definition payloads, proposes `find_replace` rules (skips well-known GUIDs like all-zeros)
+- **Diff mode** (`--source` + `--compare`): Exports two workspaces, finds string differences between matching items, generates rules with per-environment values
+
+### Post-Deploy Hooks
+
+After successful deployment, hooks fire automatically (opt-out via `--no-post-hooks`):
+- **SemanticModel**: `POST /workspaces/{ws}/semanticModels/{id}/refreshes` with `{"type":"Full"}` — triggers Direct Lake framing
+- **Environment**: `POST /workspaces/{ws}/environments/{id}/staging/publish` — publishes staged changes
+
+Hook failures are non-fatal: reported in the `post_hooks` output array but don't fail the deploy.
+
+### Plan Staleness Detection
+
+When using `--out` to save a plan file and later `--plan` to apply it:
+1. At plan time: compute workspace fingerprint (SHA256 of sorted `(id, type, name)` tuples)
+2. At apply time: re-compute fingerprint and compare to saved value
+3. If mismatch → error with message to re-plan (override with `--force`)
+
+### Reference Validation
+
+At plan time, `validate_references()` scans all source item payloads for occurrences of other items' logical IDs. If a referenced logical ID belongs to an item that won't be deployed (e.g., it's being deleted or is not in the source), a warning is emitted. Warnings don't block deployment unless `--allow-unresolved` is omitted and errors exist.
+
+### Deploy Order (42 Types)
+
+Items are deployed in dependency order to satisfy references:
+```
+VariableLibrary → Warehouse → WarehouseSnapshot → MirroredDatabase →
+MirroredAzureDatabricksCatalog → Lakehouse → SQLDatabase → CosmosDbDatabase →
+SnowflakeDatabase → Environment → UserDataFunction → Eventhouse → KQLDatabase →
+SparkJobDefinition → Notebook → SemanticModel → Report → PaginatedReport →
+Dashboard → CopyJob → KQLQueryset → KQLDashboard → Reflex → Eventstream →
+EventSchemaSet → Dataflow → DataPipeline → GraphQLApi → ApacheAirflowJob →
+MountedDataFactory → DataAgent → OperationsAgent → AnomalyDetector →
+MLExperiment → MLModel → Ontology → GraphModel → GraphQuerySet →
+DigitalTwinBuilder → DigitalTwinBuilderFlow → Map → Connection
+```
+
+Deletes execute in reverse order (dependent items deleted before their dependencies).
+
+### Empty Definition Handling
+
+Some item types (Lakehouse, MLModel, MLExperiment) have no definition parts:
+- On **Create**: Omit `definition` field entirely from request body (only send `displayName` + optional `creationPayload`)
+- On **Update**: Skip `updateDefinition` call (nothing to update)
+- Content hash is still computed (empty hash) for idempotency detection
+
+### CLI Flags Reference
+
+```
+fabio deploy plan --source <DIR> --workspace <ID|NAME>
+  [--item-types <T1,T2>] [--delete-orphans] [--allow-unresolved]
+  [--force-all] [--out <FILE>] [--parameters <FILE> --env <NAME>]
+
+fabio deploy apply --source <DIR> --workspace <ID|NAME>
+  [--plan <FILE>] [--item-types <T1,T2>] [--delete-orphans]
+  [--allow-unresolved] [--fail-fast] [--force] [--force-all]
+  [--concurrency <N>] [--parameters <FILE> --env <NAME>]
+  [--no-post-hooks]
+
+fabio deploy export --workspace <ID|NAME> --dir <DIR>
+  [--item-types <T1,T2>] [--overwrite]
+
+fabio deploy init-params --source <DIR>
+  [--compare <DIR>] [--source-env <NAME>] [--compare-env <NAME>]
+  [--out <FILE>]
+```
+
+### Output Envelope
+
+Plan output:
+```json
+{"data":{"workspace_id":"...","changes":[...],"warnings":[...],"errors":[...],"summary":{"create":N,"update":N,"rename":N,"delete":N,"skip":N}}}
+```
+
+Apply output:
+```json
+{"data":{"status":"succeeded|partial_failure|no_changes","succeeded":N,"failed":N,"skipped":N,"duration_ms":N,"failures":[...],"post_hooks":[...]}}
+```
+
+Export output:
+```json
+{"data":{"status":"exported","workspace_id":"...","output_dir":"...","total_items":N,"exported":N,"skipped":N}}
+```
+
+### Git Metadata Capture
+
+When deploying from a git repository, `get_git_metadata()` automatically captures:
+- `branch`: current branch name
+- `commit`: HEAD commit SHA
+- `dirty`: whether working tree has uncommitted changes
+
+This metadata is included in plan output for CI/CD audit trail.
+
+### Concurrency & Rate Limiting
+
+- Default concurrency: 8 parallel operations per type batch
+- DataPipeline items always deploy sequentially (Fabric API rejects parallel pipeline mutations)
+- Delete operations always execute sequentially (safe ordering)
+- Rate limit retry: inherited from `FabricClient` HTTP layer (exponential backoff on 429)
+
+### Known Limitations
+
+- **No incremental plan apply**: Applying a saved plan re-executes all actions (no "only do remaining" resume)
+- **creationPayload not validated client-side**: Invalid payloads are rejected by the server at apply time
+- **Rename requires logicalId in both source and deployed**: Items without logicalId cannot be rename-detected
+- **Large workspaces**: getDefinition is called per-item for rename detection (can be slow with 100+ unmatched items)
+- **No cross-workspace references**: Logical ID resolution only works within a single workspace deployment
 
