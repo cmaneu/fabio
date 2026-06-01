@@ -21,7 +21,7 @@ use jsonpath_rust::query::queryable::Queryable;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use super::platform::{DefinitionPart, SourceWorkspace};
+use super::platform::{DefinitionPart, SourceItem, SourceWorkspace};
 
 /// Parsed parameter file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -405,77 +405,110 @@ fn apply_find_replace(
         return Ok(());
     }
 
-    // Apply rules to each item's definition parts
+    // Apply rules to each item's definition parts and creationPayload
     for item in &mut source.items {
-        for part in &mut item.parts {
-            let should_process = compiled_rules.iter().any(|cr| {
-                rule_applies_to_item(
-                    cr.rule,
-                    &item.metadata.item_type,
-                    &item.metadata.display_name,
-                    &part.path,
-                )
-            });
-
-            if !should_process {
-                continue;
-            }
-
-            // Decode the payload
-            let decoded = BASE64
-                .decode(&part.payload)
-                .with_context(|| format!("Failed to decode base64 payload for {}", part.path))?;
-
-            let mut content = String::from_utf8(decoded).with_context(|| {
-                format!(
-                    "Non-UTF8 content in {} of {} (cannot apply text substitution)",
-                    part.path, item.metadata.display_name
-                )
-            })?;
-
-            let mut modified = false;
-
-            // Apply each matching rule
-            for cr in &compiled_rules {
-                if !rule_applies_to_item(
-                    cr.rule,
-                    &item.metadata.item_type,
-                    &item.metadata.display_name,
-                    &part.path,
-                ) {
-                    continue;
-                }
-
-                match &cr.pattern {
-                    RulePattern::Literal(find) => {
-                        if content.contains(find.as_str()) {
-                            content = content.replace(find.as_str(), &cr.replacement);
-                            modified = true;
-                        }
-                    }
-                    RulePattern::Regex(re) => {
-                        // In regex mode, replace the content of capture group 1
-                        let new_content = replace_capture_group(re, &content, &cr.replacement);
-                        if new_content != content {
-                            content = new_content;
-                            modified = true;
-                        }
-                    }
-                }
-            }
-
-            if modified {
-                part.payload = BASE64.encode(content.as_bytes());
-            }
-        }
-
-        // Recompute content hash after substitution
-        if item.parts.iter().any(|_| true) {
-            item.content_hash = compute_content_hash(&item.parts);
-        }
+        apply_find_replace_to_item(item, &compiled_rules)?;
     }
 
     Ok(())
+}
+
+/// Apply compiled find/replace rules to a single source item (parts + creationPayload).
+fn apply_find_replace_to_item(
+    item: &mut SourceItem,
+    compiled_rules: &[CompiledRule<'_>],
+) -> Result<()> {
+    for part in &mut item.parts {
+        let should_process = compiled_rules.iter().any(|cr| {
+            rule_applies_to_item(
+                cr.rule,
+                &item.metadata.item_type,
+                &item.metadata.display_name,
+                &part.path,
+            )
+        });
+
+        if !should_process {
+            continue;
+        }
+
+        // Decode the payload
+        let decoded = BASE64
+            .decode(&part.payload)
+            .with_context(|| format!("Failed to decode base64 payload for {}", part.path))?;
+
+        let mut content = String::from_utf8(decoded).with_context(|| {
+            format!(
+                "Non-UTF8 content in {} of {} (cannot apply text substitution)",
+                part.path, item.metadata.display_name
+            )
+        })?;
+
+        let mut modified = false;
+
+        for cr in compiled_rules {
+            if !rule_applies_to_item(
+                cr.rule,
+                &item.metadata.item_type,
+                &item.metadata.display_name,
+                &part.path,
+            ) {
+                continue;
+            }
+            apply_rule_to_content(cr, &mut content, &mut modified);
+        }
+
+        if modified {
+            part.payload = BASE64.encode(content.as_bytes());
+        }
+    }
+
+    // Apply find_replace to creationPayload if present
+    if let Some(ref mut payload) = item.creation_payload {
+        let mut content = serde_json::to_string(payload).unwrap_or_default();
+        let mut modified = false;
+
+        for cr in compiled_rules {
+            if !rule_applies_to_item(
+                cr.rule,
+                &item.metadata.item_type,
+                &item.metadata.display_name,
+                "creationPayload.json",
+            ) {
+                continue;
+            }
+            apply_rule_to_content(cr, &mut content, &mut modified);
+        }
+
+        if modified {
+            if let Ok(new_val) = serde_json::from_str(&content) {
+                *payload = new_val;
+            }
+        }
+    }
+
+    // Recompute content hash after substitution
+    item.content_hash = compute_content_hash(&item.parts);
+    Ok(())
+}
+
+/// Apply a single compiled rule to a content string, mutating in place.
+fn apply_rule_to_content(cr: &CompiledRule<'_>, content: &mut String, modified: &mut bool) {
+    match &cr.pattern {
+        RulePattern::Literal(find) => {
+            if content.contains(find.as_str()) {
+                *content = content.replace(find.as_str(), &cr.replacement);
+                *modified = true;
+            }
+        }
+        RulePattern::Regex(re) => {
+            let new_content = replace_capture_group(re, content, &cr.replacement);
+            if new_content != *content {
+                *content = new_content;
+                *modified = true;
+            }
+        }
+    }
 }
 
 /// Check if a `find_replace` rule applies to a specific item and file path.
@@ -600,6 +633,20 @@ fn apply_key_value_replace(
                     let new_content = serde_json::to_string(&json_value)
                         .context("Failed to serialize JSON after key_value_replace")?;
                     part.payload = BASE64.encode(new_content.as_bytes());
+                }
+            }
+
+            // Apply key_value_replace to creationPayload if present
+            if let Some(ref mut payload) = item.creation_payload {
+                if kv_rule_applies_to_item(
+                    rule.item_type.as_ref(),
+                    rule.item_name.as_ref(),
+                    rule.file_path.as_ref(),
+                    &item.metadata.item_type,
+                    &item.metadata.display_name,
+                    "creationPayload.json",
+                ) {
+                    apply_jsonpath_replace(payload, &rule.find_key, &resolved_replacement);
                 }
             }
 
@@ -1011,7 +1058,7 @@ enum RulePattern {
 
 #[cfg(test)]
 mod tests {
-    use super::super::platform::SourceItem;
+    use super::super::platform::{PlatformMetadata, SourceItem};
     use super::*;
 
     #[test]
@@ -1238,6 +1285,7 @@ mod tests {
                 }],
                 content_hash: "sha256:old".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::new(),
@@ -1299,6 +1347,7 @@ mod tests {
                     }],
                     content_hash: "sha256:a".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
                 },
                 SourceItem {
                     metadata: super::super::platform::PlatformMetadata {
@@ -1315,6 +1364,7 @@ mod tests {
                     }],
                     content_hash: "sha256:b".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
                 },
             ],
             logical_id_index: HashMap::new(),
@@ -1359,6 +1409,7 @@ mod tests {
                 }],
                 content_hash: "sha256:old".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::new(),
@@ -1422,6 +1473,7 @@ mod tests {
                 }],
                 content_hash: "sha256:old".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::new(),
@@ -1480,6 +1532,7 @@ mod tests {
                 }],
                 content_hash: "sha256:old".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::new(),
@@ -1534,6 +1587,7 @@ mod tests {
                     }],
                     content_hash: "sha256:a".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
                 },
                 SourceItem {
                     metadata: super::super::platform::PlatformMetadata {
@@ -1550,6 +1604,7 @@ mod tests {
                     }],
                     content_hash: "sha256:b".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
                 },
             ],
             logical_id_index: HashMap::new(),
@@ -1612,6 +1667,7 @@ mod tests {
                 }],
                 content_hash: "sha256:old".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::new(),
@@ -1663,6 +1719,7 @@ mod tests {
                 }],
                 content_hash: "sha256:old".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::new(),
@@ -1725,6 +1782,7 @@ mod tests {
                 }],
                 content_hash: "sha256:old".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::new(),
@@ -1806,6 +1864,7 @@ mod tests {
                 }],
                 content_hash: "sha256:old".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::new(),
@@ -1869,6 +1928,7 @@ mod tests {
                 }],
                 content_hash: "sha256:old".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::new(),
@@ -1928,6 +1988,7 @@ mod tests {
                 }],
                 content_hash: "sha256:old".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::new(),
@@ -1994,6 +2055,7 @@ mod tests {
                     }],
                     content_hash: "sha256:a".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
                 },
                 SourceItem {
                     metadata: super::super::platform::PlatformMetadata {
@@ -2010,6 +2072,7 @@ mod tests {
                     }],
                     content_hash: "sha256:b".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
                 },
             ],
             logical_id_index: HashMap::new(),
@@ -2086,6 +2149,7 @@ mod tests {
                 }],
                 content_hash: "sha256:old".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::new(),
@@ -2145,6 +2209,7 @@ mod tests {
                 }],
                 content_hash: "sha256:old".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::new(),
@@ -2210,6 +2275,7 @@ mod tests {
                     }],
                     content_hash: "sha256:a".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
                 },
                 SourceItem {
                     metadata: super::super::platform::PlatformMetadata {
@@ -2226,6 +2292,7 @@ mod tests {
                     }],
                     content_hash: "sha256:b".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
                 },
             ],
             logical_id_index: HashMap::new(),
@@ -2362,5 +2429,106 @@ mod tests {
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("invalid JSONPath"));
+    }
+
+    #[test]
+    fn test_find_replace_applies_to_creation_payload() {
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: PlatformMetadata {
+                    item_type: "KQLDatabase".to_owned(),
+                    display_name: "MyDB".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![],
+                content_hash: "sha256:empty".to_owned(),
+                creation_payload: Some(serde_json::json!({
+                    "databaseType": "ReadWrite",
+                    "parentEventhouseItemId": "SOURCE_EH_ID"
+                })),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: std::collections::HashMap::new(),
+            type_name_index: std::collections::HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: vec![FindReplaceRule {
+                find_value: "SOURCE_EH_ID".to_owned(),
+                replace_value: HashMap::from([("prod".to_owned(), "PROD_EH_ID".to_owned())]),
+                item_type: None,
+                item_name: None,
+                file_path: None,
+                is_regex: false,
+            }],
+            key_value_replace: vec![],
+            spark_pool: vec![],
+            semantic_model_binding: None,
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-123",
+            workspace_name: Some("TestWS"),
+            deployed_items: &std::collections::HashMap::new(),
+        };
+
+        let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+        assert!(warnings.is_empty());
+
+        let payload = source.items[0].creation_payload.as_ref().unwrap();
+        assert_eq!(payload["parentEventhouseItemId"], "PROD_EH_ID");
+    }
+
+    #[test]
+    fn test_key_value_replace_applies_to_creation_payload() {
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: PlatformMetadata {
+                    item_type: "KQLDatabase".to_owned(),
+                    display_name: "MyDB".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![],
+                content_hash: "sha256:empty".to_owned(),
+                creation_payload: Some(serde_json::json!({
+                    "databaseType": "ReadWrite",
+                    "parentEventhouseItemId": "old-id"
+                })),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: std::collections::HashMap::new(),
+            type_name_index: std::collections::HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: vec![],
+            key_value_replace: vec![KeyValueReplaceRule {
+                find_key: "$.parentEventhouseItemId".to_owned(),
+                replace_value: HashMap::from([
+                    ("prod".to_owned(), serde_json::json!("new-eh-id-456")),
+                ]),
+                item_type: None,
+                item_name: None,
+                file_path: None,
+            }],
+            spark_pool: vec![],
+            semantic_model_binding: None,
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-123",
+            workspace_name: Some("TestWS"),
+            deployed_items: &std::collections::HashMap::new(),
+        };
+
+        let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+        assert!(warnings.is_empty());
+
+        let payload = source.items[0].creation_payload.as_ref().unwrap();
+        assert_eq!(payload["parentEventhouseItemId"], "new-eh-id-456");
     }
 }

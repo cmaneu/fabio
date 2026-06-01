@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 pub enum ChangeAction {
     Create,
     Update,
+    /// Rename + optional definition update (matched by logical ID, name differs).
+    Rename,
     Delete,
     Skip,
 }
@@ -15,6 +17,7 @@ impl std::fmt::Display for ChangeAction {
         match self {
             Self::Create => write!(f, "CREATE"),
             Self::Update => write!(f, "UPDATE"),
+            Self::Rename => write!(f, "RENAME"),
             Self::Delete => write!(f, "DELETE"),
             Self::Skip => write!(f, "SKIP"),
         }
@@ -24,7 +27,7 @@ impl std::fmt::Display for ChangeAction {
 /// A single change to apply during deployment.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Change {
-    /// Item display name.
+    /// Item display name (the TARGET name from source).
     pub name: String,
     /// Fabric item type (e.g., "Notebook", "`DataPipeline`").
     pub item_type: String,
@@ -35,12 +38,15 @@ pub struct Change {
     /// Logical ID from `.platform` config (stable cross-environment ID).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logical_id: Option<String>,
-    /// Deployed item GUID (present for update/delete/skip).
+    /// Deployed item GUID (present for update/delete/skip/rename).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deployed_id: Option<String>,
     /// Content hash of the local definition.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_hash: Option<String>,
+    /// Previous name of the item (only set for rename actions).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_name: Option<String>,
 }
 
 /// The complete set of changes to deploy.
@@ -61,6 +67,7 @@ pub struct Changeset {
 pub struct ChangesetSummary {
     pub create: usize,
     pub update: usize,
+    pub rename: usize,
     pub delete: usize,
     pub skip: usize,
 }
@@ -78,6 +85,7 @@ impl Changeset {
         let mut s = ChangesetSummary {
             create: 0,
             update: 0,
+            rename: 0,
             delete: 0,
             skip: 0,
         };
@@ -85,6 +93,7 @@ impl Changeset {
             match c.action {
                 ChangeAction::Create => s.create += 1,
                 ChangeAction::Update => s.update += 1,
+                ChangeAction::Rename => s.rename += 1,
                 ChangeAction::Delete => s.delete += 1,
                 ChangeAction::Skip => s.skip += 1,
             }
@@ -132,6 +141,7 @@ mod tests {
             logical_id: None,
             deployed_id: None,
             source_hash: None,
+            previous_name: None,
         }
     }
 
@@ -206,6 +216,7 @@ mod tests {
             logical_id: Some("lid-abc".to_owned()),
             deployed_id: None,
             source_hash: Some("sha256:abc123".to_owned()),
+            previous_name: None,
         });
         cs.warnings.push("no logical id".to_owned());
 
@@ -239,10 +250,12 @@ mod tests {
             logical_id: None,
             deployed_id: None,
             source_hash: None,
+            previous_name: None,
         };
         let json = serde_json::to_string(&change).unwrap();
         assert!(!json.contains("logical_id"));
         assert!(!json.contains("deployed_id"));
         assert!(!json.contains("source_hash"));
+        assert!(!json.contains("previous_name"));
     }
 }

@@ -113,6 +113,10 @@ pub enum DeployCommand {
         /// Target environment name for parameter substitution (e.g., "prod", "staging")
         #[arg(long, value_name = "NAME")]
         env: Option<String>,
+
+        /// Skip post-deploy hooks (semantic model refresh, environment publish)
+        #[arg(long)]
+        no_post_hooks: bool,
     },
 
     /// Export workspace item definitions to a local directory
@@ -201,6 +205,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
             concurrency,
             parameters,
             env,
+            no_post_hooks,
         } => {
             execute_apply(
                 cli,
@@ -217,6 +222,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
                 *concurrency,
                 parameters.as_deref(),
                 env.as_deref(),
+                *no_post_hooks,
             )
             .await
         }
@@ -388,6 +394,7 @@ async fn execute_apply(
     concurrency: usize,
     parameters: Option<&std::path::Path>,
     env: Option<&str>,
+    no_post_hooks: bool,
 ) -> Result<()> {
     // Validate parameter flags
     if parameters.is_some() && env.is_none() {
@@ -547,8 +554,15 @@ async fn execute_apply(
     )
     .await?;
 
+    // Execute post-deploy hooks (unless --no-post-hooks)
+    let hook_results: Vec<serde_json::Value> = if !no_post_hooks && !cli.dry_run {
+        apply::execute_post_hooks(cli, client, &workspace_id, &result.succeeded).await
+    } else {
+        Vec::new()
+    };
+
     // Render result
-    let output_data = json!({
+    let mut output_data = json!({
         "status": if result.failed.is_empty() { "succeeded" } else { "partial_failure" },
         "succeeded": result.succeeded.len(),
         "failed": result.failed.len(),
@@ -556,6 +570,13 @@ async fn execute_apply(
         "duration_ms": result.duration_ms,
         "failures": result.failed,
     });
+
+    if !hook_results.is_empty() {
+        output_data
+            .as_object_mut()
+            .unwrap()
+            .insert("post_hooks".to_owned(), json!(hook_results));
+    }
 
     output::render_object(cli, &output_data, "status");
 

@@ -35,10 +35,13 @@ pub struct DefinitionPart {
 pub struct SourceItem {
     /// Metadata from `.platform`.
     pub metadata: PlatformMetadata,
-    /// Definition parts (files excluding `.platform`).
+    /// Definition parts (files excluding `.platform` and `creationPayload.json`).
     pub parts: Vec<DefinitionPart>,
     /// SHA256 hash of all definition parts (for change detection).
     pub content_hash: String,
+    /// Optional creation payload (from `creationPayload.json`).
+    /// Included in the creation request body as the `creationPayload` field.
+    pub creation_payload: Option<serde_json::Value>,
     /// Path to the item directory on disk.
     #[allow(dead_code)]
     pub source_path: PathBuf,
@@ -180,9 +183,30 @@ pub fn parse_source_directory(source_dir: &Path) -> Result<SourceWorkspace> {
 
         let metadata = parse_platform_file(&platform_path)?;
 
-        // Read all non-.platform files as definition parts
+        // Read all non-.platform, non-creationPayload files as definition parts
         let parts = read_definition_parts(&path)?;
         let content_hash = compute_content_hash(&parts);
+
+        // Read optional creationPayload.json
+        let creation_payload_path = path.join("creationPayload.json");
+        let creation_payload = if creation_payload_path.exists() {
+            let content = std::fs::read_to_string(&creation_payload_path).with_context(|| {
+                format!(
+                    "Failed to read creationPayload.json: {}",
+                    creation_payload_path.display()
+                )
+            })?;
+            let parsed: serde_json::Value =
+                serde_json::from_str(&content).with_context(|| {
+                    format!(
+                        "Invalid JSON in creationPayload.json: {}",
+                        creation_payload_path.display()
+                    )
+                })?;
+            Some(parsed)
+        } else {
+            None
+        };
 
         let idx = items.len();
 
@@ -199,6 +223,7 @@ pub fn parse_source_directory(source_dir: &Path) -> Result<SourceWorkspace> {
             metadata,
             parts,
             content_hash,
+            creation_payload,
             source_path: path,
         });
     }
@@ -238,8 +263,8 @@ fn read_parts_recursive(
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            // Skip .platform file itself
-            if file_name == ".platform" {
+            // Skip .platform file and creationPayload.json (not definition parts)
+            if file_name == ".platform" || file_name == "creationPayload.json" {
                 continue;
             }
 
@@ -477,6 +502,58 @@ mod tests {
                 .type_name_index
                 .contains_key(&("DataPipeline".to_owned(), "ETL".to_owned()))
         );
+    }
+
+    #[test]
+    fn test_parse_source_directory_with_creation_payload() {
+        let dir = TempDir::new().unwrap();
+
+        // Create a KQL database item with creationPayload.json
+        let kql_dir = dir.path().join("MyDB.KQLDatabase");
+        fs::create_dir_all(&kql_dir).unwrap();
+        fs::write(
+            kql_dir.join(".platform"),
+            r#"{"metadata":{"type":"KQLDatabase","displayName":"MyDB"},"config":{"version":"2.0"}}"#,
+        )
+        .unwrap();
+        fs::write(
+            kql_dir.join("creationPayload.json"),
+            r#"{"databaseType":"ReadWrite","parentEventhouseItemId":"eh-123"}"#,
+        )
+        .unwrap();
+        fs::write(kql_dir.join("DatabaseProperties.json"), r"{}").unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        assert_eq!(workspace.items.len(), 1);
+
+        let item = &workspace.items[0];
+        assert!(item.creation_payload.is_some());
+        let payload = item.creation_payload.as_ref().unwrap();
+        assert_eq!(payload["databaseType"], "ReadWrite");
+        assert_eq!(payload["parentEventhouseItemId"], "eh-123");
+
+        // creationPayload.json should NOT be in the definition parts
+        assert_eq!(item.parts.len(), 1);
+        assert_eq!(item.parts[0].path, "DatabaseProperties.json");
+    }
+
+    #[test]
+    fn test_parse_source_directory_without_creation_payload() {
+        let dir = TempDir::new().unwrap();
+
+        let nb_dir = dir.path().join("Nb.Notebook");
+        fs::create_dir_all(&nb_dir).unwrap();
+        fs::write(
+            nb_dir.join(".platform"),
+            r#"{"metadata":{"type":"Notebook","displayName":"Nb"},"config":{"version":"2.0"}}"#,
+        )
+        .unwrap();
+        fs::write(nb_dir.join("notebook-content.py"), "# code").unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        let item = &workspace.items[0];
+        assert!(item.creation_payload.is_none());
+        assert_eq!(item.parts.len(), 1);
     }
 
     #[test]

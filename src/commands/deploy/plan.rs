@@ -102,6 +102,66 @@ pub async fn fetch_definition_hash(
     }
 }
 
+/// Fetch a deployed item's logical ID from its `.platform` definition part.
+///
+/// Returns `None` if the item has no definition, no `.platform` part, or no `logicalId`.
+async fn fetch_deployed_logical_id(
+    client: &FabricClient,
+    workspace: &str,
+    item_id: &str,
+) -> Result<Option<String>> {
+    let path = format!("/workspaces/{workspace}/items/{item_id}/getDefinition");
+    let result = client.post(&path, &serde_json::json!({}), true).await;
+
+    match result {
+        Ok(data) => {
+            let parts = data
+                .get("definition")
+                .and_then(|d| d.get("parts"))
+                .and_then(|p| p.as_array());
+
+            let Some(parts) = parts else {
+                return Ok(None);
+            };
+
+            // Find the .platform part
+            let platform_part = parts.iter().find(|p| {
+                p.get("path")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|path| path == ".platform")
+            });
+
+            let Some(platform_part) = platform_part else {
+                return Ok(None);
+            };
+
+            // Decode and extract logicalId
+            let Some(payload_b64) = platform_part.get("payload").and_then(|v| v.as_str()) else {
+                return Ok(None);
+            };
+
+            let Ok(bytes) = BASE64.decode(payload_b64) else {
+                return Ok(None);
+            };
+
+            let Ok(content) = std::str::from_utf8(&bytes) else {
+                return Ok(None);
+            };
+
+            let Ok(parsed) = serde_json::from_str::<Value>(content) else {
+                return Ok(None);
+            };
+
+            Ok(parsed
+                .get("config")
+                .and_then(|c| c.get("logicalId"))
+                .and_then(|v| v.as_str())
+                .map(str::to_owned))
+        }
+        Err(_) => Ok(None),
+    }
+}
+
 /// Compute content hash from API definition parts (same algorithm as local).
 fn hash_api_parts(parts: &[Value]) -> String {
     let mut hasher = Sha256::new();
@@ -196,8 +256,10 @@ pub async fn build_changeset(
     let mut matched_deployed: std::collections::HashSet<(String, String)> =
         std::collections::HashSet::new();
 
-    // Compare each source item against deployed state
-    for source_item in &source.items {
+    // First pass: match by (type, name) — the fast path
+    let mut unmatched_source: Vec<usize> = Vec::new(); // indices into source.items
+
+    for (idx, source_item) in source.items.iter().enumerate() {
         // Skip if filtered by item type
         if let Some(types) = item_types {
             if !types
@@ -227,6 +289,7 @@ pub async fn build_changeset(
                         logical_id: source_item.metadata.logical_id.clone(),
                         deployed_id: Some(deployed.id.clone()),
                         source_hash: Some(source_item.content_hash.clone()),
+                        previous_name: None,
                     });
                 } else {
                     // Fetch deployed definition hash for comparison
@@ -243,6 +306,7 @@ pub async fn build_changeset(
                                 logical_id: source_item.metadata.logical_id.clone(),
                                 deployed_id: Some(deployed.id.clone()),
                                 source_hash: Some(source_item.content_hash.clone()),
+                                previous_name: None,
                             });
                         }
                         _ => {
@@ -254,22 +318,15 @@ pub async fn build_changeset(
                                 logical_id: source_item.metadata.logical_id.clone(),
                                 deployed_id: Some(deployed.id.clone()),
                                 source_hash: Some(source_item.content_hash.clone()),
+                                previous_name: None,
                             });
                         }
                     }
                 }
             }
             None => {
-                // Item exists in source but not deployed → Create
-                changeset.changes.push(Change {
-                    name: source_item.metadata.display_name.clone(),
-                    item_type: source_item.metadata.item_type.clone(),
-                    action: ChangeAction::Create,
-                    reason: "new item".to_owned(),
-                    logical_id: source_item.metadata.logical_id.clone(),
-                    deployed_id: None,
-                    source_hash: Some(source_item.content_hash.clone()),
-                });
+                // Not matched by name — track for logical ID rename detection
+                unmatched_source.push(idx);
             }
         }
 
@@ -279,6 +336,90 @@ pub async fn build_changeset(
                 "{} \"{}\" has no logicalId in .platform — rename tracking won't work",
                 source_item.metadata.item_type, source_item.metadata.display_name
             ));
+        }
+    }
+
+    // Second pass: for unmatched source items WITH logical IDs, try to find
+    // deployed items of the same type that have the same logical ID (rename detection).
+    // Only fetch definitions for unmatched deployed items that could be candidates.
+    let unmatched_deployed: Vec<&DeployedItem> = deployed_items
+        .iter()
+        .filter(|d| !matched_deployed.contains(&(d.item_type.clone(), d.display_name.clone())))
+        .collect();
+
+    for &src_idx in &unmatched_source {
+        let source_item = &source.items[src_idx];
+        let Some(ref source_lid) = source_item.metadata.logical_id else {
+            // No logical ID — can't detect rename, treat as new
+            changeset.changes.push(Change {
+                name: source_item.metadata.display_name.clone(),
+                item_type: source_item.metadata.item_type.clone(),
+                action: ChangeAction::Create,
+                reason: "new item".to_owned(),
+                logical_id: source_item.metadata.logical_id.clone(),
+                deployed_id: None,
+                source_hash: Some(source_item.content_hash.clone()),
+                previous_name: None,
+            });
+            continue;
+        };
+
+        // Find candidate deployed items of the same type
+        let candidates: Vec<&&DeployedItem> = unmatched_deployed
+            .iter()
+            .filter(|d| d.item_type.eq_ignore_ascii_case(&source_item.metadata.item_type))
+            .collect();
+
+        let mut rename_found = false;
+
+        if !candidates.is_empty() {
+            // Check each candidate's definition for a matching logical ID
+            for candidate in &candidates {
+                if matched_deployed.contains(&(candidate.item_type.clone(), candidate.display_name.clone())) {
+                    continue;
+                }
+
+                if let Ok(Some(lid)) =
+                    fetch_deployed_logical_id(client, workspace_id, &candidate.id).await
+                {
+                    if lid == *source_lid {
+                        // Found a rename: same logical ID, different name
+                        matched_deployed.insert((
+                            candidate.item_type.clone(),
+                            candidate.display_name.clone(),
+                        ));
+
+                        changeset.changes.push(Change {
+                            name: source_item.metadata.display_name.clone(),
+                            item_type: source_item.metadata.item_type.clone(),
+                            action: ChangeAction::Rename,
+                            reason: format!(
+                                "renamed from \"{}\" (matched by logical ID)",
+                                candidate.display_name
+                            ),
+                            logical_id: source_item.metadata.logical_id.clone(),
+                            deployed_id: Some(candidate.id.clone()),
+                            source_hash: Some(source_item.content_hash.clone()),
+                            previous_name: Some(candidate.display_name.clone()),
+                        });
+                        rename_found = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if !rename_found {
+            changeset.changes.push(Change {
+                name: source_item.metadata.display_name.clone(),
+                item_type: source_item.metadata.item_type.clone(),
+                action: ChangeAction::Create,
+                reason: "new item".to_owned(),
+                logical_id: source_item.metadata.logical_id.clone(),
+                deployed_id: None,
+                source_hash: Some(source_item.content_hash.clone()),
+                previous_name: None,
+            });
         }
     }
 
@@ -294,27 +435,81 @@ pub async fn build_changeset(
                     logical_id: None,
                     deployed_id: Some(deployed.id.clone()),
                     source_hash: None,
+                    previous_name: None,
                 });
             }
         }
     }
 
     // Check for unresolved logical ID references
-    validate_references(source, &changeset, cli);
+    validate_references(source, &mut changeset, cli);
 
     Ok(changeset)
 }
 
 /// Validate that cross-item references (logical IDs embedded in definitions) can be resolved.
-#[allow(clippy::missing_const_for_fn)]
-fn validate_references(source: &SourceWorkspace, changeset: &Changeset, _cli: &Cli) {
-    // For Phase 1: basic validation that items exist.
-    // Full logical ID resolution (scanning definition content for GUIDs that match
-    // other items' logical IDs) will come in Phase 2 with parameter substitution.
-    //
-    // For now, we just ensure the source is internally consistent.
-    let _ = source;
-    let _ = changeset;
+///
+/// Scans all source item definition payloads for occurrences of logical IDs from other
+/// items in the source. If a referenced item is not being created/updated in the changeset
+/// AND doesn't already exist in the workspace, emits a warning.
+fn validate_references(source: &SourceWorkspace, changeset: &mut Changeset, _cli: &Cli) {
+    // Build set of logical IDs that WILL be available after this deployment:
+    // 1. Items being created/updated in the changeset (their logical IDs will resolve)
+    // 2. Items being skipped (they already exist with their deployed IDs)
+    let resolvable_logical_ids: std::collections::HashSet<&str> = changeset
+        .changes
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.action,
+                ChangeAction::Create | ChangeAction::Update | ChangeAction::Skip
+            )
+        })
+        .filter_map(|c| c.logical_id.as_deref())
+        .collect();
+
+    // Scan each source item's definition payloads for references to other items' logical IDs
+    for source_item in &source.items {
+        let Some(ref _item_logical_id) = source_item.metadata.logical_id else {
+            continue;
+        };
+
+        for part in &source_item.parts {
+            // Decode payload to check for logical ID references
+            let Ok(bytes) = BASE64.decode(&part.payload) else {
+                continue;
+            };
+            let Ok(content) = std::str::from_utf8(&bytes) else {
+                continue;
+            };
+
+            // Check if this payload references any logical ID from the source
+            for other_item in &source.items {
+                let Some(ref other_lid) = other_item.metadata.logical_id else {
+                    continue;
+                };
+
+                // Skip self-references
+                if std::ptr::eq(source_item, other_item) {
+                    continue;
+                }
+
+                // If the payload contains this logical ID but it won't be resolvable
+                if content.contains(other_lid.as_str())
+                    && !resolvable_logical_ids.contains(other_lid.as_str())
+                {
+                    changeset.warnings.push(format!(
+                        "{} \"{}\" references logical ID \"{}\" ({} \"{}\") which is not in the deployment scope",
+                        source_item.metadata.item_type,
+                        source_item.metadata.display_name,
+                        other_lid,
+                        other_item.metadata.item_type,
+                        other_item.metadata.display_name,
+                    ));
+                }
+            }
+        }
+    }
 }
 
 /// Compute a workspace state fingerprint from the deployed item list.

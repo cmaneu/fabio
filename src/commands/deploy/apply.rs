@@ -51,7 +51,9 @@ pub async fn execute_changeset(
 
     for change in &changeset.changes {
         match change.action {
-            ChangeAction::Create | ChangeAction::Update => creates_updates.push(change),
+            ChangeAction::Create | ChangeAction::Update | ChangeAction::Rename => {
+                creates_updates.push(change);
+            }
             ChangeAction::Delete => deletes.push(change),
             ChangeAction::Skip => skipped.push(change.clone()),
         }
@@ -137,19 +139,22 @@ pub async fn execute_changeset(
 
                 match result {
                     Ok(deployed_id) => {
-                        if let Some(id) = deployed_id {
-                            created_ids.insert((change.item_type.clone(), change.name.clone()), id);
+                        let mut change_result = (*change).clone();
+                        if let Some(ref id) = deployed_id {
+                            created_ids
+                                .insert((change.item_type.clone(), change.name.clone()), id.clone());
+                            change_result.deployed_id = Some(id.clone());
                         }
-                        succeeded.push((*change).clone());
+                        succeeded.push(change_result);
                         let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
                         emit_progress(
                             cli.quiet,
                             &format!(
                                 "  {} {} \"{}\" [{}/{}]",
-                                if change.action == ChangeAction::Create {
-                                    "created"
-                                } else {
-                                    "updated"
+                                match change.action {
+                                    ChangeAction::Create => "created",
+                                    ChangeAction::Rename => "renamed",
+                                    _ => "updated",
                                 },
                                 change.item_type,
                                 change.name,
@@ -216,14 +221,15 @@ pub async fn execute_changeset(
 
             // Collect results
             for handle in handles {
-                let (change_owned, result) = handle.await?;
+                let (mut change_owned, result) = handle.await?;
                 match result {
                     Ok(deployed_id) => {
-                        if let Some(id) = deployed_id {
+                        if let Some(ref id) = deployed_id {
                             created_ids.insert(
                                 (change_owned.item_type.clone(), change_owned.name.clone()),
-                                id,
+                                id.clone(),
                             );
+                            change_owned.deployed_id = Some(id.clone());
                         }
                         let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
                         emit_progress(
@@ -333,6 +339,113 @@ pub async fn execute_changeset(
     })
 }
 
+/// Execute post-deploy hooks for items that were successfully deployed.
+///
+/// Hooks:
+/// - **Semantic Model**: Triggers `POST /datasets/{id}/refreshes` (framing refresh for Direct Lake)
+/// - **Environment**: Triggers `POST /environments/{id}/staging/publish` (publishes staged changes)
+///
+/// Returns a list of hook result objects (for inclusion in the deploy output).
+pub async fn execute_post_hooks(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace_id: &str,
+    succeeded: &[Change],
+) -> Vec<Value> {
+    let mut results: Vec<Value> = Vec::new();
+
+    for change in succeeded {
+        match change.action {
+            ChangeAction::Create | ChangeAction::Update | ChangeAction::Rename => {}
+            _ => continue,
+        }
+
+        let Some(ref item_id) = change.deployed_id else {
+            continue;
+        };
+
+        match change.item_type.as_str() {
+            "SemanticModel" => {
+                emit_progress(
+                    cli.quiet,
+                    &format!("post-hook: refreshing semantic model \"{}\"", change.name),
+                );
+                let path = format!(
+                    "/workspaces/{workspace_id}/semanticModels/{item_id}/refreshes"
+                );
+                let body = json!({"type": "Full"});
+                match client.post(&path, &body, false).await {
+                    Ok(_) => {
+                        results.push(json!({
+                            "hook": "refresh",
+                            "item_type": "SemanticModel",
+                            "item_name": change.name,
+                            "status": "triggered"
+                        }));
+                    }
+                    Err(e) => {
+                        emit_progress(
+                            cli.quiet,
+                            &format!(
+                                "  post-hook FAILED: refresh semantic model \"{}\": {}",
+                                change.name,
+                                e.root_cause()
+                            ),
+                        );
+                        results.push(json!({
+                            "hook": "refresh",
+                            "item_type": "SemanticModel",
+                            "item_name": change.name,
+                            "status": "failed",
+                            "error": e.to_string()
+                        }));
+                    }
+                }
+            }
+            "Environment" => {
+                emit_progress(
+                    cli.quiet,
+                    &format!("post-hook: publishing environment \"{}\"", change.name),
+                );
+                let path = format!(
+                    "/workspaces/{workspace_id}/environments/{item_id}/staging/publish"
+                );
+                let body = json!({});
+                match client.post(&path, &body, false).await {
+                    Ok(_) => {
+                        results.push(json!({
+                            "hook": "publish",
+                            "item_type": "Environment",
+                            "item_name": change.name,
+                            "status": "triggered"
+                        }));
+                    }
+                    Err(e) => {
+                        emit_progress(
+                            cli.quiet,
+                            &format!(
+                                "  post-hook FAILED: publish environment \"{}\": {}",
+                                change.name,
+                                e.root_cause()
+                            ),
+                        );
+                        results.push(json!({
+                            "hook": "publish",
+                            "item_type": "Environment",
+                            "item_name": change.name,
+                            "status": "failed",
+                            "error": e.to_string()
+                        }));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    results
+}
+
 /// Execute a single create or update operation.
 ///
 /// Returns the deployed item GUID on success.
@@ -399,7 +512,7 @@ async fn execute_single_change_owned(
 }
 
 /// Core deploy logic shared by sequential and parallel paths.
-#[allow(clippy::option_if_let_else)]
+#[allow(clippy::option_if_let_else, clippy::too_many_lines)]
 async fn deploy_change(
     dry_run: bool,
     client: &FabricClient,
@@ -425,7 +538,7 @@ async fn deploy_change(
     match change.action {
         ChangeAction::Create => {
             // Omit definition entirely when there are no parts (e.g. Lakehouse, MLModel)
-            let body = if parts.is_empty() {
+            let mut body = if parts.is_empty() {
                 json!({
                     "displayName": change.name,
                     "type": change.item_type
@@ -443,6 +556,20 @@ async fn deploy_change(
                     "definition": definition
                 })
             };
+
+            // Include creationPayload if present (e.g. KQLDatabase eventhouse-id)
+            if let Some(ref payload) = source_item.creation_payload {
+                body.as_object_mut()
+                    .unwrap()
+                    .insert("creationPayload".to_owned(), payload.clone());
+            }
+
+            // Include description if present in source metadata
+            if let Some(ref desc) = source_item.metadata.description {
+                body.as_object_mut()
+                    .unwrap()
+                    .insert("description".to_owned(), Value::String(desc.clone()));
+            }
 
             if dry_run {
                 return Ok(None);
@@ -491,6 +618,57 @@ async fn deploy_change(
                     true,
                 )
                 .await?;
+
+            Ok(Some(deployed_id.to_owned()))
+        }
+        ChangeAction::Rename => {
+            let deployed_id = change.deployed_id.as_deref().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No deployed ID for rename of {} \"{}\"",
+                    change.item_type,
+                    change.name
+                )
+            })?;
+
+            if dry_run {
+                return Ok(Some(deployed_id.to_owned()));
+            }
+
+            // Step 1: Rename the item via PATCH
+            let patch_body = if let Some(ref desc) = source_item.metadata.description {
+                json!({ "displayName": change.name, "description": desc })
+            } else {
+                json!({ "displayName": change.name })
+            };
+
+            client
+                .patch(
+                    &format!("/workspaces/{workspace_id}/items/{deployed_id}"),
+                    &patch_body,
+                )
+                .await?;
+
+            // Step 2: Update definition if there are parts
+            if !parts.is_empty() {
+                let definition =
+                    if let Some(ref fmt) = source_item.metadata.definition_format {
+                        json!({ "format": fmt, "parts": parts })
+                    } else {
+                        json!({ "parts": parts })
+                    };
+
+                let body = json!({ "definition": definition });
+
+                client
+                    .post(
+                        &format!(
+                            "/workspaces/{workspace_id}/items/{deployed_id}/updateDefinition"
+                        ),
+                        &body,
+                        true,
+                    )
+                    .await?;
+            }
 
             Ok(Some(deployed_id.to_owned()))
         }
@@ -702,6 +880,7 @@ mod tests {
             parts: vec![],
             content_hash: "sha256:abc".to_owned(),
             source_path: std::path::PathBuf::from("/tmp"),
+            creation_payload: None,
         };
 
         let refs = extract_pipeline_references(&item);
@@ -747,6 +926,7 @@ mod tests {
             }],
             content_hash: "sha256:abc".to_owned(),
             source_path: std::path::PathBuf::from("/tmp"),
+            creation_payload: None,
         };
 
         let refs = extract_pipeline_references(&item);
@@ -792,6 +972,7 @@ mod tests {
             }],
             content_hash: "sha256:abc".to_owned(),
             source_path: std::path::PathBuf::from("/tmp"),
+            creation_payload: None,
         };
 
         let refs = extract_pipeline_references(&item);
@@ -831,6 +1012,7 @@ mod tests {
                 logical_id: None,
                 deployed_id: None,
                 source_hash: None,
+                previous_name: None,
             },
             Change {
                 name: "MyNotebook".to_owned(),
@@ -840,6 +1022,7 @@ mod tests {
                 logical_id: None,
                 deployed_id: None,
                 source_hash: None,
+                previous_name: None,
             },
             Change {
                 name: "MyLH".to_owned(),
@@ -849,6 +1032,7 @@ mod tests {
                 logical_id: None,
                 deployed_id: None,
                 source_hash: None,
+                previous_name: None,
             },
         ];
 
@@ -952,6 +1136,7 @@ mod tests {
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+            creation_payload: None,
             }],
             logical_id_index: HashMap::from([(
                 "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_owned(),
@@ -988,6 +1173,7 @@ mod tests {
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+            creation_payload: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::from([(("Notebook".to_owned(), "MyNB".to_owned()), 0)]),
@@ -1020,6 +1206,7 @@ mod tests {
                     parts: vec![],
                     content_hash: "sha256:abc".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
+            creation_payload: None,
                 },
                 SourceItem {
                     metadata: PlatformMetadata {
@@ -1032,6 +1219,7 @@ mod tests {
                     parts: vec![],
                     content_hash: "sha256:def".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
+            creation_payload: None,
                 },
                 SourceItem {
                     metadata: PlatformMetadata {
@@ -1044,6 +1232,7 @@ mod tests {
                     parts: vec![],
                     content_hash: "sha256:ghi".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
+            creation_payload: None,
                 },
             ],
             logical_id_index: HashMap::from([
@@ -1136,6 +1325,7 @@ mod tests {
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
+            creation_payload: None,
             }],
             logical_id_index: HashMap::from([("lid-lh1".to_owned(), 0)]),
             type_name_index: HashMap::from([(("Lakehouse".to_owned(), "LH1".to_owned()), 0)]),

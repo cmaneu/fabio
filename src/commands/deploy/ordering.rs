@@ -11,33 +11,55 @@ use anyhow::{Result, bail};
 /// Based on fabric-cicd's `SERIAL_ITEM_PUBLISH_ORDER` extended with additional
 /// types supported by fabio.
 pub const DEPLOY_ORDER: &[&str] = &[
+    // --- Data storage layer (foundation, no dependencies) ---
     "VariableLibrary",
     "Warehouse",
+    "WarehouseSnapshot",
     "MirroredDatabase",
+    "MirroredAzureDatabricksCatalog",
     "Lakehouse",
     "SQLDatabase",
+    "CosmosDbDatabase",
+    "SnowflakeDatabase",
+    // --- Compute & runtime environments ---
     "Environment",
     "UserDataFunction",
     "Eventhouse",
     "KQLDatabase",
+    // --- Code & logic (depends on storage + runtime) ---
     "SparkJobDefinition",
     "Notebook",
+    // --- Models & analytics (depends on storage) ---
     "SemanticModel",
     "Report",
+    "PaginatedReport",
+    "Dashboard",
     "CopyJob",
     "KQLQueryset",
     "KQLDashboard",
+    // --- Reactive & streaming (depends on storage + compute) ---
     "Reflex",
     "Eventstream",
+    "EventSchemaSet",
     "Dataflow",
     "DataPipeline",
+    // --- APIs & integration ---
     "GraphQLApi",
     "ApacheAirflowJob",
     "MountedDataFactory",
     "DataAgent",
+    "OperationsAgent",
+    "AnomalyDetector",
+    // --- ML & experimentation ---
     "MLExperiment",
     "MLModel",
+    // --- Graph & ontology (depends on storage + models) ---
     "Ontology",
+    "GraphModel",
+    "GraphQuerySet",
+    "DigitalTwinBuilder",
+    "DigitalTwinBuilderFlow",
+    // --- Visualization & cross-cutting ---
     "Map",
     "Connection",
 ];
