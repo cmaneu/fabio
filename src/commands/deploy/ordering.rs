@@ -220,4 +220,25 @@ mod tests {
         let pos_b = sorted.iter().position(|n| n == "B").unwrap();
         assert!(pos_a < pos_b);
     }
+
+    #[test]
+    fn test_deploy_order_entry_count() {
+        // Guard against accidental additions/removals — update this if DEPLOY_ORDER changes
+        assert_eq!(
+            DEPLOY_ORDER.len(),
+            42,
+            "DEPLOY_ORDER should have 42 entries; update this test if intentionally changed"
+        );
+    }
+
+    #[test]
+    fn test_deploy_order_no_duplicates() {
+        let mut seen = std::collections::HashSet::new();
+        for entry in DEPLOY_ORDER {
+            assert!(
+                seen.insert(*entry),
+                "Duplicate entry in DEPLOY_ORDER: {entry}"
+            );
+        }
+    }
 }

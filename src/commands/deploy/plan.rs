@@ -442,7 +442,7 @@ pub async fn build_changeset(
     }
 
     // Check for unresolved logical ID references
-    validate_references(source, &mut changeset, cli);
+    validate_references(source, &mut changeset);
 
     Ok(changeset)
 }
@@ -452,7 +452,7 @@ pub async fn build_changeset(
 /// Scans all source item definition payloads for occurrences of logical IDs from other
 /// items in the source. If a referenced item is not being created/updated in the changeset
 /// AND doesn't already exist in the workspace, emits a warning.
-fn validate_references(source: &SourceWorkspace, changeset: &mut Changeset, _cli: &Cli) {
+fn validate_references(source: &SourceWorkspace, changeset: &mut Changeset) {
     // Build set of logical IDs that WILL be available after this deployment:
     // 1. Items being created/updated in the changeset (their logical IDs will resolve)
     // 2. Items being skipped (they already exist with their deployed IDs)
@@ -603,6 +603,8 @@ mod tests {
     use super::*;
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD as BASE64;
+
+    use super::super::platform::{DefinitionPart, PlatformMetadata, SourceItem};
 
     #[test]
     fn test_is_guid_valid() {
@@ -910,5 +912,286 @@ mod tests {
         // Empty input should still produce a consistent hash
         let hash2 = hash_api_parts(&parts);
         assert_eq!(hash, hash2);
+    }
+
+    // --- validate_references tests ---
+
+    #[test]
+    fn test_validate_references_no_warnings_when_all_resolved() {
+        // Source has two items: Notebook references Lakehouse's logical ID
+        // Both are in deployment scope (both will be created) → no warnings
+        let lakehouse_lid = "lid-lakehouse-001";
+        let notebook_payload =
+            format!(r#"{{"defaultLakehouse":"{lakehouse_lid}"}}"#);
+
+        let source = SourceWorkspace {
+            items: vec![
+                SourceItem {
+                    metadata: PlatformMetadata {
+                        item_type: "Lakehouse".to_owned(),
+                        display_name: "SalesLH".to_owned(),
+                        logical_id: Some(lakehouse_lid.to_owned()),
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![],
+                    content_hash: "sha256:aaa".to_owned(),
+                    creation_payload: None,
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+                SourceItem {
+                    metadata: PlatformMetadata {
+                        item_type: "Notebook".to_owned(),
+                        display_name: "ETL".to_owned(),
+                        logical_id: Some("lid-notebook-001".to_owned()),
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![DefinitionPart {
+                        path: "notebook-content.py".to_owned(),
+                        payload: BASE64.encode(notebook_payload.as_bytes()),
+                        payload_type: "InlineBase64".to_owned(),
+                    }],
+                    content_hash: "sha256:bbb".to_owned(),
+                    creation_payload: None,
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+            ],
+            logical_id_index: HashMap::from([("lid-lakehouse-001".to_owned(), 0)]),
+            type_name_index: HashMap::new(),
+        };
+
+        let mut changeset = Changeset::new();
+        // Both items are being created (in scope)
+        changeset.changes.push(Change {
+            name: "SalesLH".to_owned(),
+            item_type: "Lakehouse".to_owned(),
+            action: ChangeAction::Create,
+            reason: "new".to_owned(),
+            logical_id: Some(lakehouse_lid.to_owned()),
+            deployed_id: None,
+            source_hash: None,
+            previous_name: None,
+        });
+        changeset.changes.push(Change {
+            name: "ETL".to_owned(),
+            item_type: "Notebook".to_owned(),
+            action: ChangeAction::Create,
+            reason: "new".to_owned(),
+            logical_id: Some("lid-notebook-001".to_owned()),
+            deployed_id: None,
+            source_hash: None,
+            previous_name: None,
+        });
+
+
+        validate_references(&source, &mut changeset);
+
+        assert!(
+            changeset.warnings.is_empty(),
+            "Expected no warnings, got: {:?}",
+            changeset.warnings
+        );
+    }
+
+    #[test]
+    fn test_validate_references_warns_on_unresolvable_reference() {
+        // Source has Notebook that references a logical ID of an item NOT in deployment scope
+        let external_lid = "lid-external-lakehouse";
+        let notebook_payload =
+            format!(r#"{{"defaultLakehouse":"{external_lid}"}}"#);
+
+        let source = SourceWorkspace {
+            items: vec![
+                SourceItem {
+                    metadata: PlatformMetadata {
+                        item_type: "Lakehouse".to_owned(),
+                        display_name: "ExternalLH".to_owned(),
+                        logical_id: Some(external_lid.to_owned()),
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![],
+                    content_hash: "sha256:aaa".to_owned(),
+                    creation_payload: None,
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+                SourceItem {
+                    metadata: PlatformMetadata {
+                        item_type: "Notebook".to_owned(),
+                        display_name: "ETL".to_owned(),
+                        logical_id: Some("lid-notebook-001".to_owned()),
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![DefinitionPart {
+                        path: "notebook-content.py".to_owned(),
+                        payload: BASE64.encode(notebook_payload.as_bytes()),
+                        payload_type: "InlineBase64".to_owned(),
+                    }],
+                    content_hash: "sha256:bbb".to_owned(),
+                    creation_payload: None,
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+            ],
+            logical_id_index: HashMap::from([
+                (external_lid.to_owned(), 0),
+                ("lid-notebook-001".to_owned(), 1),
+            ]),
+            type_name_index: HashMap::new(),
+        };
+
+        let mut changeset = Changeset::new();
+        // Only Notebook is in scope (Create), ExternalLH is marked as Delete (not in scope)
+        changeset.changes.push(Change {
+            name: "ETL".to_owned(),
+            item_type: "Notebook".to_owned(),
+            action: ChangeAction::Create,
+            reason: "new".to_owned(),
+            logical_id: Some("lid-notebook-001".to_owned()),
+            deployed_id: None,
+            source_hash: None,
+            previous_name: None,
+        });
+        changeset.changes.push(Change {
+            name: "ExternalLH".to_owned(),
+            item_type: "Lakehouse".to_owned(),
+            action: ChangeAction::Delete,
+            reason: "orphan".to_owned(),
+            logical_id: Some(external_lid.to_owned()),
+            deployed_id: Some("deployed-id-123".to_owned()),
+            source_hash: None,
+            previous_name: None,
+        });
+
+
+        validate_references(&source, &mut changeset);
+
+        assert_eq!(changeset.warnings.len(), 1);
+        assert!(changeset.warnings[0].contains("lid-external-lakehouse"));
+        assert!(changeset.warnings[0].contains("not in the deployment scope"));
+    }
+
+    #[test]
+    fn test_validate_references_skip_items_are_resolvable() {
+        // An item that is Skipped (already deployed, unchanged) should count as resolvable
+        let lakehouse_lid = "lid-lakehouse-skip";
+        let notebook_payload =
+            format!(r#"{{"defaultLakehouse":"{lakehouse_lid}"}}"#);
+
+        let source = SourceWorkspace {
+            items: vec![
+                SourceItem {
+                    metadata: PlatformMetadata {
+                        item_type: "Lakehouse".to_owned(),
+                        display_name: "ExistingLH".to_owned(),
+                        logical_id: Some(lakehouse_lid.to_owned()),
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![],
+                    content_hash: "sha256:aaa".to_owned(),
+                    creation_payload: None,
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+                SourceItem {
+                    metadata: PlatformMetadata {
+                        item_type: "Notebook".to_owned(),
+                        display_name: "ETL".to_owned(),
+                        logical_id: Some("lid-notebook-002".to_owned()),
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![DefinitionPart {
+                        path: "notebook-content.py".to_owned(),
+                        payload: BASE64.encode(notebook_payload.as_bytes()),
+                        payload_type: "InlineBase64".to_owned(),
+                    }],
+                    content_hash: "sha256:bbb".to_owned(),
+                    creation_payload: None,
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+            ],
+            logical_id_index: HashMap::from([
+                (lakehouse_lid.to_owned(), 0),
+                ("lid-notebook-002".to_owned(), 1),
+            ]),
+            type_name_index: HashMap::new(),
+        };
+
+        let mut changeset = Changeset::new();
+        // Lakehouse is Skip (already deployed with same hash)
+        changeset.changes.push(Change {
+            name: "ExistingLH".to_owned(),
+            item_type: "Lakehouse".to_owned(),
+            action: ChangeAction::Skip,
+            reason: "unchanged".to_owned(),
+            logical_id: Some(lakehouse_lid.to_owned()),
+            deployed_id: Some("deployed-lh-id".to_owned()),
+            source_hash: None,
+            previous_name: None,
+        });
+        changeset.changes.push(Change {
+            name: "ETL".to_owned(),
+            item_type: "Notebook".to_owned(),
+            action: ChangeAction::Create,
+            reason: "new".to_owned(),
+            logical_id: Some("lid-notebook-002".to_owned()),
+            deployed_id: None,
+            source_hash: None,
+            previous_name: None,
+        });
+
+
+        validate_references(&source, &mut changeset);
+
+        assert!(
+            changeset.warnings.is_empty(),
+            "Skip items should be resolvable, got: {:?}",
+            changeset.warnings
+        );
+    }
+
+    #[test]
+    fn test_validate_references_no_false_positives_for_items_without_logical_id() {
+        // Items without logical IDs should not trigger validation warnings
+        let source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: PlatformMetadata {
+                    item_type: "Notebook".to_owned(),
+                    display_name: "Simple".to_owned(),
+                    logical_id: None,  // No logical ID → skip validation
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![DefinitionPart {
+                    path: "notebook-content.py".to_owned(),
+                    payload: BASE64.encode(b"some content with random-guid-looking-string"),
+                    payload_type: "InlineBase64".to_owned(),
+                }],
+                content_hash: "sha256:ccc".to_owned(),
+                creation_payload: None,
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let mut changeset = Changeset::new();
+        changeset.changes.push(Change {
+            name: "Simple".to_owned(),
+            item_type: "Notebook".to_owned(),
+            action: ChangeAction::Create,
+            reason: "new".to_owned(),
+            logical_id: None,
+            deployed_id: None,
+            source_hash: None,
+            previous_name: None,
+        });
+
+
+        validate_references(&source, &mut changeset);
+
+        assert!(changeset.warnings.is_empty());
     }
 }

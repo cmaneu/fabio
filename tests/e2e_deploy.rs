@@ -1966,3 +1966,423 @@ fn deploy_plan_file_contains_fingerprint() {
         "Plan should have source_path"
     );
 }
+
+// ── creationPayload ──────────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_apply_creation_payload_lakehouse_with_schemas() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let source_dir = dir.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+
+    let name = unique_name("DeploySchemaLH");
+
+    // Create a Lakehouse source with creationPayload.json (enableSchemas)
+    let lh_dir = source_dir.join(format!("{name}.Lakehouse"));
+    std::fs::create_dir_all(&lh_dir).unwrap();
+
+    let platform = serde_json::json!({
+        "metadata": {
+            "type": "Lakehouse",
+            "displayName": name
+        },
+        "config": {
+            "version": "2.0",
+            "logicalId": "e2e-creation-payload-001"
+        }
+    });
+    std::fs::write(
+        lh_dir.join(".platform"),
+        serde_json::to_string_pretty(&platform).unwrap(),
+    )
+    .unwrap();
+
+    // This is the key part: creationPayload.json triggers enableSchemas
+    let creation_payload = serde_json::json!({
+        "enableSchemas": true
+    });
+    std::fs::write(
+        lh_dir.join("creationPayload.json"),
+        serde_json::to_string_pretty(&creation_payload).unwrap(),
+    )
+    .unwrap();
+
+    // Plan — should show Create
+    let assert = fabio()
+        .args([
+            "deploy",
+            "plan",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+        ])
+        .timeout(Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["summary"]["create"].as_u64().unwrap(), 1);
+
+    // Apply
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+        ])
+        .timeout(Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "succeeded");
+    assert_eq!(data["succeeded"].as_u64().unwrap(), 1);
+
+    // Verify item exists
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--type",
+            "Lakehouse",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    let created = items.iter().find(|i| i["displayName"] == name);
+    assert!(
+        created.is_some(),
+        "Expected to find deployed lakehouse '{name}'"
+    );
+
+    let lh_id = created.unwrap()["id"].as_str().unwrap();
+
+    // Cleanup
+    fabio()
+        .args([
+            "item",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            lh_id,
+        ])
+        .timeout(Duration::from_secs(60))
+        .assert()
+        .success();
+}
+
+// ── Rename Detection ─────────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_detects_rename() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let source_dir = dir.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+
+    let original_name = unique_name("DeployRenOrig");
+    let renamed_name = unique_name("DeployRenNew");
+
+    // Step 1: Create item via deploy apply with original name
+    let nb_dir = source_dir.join(format!("{original_name}.Notebook"));
+    std::fs::create_dir_all(&nb_dir).unwrap();
+
+    let logical_id = "e2e-rename-detection-lid-001";
+    let platform = serde_json::json!({
+        "metadata": {
+            "type": "Notebook",
+            "displayName": original_name
+        },
+        "config": {
+            "version": "2.0",
+            "logicalId": logical_id,
+            "definitionFormat": "ipynb"
+        }
+    });
+    std::fs::write(
+        nb_dir.join(".platform"),
+        serde_json::to_string_pretty(&platform).unwrap(),
+    )
+    .unwrap();
+
+    let ipynb = serde_json::json!({
+        "nbformat": 4,
+        "nbformat_minor": 5,
+        "metadata": { "language_info": { "name": "python" } },
+        "cells": [{
+            "cell_type": "code",
+            "source": ["# Rename test\n"],
+            "metadata": {},
+            "outputs": []
+        }]
+    });
+    std::fs::write(
+        nb_dir.join("notebook-content.py"),
+        serde_json::to_string(&ipynb).unwrap(),
+    )
+    .unwrap();
+
+    // Deploy with original name
+    fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+        ])
+        .timeout(Duration::from_secs(180))
+        .assert()
+        .success();
+
+    // Verify item deployed
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--type",
+            "Notebook",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    let created = items.iter().find(|i| i["displayName"] == original_name);
+    assert!(created.is_some(), "Expected deployed notebook '{original_name}'");
+    let nb_id = created.unwrap()["id"].as_str().unwrap().to_owned();
+
+    // Step 2: Rename the source (simulate renaming in source code)
+    std::fs::remove_dir_all(&nb_dir).unwrap();
+    let new_nb_dir = source_dir.join(format!("{renamed_name}.Notebook"));
+    std::fs::create_dir_all(&new_nb_dir).unwrap();
+
+    let renamed_platform = serde_json::json!({
+        "metadata": {
+            "type": "Notebook",
+            "displayName": renamed_name
+        },
+        "config": {
+            "version": "2.0",
+            "logicalId": logical_id,  // Same logical ID → rename detection
+            "definitionFormat": "ipynb"
+        }
+    });
+    std::fs::write(
+        new_nb_dir.join(".platform"),
+        serde_json::to_string_pretty(&renamed_platform).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        new_nb_dir.join("notebook-content.py"),
+        serde_json::to_string(&ipynb).unwrap(),
+    )
+    .unwrap();
+
+    // Step 3: Plan — should detect rename
+    let assert = fabio()
+        .args([
+            "deploy",
+            "plan",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+        ])
+        .timeout(Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let changes = data["changeset"]["changes"].as_array().unwrap();
+
+    // Should have exactly one rename action
+    let renames: Vec<_> = changes.iter().filter(|c| c["action"] == "rename").collect();
+    assert_eq!(
+        renames.len(),
+        1,
+        "Expected exactly 1 rename, got: {changes:?}"
+    );
+    assert_eq!(renames[0]["name"], renamed_name);
+    assert_eq!(renames[0]["previous_name"], original_name);
+
+    // Step 4: Apply the rename
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+        ])
+        .timeout(Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "succeeded");
+
+    // Verify renamed item exists
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--type",
+            "Notebook",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    let renamed = items.iter().find(|i| i["displayName"] == renamed_name);
+    assert!(renamed.is_some(), "Expected renamed notebook '{renamed_name}'");
+    let old = items.iter().find(|i| i["displayName"] == original_name);
+    assert!(old.is_none(), "Original name should no longer exist");
+
+    // Cleanup
+    fabio()
+        .args([
+            "item",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &nb_id,
+        ])
+        .timeout(Duration::from_secs(60))
+        .assert()
+        .success();
+}
+
+// ── --no-post-hooks flag ─────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_apply_no_post_hooks_flag_accepted() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let source_dir = dir.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+
+    let name = unique_name("DeployNoHooks");
+
+    // Create a simple notebook source
+    let nb_dir = source_dir.join(format!("{name}.Notebook"));
+    std::fs::create_dir_all(&nb_dir).unwrap();
+
+    let platform = serde_json::json!({
+        "metadata": {
+            "type": "Notebook",
+            "displayName": name
+        },
+        "config": {
+            "version": "2.0",
+            "logicalId": "e2e-no-hooks-lid-001",
+            "definitionFormat": "ipynb"
+        }
+    });
+    std::fs::write(
+        nb_dir.join(".platform"),
+        serde_json::to_string_pretty(&platform).unwrap(),
+    )
+    .unwrap();
+
+    let ipynb = serde_json::json!({
+        "nbformat": 4,
+        "nbformat_minor": 5,
+        "metadata": { "language_info": { "name": "python" } },
+        "cells": [{
+            "cell_type": "code",
+            "source": ["# no-hooks test\n"],
+            "metadata": {},
+            "outputs": []
+        }]
+    });
+    std::fs::write(
+        nb_dir.join("notebook-content.py"),
+        serde_json::to_string(&ipynb).unwrap(),
+    )
+    .unwrap();
+
+    // Deploy with --no-post-hooks
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+            "--no-post-hooks",
+        ])
+        .timeout(Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "succeeded");
+    assert_eq!(data["succeeded"].as_u64().unwrap(), 1);
+    // post_hooks should be empty array (no hooks executed)
+    assert_eq!(
+        data["post_hooks"].as_array().map_or(0, Vec::len),
+        0,
+        "Expected no post-hooks with --no-post-hooks flag"
+    );
+
+    // Verify item exists and cleanup
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--type",
+            "Notebook",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    let created = items.iter().find(|i| i["displayName"] == name);
+    assert!(created.is_some(), "Expected deployed notebook '{name}'");
+
+    let nb_id = created.unwrap()["id"].as_str().unwrap();
+
+    // Cleanup
+    fabio()
+        .args([
+            "item",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            nb_id,
+        ])
+        .timeout(Duration::from_secs(60))
+        .assert()
+        .success();
+}
