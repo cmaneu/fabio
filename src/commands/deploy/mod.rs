@@ -155,7 +155,7 @@ pub enum DeployCommand {
         compare_env: String,
 
         /// Output file path for generated parameters.json
-        #[arg(short, long, value_name = "FILE")]
+        #[arg(long, value_name = "FILE")]
         out: Option<PathBuf>,
     },
 }

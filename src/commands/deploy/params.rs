@@ -1337,4 +1337,1029 @@ mod tests {
         let pl_payload = BASE64.decode(&source.items[1].parts[0].payload).unwrap();
         assert_eq!(String::from_utf8(pl_payload).unwrap(), "REPLACE_ME");
     }
+
+    #[test]
+    fn test_key_value_replace_basic() {
+        let json_content = r#"{"server": "dev-server.database.windows.net", "port": 1433}"#;
+        let encoded = BASE64.encode(json_content.as_bytes());
+
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: super::super::platform::PlatformMetadata {
+                    item_type: "DataPipeline".to_owned(),
+                    display_name: "MyPipeline".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![DefinitionPart {
+                    path: "pipeline-content.json".to_owned(),
+                    payload: encoded,
+                    payload_type: "InlineBase64".to_owned(),
+                }],
+                content_hash: "sha256:old".to_owned(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: Vec::new(),
+            key_value_replace: vec![KeyValueReplaceRule {
+                find_key: "$.server".to_owned(),
+                replace_value: HashMap::from([(
+                    "prod".to_owned(),
+                    serde_json::Value::String("prod-server.database.windows.net".to_owned()),
+                )]),
+                item_type: None,
+                item_name: None,
+                file_path: None,
+            }],
+            spark_pool: Vec::new(),
+            semantic_model_binding: None,
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+        assert!(warnings.is_empty());
+
+        let payload = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(
+            result["server"],
+            serde_json::Value::String("prod-server.database.windows.net".to_owned())
+        );
+        // port should be unchanged
+        assert_eq!(result["port"], serde_json::json!(1433));
+        // content hash should be recomputed
+        assert_ne!(source.items[0].content_hash, "sha256:old");
+    }
+
+    #[test]
+    fn test_key_value_replace_nested_path() {
+        let json_content = r#"{"config": {"database": {"host": "dev.example.com"}}}"#;
+        let encoded = BASE64.encode(json_content.as_bytes());
+
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: super::super::platform::PlatformMetadata {
+                    item_type: "Notebook".to_owned(),
+                    display_name: "NB".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![DefinitionPart {
+                    path: "config.json".to_owned(),
+                    payload: encoded,
+                    payload_type: "InlineBase64".to_owned(),
+                }],
+                content_hash: "sha256:old".to_owned(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: Vec::new(),
+            key_value_replace: vec![KeyValueReplaceRule {
+                find_key: "$.config.database.host".to_owned(),
+                replace_value: HashMap::from([(
+                    "prod".to_owned(),
+                    serde_json::Value::String("prod.example.com".to_owned()),
+                )]),
+                item_type: None,
+                item_name: None,
+                file_path: None,
+            }],
+            spark_pool: Vec::new(),
+            semantic_model_binding: None,
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+
+        let payload = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(
+            result["config"]["database"]["host"],
+            serde_json::Value::String("prod.example.com".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_key_value_replace_with_numeric_value() {
+        let json_content = r#"{"retryCount": 3, "timeout": 30}"#;
+        let encoded = BASE64.encode(json_content.as_bytes());
+
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: super::super::platform::PlatformMetadata {
+                    item_type: "DataPipeline".to_owned(),
+                    display_name: "PL".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![DefinitionPart {
+                    path: "pipeline.json".to_owned(),
+                    payload: encoded,
+                    payload_type: "InlineBase64".to_owned(),
+                }],
+                content_hash: "sha256:old".to_owned(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: Vec::new(),
+            key_value_replace: vec![KeyValueReplaceRule {
+                find_key: "$.timeout".to_owned(),
+                replace_value: HashMap::from([("prod".to_owned(), serde_json::json!(120))]),
+                item_type: None,
+                item_name: None,
+                file_path: None,
+            }],
+            spark_pool: Vec::new(),
+            semantic_model_binding: None,
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+
+        let payload = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(result["timeout"], serde_json::json!(120));
+        assert_eq!(result["retryCount"], serde_json::json!(3)); // unchanged
+    }
+
+    #[test]
+    fn test_key_value_replace_scoped_by_item_type() {
+        let json_content = r#"{"server": "dev.example.com"}"#;
+        let encoded = BASE64.encode(json_content.as_bytes());
+
+        let mut source = SourceWorkspace {
+            items: vec![
+                SourceItem {
+                    metadata: super::super::platform::PlatformMetadata {
+                        item_type: "DataPipeline".to_owned(),
+                        display_name: "PL".to_owned(),
+                        logical_id: None,
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![DefinitionPart {
+                        path: "pipeline.json".to_owned(),
+                        payload: encoded.clone(),
+                        payload_type: "InlineBase64".to_owned(),
+                    }],
+                    content_hash: "sha256:a".to_owned(),
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+                SourceItem {
+                    metadata: super::super::platform::PlatformMetadata {
+                        item_type: "Notebook".to_owned(),
+                        display_name: "NB".to_owned(),
+                        logical_id: None,
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![DefinitionPart {
+                        path: "config.json".to_owned(),
+                        payload: encoded,
+                        payload_type: "InlineBase64".to_owned(),
+                    }],
+                    content_hash: "sha256:b".to_owned(),
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+            ],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: Vec::new(),
+            key_value_replace: vec![KeyValueReplaceRule {
+                find_key: "$.server".to_owned(),
+                replace_value: HashMap::from([(
+                    "prod".to_owned(),
+                    serde_json::Value::String("prod.example.com".to_owned()),
+                )]),
+                item_type: Some(StringOrVec::Single("DataPipeline".to_owned())),
+                item_name: None,
+                file_path: None,
+            }],
+            spark_pool: Vec::new(),
+            semantic_model_binding: None,
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+
+        // Pipeline should be modified
+        let pl_payload = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
+        let pl_result: serde_json::Value = serde_json::from_slice(&pl_payload).unwrap();
+        assert_eq!(pl_result["server"], serde_json::json!("prod.example.com"));
+
+        // Notebook should NOT be modified (wrong type)
+        let nb_payload = BASE64.decode(&source.items[1].parts[0].payload).unwrap();
+        let nb_result: serde_json::Value = serde_json::from_slice(&nb_payload).unwrap();
+        assert_eq!(nb_result["server"], serde_json::json!("dev.example.com"));
+    }
+
+    #[test]
+    fn test_key_value_replace_no_match_no_modification() {
+        let json_content = r#"{"server": "dev.example.com"}"#;
+        let encoded = BASE64.encode(json_content.as_bytes());
+
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: super::super::platform::PlatformMetadata {
+                    item_type: "DataPipeline".to_owned(),
+                    display_name: "PL".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![DefinitionPart {
+                    path: "pipeline.json".to_owned(),
+                    payload: encoded.clone(),
+                    payload_type: "InlineBase64".to_owned(),
+                }],
+                content_hash: "sha256:old".to_owned(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: Vec::new(),
+            key_value_replace: vec![KeyValueReplaceRule {
+                find_key: "$.nonexistent_key".to_owned(),
+                replace_value: HashMap::from([("prod".to_owned(), serde_json::json!("new_value"))]),
+                item_type: None,
+                item_name: None,
+                file_path: None,
+            }],
+            spark_pool: Vec::new(),
+            semantic_model_binding: None,
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+
+        // Payload should be unchanged since jsonpath didn't match
+        assert_eq!(source.items[0].parts[0].payload, encoded);
+    }
+
+    #[test]
+    fn test_key_value_replace_missing_env_warns() {
+        let json_content = r#"{"server": "dev.example.com"}"#;
+        let encoded = BASE64.encode(json_content.as_bytes());
+
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: super::super::platform::PlatformMetadata {
+                    item_type: "DataPipeline".to_owned(),
+                    display_name: "PL".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![DefinitionPart {
+                    path: "pipeline.json".to_owned(),
+                    payload: encoded.clone(),
+                    payload_type: "InlineBase64".to_owned(),
+                }],
+                content_hash: "sha256:old".to_owned(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: Vec::new(),
+            key_value_replace: vec![KeyValueReplaceRule {
+                find_key: "$.server".to_owned(),
+                replace_value: HashMap::from([(
+                    "staging".to_owned(),
+                    serde_json::json!("staging.example.com"),
+                )]),
+                item_type: None,
+                item_name: None,
+                file_path: None,
+            }],
+            spark_pool: Vec::new(),
+            semantic_model_binding: None,
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+        assert!(!warnings.is_empty());
+        assert!(warnings[0].contains("no value for env 'prod'"));
+        // Payload should remain unchanged
+        assert_eq!(source.items[0].parts[0].payload, encoded);
+    }
+
+    #[test]
+    fn test_spark_pool_replacement() {
+        let json_content = serde_json::json!({
+            "sparkPoolConfig": {
+                "instancePoolId": "aaaaaaaa-1111-2222-3333-444444444444",
+                "type": "Workspace",
+                "name": "dev-pool"
+            }
+        })
+        .to_string();
+        let encoded = BASE64.encode(json_content.as_bytes());
+
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: super::super::platform::PlatformMetadata {
+                    item_type: "Environment".to_owned(),
+                    display_name: "MyEnv".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![DefinitionPart {
+                    path: "environment.metadata.json".to_owned(),
+                    payload: encoded,
+                    payload_type: "InlineBase64".to_owned(),
+                }],
+                content_hash: "sha256:old".to_owned(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: Vec::new(),
+            key_value_replace: Vec::new(),
+            spark_pool: vec![SparkPoolRule {
+                instance_pool_id: "aaaaaaaa-1111-2222-3333-444444444444".to_owned(),
+                replace_value: HashMap::from([(
+                    "prod".to_owned(),
+                    SparkPoolConfig {
+                        pool_type: "Capacity".to_owned(),
+                        name: "prod-pool".to_owned(),
+                    },
+                )]),
+                item_name: None,
+            }],
+            semantic_model_binding: None,
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+        assert!(warnings.is_empty());
+
+        let payload = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(
+            result["sparkPoolConfig"]["type"],
+            serde_json::json!("Capacity")
+        );
+        assert_eq!(
+            result["sparkPoolConfig"]["name"],
+            serde_json::json!("prod-pool")
+        );
+        // instancePoolId should be unchanged (only type/name are replaced)
+        assert_eq!(
+            result["sparkPoolConfig"]["instancePoolId"],
+            serde_json::json!("aaaaaaaa-1111-2222-3333-444444444444")
+        );
+    }
+
+    #[test]
+    fn test_spark_pool_nested_replacement() {
+        // Pool config can be nested deeper in the tree
+        let json_content = serde_json::json!({
+            "compute": {
+                "pools": [
+                    {
+                        "instancePoolId": "bbbbbbbb-1111-2222-3333-444444444444",
+                        "type": "Workspace",
+                        "name": "dev-spark"
+                    }
+                ]
+            }
+        })
+        .to_string();
+        let encoded = BASE64.encode(json_content.as_bytes());
+
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: super::super::platform::PlatformMetadata {
+                    item_type: "SparkJobDefinition".to_owned(),
+                    display_name: "SJD".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![DefinitionPart {
+                    path: "spark-job.json".to_owned(),
+                    payload: encoded,
+                    payload_type: "InlineBase64".to_owned(),
+                }],
+                content_hash: "sha256:old".to_owned(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: Vec::new(),
+            key_value_replace: Vec::new(),
+            spark_pool: vec![SparkPoolRule {
+                instance_pool_id: "bbbbbbbb-1111-2222-3333-444444444444".to_owned(),
+                replace_value: HashMap::from([(
+                    "prod".to_owned(),
+                    SparkPoolConfig {
+                        pool_type: "Capacity".to_owned(),
+                        name: "prod-spark".to_owned(),
+                    },
+                )]),
+                item_name: None,
+            }],
+            semantic_model_binding: None,
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+
+        let payload = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(
+            result["compute"]["pools"][0]["type"],
+            serde_json::json!("Capacity")
+        );
+        assert_eq!(
+            result["compute"]["pools"][0]["name"],
+            serde_json::json!("prod-spark")
+        );
+    }
+
+    #[test]
+    fn test_spark_pool_no_match_leaves_unchanged() {
+        let json_content = r#"{"sparkPoolConfig": {"instancePoolId": "other-id", "type": "Workspace", "name": "x"}}"#;
+        let encoded = BASE64.encode(json_content.as_bytes());
+
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: super::super::platform::PlatformMetadata {
+                    item_type: "Environment".to_owned(),
+                    display_name: "MyEnv".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![DefinitionPart {
+                    path: "env.json".to_owned(),
+                    payload: encoded.clone(),
+                    payload_type: "InlineBase64".to_owned(),
+                }],
+                content_hash: "sha256:old".to_owned(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: Vec::new(),
+            key_value_replace: Vec::new(),
+            spark_pool: vec![SparkPoolRule {
+                instance_pool_id: "aaaaaaaa-1111-2222-3333-444444444444".to_owned(),
+                replace_value: HashMap::from([(
+                    "prod".to_owned(),
+                    SparkPoolConfig {
+                        pool_type: "Capacity".to_owned(),
+                        name: "prod-pool".to_owned(),
+                    },
+                )]),
+                item_name: None,
+            }],
+            semantic_model_binding: None,
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+
+        // Payload unchanged — instance_pool_id string not found in content
+        assert_eq!(source.items[0].parts[0].payload, encoded);
+    }
+
+    #[test]
+    fn test_semantic_model_binding_default() {
+        let json_content = serde_json::json!({
+            "connectionId": "11111111-aaaa-bbbb-cccc-dddddddddddd",
+            "pbiModelDatabaseName": "22222222-aaaa-bbbb-cccc-dddddddddddd"
+        })
+        .to_string();
+        let encoded = BASE64.encode(json_content.as_bytes());
+
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: super::super::platform::PlatformMetadata {
+                    item_type: "SemanticModel".to_owned(),
+                    display_name: "SalesModel".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![DefinitionPart {
+                    path: "definition.pbism".to_owned(),
+                    payload: encoded,
+                    payload_type: "InlineBase64".to_owned(),
+                }],
+                content_hash: "sha256:old".to_owned(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: Vec::new(),
+            key_value_replace: Vec::new(),
+            spark_pool: Vec::new(),
+            semantic_model_binding: Some(SemanticModelBinding {
+                default: Some(ConnectionBinding {
+                    connection_id: HashMap::from([(
+                        "prod".to_owned(),
+                        "99999999-aaaa-bbbb-cccc-dddddddddddd".to_owned(),
+                    )]),
+                }),
+                models: Vec::new(),
+            }),
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+        assert!(warnings.is_empty());
+
+        let payload = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(
+            result["connectionId"],
+            serde_json::json!("99999999-aaaa-bbbb-cccc-dddddddddddd")
+        );
+        assert_eq!(
+            result["pbiModelDatabaseName"],
+            serde_json::json!("99999999-aaaa-bbbb-cccc-dddddddddddd")
+        );
+    }
+
+    #[test]
+    fn test_semantic_model_binding_model_override() {
+        let json_content = serde_json::json!({
+            "connectionId": "11111111-aaaa-bbbb-cccc-dddddddddddd"
+        })
+        .to_string();
+        let encoded = BASE64.encode(json_content.as_bytes());
+
+        let mut source = SourceWorkspace {
+            items: vec![
+                SourceItem {
+                    metadata: super::super::platform::PlatformMetadata {
+                        item_type: "SemanticModel".to_owned(),
+                        display_name: "SalesModel".to_owned(),
+                        logical_id: None,
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![DefinitionPart {
+                        path: "definition.pbism".to_owned(),
+                        payload: encoded.clone(),
+                        payload_type: "InlineBase64".to_owned(),
+                    }],
+                    content_hash: "sha256:a".to_owned(),
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+                SourceItem {
+                    metadata: super::super::platform::PlatformMetadata {
+                        item_type: "SemanticModel".to_owned(),
+                        display_name: "HRModel".to_owned(),
+                        logical_id: None,
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![DefinitionPart {
+                        path: "definition.pbism".to_owned(),
+                        payload: encoded,
+                        payload_type: "InlineBase64".to_owned(),
+                    }],
+                    content_hash: "sha256:b".to_owned(),
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+            ],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: Vec::new(),
+            key_value_replace: Vec::new(),
+            spark_pool: Vec::new(),
+            semantic_model_binding: Some(SemanticModelBinding {
+                default: Some(ConnectionBinding {
+                    connection_id: HashMap::from([(
+                        "prod".to_owned(),
+                        "default-prod-conn-id-aaaa-bbbbbbbbbbbb".to_owned(),
+                    )]),
+                }),
+                models: vec![ModelBinding {
+                    semantic_model_name: StringOrVec::Single("SalesModel".to_owned()),
+                    connection_id: HashMap::from([(
+                        "prod".to_owned(),
+                        "sales-prod-conn-id-aaaa-bbbbbbbbbbbb".to_owned(),
+                    )]),
+                }],
+            }),
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+
+        // SalesModel should use model-specific override
+        let sales_payload = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
+        let sales_result: serde_json::Value = serde_json::from_slice(&sales_payload).unwrap();
+        assert_eq!(
+            sales_result["connectionId"],
+            serde_json::json!("sales-prod-conn-id-aaaa-bbbbbbbbbbbb")
+        );
+
+        // HRModel should use default binding
+        let hr_payload = BASE64.decode(&source.items[1].parts[0].payload).unwrap();
+        let hr_result: serde_json::Value = serde_json::from_slice(&hr_payload).unwrap();
+        assert_eq!(
+            hr_result["connectionId"],
+            serde_json::json!("default-prod-conn-id-aaaa-bbbbbbbbbbbb")
+        );
+    }
+
+    #[test]
+    fn test_semantic_model_binding_connection_string_replacement() {
+        let json_content = serde_json::json!({
+            "connectionString": "Data Source=server;semanticmodelid=11111111-aaaa-bbbb-cccc-dddddddddddd;timeout=30"
+        })
+        .to_string();
+        let encoded = BASE64.encode(json_content.as_bytes());
+
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: super::super::platform::PlatformMetadata {
+                    item_type: "SemanticModel".to_owned(),
+                    display_name: "Model".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![DefinitionPart {
+                    path: "definition.pbism".to_owned(),
+                    payload: encoded,
+                    payload_type: "InlineBase64".to_owned(),
+                }],
+                content_hash: "sha256:old".to_owned(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: Vec::new(),
+            key_value_replace: Vec::new(),
+            spark_pool: Vec::new(),
+            semantic_model_binding: Some(SemanticModelBinding {
+                default: Some(ConnectionBinding {
+                    connection_id: HashMap::from([(
+                        "prod".to_owned(),
+                        "99999999-aaaa-bbbb-cccc-dddddddddddd".to_owned(),
+                    )]),
+                }),
+                models: Vec::new(),
+            }),
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+
+        let payload = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+        let conn_str = result["connectionString"].as_str().unwrap();
+        assert!(conn_str.contains("semanticmodelid=99999999-aaaa-bbbb-cccc-dddddddddddd"));
+        assert!(conn_str.contains("Data Source=server")); // Rest unchanged
+    }
+
+    #[test]
+    fn test_semantic_model_binding_skips_non_semantic_models() {
+        let json_content = serde_json::json!({
+            "connectionId": "11111111-aaaa-bbbb-cccc-dddddddddddd"
+        })
+        .to_string();
+        let encoded = BASE64.encode(json_content.as_bytes());
+
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: super::super::platform::PlatformMetadata {
+                    item_type: "Notebook".to_owned(),
+                    display_name: "NB".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![DefinitionPart {
+                    path: "config.json".to_owned(),
+                    payload: encoded.clone(),
+                    payload_type: "InlineBase64".to_owned(),
+                }],
+                content_hash: "sha256:old".to_owned(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: Vec::new(),
+            key_value_replace: Vec::new(),
+            spark_pool: Vec::new(),
+            semantic_model_binding: Some(SemanticModelBinding {
+                default: Some(ConnectionBinding {
+                    connection_id: HashMap::from([(
+                        "prod".to_owned(),
+                        "99999999-aaaa-bbbb-cccc-dddddddddddd".to_owned(),
+                    )]),
+                }),
+                models: Vec::new(),
+            }),
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+
+        // Notebook's connectionId should NOT be modified
+        assert_eq!(source.items[0].parts[0].payload, encoded);
+    }
+
+    #[test]
+    fn test_all_parameter_types_combined() {
+        // Test that all parameter types can run together without interference
+        let pipeline_content = serde_json::json!({
+            "server": "dev.example.com",
+            "instancePoolId": "aaaaaaaa-1111-2222-3333-444444444444",
+            "type": "Workspace",
+            "name": "dev-pool"
+        })
+        .to_string();
+        let model_content = serde_json::json!({
+            "connectionId": "11111111-aaaa-bbbb-cccc-dddddddddddd"
+        })
+        .to_string();
+
+        let mut source = SourceWorkspace {
+            items: vec![
+                SourceItem {
+                    metadata: super::super::platform::PlatformMetadata {
+                        item_type: "DataPipeline".to_owned(),
+                        display_name: "PL".to_owned(),
+                        logical_id: None,
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![DefinitionPart {
+                        path: "pipeline.json".to_owned(),
+                        payload: BASE64.encode(pipeline_content.as_bytes()),
+                        payload_type: "InlineBase64".to_owned(),
+                    }],
+                    content_hash: "sha256:a".to_owned(),
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+                SourceItem {
+                    metadata: super::super::platform::PlatformMetadata {
+                        item_type: "SemanticModel".to_owned(),
+                        display_name: "SM".to_owned(),
+                        logical_id: None,
+                        description: None,
+                        definition_format: None,
+                    },
+                    parts: vec![DefinitionPart {
+                        path: "definition.pbism".to_owned(),
+                        payload: BASE64.encode(model_content.as_bytes()),
+                        payload_type: "InlineBase64".to_owned(),
+                    }],
+                    content_hash: "sha256:b".to_owned(),
+                    source_path: std::path::PathBuf::from("/tmp"),
+                },
+            ],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: vec![FindReplaceRule {
+                find_value: "dev.example.com".to_owned(),
+                replace_value: HashMap::from([("prod".to_owned(), "prod.example.com".to_owned())]),
+                is_regex: false,
+                item_type: None,
+                item_name: None,
+                file_path: None,
+            }],
+            key_value_replace: vec![KeyValueReplaceRule {
+                find_key: "$.server".to_owned(),
+                replace_value: HashMap::from([(
+                    "prod".to_owned(),
+                    serde_json::json!("OVERRIDDEN"),
+                )]),
+                item_type: Some(StringOrVec::Single("DataPipeline".to_owned())),
+                item_name: None,
+                file_path: None,
+            }],
+            spark_pool: vec![SparkPoolRule {
+                instance_pool_id: "aaaaaaaa-1111-2222-3333-444444444444".to_owned(),
+                replace_value: HashMap::from([(
+                    "prod".to_owned(),
+                    SparkPoolConfig {
+                        pool_type: "Capacity".to_owned(),
+                        name: "prod-pool".to_owned(),
+                    },
+                )]),
+                item_name: None,
+            }],
+            semantic_model_binding: Some(SemanticModelBinding {
+                default: Some(ConnectionBinding {
+                    connection_id: HashMap::from([(
+                        "prod".to_owned(),
+                        "99999999-aaaa-bbbb-cccc-dddddddddddd".to_owned(),
+                    )]),
+                }),
+                models: Vec::new(),
+            }),
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+        assert!(warnings.is_empty());
+
+        // Check pipeline: find_replace runs first (dev→prod), then key_value_replace overrides server
+        let pl_payload = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
+        let pl_result: serde_json::Value = serde_json::from_slice(&pl_payload).unwrap();
+        // key_value_replace runs AFTER find_replace, so server = "OVERRIDDEN"
+        assert_eq!(pl_result["server"], serde_json::json!("OVERRIDDEN"));
+        // spark_pool should have replaced type and name
+        assert_eq!(pl_result["type"], serde_json::json!("Capacity"));
+        assert_eq!(pl_result["name"], serde_json::json!("prod-pool"));
+
+        // Check semantic model binding
+        let sm_payload = BASE64.decode(&source.items[1].parts[0].payload).unwrap();
+        let sm_result: serde_json::Value = serde_json::from_slice(&sm_payload).unwrap();
+        assert_eq!(
+            sm_result["connectionId"],
+            serde_json::json!("99999999-aaaa-bbbb-cccc-dddddddddddd")
+        );
+    }
+
+    #[test]
+    fn test_parse_parameters_with_all_types() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("parameters.json");
+        let content = serde_json::json!({
+            "find_replace": [{
+                "find_value": "old",
+                "replace_value": {"prod": "new"}
+            }],
+            "key_value_replace": [{
+                "find_key": "$.config.server",
+                "replace_value": {"prod": "new-server"}
+            }],
+            "spark_pool": [{
+                "instance_pool_id": "aaaaaaaa-1111-2222-3333-444444444444",
+                "replace_value": {"prod": {"type": "Capacity", "name": "prod-pool"}}
+            }],
+            "semantic_model_binding": {
+                "default": {
+                    "connection_id": {"prod": "99999999-prod-conn-id-dddddddddddd"}
+                },
+                "models": [{
+                    "semantic_model_name": "SalesModel",
+                    "connection_id": {"prod": "sales-conn-id-aaaa-bbbbbbbbbbbb"}
+                }]
+            }
+        })
+        .to_string();
+        std::fs::write(&path, &content).unwrap();
+
+        let params = parse_parameters(&path).unwrap();
+        assert_eq!(params.find_replace.len(), 1);
+        assert_eq!(params.key_value_replace.len(), 1);
+        assert_eq!(params.key_value_replace[0].find_key, "$.config.server");
+        assert_eq!(params.spark_pool.len(), 1);
+        assert_eq!(
+            params.spark_pool[0].instance_pool_id,
+            "aaaaaaaa-1111-2222-3333-444444444444"
+        );
+        assert!(params.semantic_model_binding.is_some());
+        let binding = params.semantic_model_binding.unwrap();
+        assert!(binding.default.is_some());
+        assert_eq!(binding.models.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_parameters_invalid_jsonpath() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("parameters.json");
+        let content = serde_json::json!({
+            "key_value_replace": [{
+                "find_key": "$[invalid[[[",
+                "replace_value": {"prod": "new"}
+            }]
+        })
+        .to_string();
+        std::fs::write(&path, &content).unwrap();
+
+        let result = parse_parameters(&path);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("invalid JSONPath"));
+    }
 }

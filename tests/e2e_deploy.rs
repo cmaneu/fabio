@@ -753,3 +753,627 @@ fn deploy_plan_workspace_name_resolution() {
     // Should succeed and find items
     assert!(data["workspace_id"].is_string());
 }
+
+// ── Init-Params (local-only, no live tenant required) ────────────────────────
+
+/// Helper: create a synthetic .platform item directory for init-params testing.
+fn create_platform_item(
+    base_dir: &std::path::Path,
+    folder_name: &str,
+    item_type: &str,
+    display_name: &str,
+    file_name: &str,
+    content: &str,
+) {
+    let item_dir = base_dir.join(folder_name);
+    std::fs::create_dir_all(&item_dir).unwrap();
+
+    let platform = serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+        "metadata": {
+            "type": item_type,
+            "displayName": display_name
+        },
+        "config": {}
+    });
+    std::fs::write(
+        item_dir.join(".platform"),
+        serde_json::to_string_pretty(&platform).unwrap(),
+    )
+    .unwrap();
+
+    std::fs::write(item_dir.join(file_name), content).unwrap();
+}
+
+#[test]
+fn deploy_init_params_scan_mode() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let source = dir.path().join("source");
+    std::fs::create_dir_all(&source).unwrap();
+
+    // Create items with GUIDs embedded in their definitions
+    create_platform_item(
+        &source,
+        "MyPipeline.DataPipeline",
+        "DataPipeline",
+        "MyPipeline",
+        "pipeline-content.json",
+        r#"{"activities": [{"connectionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "workspaceId": "12345678-aaaa-bbbb-cccc-ddddeeeeaaaa"}]}"#,
+    );
+
+    let out_file = dir.path().join("params.json");
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "init-params",
+            "--source",
+            source.to_str().unwrap(),
+            "--out",
+            out_file.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "generated");
+    assert_eq!(data["mode"], "scan");
+    assert_eq!(data["source_items"].as_u64().unwrap(), 1);
+    assert!(data["rules_generated"].as_u64().unwrap() >= 2);
+    assert!(data["guids_found"].as_u64().unwrap() >= 2);
+
+    // Verify output file was written
+    assert!(out_file.exists());
+    let written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&out_file).unwrap()).unwrap();
+    assert!(written["find_replace"].as_array().unwrap().len() >= 2);
+}
+
+#[test]
+fn deploy_init_params_scan_skips_well_known_guids() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let source = dir.path().join("source");
+    std::fs::create_dir_all(&source).unwrap();
+
+    create_platform_item(
+        &source,
+        "MyLakehouse.Lakehouse",
+        "Lakehouse",
+        "MyLakehouse",
+        "definition.json",
+        r#"{"nullId": "00000000-0000-0000-0000-000000000000", "realId": "abcdef12-3456-7890-abcd-ef1234567890"}"#,
+    );
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "init-params",
+            "--source",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Only the real GUID should be found (not the null/well-known one)
+    assert_eq!(data["guids_found"].as_u64().unwrap(), 1);
+    assert_eq!(data["rules_generated"].as_u64().unwrap(), 1);
+}
+
+#[test]
+fn deploy_init_params_diff_mode() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let source = dir.path().join("source");
+    let compare = dir.path().join("compare");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::create_dir_all(&compare).unwrap();
+
+    // Same item in both, with different GUIDs (env-specific)
+    create_platform_item(
+        &source,
+        "MyPipeline.DataPipeline",
+        "DataPipeline",
+        "MyPipeline",
+        "pipeline-content.json",
+        r#"{"connectionId": "aaaaaaaa-1111-2222-3333-444444444444"}"#,
+    );
+    create_platform_item(
+        &compare,
+        "MyPipeline.DataPipeline",
+        "DataPipeline",
+        "MyPipeline",
+        "pipeline-content.json",
+        r#"{"connectionId": "bbbbbbbb-5555-6666-7777-888888888888"}"#,
+    );
+
+    let out_file = dir.path().join("params.json");
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "init-params",
+            "--source",
+            source.to_str().unwrap(),
+            "--compare",
+            compare.to_str().unwrap(),
+            "--source-env",
+            "dev",
+            "--compare-env",
+            "prod",
+            "--out",
+            out_file.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "generated");
+    assert_eq!(data["mode"], "diff");
+    assert_eq!(data["source_items"].as_u64().unwrap(), 1);
+    assert_eq!(data["compare_items"].as_u64().unwrap(), 1);
+    assert!(data["rules_generated"].as_u64().unwrap() >= 1);
+
+    // Verify generated rules map the GUIDs correctly
+    let written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&out_file).unwrap()).unwrap();
+    let rules = written["find_replace"].as_array().unwrap();
+    assert!(!rules.is_empty());
+
+    let guid_rule = rules
+        .iter()
+        .find(|r| {
+            r["find_value"]
+                .as_str()
+                .is_some_and(|v| v.contains("aaaaaaaa"))
+        })
+        .expect("Should find rule for source GUID");
+    assert_eq!(
+        guid_rule["replace_value"]["dev"].as_str().unwrap(),
+        "aaaaaaaa-1111-2222-3333-444444444444"
+    );
+    assert_eq!(
+        guid_rule["replace_value"]["prod"].as_str().unwrap(),
+        "bbbbbbbb-5555-6666-7777-888888888888"
+    );
+}
+
+#[test]
+fn deploy_init_params_diff_no_common_items() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let source = dir.path().join("source");
+    let compare = dir.path().join("compare");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::create_dir_all(&compare).unwrap();
+
+    // Different items in each directory
+    create_platform_item(
+        &source,
+        "ItemA.Notebook",
+        "Notebook",
+        "ItemA",
+        "notebook-content.py",
+        r#"print("hello from dev")"#,
+    );
+    create_platform_item(
+        &compare,
+        "ItemB.Notebook",
+        "Notebook",
+        "ItemB",
+        "notebook-content.py",
+        r#"print("hello from prod")"#,
+    );
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "init-params",
+            "--source",
+            source.to_str().unwrap(),
+            "--compare",
+            compare.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["mode"], "diff");
+    assert_eq!(data["rules_generated"].as_u64().unwrap(), 0);
+}
+
+#[test]
+fn deploy_init_params_diff_string_differences() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let source = dir.path().join("source");
+    let compare = dir.path().join("compare");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::create_dir_all(&compare).unwrap();
+
+    // Items with different connection strings
+    create_platform_item(
+        &source,
+        "Config.DataPipeline",
+        "DataPipeline",
+        "Config",
+        "pipeline-content.json",
+        r#"{"server": "myserver-dev.database.windows.net", "port": 1433}"#,
+    );
+    create_platform_item(
+        &compare,
+        "Config.DataPipeline",
+        "DataPipeline",
+        "Config",
+        "pipeline-content.json",
+        r#"{"server": "myserver-prod.database.windows.net", "port": 1433}"#,
+    );
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "init-params",
+            "--source",
+            source.to_str().unwrap(),
+            "--compare",
+            compare.to_str().unwrap(),
+            "--source-env",
+            "dev",
+            "--compare-env",
+            "prod",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data["rules_generated"].as_u64().unwrap() >= 1);
+
+    // Verify the rule captures the string difference
+    let params = &data["parameters"];
+    let rules = params["find_replace"].as_array().unwrap();
+    let server_rule = rules.iter().find(|r| {
+        r["find_value"]
+            .as_str()
+            .is_some_and(|v| v.contains("myserver-dev"))
+    });
+    assert!(
+        server_rule.is_some(),
+        "Should detect server name difference"
+    );
+}
+
+#[test]
+fn deploy_init_params_empty_source_returns_zero_rules() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let source = dir.path().join("empty_source");
+    std::fs::create_dir_all(&source).unwrap();
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "init-params",
+            "--source",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["source_items"].as_u64().unwrap(), 0);
+    assert_eq!(data["rules_generated"].as_u64().unwrap(), 0);
+}
+
+#[test]
+fn deploy_init_params_nonexistent_source_fails() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let source = dir.path().join("does_not_exist");
+
+    fabio()
+        .args([
+            "deploy",
+            "init-params",
+            "--source",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .failure();
+}
+
+// ── Plan with Parameters (requires live tenant) ──────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_with_parameters_requires_env() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let export_dir = dir.path().join("exported");
+
+    // Export first
+    fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            export_dir.to_str().unwrap(),
+        ])
+        .timeout(Duration::from_secs(300))
+        .assert()
+        .success();
+
+    // Create a minimal parameters file
+    let params_file = dir.path().join("params.json");
+    std::fs::write(
+        &params_file,
+        r#"{"find_replace": [{"find_value": "placeholder", "replace_value": {"_ALL_": "replaced"}}]}"#,
+    )
+    .unwrap();
+
+    // Plan with --parameters but no --env should fail
+    fabio()
+        .args([
+            "deploy",
+            "plan",
+            "--source",
+            export_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.source_workspace,
+            "--parameters",
+            params_file.to_str().unwrap(),
+        ])
+        .timeout(Duration::from_secs(60))
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_with_parameters_and_env() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let export_dir = dir.path().join("exported");
+
+    // Export first
+    fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            export_dir.to_str().unwrap(),
+        ])
+        .timeout(Duration::from_secs(300))
+        .assert()
+        .success();
+
+    // Create a parameters file with a no-op rule (won't match anything)
+    let params_file = dir.path().join("params.json");
+    std::fs::write(
+        &params_file,
+        r#"{"find_replace": [{"find_value": "nonexistent_value_xyz_123", "replace_value": {"prod": "replaced_value"}}]}"#,
+    )
+    .unwrap();
+
+    // Plan with --parameters and --env should succeed
+    let assert = fabio()
+        .args([
+            "deploy",
+            "plan",
+            "--source",
+            export_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.source_workspace,
+            "--parameters",
+            params_file.to_str().unwrap(),
+            "--env",
+            "prod",
+            "--force-all",
+        ])
+        .timeout(Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Should succeed (plan completes with parameter substitution applied)
+    assert!(data["workspace_id"].is_string());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_with_key_value_replace_parameters() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let export_dir = dir.path().join("exported");
+
+    // Export first
+    fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            export_dir.to_str().unwrap(),
+        ])
+        .timeout(Duration::from_secs(300))
+        .assert()
+        .success();
+
+    // Create a parameters file with key_value_replace rules
+    let params_file = dir.path().join("params.json");
+    std::fs::write(
+        &params_file,
+        r#"{
+            "find_replace": [],
+            "key_value_replace": [
+                {
+                    "find_key": "$.nonexistent_path_xyz",
+                    "replace_value": {"prod": "replaced_value"}
+                }
+            ]
+        }"#,
+    )
+    .unwrap();
+
+    // Plan with key_value_replace should succeed
+    let assert = fabio()
+        .args([
+            "deploy",
+            "plan",
+            "--source",
+            export_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.source_workspace,
+            "--parameters",
+            params_file.to_str().unwrap(),
+            "--env",
+            "prod",
+            "--force-all",
+        ])
+        .timeout(Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data["workspace_id"].is_string());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_with_spark_pool_parameters() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let export_dir = dir.path().join("exported");
+
+    // Export first
+    fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            export_dir.to_str().unwrap(),
+        ])
+        .timeout(Duration::from_secs(300))
+        .assert()
+        .success();
+
+    // Create parameters with spark_pool rules
+    let params_file = dir.path().join("params.json");
+    std::fs::write(
+        &params_file,
+        r#"{
+            "find_replace": [],
+            "spark_pool": [
+                {
+                    "instance_pool_id": "00000000-0000-0000-0000-000000000099",
+                    "replace_value": {
+                        "prod": {
+                            "type": "Workspace",
+                            "name": "prod-pool"
+                        }
+                    }
+                }
+            ]
+        }"#,
+    )
+    .unwrap();
+
+    // Plan with spark_pool should succeed (pool won't match anything)
+    let assert = fabio()
+        .args([
+            "deploy",
+            "plan",
+            "--source",
+            export_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.source_workspace,
+            "--parameters",
+            params_file.to_str().unwrap(),
+            "--env",
+            "prod",
+            "--force-all",
+        ])
+        .timeout(Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data["workspace_id"].is_string());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_with_semantic_model_binding_parameters() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let export_dir = dir.path().join("exported");
+
+    // Export first
+    fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            export_dir.to_str().unwrap(),
+        ])
+        .timeout(Duration::from_secs(300))
+        .assert()
+        .success();
+
+    // Create parameters with semantic_model_binding
+    let params_file = dir.path().join("params.json");
+    std::fs::write(
+        &params_file,
+        r#"{
+            "find_replace": [],
+            "semantic_model_binding": {
+                "default": {
+                    "connection_id": {
+                        "prod": "99999999-aaaa-bbbb-cccc-ddddeeee1111"
+                    }
+                }
+            }
+        }"#,
+    )
+    .unwrap();
+
+    // Plan with semantic_model_binding should succeed
+    let assert = fabio()
+        .args([
+            "deploy",
+            "plan",
+            "--source",
+            export_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.source_workspace,
+            "--parameters",
+            params_file.to_str().unwrap(),
+            "--env",
+            "prod",
+            "--force-all",
+        ])
+        .timeout(Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data["workspace_id"].is_string());
+}
