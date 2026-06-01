@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
 use anyhow::Result;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::{Value, json};
 use tokio::sync::Semaphore;
 
@@ -13,6 +16,14 @@ use crate::errors::FabioError;
 use super::changeset::{Change, ChangeAction, Changeset, DeployFailure, DeployResult};
 use super::ordering::{delete_priority, deploy_priority, topological_sort};
 use super::platform::SourceWorkspace;
+
+/// Write a progress line to stderr (diagnostics channel).
+/// Only emits when stderr is connected (non-quiet mode).
+fn emit_progress(quiet: bool, msg: &str) {
+    if !quiet {
+        eprintln!("[deploy] {msg}");
+    }
+}
 
 /// Execute the deployment changeset.
 ///
@@ -79,8 +90,22 @@ pub async fn execute_changeset(
     let mut created_ids: HashMap<(String, String), String> = HashMap::new();
 
     // Execute creates/updates in type order
+    let total_changes = creates_updates.len();
+    let completed = AtomicUsize::new(0);
+
     for item_type in &sorted_types {
         let group = &type_groups[item_type];
+
+        emit_progress(
+            cli.quiet,
+            &format!(
+                "deploying {} {} item(s) [{}/{}]",
+                group.len(),
+                item_type,
+                completed.load(Ordering::Relaxed),
+                total_changes
+            ),
+        );
 
         // For DataPipeline, do topological sort within the group
         let ordered_changes = if *item_type == "DataPipeline" {
@@ -116,8 +141,34 @@ pub async fn execute_changeset(
                             created_ids.insert((change.item_type.clone(), change.name.clone()), id);
                         }
                         succeeded.push((*change).clone());
+                        let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                        emit_progress(
+                            cli.quiet,
+                            &format!(
+                                "  {} {} \"{}\" [{}/{}]",
+                                if change.action == ChangeAction::Create {
+                                    "created"
+                                } else {
+                                    "updated"
+                                },
+                                change.item_type,
+                                change.name,
+                                done,
+                                total_changes
+                            ),
+                        );
                     }
                     Err(e) => {
+                        completed.fetch_add(1, Ordering::Relaxed);
+                        emit_progress(
+                            cli.quiet,
+                            &format!(
+                                "  FAILED {} \"{}\" : {}",
+                                change.item_type,
+                                change.name,
+                                e.root_cause()
+                            ),
+                        );
                         failed.push(DeployFailure {
                             change: (*change).clone(),
                             error: e.to_string(),
@@ -145,6 +196,9 @@ pub async fn execute_changeset(
 
                 let source_item = src_idx.map(|idx| source.items[idx].clone());
 
+                // Build resolution map snapshot for this batch
+                let res_map = build_resolution_map(source, &created_ids);
+
                 handles.push(tokio::spawn(async move {
                     let _permit = sem.acquire().await.unwrap();
                     let result = execute_single_change_owned(
@@ -153,6 +207,7 @@ pub async fn execute_changeset(
                         &ws_id,
                         &change_owned,
                         source_item.as_ref(),
+                        &res_map,
                     )
                     .await;
                     (change_owned, result)
@@ -170,9 +225,35 @@ pub async fn execute_changeset(
                                 id,
                             );
                         }
+                        let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                        emit_progress(
+                            cli.quiet,
+                            &format!(
+                                "  {} {} \"{}\" [{}/{}]",
+                                if change_owned.action == ChangeAction::Create {
+                                    "created"
+                                } else {
+                                    "updated"
+                                },
+                                change_owned.item_type,
+                                change_owned.name,
+                                done,
+                                total_changes
+                            ),
+                        );
                         succeeded.push(change_owned);
                     }
                     Err(e) => {
+                        completed.fetch_add(1, Ordering::Relaxed);
+                        emit_progress(
+                            cli.quiet,
+                            &format!(
+                                "  FAILED {} \"{}\" : {}",
+                                change_owned.item_type,
+                                change_owned.name,
+                                e.root_cause()
+                            ),
+                        );
                         if fail_fast {
                             failed.push(DeployFailure {
                                 change: change_owned,
@@ -196,15 +277,43 @@ pub async fn execute_changeset(
     let mut deletes_sorted = deletes;
     deletes_sorted.sort_by_key(|c| delete_priority(&c.item_type));
 
-    for change in &deletes_sorted {
+    if !deletes_sorted.is_empty() {
+        emit_progress(
+            cli.quiet,
+            &format!("deleting {} orphaned item(s)", deletes_sorted.len()),
+        );
+    }
+
+    for (i, change) in deletes_sorted.iter().enumerate() {
         if fail_fast && !failed.is_empty() {
             break;
         }
 
         let result = execute_delete(client, workspace_id, change).await;
         match result {
-            Ok(()) => succeeded.push((*change).clone()),
+            Ok(()) => {
+                emit_progress(
+                    cli.quiet,
+                    &format!(
+                        "  deleted {} \"{}\" [{}/{}]",
+                        change.item_type,
+                        change.name,
+                        i + 1,
+                        deletes_sorted.len()
+                    ),
+                );
+                succeeded.push((*change).clone());
+            }
             Err(e) => {
+                emit_progress(
+                    cli.quiet,
+                    &format!(
+                        "  FAILED delete {} \"{}\" : {}",
+                        change.item_type,
+                        change.name,
+                        e.root_cause()
+                    ),
+                );
                 failed.push(DeployFailure {
                     change: (*change).clone(),
                     error: e.to_string(),
@@ -234,7 +343,7 @@ async fn execute_single_change(
     change: &Change,
     source: &SourceWorkspace,
     source_map: &HashMap<(&str, &str), usize>,
-    _created_ids: &HashMap<(String, String), String>,
+    created_ids: &HashMap<(String, String), String>,
 ) -> Result<Option<String>> {
     let source_idx = source_map
         .get(&(change.item_type.as_str(), change.name.as_str()))
@@ -247,7 +356,19 @@ async fn execute_single_change(
         })?;
 
     let source_item = &source.items[*source_idx];
-    deploy_change(cli.dry_run, client, workspace_id, change, source_item).await
+
+    // Build logical ID resolution map from created_ids + source workspace info
+    let resolution_map = build_resolution_map(source, created_ids);
+
+    deploy_change(
+        cli.dry_run,
+        client,
+        workspace_id,
+        change,
+        source_item,
+        &resolution_map,
+    )
+    .await
 }
 
 /// Execute a single create or update with owned data (for parallel spawned tasks).
@@ -257,6 +378,7 @@ async fn execute_single_change_owned(
     workspace_id: &str,
     change: &Change,
     source_item: Option<&super::platform::SourceItem>,
+    resolution_map: &HashMap<String, String>,
 ) -> Result<Option<String>> {
     let source_item = source_item.ok_or_else(|| {
         anyhow::anyhow!(
@@ -265,7 +387,15 @@ async fn execute_single_change_owned(
             change.name
         )
     })?;
-    deploy_change(dry_run, client, workspace_id, change, source_item).await
+    deploy_change(
+        dry_run,
+        client,
+        workspace_id,
+        change,
+        source_item,
+        resolution_map,
+    )
+    .await
 }
 
 /// Core deploy logic shared by sequential and parallel paths.
@@ -276,15 +406,17 @@ async fn deploy_change(
     workspace_id: &str,
     change: &Change,
     source_item: &super::platform::SourceItem,
+    resolution_map: &HashMap<String, String>,
 ) -> Result<Option<String>> {
-    // Build definition parts for API
+    // Build definition parts for API, applying logical ID resolution
     let parts: Vec<Value> = source_item
         .parts
         .iter()
         .map(|p| {
+            let payload = resolve_logical_ids_in_payload(&p.payload, resolution_map);
             json!({
                 "path": p.path,
-                "payload": p.payload,
+                "payload": payload,
                 "payloadType": p.payload_type,
             })
         })
@@ -414,9 +546,6 @@ fn order_pipelines<'a>(
 ///
 /// Looks for "Execute Pipeline" activity references in the pipeline JSON.
 fn extract_pipeline_references(source_item: &super::platform::SourceItem) -> Vec<String> {
-    use base64::Engine;
-    use base64::engine::general_purpose::STANDARD as BASE64;
-
     let mut refs = Vec::new();
 
     for part in &source_item.parts {
@@ -466,6 +595,71 @@ fn extract_pipeline_references(source_item: &super::platform::SourceItem) -> Vec
     }
 
     refs
+}
+
+/// Build a map from logical IDs to deployed (runtime) IDs.
+///
+/// This enables cross-item reference resolution: when item A's definition references
+/// item B by its logical ID, we replace it with item B's actual deployed GUID.
+///
+/// Sources of resolution:
+/// 1. `created_ids` — items created earlier in this apply session `(type, name)` → `deployed_id`
+/// 2. Source workspace — items that have both a `logical_id` and a `deployed_id` in the changeset
+fn build_resolution_map(
+    source: &SourceWorkspace,
+    created_ids: &HashMap<(String, String), String>,
+) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+
+    // Map logical_id → deployed_id from created_ids
+    for ((item_type, name), deployed_id) in created_ids {
+        // Find the source item's logical_id
+        if let Some(&idx) = source
+            .type_name_index
+            .get(&(item_type.clone(), name.clone()))
+        {
+            if let Some(ref logical_id) = source.items[idx].metadata.logical_id {
+                map.insert(logical_id.clone(), deployed_id.clone());
+            }
+        }
+    }
+
+    map
+}
+
+/// Replace logical IDs found in a base64-encoded definition payload with deployed IDs.
+///
+/// Decodes the payload, performs string replacement for any GUIDs in the resolution map,
+/// and re-encodes. If the payload is not valid UTF-8 or contains no matches, returns
+/// the original payload unchanged.
+fn resolve_logical_ids_in_payload(
+    payload: &str,
+    resolution_map: &HashMap<String, String>,
+) -> String {
+    if resolution_map.is_empty() {
+        return payload.to_owned();
+    }
+
+    let Ok(decoded) = BASE64.decode(payload) else {
+        return payload.to_owned();
+    };
+    let Ok(mut content) = String::from_utf8(decoded) else {
+        return payload.to_owned();
+    };
+
+    let mut replaced = false;
+    for (logical_id, deployed_id) in resolution_map {
+        if content.contains(logical_id.as_str()) {
+            content = content.replace(logical_id.as_str(), deployed_id.as_str());
+            replaced = true;
+        }
+    }
+
+    if replaced {
+        BASE64.encode(content.as_bytes())
+    } else {
+        payload.to_owned()
+    }
 }
 
 fn extract_error_code(err: &anyhow::Error) -> String {
@@ -662,5 +856,139 @@ mod tests {
         assert_eq!(groups[0].0, "Lakehouse");
         assert_eq!(groups[1].0, "Notebook");
         assert_eq!(groups[2].0, "DataPipeline");
+    }
+
+    #[test]
+    fn test_resolve_logical_ids_no_match() {
+        let payload = BASE64.encode(b"some content without any guids");
+        let map = HashMap::from([(
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_owned(),
+            "11111111-2222-3333-4444-555555555555".to_owned(),
+        )]);
+
+        let result = resolve_logical_ids_in_payload(&payload, &map);
+        assert_eq!(result, payload); // unchanged
+    }
+
+    #[test]
+    fn test_resolve_logical_ids_with_match() {
+        let content =
+            r#"{"lakehouseId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "other": "value"}"#;
+        let payload = BASE64.encode(content.as_bytes());
+        let map = HashMap::from([(
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_owned(),
+            "11111111-2222-3333-4444-555555555555".to_owned(),
+        )]);
+
+        let result = resolve_logical_ids_in_payload(&payload, &map);
+        let decoded = String::from_utf8(BASE64.decode(&result).unwrap()).unwrap();
+        assert!(decoded.contains("11111111-2222-3333-4444-555555555555"));
+        assert!(!decoded.contains("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"));
+    }
+
+    #[test]
+    fn test_resolve_logical_ids_multiple_occurrences() {
+        let content =
+            "ref1=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee ref2=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        let payload = BASE64.encode(content.as_bytes());
+        let map = HashMap::from([(
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_owned(),
+            "99999999-0000-1111-2222-333333333333".to_owned(),
+        )]);
+
+        let result = resolve_logical_ids_in_payload(&payload, &map);
+        let decoded = String::from_utf8(BASE64.decode(&result).unwrap()).unwrap();
+        // Both occurrences replaced
+        assert_eq!(
+            decoded
+                .matches("99999999-0000-1111-2222-333333333333")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn test_resolve_logical_ids_empty_map() {
+        let payload = BASE64.encode(b"anything here");
+        let map: HashMap<String, String> = HashMap::new();
+
+        let result = resolve_logical_ids_in_payload(&payload, &map);
+        assert_eq!(result, payload); // no-op
+    }
+
+    #[test]
+    fn test_resolve_logical_ids_invalid_base64() {
+        let payload = "not-valid-base64!!!";
+        let map = HashMap::from([("foo".to_owned(), "bar".to_owned())]);
+
+        let result = resolve_logical_ids_in_payload(payload, &map);
+        assert_eq!(result, payload); // returns original
+    }
+
+    #[test]
+    fn test_build_resolution_map_from_created_ids() {
+        use super::super::platform::{PlatformMetadata, SourceWorkspace};
+
+        let source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: PlatformMetadata {
+                    item_type: "Lakehouse".to_owned(),
+                    display_name: "SalesLH".to_owned(),
+                    logical_id: Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_owned()),
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![],
+                content_hash: "sha256:abc".to_owned(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::from([(
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_owned(),
+                0,
+            )]),
+            type_name_index: HashMap::from([(("Lakehouse".to_owned(), "SalesLH".to_owned()), 0)]),
+        };
+
+        let created_ids = HashMap::from([(
+            ("Lakehouse".to_owned(), "SalesLH".to_owned()),
+            "11111111-2222-3333-4444-555555555555".to_owned(),
+        )]);
+
+        let map = build_resolution_map(&source, &created_ids);
+        assert_eq!(
+            map.get("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+            Some(&"11111111-2222-3333-4444-555555555555".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_build_resolution_map_no_logical_id() {
+        use super::super::platform::{PlatformMetadata, SourceWorkspace};
+
+        let source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: PlatformMetadata {
+                    item_type: "Notebook".to_owned(),
+                    display_name: "MyNB".to_owned(),
+                    logical_id: None, // no logical ID
+                    description: None,
+                    definition_format: None,
+                },
+                parts: vec![],
+                content_hash: "sha256:abc".to_owned(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::from([(("Notebook".to_owned(), "MyNB".to_owned()), 0)]),
+        };
+
+        let created_ids = HashMap::from([(
+            ("Notebook".to_owned(), "MyNB".to_owned()),
+            "22222222-3333-4444-5555-666666666666".to_owned(),
+        )]);
+
+        let map = build_resolution_map(&source, &created_ids);
+        // No entry — item has no logical_id so it can't be referenced
+        assert!(map.is_empty());
     }
 }

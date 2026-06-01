@@ -306,11 +306,15 @@ async fn execute_plan(
     };
 
     // Build changeset
+    let deployed_items = plan::fetch_deployed_items(client, &workspace_id, item_types).await?;
+    let workspace_fingerprint = plan::compute_workspace_fingerprint(&deployed_items);
+
     let changeset = plan::build_changeset(
         cli,
         client,
         &workspace_id,
         &source_workspace,
+        &deployed_items,
         item_types,
         delete_orphans,
         force_all,
@@ -330,6 +334,7 @@ async fn execute_plan(
         let plan_json = json!({
             "version": 1,
             "workspace_id": workspace_id,
+            "workspace_fingerprint": workspace_fingerprint,
             "source_path": source.display().to_string(),
             "source_git": get_git_metadata(source),
             "changeset": changeset,
@@ -378,7 +383,7 @@ async fn execute_apply(
     delete_orphans: bool,
     allow_unresolved: bool,
     fail_fast: bool,
-    _force: bool,
+    force: bool,
     force_all: bool,
     concurrency: usize,
     parameters: Option<&std::path::Path>,
@@ -417,6 +422,22 @@ async fn execute_apply(
 
         let src = platform::parse_source_directory(std::path::Path::new(source_path))?;
 
+        // Staleness check: compare workspace fingerprint from plan time vs now
+        if let Some(saved_fingerprint) = plan.get("workspace_fingerprint").and_then(|v| v.as_str())
+        {
+            let current_items = plan::fetch_deployed_items(client, &ws_id, None).await?;
+            let current_fingerprint = plan::compute_workspace_fingerprint(&current_items);
+
+            if current_fingerprint != saved_fingerprint && !force {
+                bail!(
+                    "Workspace state has changed since plan was created.\n\
+                     Plan fingerprint: {saved_fingerprint}\n\
+                     Current fingerprint: {current_fingerprint}\n\
+                     Use --force to apply anyway, or re-run `fabio deploy plan` to get a fresh plan."
+                );
+            }
+        }
+
         (ws_id, src, cs)
     } else {
         // Build changeset from source + workspace
@@ -445,11 +466,14 @@ async fn execute_apply(
                 params::apply_parameters(&mut source_ws, &parsed_params, env_name, &ctx)?;
         }
 
+        let deployed = plan::fetch_deployed_items(client, &workspace_id, item_types).await?;
+
         let cs = plan::build_changeset(
             cli,
             client,
             &workspace_id,
             &source_ws,
+            &deployed,
             item_types,
             delete_orphans,
             force_all,

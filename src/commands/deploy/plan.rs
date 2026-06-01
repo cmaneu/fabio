@@ -162,24 +162,30 @@ fn is_guid(s: &str) -> bool {
 }
 
 /// Build a changeset by comparing source items against deployed items.
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 pub async fn build_changeset(
     cli: &Cli,
     client: &FabricClient,
     workspace_id: &str,
     source: &SourceWorkspace,
+    deployed_items: &[DeployedItem],
     item_types: Option<&[String]>,
     delete_orphans: bool,
     force_all: bool,
 ) -> Result<Changeset> {
     let mut changeset = Changeset::new();
 
-    // Fetch deployed items
-    let deployed_items = fetch_deployed_items(client, workspace_id, item_types).await?;
+    if !cli.quiet {
+        eprintln!(
+            "[deploy] comparing {} source item(s) against {} deployed item(s)",
+            source.items.len(),
+            deployed_items.len()
+        );
+    }
 
     // Build deployed lookup: (type, name) → DeployedItem
     let mut deployed_map: HashMap<(String, String), DeployedItem> = HashMap::new();
-    for item in &deployed_items {
+    for item in deployed_items {
         deployed_map.insert(
             (item.item_type.clone(), item.display_name.clone()),
             item.clone(),
@@ -309,6 +315,43 @@ fn validate_references(source: &SourceWorkspace, changeset: &Changeset, _cli: &C
     // For now, we just ensure the source is internally consistent.
     let _ = source;
     let _ = changeset;
+}
+
+/// Compute a workspace state fingerprint from the deployed item list.
+///
+/// This is a lightweight hash over the sorted list of (id, type, name) tuples.
+/// Used for plan staleness detection: if the fingerprint changes between plan and apply,
+/// it means the workspace state has diverged.
+pub fn compute_workspace_fingerprint(deployed_items: &[DeployedItem]) -> String {
+    let mut hasher = Sha256::new();
+
+    let mut sorted: Vec<(&str, &str, &str)> = deployed_items
+        .iter()
+        .map(|item| {
+            (
+                item.id.as_str(),
+                item.item_type.as_str(),
+                item.display_name.as_str(),
+            )
+        })
+        .collect();
+    sorted.sort_unstable();
+
+    for (id, item_type, name) in sorted {
+        hasher.update(id.as_bytes());
+        hasher.update(b"\x00");
+        hasher.update(item_type.as_bytes());
+        hasher.update(b"\x00");
+        hasher.update(name.as_bytes());
+        hasher.update(b"\x00");
+    }
+
+    let hash = hasher.finalize();
+    let hex = hash.iter().fold(String::with_capacity(64), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    });
+    format!("sha256:{hex}")
 }
 
 /// Normalize a content hash from the deployed API response for comparison.
@@ -516,5 +559,58 @@ mod tests {
 
         let definition2 = serde_json::json!({});
         assert!(normalize_and_hash_definition(&definition2).is_none());
+    }
+
+    #[test]
+    fn test_compute_workspace_fingerprint_deterministic() {
+        let items = vec![
+            DeployedItem {
+                id: "bbb".to_owned(),
+                display_name: "ItemB".to_owned(),
+                item_type: "Notebook".to_owned(),
+                definition_hash: None,
+            },
+            DeployedItem {
+                id: "aaa".to_owned(),
+                display_name: "ItemA".to_owned(),
+                item_type: "Lakehouse".to_owned(),
+                definition_hash: None,
+            },
+        ];
+
+        let fp1 = compute_workspace_fingerprint(&items);
+
+        // Reversed order should produce same fingerprint (sorted internally)
+        let items_rev = vec![items[1].clone(), items[0].clone()];
+        let fp2 = compute_workspace_fingerprint(&items_rev);
+
+        assert_eq!(fp1, fp2);
+        assert!(fp1.starts_with("sha256:"));
+    }
+
+    #[test]
+    fn test_compute_workspace_fingerprint_changes_on_modification() {
+        let items1 = vec![DeployedItem {
+            id: "aaa".to_owned(),
+            display_name: "Item".to_owned(),
+            item_type: "Notebook".to_owned(),
+            definition_hash: None,
+        }];
+        let items2 = vec![DeployedItem {
+            id: "bbb".to_owned(),
+            display_name: "Item".to_owned(),
+            item_type: "Notebook".to_owned(),
+            definition_hash: None,
+        }];
+
+        let fp1 = compute_workspace_fingerprint(&items1);
+        let fp2 = compute_workspace_fingerprint(&items2);
+        assert_ne!(fp1, fp2);
+    }
+
+    #[test]
+    fn test_compute_workspace_fingerprint_empty() {
+        let fp = compute_workspace_fingerprint(&[]);
+        assert!(fp.starts_with("sha256:"));
     }
 }
