@@ -750,6 +750,11 @@ fabio job-scheduler get-schedule   Get schedule details
 fabio job-scheduler create-schedule Create a schedule
 fabio job-scheduler update-schedule Update a schedule
 fabio job-scheduler delete-schedule Delete a schedule
+
+fabio deploy plan            Plan deployment (diff source directory vs live workspace)
+fabio deploy apply           Apply deployment (create/update/rename/delete items)
+fabio deploy export          Export a workspace to a source directory
+fabio deploy init-params     Generate parameter file from GUIDs/diffs
 ```
 
 ### Security & Governance
@@ -1179,6 +1184,44 @@ fabio deployment-pipeline deploy --id $DP \
   --source-stage $DEV_STAGE --items '[{"itemId":"abc","itemType":"Notebook"}]'
 ```
 
+### Deploy (CI/CD Engine)
+
+The `deploy` command group provides stateless, content-hash-based convergence for Fabric workspaces -- similar to Terraform but without a state file. It always diffs against the live workspace.
+
+```bash
+# Export a workspace to a local directory (source of truth)
+fabio deploy export --workspace "Production" --dir ./fabric-items/ --overwrite
+
+# Plan changes (diff source directory against live workspace)
+fabio deploy plan --source ./fabric-items/ --workspace "Staging"
+
+# Apply changes (create/update/rename/delete items in dependency order)
+fabio deploy apply --source ./fabric-items/ --workspace "Staging"
+
+# Preview without executing
+fabio deploy apply --source ./fabric-items/ --workspace "Staging" --dry-run
+
+# Deploy with environment-specific parameters
+fabio deploy apply --source ./fabric-items/ --workspace "Production" \
+  --parameters params.json --env prod
+
+# Delete items in workspace that aren't in source (opt-in)
+fabio deploy apply --source ./fabric-items/ --workspace "Staging" --delete-orphans
+
+# Save a plan for later (staleness-protected)
+fabio deploy plan --source ./fabric-items/ --workspace "Staging" --out plan.json
+fabio deploy apply --plan plan.json
+
+# Generate a parameter file by scanning for GUIDs
+fabio deploy init-params --source ./fabric-items/ --out params.json
+
+# Generate parameters by diffing two environments
+fabio deploy init-params --source ./dev-items/ --compare ./prod-items/ \
+  --source-env dev --compare-env prod --out params.json
+```
+
+Deploy handles 42 item types in dependency order, supports parallel execution (default 8 concurrent), rename detection via logical IDs, and automatic post-deploy hooks (semantic model refresh, environment publish).
+
 ### Connections and Gateways
 
 ```bash
@@ -1369,10 +1412,10 @@ git clone https://github.com/iemejia/fabio.git && cd fabio
 # Build
 cargo build
 
-# Run tests (unit tests — 202 tests)
+# Run tests (unit + offline integration — 479 tests)
 cargo test
 
-# Run E2E tests (requires live Fabric tenant — 505 tests)
+# Run E2E tests (requires live Fabric tenant — 582 tests)
 cargo test -- --ignored
 
 # Lint (pedantic + nursery, zero warnings required)
@@ -1385,15 +1428,15 @@ cargo fmt
 ### CI/CD
 
 - GitHub Actions CI runs on 6 targets: x64 + arm64 for Linux, macOS, and Windows
-- Release workflow: tag-triggered, builds 6 binaries with SHA256 checksums
+- Release workflow: tag-triggered, builds 5 binaries with SHA256 checksums (linux x64/arm64, macOS arm64, Windows x64/arm64)
 - Dependabot auto-merge for passing dependency updates
 - CodeQL and Secret Scanning enabled
 
 ### Project Stats
 
-- **55+ command groups** with 370+ subcommands
-- **711 tests** (206 unit + 505 E2E integration)
-- **~9.4 MB** release binary (stripped, full LTO, panic=abort)
+- **66 command groups** with **661 subcommands**
+- **1061 tests** (409 unit + 70 offline integration + 582 E2E requiring live tenant)
+- **~16 MB** release binary (stripped, full LTO, panic=abort)
 - Zero clippy warnings, zero unsafe code
 
 ## License
