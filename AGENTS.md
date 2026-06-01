@@ -1565,71 +1565,271 @@ fabio deploy init-params → scan/diff definitions → generate parameters.json
 ### Source Directory Format
 
 Each item is a directory named `{DisplayName}.{ItemType}/` containing:
-- `.platform` (required) — metadata JSON: `{"metadata":{"type":"...","displayName":"..."},"config":{"version":"2.0","logicalId":"...","definitionFormat":"..."}}`
+- `.platform` (required) — metadata JSON with `$schema` URL, `metadata` block, `config` block
 - Definition part files (e.g., `notebook-content.py`, `report.json`, `model.tmdl`) — base64-encoded when sent to API
-- `creationPayload.json` (optional) — merged into item creation body as `creationPayload` field (e.g., `{"enableSchemas":true}` for Lakehouse, `{"eventhouseId":"..."}` for KQLDatabase)
+- `creationPayload.json` (optional) — merged into item creation body as `creationPayload` field
+
+**`.platform` structure:**
+```json
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Notebook",
+    "displayName": "MyNotebook",
+    "description": "optional"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    "definitionFormat": "ipynb"
+  }
+}
+```
+
+**Reserved filenames** (excluded from definition parts, not hashed):
+- `.platform` — metadata, generated on export
+- `creationPayload.json` — creation-time configuration
+
+**Directory scanning behavior:**
+- Non-directory entries at source root are silently skipped
+- Directories without `.platform` are silently skipped
+- Subdirectories within item dirs are recursively traversed for definition parts
+- Backslash paths normalized to forward slashes (Windows compatibility)
+
+### Workspace Resolution
+
+The `--workspace` parameter accepts either a GUID or a display name:
+- **GUID detection**: 36 chars, all hex digits + dashes, exactly 4 dashes → used directly
+- **Name resolution**: Lists all workspaces, matches by `displayName` (case-insensitive)
+- Error if name not found (with workspace list hint)
 
 ### Changeset Actions
 
 | Action | Trigger | Execution |
 |--------|---------|-----------|
-| `Create` | Source item has no match in workspace (by type+name) | POST create + updateDefinition |
-| `Update` | Content hash differs between source and deployed | POST updateDefinition |
-| `Rename` | Source logicalId matches deployed item but name differs | PATCH displayName + updateDefinition |
-| `Delete` | Deployed item has no match in source (requires `--delete-orphans`) | DELETE |
+| `Create` | Source item has no match in workspace (by type+name) | POST `/items` with LRO |
+| `Update` | Content hash differs between source and deployed | POST `updateDefinition` with LRO |
+| `Rename` | Source logicalId matches deployed item but name differs | PATCH displayName + `updateDefinition` |
+| `Delete` | Deployed item has no match in source (requires `--delete-orphans`) | DELETE `/items/{id}` |
 | `Skip` | Content hash matches — item is already in sync | No-op |
+
+**Change struct fields:** `name`, `item_type`, `action`, `reason`, `logical_id?`, `deployed_id?`, `source_hash?`, `previous_name?` (optional fields omitted from JSON when None).
 
 ### Content Hash Calculation
 
-- Source hash: SHA256 of sorted (path, payload) pairs from all definition parts
-- Deployed hash: SHA256 of API response parts from `getDefinition` (or from `definitionProperties.definitionHash` if exposed)
-- Comparison is deterministic: same content → same hash → Skip action
+- **Algorithm**: SHA-256 over sorted `(path, payload)` pairs with `\x00` separators between fields
+- **Format**: `"sha256:<64-hex-chars>"`
+- **Source hash**: Computed from base64-encoded file contents (stable across runs)
+- **Deployed hash**: Computed from API response parts via `getDefinition` (same algorithm)
+- **Determinism**: Parts sorted by path before hashing — filesystem read order doesn't matter
+- **Empty parts**: Valid case (Lakehouse, MLModel) — produces consistent empty-input hash
+- **Items without definition support**: `getDefinition` returns NOT_FOUND/not supported → treated as "always changed" (Update, never Skip)
+- **Hash recomputation**: After parameter substitution, content hash is recomputed to reflect substituted values
 
 ### Rename Detection (Two-Pass Matching)
 
 1. **First pass**: Match source items to deployed items by `(type, displayName)` — standard create/update/skip
-2. **Second pass**: For unmatched source items WITH a `logicalId`, check unmatched deployed items of the same type by calling `getDefinition` and reading the `.platform` part to extract the deployed item's `logicalId`. If they match → `Rename` action
+2. **Second pass**: For unmatched source items WITH a `logicalId`:
+   - Find unmatched deployed items of the same type (case-insensitive type comparison)
+   - Call `getDefinition` on each candidate
+   - Extract `.platform` part, base64-decode, parse JSON, read `config.logicalId`
+   - If logical IDs match → `Rename` action (with `previous_name` field set)
+   - Any failure in extraction (invalid base64, non-UTF-8, no `.platform` part, parse error) → gracefully returns `None`, candidate skipped
+
+**Graceful degradation**: `fetch_deployed_logical_id` never errors — all failures return `Ok(None)`.
 
 ### Logical ID Resolution
 
 When items reference each other by logical ID (e.g., a notebook referencing a lakehouse), the deploy engine resolves these at apply time:
-1. `build_resolution_map()`: Maps logical IDs → deployed item GUIDs (from existing workspace + newly created items)
-2. `resolve_logical_ids_in_payload()`: Base64-decodes each definition part, performs string replacement of logical IDs with real GUIDs, re-encodes
-3. Items are deployed in dependency order (via `DEPLOY_ORDER`) so that referenced items exist before referencing items are created
+
+1. **`build_resolution_map()`**: Maps logical IDs → deployed item GUIDs. Sources:
+   - Items already in workspace (via `type_name_index` + existing items)
+   - Items created earlier in the same deploy session (via `created_ids` accumulator)
+   - Only items WITH a `logical_id` produce mappings
+2. **`resolve_logical_ids_in_payload()`**: For each definition part:
+   - Base64-decodes the payload
+   - Performs `String::replace` for each logical_id→deployed_id
+   - Re-encodes to base64
+   - Returns original unchanged if: map is empty, invalid base64, non-UTF-8, or no matches found
+3. **Dependency ordering**: Items deployed via `DEPLOY_ORDER` so referenced items exist before referencing items
+
+**Parallel batch resolution**: Each type-batch gets a snapshot of `created_ids` at batch start. Items within the same priority batch cannot resolve each other's logical IDs (they execute concurrently).
+
+**Substring safety**: `String::replace` is used — if a logical ID is a substring of another string in the payload, it will be replaced within that longer string. Logical IDs should be UUID-format to minimize false matches.
 
 ### Parameter Substitution
 
-The `--parameters <file> --env <name>` flags enable environment-aware value replacement. Four substitution strategies:
+The `--parameters <file> --env <name>` flags enable environment-aware value replacement. Both flags are required together (bail if one without the other).
 
-1. **`find_replace`**: Simple string replacement in definition payloads and creationPayload. Rules: `[{"find":"<pattern>","replace":{"dev":"val1","prod":"val2"}}]`
-2. **`key_value_replace`**: JSONPath-targeted replacement in specific files. Rules: `[{"file":"<path>","path":"$.<jsonpath>","replace":{"dev":"val1","prod":"val2"}}]`
-3. **`spark_pool`**: Replaces Spark pool references in notebook/SparkJobDefinition metadata. Rules: `[{"pool_name":{"dev":"pool1","prod":"pool2"}}]`
-4. **`semantic_model_binding`**: Replaces semantic model connection strings. Rules: `[{"server":{"dev":"s1","prod":"s2"},"database":{"dev":"d1","prod":"d2"}}]`
+**Application order**: find_replace → key_value_replace → spark_pool → semantic_model_binding (later rules can override earlier results).
+
+#### 1. `find_replace`
+Simple string replacement in definition payloads AND `creationPayload`.
+
+```json
+{
+  "find_replace": [
+    {
+      "find_value": "source-workspace-guid",
+      "replace_value": {"dev": "dev-guid", "prod": "prod-guid", "_ALL_": "fallback"},
+      "is_regex": false,
+      "item_type": "Notebook",
+      "item_name": "MyNB",
+      "file_path": "notebook-content.py"
+    }
+  ]
+}
+```
+
+- `is_regex: true`: Only capture group 1 is replaced (surrounding match text preserved)
+- `item_type`, `item_name`, `file_path`: Optional scoping filters (case-insensitive, `StringOrVec` supports single value or array)
+- `_ALL_` key in `replace_value`: Universal fallback if specific env not found (case-insensitive lookup)
+
+#### 2. `key_value_replace`
+JSONPath-targeted replacement in specific files. Payloads parsed as JSON.
+
+```json
+{
+  "key_value_replace": [
+    {
+      "find_key": "$.parentEventhouseItemId",
+      "replace_value": {"dev": "dev-eh-id", "prod": "prod-eh-id"},
+      "item_type": "KQLDatabase",
+      "item_name": null,
+      "file_path": null
+    }
+  ]
+}
+```
+
+- Uses `jsonpath_rust` crate for JSONPath evaluation
+- Replacement values can be any JSON type (string, number, object, array)
+- Non-JSON payloads are silently skipped (graceful degradation)
+- Also applies to `creationPayload` (virtual path `"creationPayload.json"` for filter matching)
+
+#### 3. `spark_pool`
+Replaces Spark pool references in notebook/SparkJobDefinition metadata.
+
+```json
+{
+  "spark_pool": [
+    {
+      "instance_pool_id": "current-pool-guid",
+      "replace_value": {
+        "dev": {"pool_type": "Workspace", "name": "dev-pool"},
+        "prod": {"pool_type": "Capacity", "name": "prod-pool"}
+      },
+      "item_name": null
+    }
+  ]
+}
+```
+
+- Recursive JSON tree walk finds objects with `instancePoolId` or `instance_pool_id` matching the target
+- Replaces `type` and `name` fields in the pool configuration
+- Leaves `instancePoolId` unchanged (identifies the pool slot, not the target)
+
+#### 4. `semantic_model_binding`
+Replaces semantic model connection IDs for cross-environment binding.
+
+```json
+{
+  "semantic_model_binding": {
+    "default": {
+      "connection_id": {"dev": "dev-sm-guid", "prod": "prod-sm-guid"}
+    },
+    "models": [
+      {
+        "semantic_model_name": "SalesModel",
+        "connection_id": {"dev": "override-guid", "prod": "override-guid"}
+      }
+    ]
+  }
+}
+```
+
+- Only processes `SemanticModel` items
+- Model-specific override checked first, then falls back to `default`
+- Recursive JSON walk replaces GUID-shaped strings (36-char) in `connectionId`, `connection_id`, `pbiModelDatabaseName`
+- Also replaces UUID within `connectionString` containing `semanticmodelid=`
+
+#### Dynamic Variables in Replacement Values
+
+String replacement values support dynamic variable expansion:
+- `$workspace.id` → deployed workspace GUID
+- `$workspace.name` → workspace display name (only available if resolved by name)
+- `$ENV:VAR_NAME` → environment variable value (errors if not set)
+- `$items.Type.Name.id` → deployed GUID of another item in the workspace
+- Non-`$` strings pass through unchanged
 
 ### Init-Params (Scaffold Generation)
 
 `fabio deploy init-params` helps bootstrap `parameters.json`:
-- **Scan mode** (`--source` only): Finds all GUIDs in definition payloads, proposes `find_replace` rules (skips well-known GUIDs like all-zeros)
-- **Diff mode** (`--source` + `--compare`): Exports two workspaces, finds string differences between matching items, generates rules with per-environment values
+
+**Scan mode** (`--source` only):
+- Finds all GUIDs matching `[0-9a-fA-F]{8}-...-[0-9a-fA-F]{12}` in definition payloads
+- Filters out well-known GUIDs: all-zeros, all-`f`s, near-zero (`00000000-0000-0000-0000-00000000000X`)
+- Generates `find_replace` rules with `"_ALL_": "TODO_REPLACE_<first8chars>"`
+- Scopes rules to `item_type`/`item_name` if all occurrences are in a single item
+- Output: `{"status":"generated","mode":"scan","source_items":N,"rules_generated":N,"guids_found":N}`
+
+**Diff mode** (`--source` + `--compare` + `--source-env` + `--compare-env`):
+- Parses both directories, matches items by `(type, name)`
+- Items only in one side are skipped (no diff possible)
+- For matching items: compares each definition part's base64-decoded content
+- Finds GUIDs unique to each side; positional pairing when counts are equal
+- Also discovers non-GUID string differences via recursive JSON comparison (5-500 char filter)
+- Generates rules with both environment values pre-filled
+- Uses `BTreeMap`/`BTreeSet` for deterministic output ordering
+- Deduplicates via `seen_pairs` (same diff won't produce multiple rules)
 
 ### Post-Deploy Hooks
 
 After successful deployment, hooks fire automatically (opt-out via `--no-post-hooks`):
 - **SemanticModel**: `POST /workspaces/{ws}/semanticModels/{id}/refreshes` with `{"type":"Full"}` — triggers Direct Lake framing
-- **Environment**: `POST /workspaces/{ws}/environments/{id}/staging/publish` — publishes staged changes
+- **Environment**: `POST /workspaces/{ws}/environments/{id}/staging/publish` with `{}` — publishes staged changes
 
-Hook failures are non-fatal: reported in the `post_hooks` output array but don't fail the deploy.
+**Hook rules:**
+- Only fire for Create/Update/Rename actions (not Skip/Delete)
+- Only fire for changes with a `deployed_id` (must have succeeded)
+- Never fire during `--dry-run`
+- Failures are non-fatal: reported in `post_hooks` output array but don't fail the deploy
+- Progress messages emitted to stderr: `[deploy] post-hook: refreshing semantic model "..."`
 
 ### Plan Staleness Detection
 
 When using `--out` to save a plan file and later `--plan` to apply it:
-1. At plan time: compute workspace fingerprint (SHA256 of sorted `(id, type, name)` tuples)
-2. At apply time: re-compute fingerprint and compare to saved value
-3. If mismatch → error with message to re-plan (override with `--force`)
+1. At plan time: compute workspace fingerprint (SHA256 of sorted `(id, type, name)` tuples with `\x00` separators)
+2. Plan file saved with: `version: 1`, `workspace_id`, `workspace_fingerprint`, `changeset`, `source_path`, `source_git`
+3. At apply time: re-compute fingerprint from live workspace and compare to saved value
+4. If mismatch → error with "workspace has changed since plan was created" (override with `--force`)
+
+**Fingerprint scope**: Only considers `(id, type, name)` — definition content changes don't affect fingerprint. Adding/removing items DOES change it.
 
 ### Reference Validation
 
-At plan time, `validate_references()` scans all source item payloads for occurrences of other items' logical IDs. If a referenced logical ID belongs to an item that won't be deployed (e.g., it's being deleted or is not in the source), a warning is emitted. Warnings don't block deployment unless `--allow-unresolved` is omitted and errors exist.
+At plan time, `validate_references()` cross-checks logical ID references:
+- Builds set of "resolvable" logical IDs from changeset (Create/Update/Skip actions all contribute)
+- Delete actions do NOT contribute (those items will be gone)
+- For each source item WITH a logical_id: base64-decodes each part's payload
+- If payload contains another item's logical ID that is NOT in the resolvable set → warning added to `changeset.warnings`
+- Skips self-references (uses `std::ptr::eq` pointer equality)
+- Items without any `logical_id` are not scanned (no false positives)
+
+### Export Behaviors
+
+`fabio deploy export` fetches all item definitions from a workspace and writes them to disk:
+- Uses generic items endpoint (`GET /workspaces/{ws}/items`) with full pagination
+- For each item: calls `getDefinition` (LRO POST with empty body `{}`)
+- **Items that fail `getDefinition`**: Added to `skipped` list with reason (not fatal)
+- **Items without definition parts**: Skipped with reason "no definition parts"
+- **`.platform` part from API is discarded**: Export generates its own `.platform` from item metadata
+- **Logical ID extracted from API's `.platform`** BEFORE filtering (read then discard)
+- **`definition_format`**: Captured from `data.definition.format` if present in API response
+- **`--overwrite`**: Required if output directory is non-empty (checked via iterator peek)
+- **`--dry-run`**: Counts items without writing to disk
+- **`--item-types`**: Case-insensitive filter on item types
+- Items with empty `id`, `type`, or `displayName` are silently skipped
 
 ### Deploy Order (42 Types)
 
@@ -1646,7 +1846,11 @@ MLExperiment → MLModel → Ontology → GraphModel → GraphQuerySet →
 DigitalTwinBuilder → DigitalTwinBuilderFlow → Map → Connection
 ```
 
-Deletes execute in reverse order (dependent items deleted before their dependencies).
+**Priority rules:**
+- Unknown item types get `DEPLOY_ORDER.len()` priority (deployed last, not an error)
+- Case-insensitive matching via `eq_ignore_ascii_case`
+- Delete priority is reversed: `DEPLOY_ORDER.len() - deploy_priority` (dependents deleted first)
+- `topological_sort` (Kahn's algorithm) used within DataPipeline batch for `ExecutePipeline` references
 
 ### Empty Definition Handling
 
@@ -1654,6 +1858,72 @@ Some item types (Lakehouse, MLModel, MLExperiment) have no definition parts:
 - On **Create**: Omit `definition` field entirely from request body (only send `displayName` + optional `creationPayload`)
 - On **Update**: Skip `updateDefinition` call (nothing to update)
 - Content hash is still computed (empty hash) for idempotency detection
+
+### Concurrency & Rate Limiting
+
+- **Default concurrency**: 8 parallel operations per type batch (`--concurrency N`)
+- **Parallel execution**: Uses `tokio::spawn` + `tokio::sync::Semaphore` for bounded parallelism
+- **Sequential fallback**: Used when `concurrency == 1` or batch has single item
+- **DataPipeline special case**: Always deployed sequentially with topological sort by `ExecutePipeline` activity references
+- **Delete operations**: Always execute sequentially in reverse dependency order
+- **`fail_fast`**: In parallel mode, stops processing on first failure (in-flight tasks still complete)
+- **Rate limit retry**: Inherited from `FabricClient` HTTP layer (exponential backoff on 429)
+- **Progress messages**: `[deploy] <message>` emitted to stderr (respects `--quiet`)
+- **Duration tracking**: Uses `u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)`
+
+### DataPipeline Topological Sorting
+
+Within the DataPipeline type batch, items are sorted by their `ExecutePipeline` activity references:
+- `extract_pipeline_references()` scans base64-decoded definition parts for `ExecutePipeline` activities
+- Only checks parts whose path contains "pipeline" or has `.json` extension
+- Extracts `typeProperties.pipeline.referenceName` from each activity
+- `order_pipelines()` builds dependency graph and runs Kahn's algorithm
+- External references (pipelines not in the batch) are silently ignored
+- Circular dependencies produce an error listing involved items
+- Short-circuits if ≤1 pipeline in batch
+
+### Create Item Details
+
+When creating an item, the POST body is constructed as:
+```json
+{
+  "displayName": "<name>",
+  "type": "<ItemType>",
+  "definition": {                          // OMITTED if no parts
+    "format": "<definitionFormat>",        // OMITTED if not specified
+    "parts": [{"path":"...","payload":"...","payloadType":"InlineBase64"}]
+  },
+  "creationPayload": {...},                // OMITTED if no creationPayload.json
+  "description": "..."                     // OMITTED if not in .platform
+}
+```
+- POST to `/workspaces/{ws}/items` with LRO (`poll: true`)
+- Returns new item's `id` from response
+
+### Rename Item Details
+
+Rename is a two-step operation:
+1. **PATCH displayName**: `PATCH /workspaces/{ws}/items/{id}` with `{"displayName":"<new>"}` (+ optional `description`)
+2. **updateDefinition**: If parts exist, POST `updateDefinition` with LRO (same as Update)
+
+### Plan File Format
+
+Saved via `--out`:
+```json
+{
+  "version": 1,
+  "workspace_id": "<guid>",
+  "workspace_fingerprint": "sha256:<64-hex>",
+  "changeset": {"changes": [...], "warnings": [...], "errors": [...]},
+  "source_path": "/absolute/path/to/source",
+  "source_git": {"commit": "<sha>", "branch": "<name>", "dirty": false}
+}
+```
+
+When applying from plan file:
+- Source is re-parsed from `source_path` (must still exist on disk)
+- Parameters are re-applied to the re-parsed source
+- `--plan` is mutually exclusive with `--source`/`--workspace` (clap `conflicts_with_all`)
 
 ### CLI Flags Reference
 
@@ -1669,51 +1939,78 @@ fabio deploy apply --source <DIR> --workspace <ID|NAME>
   [--no-post-hooks]
 
 fabio deploy export --workspace <ID|NAME> --dir <DIR>
-  [--item-types <T1,T2>] [--overwrite]
+  [--item-types <T1,T2>] [--overwrite] [--dry-run]
 
 fabio deploy init-params --source <DIR>
   [--compare <DIR>] [--source-env <NAME>] [--compare-env <NAME>]
   [--out <FILE>]
 ```
 
+**Flag interactions:**
+- `--plan` is mutually exclusive with `--source`/`--workspace` in `apply`
+- `--parameters` requires `--env` (and vice versa)
+- `--force` only relevant with `--plan` (overrides staleness check)
+- `--force-all` skips content-hash comparison (all matched items become Update)
+- `--dry-run` supported on all subcommands (returns planned actions without executing)
+
 ### Output Envelope
 
-Plan output:
+**Plan output (stdout):**
 ```json
-{"data":{"workspace_id":"...","changes":[...],"warnings":[...],"errors":[...],"summary":{"create":N,"update":N,"rename":N,"delete":N,"skip":N}}}
+{"data":{"workspace_id":"...","changes":[...],"warnings":[...],"errors":[...],"summary":{"create":N,"update":N,"rename":N,"delete":N,"skip":N},"source_git":{"commit":"...","branch":"...","dirty":false}}}
 ```
 
-Apply output:
+**Apply output (stdout):**
 ```json
-{"data":{"status":"succeeded|partial_failure|no_changes","succeeded":N,"failed":N,"skipped":N,"duration_ms":N,"failures":[...],"post_hooks":[...]}}
+{"data":{"status":"succeeded|partial_failure|no_changes","succeeded":N,"failed":N,"skipped":N,"duration_ms":N,"failures":[{"change":{...},"error":"...","code":"AUTH_REQUIRED"}],"post_hooks":[...]}}
 ```
 
-Export output:
+**Export output (stdout):**
 ```json
-{"data":{"status":"exported","workspace_id":"...","output_dir":"...","total_items":N,"exported":N,"skipped":N}}
+{"data":{"status":"exported","workspace_id":"...","output_dir":"...","total_items":N,"exported":N,"skipped":["ItemName: reason"]}}
 ```
+
+**Init-params output (stdout):**
+```json
+{"data":{"status":"generated","mode":"scan|diff","source_items":N,"compare_items":N,"rules_generated":N,"guids_found":N}}
+```
+
+**Error output (stderr, non-zero exit):**
+- Empty source directory: "No items found in source directory"
+- Nonexistent source: "Source directory does not exist"
+- Workspace not found: "Workspace not found: <name>"
+- Plan staleness: "workspace has changed since plan was created"
+- Deployment failures: "N deployment(s) failed" (after outputting results)
 
 ### Git Metadata Capture
 
 When deploying from a git repository, `get_git_metadata()` automatically captures:
-- `branch`: current branch name
-- `commit`: HEAD commit SHA
-- `dirty`: whether working tree has uncommitted changes
+- `branch`: current branch name (`git branch --show-current`; `None` on detached HEAD)
+- `commit`: HEAD commit SHA (`git rev-parse HEAD`; `None` if not a git repo)
+- `dirty`: whether working tree has uncommitted changes (`git status --porcelain` is non-empty)
 
-This metadata is included in plan output for CI/CD audit trail.
+Git commands are run with CWD set to source directory. Returns `None` entirely if `git rev-parse HEAD` fails (not a git repo).
 
-### Concurrency & Rate Limiting
+### Error Handling Patterns
 
-- Default concurrency: 8 parallel operations per type batch
-- DataPipeline items always deploy sequentially (Fabric API rejects parallel pipeline mutations)
-- Delete operations always execute sequentially (safe ordering)
-- Rate limit retry: inherited from `FabricClient` HTTP layer (exponential backoff on 429)
+- **Per-item failures in apply**: Captured in `DeployFailure` with `error` string and `code` (extracted from `FabioError` via downcast, or `"UNKNOWN"`)
+- **Post-hook failures**: Non-fatal, reported in output
+- **Items without definition support**: Treated as "changed" during plan (Update, never Skip)
+- **`getDefinition` failures during rename detection**: Gracefully return `None` (candidate skipped)
+- **Invalid base64/non-UTF8 in payloads**: Original payload returned unchanged (no substitution)
+- **API errors during apply**: Non-zero exit code with failure count in bail message
+- **Partial failures**: Status is `"partial_failure"` (not `"failed"`); succeeded items are still reported
 
 ### Known Limitations
 
 - **No incremental plan apply**: Applying a saved plan re-executes all actions (no "only do remaining" resume)
 - **creationPayload not validated client-side**: Invalid payloads are rejected by the server at apply time
 - **Rename requires logicalId in both source and deployed**: Items without logicalId cannot be rename-detected
-- **Large workspaces**: getDefinition is called per-item for rename detection (can be slow with 100+ unmatched items)
+- **Large workspaces**: getDefinition is called per-item for rename detection and hash comparison (can be slow with 100+ items)
 - **No cross-workspace references**: Logical ID resolution only works within a single workspace deployment
+- **Parallel batch isolation**: Items within the same priority batch cannot resolve each other's logical IDs (they execute concurrently with a snapshot)
+- **Substring logical ID matches**: `String::replace` is used — a logical ID that appears as substring of longer text will be replaced within it
+- **Plan source path must persist**: When applying from a plan file, the source directory at `source_path` must still exist on disk
+- **No definition-managed items detection**: Items that don't support `getDefinition` are always marked as Update
+- **`_ALL_` wildcard precedence**: Specific env name is checked first (case-insensitive); `_ALL_` is fallback only
 
