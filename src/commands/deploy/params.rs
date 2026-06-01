@@ -2,6 +2,9 @@
 //!
 //! Supports a JSON parameter file (`parameters.json`) with:
 //! - `find_replace`: Literal or regex-based string replacement in definition payloads
+//! - `key_value_replace`: JSONPath-based value replacement at specific JSON keys
+//! - `spark_pool`: Spark pool instance ID to environment-specific pool configuration mapping
+//! - `semantic_model_binding`: Semantic model connection ID promotion across environments
 //! - Dynamic variables: `$workspace.id`, `$workspace.name`, `$items.Type.Name.id`, `$ENV:VAR`
 //!
 //! The parameter file format is a superset of fabric-cicd's YAML `parameter.yml`,
@@ -13,6 +16,8 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use jsonpath_rust::JsonPath;
+use jsonpath_rust::query::queryable::Queryable;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +29,18 @@ pub struct Parameters {
     /// String find-and-replace rules.
     #[serde(default)]
     pub find_replace: Vec<FindReplaceRule>,
+
+    /// JSONPath-based key-value replacement rules.
+    #[serde(default)]
+    pub key_value_replace: Vec<KeyValueReplaceRule>,
+
+    /// Spark pool instance mapping rules.
+    #[serde(default)]
+    pub spark_pool: Vec<SparkPoolRule>,
+
+    /// Semantic model connection binding rules.
+    #[serde(default)]
+    pub semantic_model_binding: Option<SemanticModelBinding>,
 }
 
 /// A single find-and-replace rule.
@@ -70,6 +87,82 @@ impl StringOrVec {
     }
 }
 
+/// A JSONPath-based key-value replacement rule.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyValueReplaceRule {
+    /// `JSONPath` expression identifying the key(s) whose value should be replaced.
+    pub find_key: String,
+
+    /// Environment-keyed replacement values (can be any JSON value type).
+    pub replace_value: HashMap<String, serde_json::Value>,
+
+    /// Restrict to specific item type(s).
+    #[serde(default)]
+    pub item_type: Option<StringOrVec>,
+
+    /// Restrict to specific item name(s).
+    #[serde(default)]
+    pub item_name: Option<StringOrVec>,
+
+    /// Restrict to specific file path(s) within definitions.
+    #[serde(default)]
+    pub file_path: Option<StringOrVec>,
+}
+
+/// A Spark pool instance mapping rule.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SparkPoolRule {
+    /// The source Spark pool instance ID to match.
+    pub instance_pool_id: String,
+
+    /// Environment-keyed pool configuration objects.
+    pub replace_value: HashMap<String, SparkPoolConfig>,
+
+    /// Restrict to specific item name(s).
+    #[serde(default)]
+    pub item_name: Option<StringOrVec>,
+}
+
+/// Spark pool configuration for a target environment.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SparkPoolConfig {
+    /// Pool type: "Capacity" or "Workspace".
+    #[serde(rename = "type")]
+    pub pool_type: String,
+
+    /// Pool display name.
+    pub name: String,
+}
+
+/// Semantic model connection binding configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemanticModelBinding {
+    /// Default connection binding applied to all semantic models.
+    #[serde(default)]
+    pub default: Option<ConnectionBinding>,
+
+    /// Per-model connection binding overrides.
+    #[serde(default)]
+    pub models: Vec<ModelBinding>,
+}
+
+/// A connection binding with environment-keyed connection IDs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectionBinding {
+    /// Environment-keyed connection GUID values.
+    pub connection_id: HashMap<String, String>,
+}
+
+/// A per-model connection binding override.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelBinding {
+    /// Semantic model name(s) this binding applies to.
+    pub semantic_model_name: StringOrVec,
+
+    /// Environment-keyed connection GUID values.
+    pub connection_id: HashMap<String, String>,
+}
+
 /// Context for resolving dynamic variables during substitution.
 pub struct SubstitutionContext<'a> {
     /// Target workspace ID.
@@ -111,6 +204,46 @@ pub fn parse_parameters(path: &Path) -> Result<Parameters> {
                     rule.find_value
                 )
             })?;
+        }
+    }
+
+    // Validate key_value_replace rules
+    for (i, rule) in params.key_value_replace.iter().enumerate() {
+        if rule.find_key.is_empty() {
+            bail!(
+                "key_value_replace rule #{}: find_key cannot be empty",
+                i + 1
+            );
+        }
+        if rule.replace_value.is_empty() {
+            bail!(
+                "key_value_replace rule #{}: replace_value must have at least one environment entry",
+                i + 1
+            );
+        }
+        // Validate JSONPath syntax
+        jsonpath_rust::parser::parse_json_path(&rule.find_key).with_context(|| {
+            format!(
+                "key_value_replace rule #{}: invalid JSONPath expression: {}",
+                i + 1,
+                rule.find_key
+            )
+        })?;
+    }
+
+    // Validate spark_pool rules
+    for (i, rule) in params.spark_pool.iter().enumerate() {
+        if rule.instance_pool_id.is_empty() {
+            bail!(
+                "spark_pool rule #{}: instance_pool_id cannot be empty",
+                i + 1
+            );
+        }
+        if rule.replace_value.is_empty() {
+            bail!(
+                "spark_pool rule #{}: replace_value must have at least one environment entry",
+                i + 1
+            );
         }
     }
 
@@ -200,9 +333,39 @@ pub fn apply_parameters(
 ) -> Result<Vec<String>> {
     let mut warnings: Vec<String> = Vec::new();
 
+    // Apply find_replace rules
+    if !params.find_replace.is_empty() {
+        apply_find_replace(source, &params.find_replace, env, ctx, &mut warnings)?;
+    }
+
+    // Apply key_value_replace rules
+    if !params.key_value_replace.is_empty() {
+        apply_key_value_replace(source, &params.key_value_replace, env, ctx, &mut warnings)?;
+    }
+
+    // Apply spark_pool rules
+    if !params.spark_pool.is_empty() {
+        apply_spark_pool_rules(source, &params.spark_pool, env, &mut warnings)?;
+    }
+
+    // Apply semantic_model_binding
+    if let Some(ref binding) = params.semantic_model_binding {
+        apply_semantic_model_binding(source, binding, env, &mut warnings)?;
+    }
+
+    Ok(warnings)
+}
+
+/// Apply `find_replace` rules to a source workspace.
+fn apply_find_replace(
+    source: &mut SourceWorkspace,
+    rules: &[FindReplaceRule],
+    env: &str,
+    ctx: &SubstitutionContext<'_>,
+    warnings: &mut Vec<String>,
+) -> Result<()> {
     // Compile regex patterns once
-    let compiled_rules: Vec<CompiledRule<'_>> = params
-        .find_replace
+    let compiled_rules: Vec<CompiledRule<'_>> = rules
         .iter()
         .filter_map(|rule| {
             let raw_value = get_env_value(rule, env)?;
@@ -239,7 +402,7 @@ pub fn apply_parameters(
         .collect();
 
     if compiled_rules.is_empty() {
-        return Ok(warnings);
+        return Ok(());
     }
 
     // Apply rules to each item's definition parts
@@ -312,32 +475,463 @@ pub fn apply_parameters(
         }
     }
 
-    Ok(warnings)
+    Ok(())
 }
 
-/// Check if a rule applies to a specific item and file path.
+/// Check if a `find_replace` rule applies to a specific item and file path.
 fn rule_applies_to_item(
     rule: &FindReplaceRule,
     item_type: &str,
     item_name: &str,
     file_path: &str,
 ) -> bool {
-    if let Some(ref types) = rule.item_type {
+    kv_rule_applies_to_item(
+        rule.item_type.as_ref(),
+        rule.item_name.as_ref(),
+        rule.file_path.as_ref(),
+        item_type,
+        item_name,
+        file_path,
+    )
+}
+
+/// Check if a rule applies to a specific item and file path (generic version for `KeyValueReplaceRule`).
+fn kv_rule_applies_to_item(
+    item_type_filter: Option<&StringOrVec>,
+    item_name_filter: Option<&StringOrVec>,
+    file_path_filter: Option<&StringOrVec>,
+    item_type: &str,
+    item_name: &str,
+    file_path: &str,
+) -> bool {
+    if let Some(types) = item_type_filter {
         if !types.contains(item_type) {
             return false;
         }
     }
-    if let Some(ref names) = rule.item_name {
+    if let Some(names) = item_name_filter {
         if !names.contains(item_name) {
             return false;
         }
     }
-    if let Some(ref paths) = rule.file_path {
+    if let Some(paths) = file_path_filter {
         if !paths.contains(file_path) {
             return false;
         }
     }
     true
+}
+
+/// Apply `key_value_replace` rules to a source workspace.
+fn apply_key_value_replace(
+    source: &mut SourceWorkspace,
+    rules: &[KeyValueReplaceRule],
+    env: &str,
+    ctx: &SubstitutionContext<'_>,
+    warnings: &mut Vec<String>,
+) -> Result<()> {
+    for rule in rules {
+        // Get replacement value for this environment
+        let replacement = get_env_value_json(&rule.replace_value, env);
+        let Some(replacement) = replacement else {
+            warnings.push(format!(
+                "key_value_replace: no value for env '{env}' in rule with find_key '{}'",
+                rule.find_key
+            ));
+            continue;
+        };
+
+        // Resolve dynamic variables if the value is a string
+        let resolved_replacement = if let serde_json::Value::String(s) = replacement {
+            match resolve_value(s, ctx) {
+                Ok(resolved) => serde_json::Value::String(resolved),
+                Err(e) => {
+                    warnings.push(format!(
+                        "key_value_replace: cannot resolve '{}': {e}",
+                        rule.find_key
+                    ));
+                    continue;
+                }
+            }
+        } else {
+            replacement.clone()
+        };
+
+        // Validate JSONPath syntax upfront (already validated in parse_parameters, but guard here)
+        if jsonpath_rust::parser::parse_json_path(&rule.find_key).is_err() {
+            warnings.push(format!(
+                "key_value_replace: invalid JSONPath '{}': parse error",
+                rule.find_key
+            ));
+            continue;
+        }
+
+        for item in &mut source.items {
+            for part in &mut item.parts {
+                if !kv_rule_applies_to_item(
+                    rule.item_type.as_ref(),
+                    rule.item_name.as_ref(),
+                    rule.file_path.as_ref(),
+                    &item.metadata.item_type,
+                    &item.metadata.display_name,
+                    &part.path,
+                ) {
+                    continue;
+                }
+
+                // Decode payload
+                let Ok(decoded) = BASE64.decode(&part.payload) else {
+                    continue;
+                };
+                let Ok(content) = String::from_utf8(decoded) else {
+                    continue;
+                };
+
+                // Parse as JSON
+                let Ok(mut json_value) = serde_json::from_str::<serde_json::Value>(&content) else {
+                    continue; // Not JSON, skip
+                };
+
+                // Apply JSONPath replacement
+                let modified =
+                    apply_jsonpath_replace(&mut json_value, &rule.find_key, &resolved_replacement);
+
+                if modified {
+                    let new_content = serde_json::to_string(&json_value)
+                        .context("Failed to serialize JSON after key_value_replace")?;
+                    part.payload = BASE64.encode(new_content.as_bytes());
+                }
+            }
+
+            // Recompute hash
+            item.content_hash = compute_content_hash(&item.parts);
+        }
+    }
+
+    Ok(())
+}
+
+/// Apply a `JSONPath` replacement to a JSON value. Returns true if modified.
+fn apply_jsonpath_replace(
+    value: &mut serde_json::Value,
+    path_expr: &str,
+    replacement: &serde_json::Value,
+) -> bool {
+    // Get all matching paths
+    let Ok(paths) = value.query_only_path(path_expr) else {
+        return false;
+    };
+
+    if paths.is_empty() {
+        return false;
+    }
+
+    let mut modified = false;
+    for path in paths {
+        if let Some(target) = value.reference_mut(path) {
+            *target = replacement.clone();
+            modified = true;
+        }
+    }
+    modified
+}
+
+/// Apply `spark_pool` rules to a source workspace.
+fn apply_spark_pool_rules(
+    source: &mut SourceWorkspace,
+    rules: &[SparkPoolRule],
+    env: &str,
+    warnings: &mut Vec<String>,
+) -> Result<()> {
+    for rule in rules {
+        // Get pool config for this environment
+        let config = get_spark_pool_config(&rule.replace_value, env);
+        let Some(config) = config else {
+            warnings.push(format!(
+                "spark_pool: no value for env '{env}' in rule with instance_pool_id '{}'",
+                rule.instance_pool_id
+            ));
+            continue;
+        };
+
+        for item in &mut source.items {
+            // Spark pool rules typically apply to Environment items
+            if let Some(ref names) = rule.item_name {
+                if !names.contains(&item.metadata.display_name) {
+                    continue;
+                }
+            }
+
+            for part in &mut item.parts {
+                // Decode payload
+                let Ok(decoded) = BASE64.decode(&part.payload) else {
+                    continue;
+                };
+                let Ok(content) = String::from_utf8(decoded) else {
+                    continue;
+                };
+
+                // Check if this payload contains the instance_pool_id
+                if !content.contains(&rule.instance_pool_id) {
+                    continue;
+                }
+
+                // Parse as JSON and find/replace the pool configuration
+                let Ok(mut json_value) = serde_json::from_str::<serde_json::Value>(&content) else {
+                    continue;
+                };
+
+                let modified =
+                    replace_spark_pool_in_json(&mut json_value, &rule.instance_pool_id, config);
+
+                if modified {
+                    let new_content = serde_json::to_string(&json_value)
+                        .context("Failed to serialize JSON after spark_pool replace")?;
+                    part.payload = BASE64.encode(new_content.as_bytes());
+                }
+            }
+
+            item.content_hash = compute_content_hash(&item.parts);
+        }
+    }
+
+    Ok(())
+}
+
+/// Replace Spark pool configuration in a JSON value tree.
+/// Searches for objects containing `instancePoolId` matching the target,
+/// then replaces the pool type and name fields.
+fn replace_spark_pool_in_json(
+    value: &mut serde_json::Value,
+    instance_pool_id: &str,
+    config: &SparkPoolConfig,
+) -> bool {
+    match value {
+        serde_json::Value::Object(map) => {
+            // Check if this object has a matching instancePoolId
+            let has_match = map
+                .get("instancePoolId")
+                .or_else(|| map.get("instance_pool_id"))
+                .and_then(|v| v.as_str())
+                .is_some_and(|v| v == instance_pool_id);
+
+            if has_match {
+                // Replace the pool type and name
+                if let Some(t) = map.get_mut("type") {
+                    *t = serde_json::Value::String(config.pool_type.clone());
+                }
+                if let Some(n) = map.get_mut("name") {
+                    *n = serde_json::Value::String(config.name.clone());
+                }
+                return true;
+            }
+
+            // Recurse into child values
+            let mut modified = false;
+            for v in map.values_mut() {
+                if replace_spark_pool_in_json(v, instance_pool_id, config) {
+                    modified = true;
+                }
+            }
+            modified
+        }
+        serde_json::Value::Array(arr) => {
+            let mut modified = false;
+            for v in arr {
+                if replace_spark_pool_in_json(v, instance_pool_id, config) {
+                    modified = true;
+                }
+            }
+            modified
+        }
+        _ => false,
+    }
+}
+
+/// Apply `semantic_model_binding` rules to a source workspace.
+fn apply_semantic_model_binding(
+    source: &mut SourceWorkspace,
+    binding: &SemanticModelBinding,
+    env: &str,
+    warnings: &mut Vec<String>,
+) -> Result<()> {
+    for item in &mut source.items {
+        // Only apply to SemanticModel items
+        if !item
+            .metadata
+            .item_type
+            .eq_ignore_ascii_case("SemanticModel")
+        {
+            continue;
+        }
+
+        // Find the connection ID for this model
+        let connection_id = find_model_connection_id(binding, &item.metadata.display_name, env);
+
+        let Some(connection_id) = connection_id else {
+            continue; // No binding for this model + env
+        };
+
+        // Find and replace in definition.pbism or connection-related parts
+        for part in &mut item.parts {
+            let Ok(decoded) = BASE64.decode(&part.payload) else {
+                continue;
+            };
+            let Ok(content) = String::from_utf8(decoded) else {
+                continue;
+            };
+
+            let Ok(mut json_value) = serde_json::from_str::<serde_json::Value>(&content) else {
+                continue;
+            };
+
+            let modified = replace_connection_id_in_json(&mut json_value, &connection_id);
+
+            if modified {
+                let new_content = serde_json::to_string(&json_value)
+                    .context("Failed to serialize JSON after semantic_model_binding")?;
+                part.payload = BASE64.encode(new_content.as_bytes());
+            }
+        }
+
+        item.content_hash = compute_content_hash(&item.parts);
+    }
+
+    if binding.default.is_none() && binding.models.is_empty() {
+        warnings.push("semantic_model_binding: no default or models defined".to_owned());
+    }
+
+    Ok(())
+}
+
+/// Find the connection ID for a specific model in the binding config.
+fn find_model_connection_id(
+    binding: &SemanticModelBinding,
+    model_name: &str,
+    env: &str,
+) -> Option<String> {
+    // Check model-specific overrides first
+    for model in &binding.models {
+        if model.semantic_model_name.contains(model_name) {
+            return get_env_value_str(&model.connection_id, env).map(str::to_owned);
+        }
+    }
+
+    // Fall back to default
+    if let Some(ref default) = binding.default {
+        return get_env_value_str(&default.connection_id, env).map(str::to_owned);
+    }
+
+    None
+}
+
+/// Replace connection IDs in semantic model JSON structures.
+/// Looks for `connectionId`, `connection_id`, or connection string patterns.
+fn replace_connection_id_in_json(value: &mut serde_json::Value, new_connection_id: &str) -> bool {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut modified = false;
+
+            // Look for connection ID fields
+            for key in &["connectionId", "connection_id", "pbiModelDatabaseName"] {
+                if let Some(v) = map.get_mut(*key) {
+                    if v.is_string() {
+                        let old = v.as_str().unwrap_or_default();
+                        // Only replace if it looks like a GUID
+                        if old.len() == 36 && old.contains('-') {
+                            *v = serde_json::Value::String(new_connection_id.to_owned());
+                            modified = true;
+                        }
+                    }
+                }
+            }
+
+            // Also handle connectionString containing semanticmodelid=<UUID>
+            if let Some(v) = map.get_mut("connectionString") {
+                if let Some(cs) = v.as_str() {
+                    if cs.contains("semanticmodelid=") {
+                        let re =
+                            Regex::new(r"semanticmodelid=([0-9a-fA-F-]{36})").expect("valid regex");
+                        let new_cs =
+                            re.replace(cs, format!("semanticmodelid={new_connection_id}").as_str());
+                        if new_cs != cs {
+                            *v = serde_json::Value::String(new_cs.into_owned());
+                            modified = true;
+                        }
+                    }
+                }
+            }
+
+            // Recurse
+            for v in map.values_mut() {
+                if replace_connection_id_in_json(v, new_connection_id) {
+                    modified = true;
+                }
+            }
+            modified
+        }
+        serde_json::Value::Array(arr) => {
+            let mut modified = false;
+            for v in arr {
+                if replace_connection_id_in_json(v, new_connection_id) {
+                    modified = true;
+                }
+            }
+            modified
+        }
+        _ => false,
+    }
+}
+
+/// Get an environment value from a string `HashMap` (for `connection_id` maps).
+fn get_env_value_str<'a>(map: &'a HashMap<String, String>, env: &str) -> Option<&'a str> {
+    for (key, value) in map {
+        if key.eq_ignore_ascii_case(env) {
+            return Some(value.as_str());
+        }
+    }
+    for (key, value) in map {
+        if key.eq_ignore_ascii_case("_ALL_") {
+            return Some(value.as_str());
+        }
+    }
+    None
+}
+
+/// Get an environment value from a JSON value `HashMap`.
+fn get_env_value_json<'a>(
+    map: &'a HashMap<String, serde_json::Value>,
+    env: &str,
+) -> Option<&'a serde_json::Value> {
+    for (key, value) in map {
+        if key.eq_ignore_ascii_case(env) {
+            return Some(value);
+        }
+    }
+    for (key, value) in map {
+        if key.eq_ignore_ascii_case("_ALL_") {
+            return Some(value);
+        }
+    }
+    None
+}
+
+/// Get spark pool config for a specific environment.
+fn get_spark_pool_config<'a>(
+    map: &'a HashMap<String, SparkPoolConfig>,
+    env: &str,
+) -> Option<&'a SparkPoolConfig> {
+    for (key, value) in map {
+        if key.eq_ignore_ascii_case(env) {
+            return Some(value);
+        }
+    }
+    for (key, value) in map {
+        if key.eq_ignore_ascii_case("_ALL_") {
+            return Some(value);
+        }
+    }
+    None
 }
 
 /// Replace the content matched by capture group 1 in a regex match.
@@ -620,6 +1214,9 @@ mod tests {
                 item_name: None,
                 file_path: None,
             }],
+            key_value_replace: Vec::new(),
+            spark_pool: Vec::new(),
+            semantic_model_binding: None,
         };
 
         let content = r#"{"server": "old-server.database.windows.net"}"#;
@@ -677,6 +1274,9 @@ mod tests {
                 item_name: None,
                 file_path: None,
             }],
+            key_value_replace: Vec::new(),
+            spark_pool: Vec::new(),
+            semantic_model_binding: None,
         };
 
         let content = "REPLACE_ME";

@@ -1,6 +1,7 @@
 pub mod apply;
 pub mod changeset;
 pub mod export;
+pub mod init_params;
 pub mod ordering;
 pub mod params;
 pub mod plan;
@@ -133,6 +134,30 @@ pub enum DeployCommand {
         #[arg(long)]
         overwrite: bool,
     },
+
+    /// Generate a parameters.json scaffold by scanning or diffing exported definitions
+    #[command(display_order = 4, name = "init-params")]
+    InitParams {
+        /// Source directory containing exported .platform items (e.g., dev workspace)
+        #[arg(long)]
+        source: PathBuf,
+
+        /// Comparison directory to diff against (e.g., prod workspace export)
+        #[arg(long, value_name = "DIR")]
+        compare: Option<PathBuf>,
+
+        /// Environment name for the source directory (used in diff mode)
+        #[arg(long, default_value = "dev")]
+        source_env: String,
+
+        /// Environment name for the comparison directory (used in diff mode)
+        #[arg(long, default_value = "prod")]
+        compare_env: String,
+
+        /// Output file path for generated parameters.json
+        #[arg(short, long, value_name = "FILE")]
+        out: Option<PathBuf>,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> Result<()> {
@@ -211,6 +236,20 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
             )
             .await
         }
+        DeployCommand::InitParams {
+            source,
+            compare,
+            source_env,
+            compare_env,
+            out,
+        } => execute_init_params(
+            cli,
+            source,
+            compare.as_deref(),
+            source_env,
+            compare_env,
+            out.as_deref(),
+        ),
     }
 }
 
@@ -523,6 +562,43 @@ async fn execute_export(
         "total_items": result.total_items,
         "exported": result.exported,
         "skipped": result.skipped,
+    });
+
+    output::render_object(cli, &output_data, "status");
+
+    Ok(())
+}
+
+fn execute_init_params(
+    cli: &Cli,
+    source: &Path,
+    compare: Option<&Path>,
+    source_env: &str,
+    compare_env: &str,
+    out: Option<&Path>,
+) -> Result<()> {
+    let result = if let Some(compare_dir) = compare {
+        init_params::diff_for_parameters(source, compare_dir, source_env, compare_env)?
+    } else {
+        init_params::scan_for_candidates(source)?
+    };
+
+    // Write to file if --out specified
+    if let Some(out_path) = out {
+        let content = serde_json::to_string_pretty(&result.parameters_json)?;
+        std::fs::write(out_path, &content)?;
+    }
+
+    // Render output
+    let output_data = json!({
+        "status": "generated",
+        "mode": result.summary.mode,
+        "source_items": result.summary.source_items,
+        "compare_items": result.summary.compare_items,
+        "rules_generated": result.summary.rules_generated,
+        "guids_found": result.summary.guids_found,
+        "parameters": result.parameters_json,
+        "output_file": out.map(|p| p.display().to_string()),
     });
 
     output::render_object(cli, &output_data, "status");
