@@ -35,7 +35,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (290 subcommands across 37 groups): auth, workspace, item, lakehouse, capacity, notebook, warehouse, data-agent, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, git, connection, deployment-pipeline, domain, job-scheduler, onelake-security, managed-private-endpoint, profile, jobs, feedback + agent-context + deploy
+- **Full Rust implementation** (661 subcommands across 66 groups): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, profile, jobs, feedback, operation, agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`
@@ -105,10 +105,23 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Snowflake Database**: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
 - **Anomaly Detector**: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
 - **Deploy**: plan/apply/export/init-params (CI/CD deployment engine: content-hash diffing, parameter substitution, rename detection, creationPayload, post-deploy hooks, logical ID resolution)
-- **909 Rust tests** (409 unit/offline + 500 E2E integration), zero clippy warnings, rustfmt clean
+- **Gateway**: list/show/create/update/delete, list-members/update-member/delete-member, list/add/show/update/delete-role-assignments (VNet gateways)
+- **Admin**: 49 subcommands (tenant settings, tags, workloads, workspaces, items, users, domains, labels, sharing links, external data shares, network policies)
+- **Apache Airflow Job**: list/show/create/update/delete/get-definition/update-definition, start-environment/stop-environment/get-environment, list-files/get-file/upload-file/delete-file, get-compute/get-workspace-settings/deploy-requirements
+- **Mirrored Catalog**: list/show/create/update/delete/get-definition/update-definition, refresh-metadata/mirroring-status/tables-status (requires tenant feature flag)
+- **Mirrored Databricks Catalog**: list/show/create/update/delete/get-definition/update-definition, discover-catalogs/refresh-metadata/mirroring-status
+- **Mirrored Warehouse**: list (requires tenant feature flag for mutations)
+- **Warehouse Snapshot**: list/show/create/update/delete (requires --warehouse-id on create)
+- **Graph Model**: list/show/create/update/delete/get-definition/update-definition, refresh-graph/execute-query/get-queryable-graph-type (portal initialization required for refresh)
+- **Graph Query Set**: list/show/create/update/delete/get-definition/update-definition (definition is read-only export)
+- **Catalog**: search (tenant-level full-text search across workspaces)
+- **Dashboard**: list (read-only, portal-created)
+- **Datamart**: list (read-only, portal-created)
+- **Paginated Report**: list/update (read-only creation via portal/SSRS)
+- **1061 Rust tests** (409 unit + 70 offline integration + 582 E2E requiring live tenant), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
-- Release binary: ~9.4 MB, stripped, full LTO, panic=abort
+- Release binary: ~16 MB, stripped, full LTO, panic=abort
 
 ### Blocked
 - (none)
@@ -169,7 +182,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `Cargo.toml`: Project config, dependencies, clippy/lints config, release profile (LTO+strip)
 - `rust-toolchain.toml`: stable channel, rustfmt+clippy components
 - `src/main.rs`: Entry point, `#![recursion_limit = "256"]`, tokio async main, error handling dispatch
-- `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 38 subcommand groups
+- `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 66 subcommand groups
 - `src/errors.rs`: ErrorCode enum + FabioError struct with thiserror
 - `src/output.rs`: render_list_with_token, render_object, render_error (respects --quiet/--query), apply_query, dry_run_guard, unit tests
 - `src/parallel.rs`: Parallel execution framework for concurrent file/table operations with rate-limit retry
@@ -231,6 +244,19 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/deploy/ordering.rs`: DEPLOY_ORDER (42 types), deploy_priority, delete_priority, topological_sort
 - `src/commands/deploy/platform.rs`: parse_source_directory (creationPayload.json parsing), SourceItem, SourceWorkspace, PlatformMetadata
 - `src/commands/deploy/export.rs`: export_workspace (getDefinition LRO per item, write .platform + parts)
+- `src/commands/gateway.rs`: list/show/create/update/delete, members, role assignments (VNet gateways)
+- `src/commands/admin.rs`: 49 subcommands for tenant administration
+- `src/commands/apache_airflow_job.rs`: CRUD + environment lifecycle + file ops + compute settings
+- `src/commands/mirrored_catalog.rs`: CRUD + definition + mirroring operations
+- `src/commands/mirrored_databricks_catalog.rs`: CRUD + definition + discover/refresh/status
+- `src/commands/mirrored_warehouse.rs`: list only (tenant feature flag blocks mutations)
+- `src/commands/warehouse_snapshot.rs`: list/show/create/update/delete
+- `src/commands/graph_model.rs`: CRUD + definition + refresh-graph/execute-query/get-queryable-graph-type
+- `src/commands/graph_query_set.rs`: CRUD + get-definition/update-definition (read-only export)
+- `src/commands/catalog.rs`: search (tenant-level)
+- `src/commands/dashboard.rs`: list (read-only)
+- `src/commands/datamart.rs`: list (read-only)
+- `src/commands/paginated_report.rs`: list/update (read-only creation)
 - `src/commands/profile.rs`: save/use/list/show/delete (named profiles with defaults)
 - `src/commands/jobs.rs`: list/get/prune (local async job ledger)
 - `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
@@ -280,6 +306,33 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_managed_private_endpoint.rs`: Managed private endpoint tests
 - `tests/e2e_admin.rs`: Admin API tests (63 tests: listing, tag lifecycle, domain lifecycle, dry-run validations, sharing links, labels, external data shares)
 - `tests/e2e_deploy.rs`: Deploy plan/apply/export tests (34 tests: create, update, rename, creationPayload, parameters, staleness, logical ID resolution, post-hooks, init-params)
+- `tests/e2e_gateway.rs`: Gateway CRUD + role assignment tests
+- `tests/e2e_apache_airflow_job.rs`: Apache Airflow job CRUD + environment + file ops tests
+- `tests/e2e_mirrored_catalog.rs`: Mirrored catalog tests
+- `tests/e2e_mirrored_databricks_catalog.rs`: Mirrored Databricks catalog tests
+- `tests/e2e_mirrored_warehouse.rs`: Mirrored warehouse tests
+- `tests/e2e_warehouse_snapshot.rs`: Warehouse snapshot tests
+- `tests/e2e_graph_model.rs`: Graph model CRUD + refresh + query tests
+- `tests/e2e_graph_query_set.rs`: Graph query set tests
+- `tests/e2e_catalog.rs`: Catalog search tests
+- `tests/e2e_dashboard.rs`: Dashboard list tests
+- `tests/e2e_datamart.rs`: Datamart list tests
+- `tests/e2e_paginated_report.rs`: Paginated report tests
+- `tests/e2e_anomaly_detector.rs`: Anomaly detector CRUD + definition tests
+- `tests/e2e_cosmos_db_database.rs`: Cosmos DB database CRUD tests
+- `tests/e2e_snowflake_database.rs`: Snowflake database tests
+- `tests/e2e_digital_twin_builder.rs`: Digital Twin Builder CRUD tests
+- `tests/e2e_digital_twin_builder_flow.rs`: Digital Twin Builder Flow tests
+- `tests/e2e_event_schema_set.rs`: Event Schema Set CRUD tests
+- `tests/e2e_operations_agent.rs`: Operations Agent CRUD + definition tests
+- `tests/e2e_mounted_data_factory.rs`: Mounted Data Factory tests
+- `tests/e2e_user_data_function.rs`: User Data Function CRUD tests
+- `tests/e2e_variable_library.rs`: Variable Library CRUD + definition tests
+- `tests/e2e_sql_endpoint.rs`: SQL Endpoint tests
+- `tests/e2e_profile.rs`: Profile save/use/list/show/delete tests
+- `tests/e2e_jobs.rs`: Jobs ledger tests
+- `tests/e2e_feedback.rs`: Feedback send/list tests
+- `tests/e2e_agent_context.rs`: Agent context schema tests
 - `.github/workflows/ci.yml`: Rust CI (fmt, clippy, test, build) on 6 targets (x64+arm64 x linux/macos/windows)
 - `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
 - `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
