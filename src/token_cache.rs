@@ -11,10 +11,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::errors::{ErrorCode, FabioError};
 
-/// Well-known public client ID (Azure PowerShell) — pre-consented in all Azure AD tenants
-/// for Power BI / Fabric scopes. This allows fabio to authenticate without
-/// requiring users to register their own app.
-const PUBLIC_CLIENT_ID: &str = "1950a258-227b-4e31-a9cf-717495945fc2";
+/// Fabio CLI's own Entra ID app registration (multitenant, public client).
+/// Users see "Fabio CLI" in the consent screen and audit logs — independent from
+/// Azure CLI or Azure PowerShell identity.
+const PUBLIC_CLIENT_ID: &str = "38715dcd-c115-46b4-8ed1-967d06c9ec6d";
 
 /// Default tenant for multi-tenant auth.
 const DEFAULT_TENANT: &str = "common";
