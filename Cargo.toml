@@ -71,6 +71,14 @@ wiremock = "0.6"
 serial_test = "3"
 serde_json = { version = "1", features = ["preserve_order"] }
 
+[profile.dev]
+debug = "line-tables-only"     # ~60-70% smaller debuginfo; backtraces still work
+split-debuginfo = "unpacked"   # avoid one giant .o; speeds up linking on macOS/Linux
+
+[profile.dev.package."*"]
+opt-level = 1                  # optimize deps slightly — smaller + faster tests
+debug = false                  # no debug symbols for third-party crates
+
 [profile.release]
 opt-level = 3
 lto = true
