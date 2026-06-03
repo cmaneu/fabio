@@ -122,15 +122,15 @@ async fn call(
     let data = match method {
         HttpMethod::Get => client.get(&full_path).await?,
         HttpMethod::Post => {
-            let b = parsed_body.unwrap_or(serde_json::json!({}));
+            let b = parsed_body.unwrap_or_else(|| serde_json::json!({}));
             client.post(&full_path, &b, poll).await?
         }
         HttpMethod::Put => {
-            let b = parsed_body.unwrap_or(serde_json::json!({}));
+            let b = parsed_body.unwrap_or_else(|| serde_json::json!({}));
             client.put(&full_path, &b).await?
         }
         HttpMethod::Patch => {
-            let b = parsed_body.unwrap_or(serde_json::json!({}));
+            let b = parsed_body.unwrap_or_else(|| serde_json::json!({}));
             client.patch(&full_path, &b).await?
         }
         HttpMethod::Delete => client.delete(&full_path).await?,

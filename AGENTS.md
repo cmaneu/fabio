@@ -35,7 +35,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (672 subcommands across 67 groups): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, rest, profile, jobs, feedback, operation, agent-context
+- **Full Rust implementation** (679 subcommands across 67 groups): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, rest, profile, jobs, feedback, operation, agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain, CSV, TSV formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`, `--lro-timeout`
@@ -77,7 +77,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Semantic Model**: list, show, create (from model.bim), update, delete, get-definition, update-definition
 - **Map**: list, show, create, update, delete, get-definition, update-definition (geospatial visualization with Azure Maps)
 - **Spark Job Definition**: list, show, create, update, delete, get-definition, update-definition, run
-- **Capacity**: list, show (inspect available capacities)
+- **Capacity**: list, show, suspend, resume, create, update, delete, list-skus, check-name (Fabric read-only API + ARM API for lifecycle management)
 - **Connection**: list, show, create, update, delete, list-supported-types
 - **Deployment Pipeline**: list, show, create, update, delete, list-stages, list-stage-items, assign-workspace, unassign-workspace, deploy
 - **Domain**: list, show, create, update, delete, list-workspaces, assign-workspaces, unassign-workspaces, assign-by-capacity, assign-by-principal
@@ -129,7 +129,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Notebook --strip-output**: `get-definition --strip-output` clears `outputs`/`execution_count` from ipynb cells; gracefully passes through `.py` format
 - **CSV/TSV output**: Global `--output csv|tsv` on all commands; RFC 4180 quoting via `format_csv_value()`
 - **Deploy validate**: Local-only pre-flight checks on source directory (validates .platform files, item types, definition structure, logical ID references); no API calls required
-- **1181 Rust tests** (460 unit + 76 offline integration + 645 E2E requiring live tenant), zero clippy warnings, rustfmt clean
+- **1189 Rust tests** (460 unit + 76 offline integration + 653 E2E requiring live tenant), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~16 MB, stripped, full LTO, panic=abort
@@ -197,7 +197,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/errors.rs`: ErrorCode enum + FabioError struct with thiserror
 - `src/output.rs`: render_list_with_token, render_object, render_error (respects --quiet/--query), apply_query, dry_run_guard, unit tests
 - `src/parallel.rs`: Parallel execution framework for concurrent file/table operations with rate-limit retry
-- `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, run_notebook, trigger_item_job
+- `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, ARM API methods (arm_get/post/put/patch/delete with ARM LRO polling), run_notebook, trigger_item_job
 - `src/commands/mod.rs`: Command dispatch
 - `src/commands/auth.rs`: login/logout/status (DefaultAzureCredential chain)
 - `src/commands/workspace.rs`: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
@@ -229,7 +229,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/spark.rs`: get-settings/update-settings/list-pools/get-pool/create-pool/update-pool/delete-pool
 - `src/commands/spark_job_definition.rs`: list/show/create/update/delete/get-definition/update-definition/run
 - `src/commands/map.rs`: list/show/create/update/delete/get-definition/update-definition (geospatial Azure Maps)
-- `src/commands/capacity.rs`: list/show
+- `src/commands/capacity.rs`: list/show (Fabric API) + suspend/resume/create/update/delete/list-skus/check-name (ARM API)
 - `src/commands/connection.rs`: list/show/create/update/delete/list-supported-types
 - `src/commands/deployment_pipeline.rs`: list/show/create/update/delete/list-stages/list-stage-items/assign-workspace/unassign-workspace/deploy
 - `src/commands/domain.rs`: list/show/create/update/delete/list-workspaces/assign-workspaces/unassign-workspaces/assign-by-capacity/assign-by-principal
@@ -313,7 +313,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_domain.rs`: Domain management tests
 - `tests/e2e_job_scheduler.rs`: Job scheduler tests (11 tests: list, dry-run, fire-and-forget, --wait with polling)
 - `tests/e2e_spark.rs`: Spark settings and pool tests
-- `tests/e2e_capacity.rs`: Capacity list/show tests
+- `tests/e2e_capacity.rs`: Capacity list/show tests + ARM dry-run tests (suspend/resume/create/update/delete)
 - `tests/e2e_onelake_security.rs`: OneLake security tests
 - `tests/e2e_managed_private_endpoint.rs`: Managed private endpoint tests
 - `tests/e2e_admin.rs`: Admin API tests (63 tests: listing, tag lifecycle, domain lifecycle, dry-run validations, sharing links, labels, external data shares)
@@ -1291,10 +1291,22 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Requires Admin role**: All mutations require workspace Admin.
 
 ## Capacity API Behaviors Discovered
-- **Read-only resource**: Only `list` and `show` operations. No create/update/delete via this endpoint.
-- **Tenant-level scope**: `GET /capacities` (no workspace context). Individual: `GET /capacities/{id}`.
+- **Dual API design**: Read operations (list/show) use Fabric API (`api.fabric.microsoft.com/v1/capacities`). Lifecycle operations (suspend/resume/create/update/delete) use ARM API (`management.azure.com`).
+- **ARM API version**: `2023-11-01` for all capacity lifecycle operations.
+- **ARM resource path**: `/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Fabric/capacities/{name}`.
+- **Capacity name constraints**: 3-63 chars, pattern `^[a-z][a-z0-9]*$` (lowercase only, starts with letter).
+- **ARM auth scope**: `https://management.azure.com/.default` — separate from Fabric scope. Requires Azure RBAC (Contributor) on the capacity resource.
+- **Create (PUT)**: Returns 200/201 directly or 202 with LRO. Body: `{"location": "...", "sku": {"name": "F2", "tier": "Fabric"}, "properties": {"administration": {"members": ["admin@..."]}}}`.
+- **Update (PATCH)**: Supports partial updates — sku, admin, tags individually. Returns 200 or 202 with LRO.
+- **Delete (DELETE)**: Returns 202 with LRO or 204 (no content).
+- **Suspend/Resume (POST)**: `POST .../suspend` and `POST .../resume` with empty body. Returns 202 with LRO.
+- **ARM LRO pattern**: Uses `Azure-AsyncOperation` header (preferred) or `Location` header. Poll body has `status` field: `Succeeded`, `Failed`, `Canceled`, or in-progress values.
+- **List SKUs**: `GET /subscriptions/{sub}/providers/Microsoft.Fabric/skus?api-version=2023-11-01` returns available SKU names and regions.
+- **Check name**: `POST /subscriptions/{sub}/providers/Microsoft.Fabric/locations/{location}/checkNameAvailability?api-version=2023-11-01` with `{"name": "...", "type": "Microsoft.Fabric/capacities"}`. Returns `{"nameAvailable": true/false}`.
+- **SKU values**: F2, F4, F8, F16, F32, F64, F128, F256, F512, F1024, F2048 (Fabric tier).
+- **State values**: Includes `Active`, `Inactive` (paused/suspended), `Provisioning`, `Deleting`.
+- **Tenant-level scope (Fabric)**: `GET /capacities` (no workspace context). Individual: `GET /capacities/{id}`.
 - **Response fields**: `displayName`, `id`, `sku`, `region`, `state`.
-- **State values**: Includes `Active`, `Inactive`. Used to validate capacity availability before workspace assignment.
 
 ## Job Scheduler API Behaviors Discovered
 - **Generic item-scoped**: All endpoints use `/workspaces/{ws}/items/{id}/jobs/...` pattern (works for any item type).

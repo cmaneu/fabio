@@ -24,9 +24,11 @@ const MAX_API_RESPONSE_SIZE: u64 = 50 * 1024 * 1024;
 const FABRIC_BASE_URL: &str = "https://api.fabric.microsoft.com/v1";
 const ONELAKE_DFS_URL: &str = "https://onelake.dfs.fabric.microsoft.com";
 const ONELAKE_BLOB_URL: &str = "https://onelake.blob.fabric.microsoft.com";
+const ARM_BASE_URL: &str = "https://management.azure.com";
 const FABRIC_SCOPE: &str = "https://analysis.windows.net/powerbi/api/.default";
 const STORAGE_SCOPE: &str = "https://storage.azure.com/.default";
 const SQL_SCOPE: &str = "https://database.windows.net/.default";
+const ARM_SCOPE: &str = "https://management.azure.com/.default";
 const LRO_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const LRO_MAX_WAIT: Duration = Duration::from_secs(120);
 
@@ -113,6 +115,7 @@ pub struct FabricClient {
     fabric_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
     storage_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
     sql_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
+    arm_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
     credential_source: Arc<tokio::sync::RwLock<Option<CredentialSource>>>,
     /// When set, enables private link URL routing for workspace-scoped requests.
     private_link_workspace: Option<String>,
@@ -137,6 +140,7 @@ impl FabricClient {
             fabric_token: Arc::new(tokio::sync::RwLock::new(None)),
             storage_token: Arc::new(tokio::sync::RwLock::new(None)),
             sql_token: Arc::new(tokio::sync::RwLock::new(None)),
+            arm_token: Arc::new(tokio::sync::RwLock::new(None)),
             credential_source: Arc::new(tokio::sync::RwLock::new(None)),
             private_link_workspace: None,
             lro_max_wait: LRO_MAX_WAIT,
@@ -258,6 +262,26 @@ impl FabricClient {
         *guard = Some(token);
         drop(guard);
         Ok(raw_token)
+    }
+
+    /// Get an ARM token for Azure Resource Manager operations (scope: `management.azure.com`).
+    /// Returns the pre-formatted "Bearer {token}" header value.
+    pub async fn require_arm_auth(&self) -> Result<String> {
+        {
+            let guard = self.arm_token.read().await;
+            if let Some(ref cached) = *guard {
+                if !cached.is_expired() {
+                    return Ok(cached.bearer_header.clone());
+                }
+            }
+        }
+
+        let (token, _source) = acquire_token(ARM_SCOPE).await?;
+        let bearer = token.bearer_header.clone();
+        let mut guard = self.arm_token.write().await;
+        *guard = Some(token);
+        drop(guard);
+        Ok(bearer)
     }
 
     /// Get a token for an arbitrary scope (used for Kusto queries with dynamic query URIs).
@@ -1197,6 +1221,212 @@ impl FabricClient {
         }
 
         handle_response(resp).await
+    }
+
+    // ── ARM (Azure Resource Manager) methods ──────────────────────────────
+
+    /// GET request to Azure Resource Manager API.
+    pub async fn arm_get(&self, path: &str) -> Result<Value> {
+        let token = self.require_arm_auth().await?;
+        let url = format!("{ARM_BASE_URL}{path}");
+
+        let resp = self
+            .http
+            .get(&url)
+            .header(AUTHORIZATION, &token)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        handle_response(resp).await
+    }
+
+    /// POST request to Azure Resource Manager API (with optional LRO polling).
+    pub async fn arm_post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
+        let token = self.require_arm_auth().await?;
+        let url = format!("{ARM_BASE_URL}{path}");
+
+        let resp = self
+            .http
+            .post(&url)
+            .header(AUTHORIZATION, &token)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if poll {
+            let status = resp.status();
+            if status == StatusCode::OK {
+                return handle_response(resp).await;
+            }
+            if status == StatusCode::ACCEPTED {
+                return self.poll_arm_lro(resp).await;
+            }
+        }
+
+        handle_response(resp).await
+    }
+
+    /// PUT request to Azure Resource Manager API (with LRO polling).
+    pub async fn arm_put(&self, path: &str, body: &Value) -> Result<Value> {
+        let token = self.require_arm_auth().await?;
+        let url = format!("{ARM_BASE_URL}{path}");
+
+        let resp = self
+            .http
+            .put(&url)
+            .header(AUTHORIZATION, &token)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        let status = resp.status();
+        if status == StatusCode::OK || status == StatusCode::CREATED {
+            return handle_response(resp).await;
+        }
+        if status == StatusCode::ACCEPTED {
+            return self.poll_arm_lro(resp).await;
+        }
+
+        handle_response(resp).await
+    }
+
+    /// PATCH request to Azure Resource Manager API (with LRO polling).
+    pub async fn arm_patch(&self, path: &str, body: &Value) -> Result<Value> {
+        let token = self.require_arm_auth().await?;
+        let url = format!("{ARM_BASE_URL}{path}");
+
+        let resp = self
+            .http
+            .patch(&url)
+            .header(AUTHORIZATION, &token)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        let status = resp.status();
+        if status == StatusCode::OK {
+            return handle_response(resp).await;
+        }
+        if status == StatusCode::ACCEPTED {
+            return self.poll_arm_lro(resp).await;
+        }
+
+        handle_response(resp).await
+    }
+
+    /// DELETE request to Azure Resource Manager API (with LRO polling).
+    pub async fn arm_delete(&self, path: &str) -> Result<Value> {
+        let token = self.require_arm_auth().await?;
+        let url = format!("{ARM_BASE_URL}{path}");
+
+        let resp = self
+            .http
+            .delete(&url)
+            .header(AUTHORIZATION, &token)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        let status = resp.status();
+        if status == StatusCode::NO_CONTENT {
+            return Ok(serde_json::json!({"status": "deleted"}));
+        }
+        if status == StatusCode::ACCEPTED {
+            return self.poll_arm_lro(resp).await;
+        }
+
+        handle_response(resp).await
+    }
+
+    /// Poll an ARM LRO using `Azure-AsyncOperation` or `Location` header.
+    async fn poll_arm_lro(&self, resp: Response) -> Result<Value> {
+        let poll_url = resp
+            .headers()
+            .get("Azure-AsyncOperation")
+            .or_else(|| resp.headers().get("Location"))
+            .and_then(|v| v.to_str().ok())
+            .map(ToString::to_string);
+
+        let Some(poll_url) = poll_url else {
+            // No LRO header — just return the response as-is
+            return handle_response(resp).await;
+        };
+
+        let start = std::time::Instant::now();
+        let mut interval = LRO_POLL_INTERVAL;
+
+        loop {
+            if start.elapsed() > self.lro_max_wait {
+                return Err(FabioError::with_hint(
+                    ErrorCode::Timeout,
+                    format!("ARM LRO timed out after {}s", self.lro_max_wait.as_secs()),
+                    format!("Increase --lro-timeout or poll manually: GET {poll_url}"),
+                )
+                .into());
+            }
+
+            sleep(interval).await;
+
+            let token = self.require_arm_auth().await?;
+            let poll_resp = self
+                .http
+                .get(&poll_url)
+                .header(AUTHORIZATION, &token)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+            let status_code = poll_resp.status();
+            if !status_code.is_success() {
+                return handle_response(poll_resp).await;
+            }
+
+            let body: Value = poll_resp
+                .json()
+                .await
+                .unwrap_or_else(|_| serde_json::json!({}));
+
+            let op_status = body.get("status").and_then(Value::as_str).unwrap_or("");
+
+            match op_status {
+                "Succeeded" => {
+                    // If there's a resourceId or result, try to fetch the final resource
+                    if let Some(resource_id) = body.get("resourceId").and_then(Value::as_str) {
+                        // The resourceId is a full ARM path — fetch it
+                        let resource_url =
+                            format!("{ARM_BASE_URL}{resource_id}?api-version=2023-11-01");
+                        let token = self.require_arm_auth().await?;
+                        let resource_resp = self
+                            .http
+                            .get(&resource_url)
+                            .header(AUTHORIZATION, &token)
+                            .send()
+                            .await
+                            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+                        return handle_response(resource_resp).await;
+                    }
+                    return Ok(body);
+                }
+                "Failed" | "Canceled" => {
+                    let err_msg = body
+                        .get("error")
+                        .and_then(|e| e.get("message"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("ARM operation failed");
+                    return Err(FabioError::new(ErrorCode::ApiError, err_msg.to_string()).into());
+                }
+                _ => {
+                    // Still in progress — check Retry-After header
+                    if let Some(retry_after) = body.get("retryAfter").and_then(Value::as_u64) {
+                        interval = Duration::from_secs(retry_after.min(60));
+                    }
+                }
+            }
+        }
     }
 
     /// Get file properties from `OneLake` via DFS HEAD request. Retries once on 401.
@@ -2465,6 +2695,29 @@ mod tests {
     fn fabric_client_with_lro_timeout_overrides_default() {
         let client = FabricClient::new().with_lro_timeout(Duration::from_secs(300));
         assert_eq!(client.lro_max_wait, Duration::from_secs(300));
+    }
+
+    #[test]
+    fn arm_base_url_is_management_azure() {
+        assert_eq!(ARM_BASE_URL, "https://management.azure.com");
+    }
+
+    #[test]
+    fn arm_scope_is_management_default() {
+        assert_eq!(ARM_SCOPE, "https://management.azure.com/.default");
+    }
+
+    #[test]
+    fn fabric_client_has_arm_token_field() {
+        let client = FabricClient::new();
+        // arm_token should be initialized as None (wrapped in Arc<RwLock>)
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let guard = client.arm_token.read().await;
+            assert!(guard.is_none());
+        });
     }
 
     // ── handle_response (via wiremock) ───────────────────────────────────
