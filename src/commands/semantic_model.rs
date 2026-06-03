@@ -1,4 +1,5 @@
 use std::io::{self, Read};
+use std::path::Path;
 
 use anyhow::Result;
 use clap::Subcommand;
@@ -295,6 +296,59 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         id: String,
     },
+    /// Clone a semantic model to the same or different workspace
+    #[command(display_order = 22)]
+    Clone {
+        /// Source workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID to clone
+        #[arg(long)]
+        id: String,
+
+        /// Display name for the cloned model
+        #[arg(long)]
+        name: String,
+
+        /// Target workspace ID (defaults to same workspace)
+        #[arg(long)]
+        target_workspace: Option<String>,
+    },
+    /// Export a semantic model as a .pbix file
+    #[command(name = "export-pbix", display_order = 23)]
+    ExportPbix {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Output file path (e.g., model.pbix)
+        #[arg(long)]
+        file: String,
+    },
+    /// Import a .pbix file as a new semantic model
+    #[command(name = "import-pbix", display_order = 24)]
+    ImportPbix {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Display name for the imported model
+        #[arg(long)]
+        name: String,
+
+        /// Path to the .pbix file to import
+        #[arg(long)]
+        file: String,
+
+        /// Conflict resolution: Abort, Overwrite, `CreateOrOverwrite`, `GenerateUniqueName`
+        #[arg(long, default_value = "Abort")]
+        name_conflict: String,
+    },
 }
 
 pub async fn execute(
@@ -376,6 +430,15 @@ pub async fn execute(
         }
         SemanticModelCommand::ListUpstream { workspace, id } => {
             list_upstream(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::Clone { workspace, id, name, target_workspace } => {
+            clone_model(cli, client, workspace, id, name, target_workspace.as_deref()).await
+        }
+        SemanticModelCommand::ExportPbix { workspace, id, file } => {
+            export_pbix(cli, client, workspace, id, file).await
+        }
+        SemanticModelCommand::ImportPbix { workspace, name, file, name_conflict } => {
+            import_pbix(cli, client, workspace, name, file, name_conflict).await
         }
     }
 }
@@ -1252,6 +1315,131 @@ async fn list_upstream(
     } else {
         output::render_object(cli, &data, "targetDatasetId");
     }
+    Ok(())
+}
+
+async fn clone_model(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    name: &str,
+    target_workspace: Option<&str>,
+) -> Result<()> {
+    let mut body = serde_json::json!({ "name": name });
+    if let Some(tw) = target_workspace {
+        body["targetWorkspaceId"] = Value::String(tw.to_string());
+    }
+
+    if output::dry_run_guard(cli, "semantic-model clone", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post_powerbi(
+            &format!("/groups/{workspace}/datasets/{id}/Default.Clone"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model clone", "Contributor"))?;
+
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn export_pbix(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    output_path: &str,
+) -> Result<()> {
+    let body = serde_json::json!({});
+
+    if output::dry_run_guard(cli, "semantic-model export-pbix", &serde_json::json!({
+        "workspace": workspace,
+        "id": id,
+        "file": output_path
+    })) {
+        return Ok(());
+    }
+
+    let bytes = client
+        .post_powerbi_bytes(
+            &format!("/groups/{workspace}/datasets/{id}/Default.Export"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model export-pbix", "Contributor"))?;
+
+    // Ensure parent directory exists
+    if let Some(parent) = Path::new(output_path).parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    std::fs::write(output_path, &bytes)?;
+
+    let obj = serde_json::json!({
+        "id": id,
+        "status": "exported",
+        "file": output_path,
+        "size_bytes": bytes.len()
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn import_pbix(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    name: &str,
+    file_path: &str,
+    name_conflict: &str,
+) -> Result<()> {
+    if output::dry_run_guard(cli, "semantic-model import-pbix", &serde_json::json!({
+        "workspace": workspace,
+        "name": name,
+        "file": file_path,
+        "nameConflict": name_conflict
+    })) {
+        return Ok(());
+    }
+
+    let path = Path::new(file_path);
+    if !path.exists() {
+        return Err(FabioError::new(
+            ErrorCode::InvalidInput,
+            format!("File not found: {file_path}"),
+        )
+        .into());
+    }
+
+    let file_bytes = std::fs::read(path)?;
+    let file_name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    let part = reqwest::multipart::Part::bytes(file_bytes)
+        .file_name(file_name)
+        .mime_str("application/octet-stream")
+        .map_err(|e| FabioError::api_error(format!("Failed to create multipart part: {e}")))?;
+    let form = reqwest::multipart::Form::new().part("file", part);
+
+    let encoded_name = urlencoding::encode(name);
+    let api_path = format!(
+        "/groups/{workspace}/imports?datasetDisplayName={encoded_name}&nameConflict={name_conflict}"
+    );
+
+    let data = client
+        .post_powerbi_multipart(&api_path, form)
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model import-pbix", "Contributor"))?;
+
+    output::render_object(cli, &data, "id");
     Ok(())
 }
 

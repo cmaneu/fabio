@@ -969,3 +969,206 @@ fn semantic_model_update_parameters_invalid_json() {
         .assert()
         .failure();
 }
+
+// ─── Clone ───────────────────────────────────────────────────────────────────
+
+#[test]
+#[serial]
+fn semantic_model_clone_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "semantic-model",
+            "clone",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--name",
+            "ClonedModel",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "semantic-model clone");
+    assert_eq!(data["details"]["name"], "ClonedModel");
+}
+
+#[test]
+#[serial]
+fn semantic_model_clone_dry_run_with_target_workspace() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "semantic-model",
+            "clone",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--name",
+            "ClonedModel",
+            "--target-workspace",
+            "11111111-1111-1111-1111-111111111111",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "semantic-model clone");
+    assert_eq!(data["details"]["name"], "ClonedModel");
+    assert_eq!(
+        data["details"]["targetWorkspaceId"],
+        "11111111-1111-1111-1111-111111111111"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_clone_not_found() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "semantic-model",
+            "clone",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--name",
+            &unique_name("clone"),
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .failure();
+}
+
+// ─── Export PBIX ─────────────────────────────────────────────────────────────
+
+#[test]
+#[serial]
+fn semantic_model_export_pbix_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "semantic-model",
+            "export-pbix",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--file",
+            "/tmp/opencode/test_export.pbix",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "semantic-model export-pbix");
+    assert_eq!(data["details"]["file"], "/tmp/opencode/test_export.pbix");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_export_pbix_not_found() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "semantic-model",
+            "export-pbix",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--file",
+            "/tmp/opencode/nonexistent_export.pbix",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .failure();
+}
+
+// ─── Import PBIX ─────────────────────────────────────────────────────────────
+
+#[test]
+#[serial]
+fn semantic_model_import_pbix_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "semantic-model",
+            "import-pbix",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--name",
+            "ImportedModel",
+            "--file",
+            "/tmp/opencode/test.pbix",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "semantic-model import-pbix");
+    assert_eq!(data["details"]["name"], "ImportedModel");
+    assert_eq!(data["details"]["nameConflict"], "Abort");
+}
+
+#[test]
+#[serial]
+fn semantic_model_import_pbix_file_not_found() {
+    // Should fail with INVALID_INPUT because the file doesn't exist
+    fabio()
+        .args([
+            "semantic-model",
+            "import-pbix",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--name",
+            "ImportedModel",
+            "--file",
+            "/tmp/opencode/nonexistent_file_xyz.pbix",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_import_pbix_invalid_file() {
+    let cfg = TestConfig::from_env();
+
+    // Create a dummy file that is NOT a valid .pbix — the API should reject it
+    let mut tmp = NamedTempFile::with_suffix(".pbix").unwrap();
+    tmp.write_all(b"not a real pbix file").unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+
+    fabio()
+        .args([
+            "semantic-model",
+            "import-pbix",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &unique_name("import"),
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .failure();
+}

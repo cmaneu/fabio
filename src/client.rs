@@ -1364,6 +1364,79 @@ impl FabricClient {
         handle_response(resp).await
     }
 
+    /// POST request to Power BI REST API returning raw bytes (for binary downloads like PBIX export).
+    pub async fn post_powerbi_bytes(&self, path: &str, body: &Value) -> Result<Vec<u8>> {
+        let token = self.require_auth().await?;
+        let url = format!("{}{path}", *POWERBI_BASE_URL);
+
+        let resp = self
+            .http
+            .post(&url)
+            .header(AUTHORIZATION, &token)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .post(&url)
+                .header(AUTHORIZATION, &token)
+                .json(body)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            if !resp.status().is_success() {
+                let status = resp.status().as_u16();
+                let text = resp.text().await.unwrap_or_default();
+                return Err(FabioError::from_status(status, text).into());
+            }
+            return Ok(resp.bytes().await?.to_vec());
+        }
+
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(FabioError::from_status(status, text).into());
+        }
+        Ok(resp.bytes().await?.to_vec())
+    }
+
+    /// POST multipart form-data to Power BI REST API (for PBIX import).
+    /// `path` should include query parameters (e.g., `?datasetDisplayName=...`).
+    pub async fn post_powerbi_multipart(
+        &self,
+        path: &str,
+        form: reqwest::multipart::Form,
+    ) -> Result<Value> {
+        let token = self.require_auth().await?;
+        let url = format!("{}{path}", *POWERBI_BASE_URL);
+
+        let resp = self
+            .http
+            .post(&url)
+            .header(AUTHORIZATION, &token)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            // Cannot retry multipart (form is consumed) — return auth error
+            return Err(FabioError::new(
+                ErrorCode::AuthRequired,
+                "Authentication failed for Power BI import. Please re-authenticate.".to_string(),
+            )
+            .into());
+        }
+
+        handle_response(resp).await
+    }
+
     // ── ARM (Azure Resource Manager) methods ──────────────────────────────
 
     /// GET request to Azure Resource Manager API.
