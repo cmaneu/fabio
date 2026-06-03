@@ -2648,3 +2648,33 @@ fn workspace_identity_roundtrip() {
     let depr_data = extract_data(&depr_json);
     assert_eq!(depr_data["status"], "deprovisioned");
 }
+
+// ===========================================================================
+// workspace url — returns Fabric portal URL
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_url_returns_portal_url() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args(["workspace", "url", "--id", &cfg.source_workspace])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let url = data["url"].as_str().unwrap();
+
+    assert!(
+        url.starts_with("https://app.fabric.microsoft.com/groups/"),
+        "URL should start with portal base: {url}"
+    );
+    assert!(
+        url.contains(&cfg.source_workspace),
+        "URL should contain workspace ID: {url}"
+    );
+    assert_eq!(data["workspaceId"], cfg.source_workspace);
+}

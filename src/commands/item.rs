@@ -1550,4 +1550,166 @@ mod tests {
         // Should NOT be INVALID_INPUT since message doesn't contain "invalid" + type
         assert_eq!(fabio_err.code, ErrorCode::ApiError);
     }
+
+    // ─── URL path mapping tests ──────────────────────────────────────────
+
+    /// Helper that replicates the `url()` mapping logic for testing.
+    fn portal_url_for(workspace: &str, id: &str, item_type: Option<&str>) -> String {
+        let type_segment = item_type.map_or_else(
+            || format!("/groups/{workspace}/items/{id}"),
+            |t| {
+                let lower = t.to_lowercase();
+                match lower.as_str() {
+                    "lakehouse" => format!("/groups/{workspace}/lakehouses/{id}"),
+                    "notebook" => format!("/groups/{workspace}/notebooks/{id}"),
+                    "warehouse" | "datawarehouse" => {
+                        format!("/groups/{workspace}/warehouses/{id}")
+                    }
+                    "report" => format!("/groups/{workspace}/reports/{id}"),
+                    "semanticmodel" | "dataset" => format!("/groups/{workspace}/datasets/{id}"),
+                    "datapipeline" | "pipeline" => format!("/groups/{workspace}/pipelines/{id}"),
+                    "eventhouse" => format!("/groups/{workspace}/eventhouses/{id}"),
+                    "kqldatabase" => format!("/groups/{workspace}/kqldatabases/{id}"),
+                    "eventstream" => format!("/groups/{workspace}/eventstreams/{id}"),
+                    _ => format!("/groups/{workspace}/items/{id}"),
+                }
+            },
+        );
+        format!("https://app.fabric.microsoft.com{type_segment}")
+    }
+
+    #[test]
+    fn url_lakehouse_maps_to_lakehouses() {
+        let u = portal_url_for("ws-1", "item-1", Some("Lakehouse"));
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/lakehouses/item-1"
+        );
+    }
+
+    #[test]
+    fn url_notebook_maps_to_notebooks() {
+        let u = portal_url_for("ws-1", "item-1", Some("Notebook"));
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/notebooks/item-1"
+        );
+    }
+
+    #[test]
+    fn url_warehouse_maps_to_warehouses() {
+        let u = portal_url_for("ws-1", "item-1", Some("Warehouse"));
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/warehouses/item-1"
+        );
+    }
+
+    #[test]
+    fn url_datawarehouse_alias_maps_to_warehouses() {
+        let u = portal_url_for("ws-1", "item-1", Some("DataWarehouse"));
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/warehouses/item-1"
+        );
+    }
+
+    #[test]
+    fn url_report_maps_to_reports() {
+        let u = portal_url_for("ws-1", "item-1", Some("Report"));
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/reports/item-1"
+        );
+    }
+
+    #[test]
+    fn url_semanticmodel_maps_to_datasets() {
+        let u = portal_url_for("ws-1", "item-1", Some("SemanticModel"));
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/datasets/item-1"
+        );
+    }
+
+    #[test]
+    fn url_dataset_alias_maps_to_datasets() {
+        let u = portal_url_for("ws-1", "item-1", Some("Dataset"));
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/datasets/item-1"
+        );
+    }
+
+    #[test]
+    fn url_datapipeline_maps_to_pipelines() {
+        let u = portal_url_for("ws-1", "item-1", Some("DataPipeline"));
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/pipelines/item-1"
+        );
+    }
+
+    #[test]
+    fn url_pipeline_alias_maps_to_pipelines() {
+        let u = portal_url_for("ws-1", "item-1", Some("Pipeline"));
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/pipelines/item-1"
+        );
+    }
+
+    #[test]
+    fn url_eventhouse_maps_to_eventhouses() {
+        let u = portal_url_for("ws-1", "item-1", Some("Eventhouse"));
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/eventhouses/item-1"
+        );
+    }
+
+    #[test]
+    fn url_kqldatabase_maps_to_kqldatabases() {
+        let u = portal_url_for("ws-1", "item-1", Some("KQLDatabase"));
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/kqldatabases/item-1"
+        );
+    }
+
+    #[test]
+    fn url_eventstream_maps_to_eventstreams() {
+        let u = portal_url_for("ws-1", "item-1", Some("Eventstream"));
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/eventstreams/item-1"
+        );
+    }
+
+    #[test]
+    fn url_unknown_type_falls_back_to_items() {
+        let u = portal_url_for("ws-1", "item-1", Some("UnknownFoo"));
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/items/item-1"
+        );
+    }
+
+    #[test]
+    fn url_no_type_uses_generic_items_path() {
+        let u = portal_url_for("ws-1", "item-1", None);
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/items/item-1"
+        );
+    }
+
+    #[test]
+    fn url_case_insensitive_type() {
+        let u = portal_url_for("ws-1", "item-1", Some("lAkEhOuSe"));
+        assert_eq!(
+            u,
+            "https://app.fabric.microsoft.com/groups/ws-1/lakehouses/item-1"
+        );
+    }
 }

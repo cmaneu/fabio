@@ -962,3 +962,217 @@ fn item_update_definition_requires_input() {
         "Hint should mention --file: {hint}"
     );
 }
+
+// ===========================================================================
+// item exists — returns {exists: true/false}, never errors on 404
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_exists_returns_true_for_existing_item() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "exists",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["exists"], true);
+    assert_eq!(data["id"], cfg.source_lakehouse);
+    assert_eq!(data["workspaceId"], cfg.source_workspace);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_exists_returns_false_for_nonexistent_item() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "exists",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000099",
+        ])
+        .assert()
+        .success(); // Never errors — returns {exists: false}
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["exists"], false);
+    assert_eq!(data["id"], "00000000-0000-0000-0000-000000000099");
+}
+
+// ===========================================================================
+// item url — returns Fabric portal URL (no API call)
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_url_returns_portal_url_with_type() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "url",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--type",
+            "Lakehouse",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let url = data["url"].as_str().unwrap();
+
+    assert!(
+        url.starts_with("https://app.fabric.microsoft.com/groups/"),
+        "URL should start with portal base: {url}"
+    );
+    assert!(
+        url.contains("/lakehouses/"),
+        "Lakehouse type should map to /lakehouses/ path: {url}"
+    );
+    assert!(
+        url.contains(&cfg.source_lakehouse),
+        "URL should contain item ID: {url}"
+    );
+    assert_eq!(data["itemId"], cfg.source_lakehouse);
+    assert_eq!(data["workspaceId"], cfg.source_workspace);
+    assert_eq!(data["itemType"], "Lakehouse");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_url_returns_generic_path_without_type() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "url",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let url = data["url"].as_str().unwrap();
+
+    assert!(
+        url.contains("/items/"),
+        "Without --type, should use generic /items/ path: {url}"
+    );
+    // No itemType field when --type is not provided
+    assert!(
+        data.get("itemType").is_none(),
+        "itemType should not be present without --type flag"
+    );
+}
+
+// ===========================================================================
+// item inspect — aggregated view (metadata + definition + connections)
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_inspect_returns_metadata() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "inspect",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    // Metadata is always present
+    assert!(data.get("metadata").is_some(), "inspect must have metadata");
+    let metadata = &data["metadata"];
+    assert_eq!(metadata["id"], cfg.source_lakehouse);
+    assert!(metadata.get("displayName").is_some());
+    assert!(metadata.get("type").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_inspect_notebook_includes_definition() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "inspect",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.notebook_id,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    // Notebooks support definitions
+    assert!(data.get("metadata").is_some());
+    assert!(
+        data.get("definition").is_some(),
+        "Notebook inspect should include definition"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_inspect_nonexistent_item_fails() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "item",
+            "inspect",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000099",
+        ])
+        .assert()
+        .failure();
+}
