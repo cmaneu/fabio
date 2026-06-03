@@ -1,5 +1,5 @@
 use std::fmt::Write;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -21,14 +21,70 @@ const MAX_ERROR_BODY_LEN: usize = 500;
 /// a separate code path without this limit.
 const MAX_API_RESPONSE_SIZE: u64 = 50 * 1024 * 1024;
 
-const FABRIC_BASE_URL: &str = "https://api.fabric.microsoft.com/v1";
-const ONELAKE_DFS_URL: &str = "https://onelake.dfs.fabric.microsoft.com";
-const ONELAKE_BLOB_URL: &str = "https://onelake.blob.fabric.microsoft.com";
-const ARM_BASE_URL: &str = "https://management.azure.com";
-const FABRIC_SCOPE: &str = "https://api.fabric.microsoft.com/.default";
-const STORAGE_SCOPE: &str = "https://storage.azure.com/.default";
-const SQL_SCOPE: &str = "https://database.windows.net/.default";
-const ARM_SCOPE: &str = "https://management.azure.com/.default";
+// ── Base URL defaults (overridable via environment variables) ─────────────
+//
+// All four API base endpoints can be overridden via environment variables for
+// private link or sovereign cloud scenarios:
+//
+//   FABIO_FABRIC_API_ENDPOINT  — Fabric REST API (default: https://api.fabric.microsoft.com/v1)
+//   FABIO_ONELAKE_DFS_ENDPOINT — OneLake DFS     (default: https://onelake.dfs.fabric.microsoft.com)
+//   FABIO_ONELAKE_BLOB_ENDPOINT— OneLake Blob    (default: https://onelake.blob.fabric.microsoft.com)
+//   FABIO_ARM_ENDPOINT         — Azure Resource Manager (default: https://management.azure.com)
+//
+// Token scopes can also be overridden for sovereign clouds:
+//
+//   FABIO_FABRIC_SCOPE  — (default: https://api.fabric.microsoft.com/.default)
+//   FABIO_STORAGE_SCOPE — (default: https://storage.azure.com/.default)
+//   FABIO_SQL_SCOPE     — (default: https://database.windows.net/.default)
+//   FABIO_ARM_SCOPE     — (default: https://management.azure.com/.default)
+
+/// Read an environment variable, stripping any trailing slash from the value.
+fn env_or_default(var: &str, default: &str) -> String {
+    std::env::var(var).ok().map_or_else(
+        || default.to_string(),
+        |v| v.trim_end_matches('/').to_string(),
+    )
+}
+
+static FABRIC_BASE_URL: LazyLock<String> = LazyLock::new(|| {
+    env_or_default(
+        "FABIO_FABRIC_API_ENDPOINT",
+        "https://api.fabric.microsoft.com/v1",
+    )
+});
+
+static ONELAKE_DFS_URL: LazyLock<String> = LazyLock::new(|| {
+    env_or_default(
+        "FABIO_ONELAKE_DFS_ENDPOINT",
+        "https://onelake.dfs.fabric.microsoft.com",
+    )
+});
+
+static ONELAKE_BLOB_URL: LazyLock<String> = LazyLock::new(|| {
+    env_or_default(
+        "FABIO_ONELAKE_BLOB_ENDPOINT",
+        "https://onelake.blob.fabric.microsoft.com",
+    )
+});
+
+static ARM_BASE_URL: LazyLock<String> =
+    LazyLock::new(|| env_or_default("FABIO_ARM_ENDPOINT", "https://management.azure.com"));
+
+static FABRIC_SCOPE: LazyLock<String> = LazyLock::new(|| {
+    env_or_default(
+        "FABIO_FABRIC_SCOPE",
+        "https://api.fabric.microsoft.com/.default",
+    )
+});
+
+static STORAGE_SCOPE: LazyLock<String> =
+    LazyLock::new(|| env_or_default("FABIO_STORAGE_SCOPE", "https://storage.azure.com/.default"));
+
+static SQL_SCOPE: LazyLock<String> =
+    LazyLock::new(|| env_or_default("FABIO_SQL_SCOPE", "https://database.windows.net/.default"));
+
+static ARM_SCOPE: LazyLock<String> =
+    LazyLock::new(|| env_or_default("FABIO_ARM_SCOPE", "https://management.azure.com/.default"));
 const LRO_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const LRO_MAX_WAIT: Duration = Duration::from_secs(120);
 
@@ -162,9 +218,15 @@ impl FabricClient {
 
     /// Construct the Fabric API base URL, applying private link transform if configured.
     /// Private link format: `{wsid_no_dashes}.z{first2chars}.w.api.fabric.microsoft.com/v1`
+    ///
+    /// If `FABIO_FABRIC_API_ENDPOINT` is set, that value is used directly (no private link
+    /// transform applied — the env var is assumed to contain the full desired base URL).
     fn fabric_url(&self, path: &str) -> String {
+        if std::env::var("FABIO_FABRIC_API_ENDPOINT").is_ok() {
+            return format!("{}{path}", *FABRIC_BASE_URL);
+        }
         self.private_link_workspace.as_ref().map_or_else(
-            || format!("{FABRIC_BASE_URL}{path}"),
+            || format!("{}{path}", *FABRIC_BASE_URL),
             |ws_id| {
                 let no_dashes = ws_id.replace('-', "");
                 let z_prefix = &no_dashes[..2];
@@ -175,7 +237,13 @@ impl FabricClient {
 
     /// Construct a `OneLake` DFS URL, applying private link transform if configured.
     /// Private link format: `{wsid_no_dashes}.z{first2chars}.onelake.dfs.fabric.microsoft.com`
+    ///
+    /// If `FABIO_ONELAKE_DFS_ENDPOINT` is set, that value is used directly (no private link
+    /// transform).
     fn onelake_dfs_url(&self, workspace: &str, suffix: &str) -> String {
+        if std::env::var("FABIO_ONELAKE_DFS_ENDPOINT").is_ok() {
+            return format!("{}/{workspace}/{suffix}", *ONELAKE_DFS_URL);
+        }
         if self.private_link_workspace.is_some() {
             let no_dashes = workspace.replace('-', "");
             let z_prefix = &no_dashes[..2.min(no_dashes.len())];
@@ -183,12 +251,18 @@ impl FabricClient {
                 "https://{no_dashes}.z{z_prefix}.onelake.dfs.fabric.microsoft.com/{workspace}/{suffix}"
             )
         } else {
-            format!("{ONELAKE_DFS_URL}/{workspace}/{suffix}")
+            format!("{}/{workspace}/{suffix}", *ONELAKE_DFS_URL)
         }
     }
 
     /// Construct a `OneLake` Blob URL, applying private link transform if configured.
+    ///
+    /// If `FABIO_ONELAKE_BLOB_ENDPOINT` is set, that value is used directly (no private link
+    /// transform).
     fn onelake_blob_url(&self, workspace: &str, suffix: &str) -> String {
+        if std::env::var("FABIO_ONELAKE_BLOB_ENDPOINT").is_ok() {
+            return format!("{}/{workspace}/{suffix}", *ONELAKE_BLOB_URL);
+        }
         if self.private_link_workspace.is_some() {
             let no_dashes = workspace.replace('-', "");
             let z_prefix = &no_dashes[..2.min(no_dashes.len())];
@@ -196,7 +270,7 @@ impl FabricClient {
                 "https://{no_dashes}.z{z_prefix}.onelake.blob.fabric.microsoft.com/{workspace}/{suffix}"
             )
         } else {
-            format!("{ONELAKE_BLOB_URL}/{workspace}/{suffix}")
+            format!("{}/{workspace}/{suffix}", *ONELAKE_BLOB_URL)
         }
     }
 
@@ -212,7 +286,7 @@ impl FabricClient {
             }
         }
 
-        let (token, source) = acquire_token(FABRIC_SCOPE).await?;
+        let (token, source) = acquire_token(&FABRIC_SCOPE).await?;
         let bearer = token.bearer_header.clone();
         let mut guard = self.fabric_token.write().await;
         *guard = Some(token);
@@ -237,7 +311,7 @@ impl FabricClient {
             }
         }
 
-        let (token, _source) = acquire_token(STORAGE_SCOPE).await?;
+        let (token, _source) = acquire_token(&STORAGE_SCOPE).await?;
         let bearer = token.bearer_header.clone();
         let mut guard = self.storage_token.write().await;
         *guard = Some(token);
@@ -256,7 +330,7 @@ impl FabricClient {
             }
         }
 
-        let (token, _source) = acquire_token(SQL_SCOPE).await?;
+        let (token, _source) = acquire_token(&SQL_SCOPE).await?;
         let raw_token = token.token.clone();
         let mut guard = self.sql_token.write().await;
         *guard = Some(token);
@@ -276,7 +350,7 @@ impl FabricClient {
             }
         }
 
-        let (token, _source) = acquire_token(ARM_SCOPE).await?;
+        let (token, _source) = acquire_token(&ARM_SCOPE).await?;
         let bearer = token.bearer_header.clone();
         let mut guard = self.arm_token.write().await;
         *guard = Some(token);
@@ -1228,7 +1302,7 @@ impl FabricClient {
     /// GET request to Azure Resource Manager API.
     pub async fn arm_get(&self, path: &str) -> Result<Value> {
         let token = self.require_arm_auth().await?;
-        let url = format!("{ARM_BASE_URL}{path}");
+        let url = format!("{}{path}", *ARM_BASE_URL);
 
         let resp = self
             .http
@@ -1244,7 +1318,7 @@ impl FabricClient {
     /// POST request to Azure Resource Manager API (with optional LRO polling).
     pub async fn arm_post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
         let token = self.require_arm_auth().await?;
-        let url = format!("{ARM_BASE_URL}{path}");
+        let url = format!("{}{path}", *ARM_BASE_URL);
 
         let resp = self
             .http
@@ -1271,7 +1345,7 @@ impl FabricClient {
     /// PUT request to Azure Resource Manager API (with LRO polling).
     pub async fn arm_put(&self, path: &str, body: &Value) -> Result<Value> {
         let token = self.require_arm_auth().await?;
-        let url = format!("{ARM_BASE_URL}{path}");
+        let url = format!("{}{path}", *ARM_BASE_URL);
 
         let resp = self
             .http
@@ -1296,7 +1370,7 @@ impl FabricClient {
     /// PATCH request to Azure Resource Manager API (with LRO polling).
     pub async fn arm_patch(&self, path: &str, body: &Value) -> Result<Value> {
         let token = self.require_arm_auth().await?;
-        let url = format!("{ARM_BASE_URL}{path}");
+        let url = format!("{}{path}", *ARM_BASE_URL);
 
         let resp = self
             .http
@@ -1321,7 +1395,7 @@ impl FabricClient {
     /// DELETE request to Azure Resource Manager API (with LRO polling).
     pub async fn arm_delete(&self, path: &str) -> Result<Value> {
         let token = self.require_arm_auth().await?;
-        let url = format!("{ARM_BASE_URL}{path}");
+        let url = format!("{}{path}", *ARM_BASE_URL);
 
         let resp = self
             .http
@@ -1398,7 +1472,7 @@ impl FabricClient {
                     if let Some(resource_id) = body.get("resourceId").and_then(Value::as_str) {
                         // The resourceId is a full ARM path — fetch it
                         let resource_url =
-                            format!("{ARM_BASE_URL}{resource_id}?api-version=2023-11-01");
+                            format!("{}{resource_id}?api-version=2023-11-01", *ARM_BASE_URL);
                         let token = self.require_arm_auth().await?;
                         let resource_resp = self
                             .http
@@ -1877,7 +1951,7 @@ async fn try_fabio_cache(scope: &str) -> Option<Result<(CachedToken, CredentialS
     use crate::token_cache;
 
     // For the default Fabric scope, use the primary cache
-    let data = if scope == FABRIC_SCOPE {
+    let data = if scope == *FABRIC_SCOPE {
         token_cache::get_valid_token().await?
     } else {
         // For other scopes (storage, SQL, Kusto), try to get a token via refresh
@@ -2643,7 +2717,7 @@ mod tests {
 
     #[test]
     fn fabric_base_url_is_v1() {
-        assert_eq!(FABRIC_BASE_URL, "https://api.fabric.microsoft.com/v1");
+        assert_eq!(*FABRIC_BASE_URL, "https://api.fabric.microsoft.com/v1");
     }
 
     #[test]
@@ -2699,12 +2773,12 @@ mod tests {
 
     #[test]
     fn arm_base_url_is_management_azure() {
-        assert_eq!(ARM_BASE_URL, "https://management.azure.com");
+        assert_eq!(*ARM_BASE_URL, "https://management.azure.com");
     }
 
     #[test]
     fn arm_scope_is_management_default() {
-        assert_eq!(ARM_SCOPE, "https://management.azure.com/.default");
+        assert_eq!(*ARM_SCOPE, "https://management.azure.com/.default");
     }
 
     #[test]
@@ -3113,6 +3187,56 @@ mod tests {
         assert_eq!(
             url,
             "https://aabbccdd112233445566778899aabbcc.zaa.onelake.blob.fabric.microsoft.com/aabbccdd-1122-3344-5566-778899aabbcc/item/path"
+        );
+    }
+
+    // ── Environment variable URL overrides ───────────────────────────────
+
+    #[test]
+    fn env_or_default_returns_default_when_var_unset() {
+        // Use a unique var name that won't be set in any environment
+        let result = env_or_default(
+            "FABIO_TEST_NONEXISTENT_XYZ_12345",
+            "https://default.example",
+        );
+        assert_eq!(result, "https://default.example");
+    }
+
+    #[test]
+    fn env_or_default_preserves_value_without_trailing_slash() {
+        let result = env_or_default(
+            "FABIO_TEST_ALSO_NONEXISTENT_99999",
+            "https://example.com/v1",
+        );
+        assert_eq!(result, "https://example.com/v1");
+    }
+
+    #[test]
+    fn default_fabric_scope_is_correct() {
+        // When no env override is set, the default scope is used
+        assert_eq!(*FABRIC_SCOPE, "https://api.fabric.microsoft.com/.default");
+    }
+
+    #[test]
+    fn default_storage_scope_is_correct() {
+        assert_eq!(*STORAGE_SCOPE, "https://storage.azure.com/.default");
+    }
+
+    #[test]
+    fn default_sql_scope_is_correct() {
+        assert_eq!(*SQL_SCOPE, "https://database.windows.net/.default");
+    }
+
+    #[test]
+    fn default_onelake_dfs_url_is_correct() {
+        assert_eq!(*ONELAKE_DFS_URL, "https://onelake.dfs.fabric.microsoft.com");
+    }
+
+    #[test]
+    fn default_onelake_blob_url_is_correct() {
+        assert_eq!(
+            *ONELAKE_BLOB_URL,
+            "https://onelake.blob.fabric.microsoft.com"
         );
     }
 }

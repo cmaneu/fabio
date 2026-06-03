@@ -14,6 +14,7 @@ struct AgentContext {
     version: String,
     description: &'static str,
     global_flags: Vec<Flag>,
+    environment_variables: Vec<EnvVar>,
     commands: serde_json::Value,
     error_codes: Vec<ErrorCodeInfo>,
     job_types: serde_json::Value,
@@ -39,6 +40,13 @@ struct Flag {
 }
 
 #[derive(Serialize)]
+struct EnvVar {
+    name: &'static str,
+    description: &'static str,
+    default: &'static str,
+}
+
+#[derive(Serialize)]
 struct ErrorCodeInfo {
     code: &'static str,
     description: &'static str,
@@ -52,6 +60,7 @@ pub fn execute(cli: &Cli) -> Result<()> {
         version: env!("CARGO_PKG_VERSION").to_string(),
         description: "Agent-first CLI for managing Microsoft Fabric artifacts and data",
         global_flags: global_flags(),
+        environment_variables: environment_variables(),
         commands: commands_schema(),
         error_codes: error_codes(),
         job_types: job_types(),
@@ -131,6 +140,51 @@ fn global_flags() -> Vec<Flag> {
             kind: "integer",
             description: "Maximum seconds to wait for long-running operations (default: 120)",
             default: Some("120"),
+        },
+    ]
+}
+
+fn environment_variables() -> Vec<EnvVar> {
+    vec![
+        EnvVar {
+            name: "FABIO_FABRIC_API_ENDPOINT",
+            description: "Override the Fabric REST API base URL (for sovereign clouds or private link)",
+            default: "https://api.fabric.microsoft.com/v1",
+        },
+        EnvVar {
+            name: "FABIO_ONELAKE_DFS_ENDPOINT",
+            description: "Override the OneLake DFS base URL",
+            default: "https://onelake.dfs.fabric.microsoft.com",
+        },
+        EnvVar {
+            name: "FABIO_ONELAKE_BLOB_ENDPOINT",
+            description: "Override the OneLake Blob base URL",
+            default: "https://onelake.blob.fabric.microsoft.com",
+        },
+        EnvVar {
+            name: "FABIO_ARM_ENDPOINT",
+            description: "Override the Azure Resource Manager base URL",
+            default: "https://management.azure.com",
+        },
+        EnvVar {
+            name: "FABIO_FABRIC_SCOPE",
+            description: "Override the Fabric API token scope",
+            default: "https://api.fabric.microsoft.com/.default",
+        },
+        EnvVar {
+            name: "FABIO_STORAGE_SCOPE",
+            description: "Override the Azure Storage token scope",
+            default: "https://storage.azure.com/.default",
+        },
+        EnvVar {
+            name: "FABIO_SQL_SCOPE",
+            description: "Override the SQL/TDS token scope",
+            default: "https://database.windows.net/.default",
+        },
+        EnvVar {
+            name: "FABIO_ARM_SCOPE",
+            description: "Override the Azure Resource Manager token scope",
+            default: "https://management.azure.com/.default",
         },
     ]
 }
