@@ -269,157 +269,54 @@ fn commands_schema() -> serde_json::Value {
             }
         },
         "workspace": {
-            "description": "Manage workspaces",
+            "description": "Manage workspaces (46 subcommands)",
             "subcommands": {
-                "list": {
-                    "description": "List all workspaces",
-                    "mutates": false,
-                    "flags": {
-                        "--roles": {"type": "string", "description": "Filter by role: Admin, Member, Contributor, Viewer (comma-separated)"}
-                    }
-                },
-                "show": {
-                    "description": "Show details of a workspace",
-                    "mutates": false,
-                    "flags": {
-                        "--id": {"type": "string", "required": true, "description": "Workspace ID"}
-                    }
-                },
-                "create": {
-                    "description": "Create a new workspace",
-                    "mutates": true,
-                    "flags": {
-                        "--name": {"type": "string", "required": true, "description": "Display name"},
-                        "--description": {"type": "string", "description": "Optional description"}
-                    }
-                },
-                "delete": {
-                    "description": "Delete a workspace",
-                    "mutates": true,
-                    "destructive": true,
-                    "flags": {
-                        "--id": {"type": "string", "required": true, "description": "Workspace ID"}
-                    }
-                },
-                "assign-capacity": {
-                    "description": "Assign a workspace to a capacity",
-                    "mutates": true,
-                    "flags": {
-                        "--id": {"type": "string", "required": true, "description": "Workspace ID"},
-                        "--capacity": {"type": "string", "required": true, "description": "Target capacity ID"}
-                    }
-                },
-                "get-settings": {
-                    "description": "Get workspace settings (properties including automaticMetadataSync)",
-                    "mutates": false,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"}
-                    }
-                },
-                "update-settings": {
-                    "description": "Update workspace settings via PATCH (pass full JSON body with properties to update)",
-                    "mutates": true,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
-                        "--file": {"type": "string", "description": "Path to JSON file with settings"},
-                        "--content": {"type": "string", "description": "Inline JSON body for PATCH (e.g. {\"displayName\":\"new\"})"}
-                    }
-                },
-                "get-firewall-rules": {
-                    "description": "Get workspace IP firewall rules",
-                    "mutates": false,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"}
-                    }
-                },
-                "set-firewall-rules": {
-                    "description": "Set workspace IP firewall rules (replaces all existing rules, max 256)",
-                    "mutates": true,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
-                        "--file": {"type": "string", "description": "Path to JSON file with rules"},
-                        "--content": {"type": "string", "description": "Inline JSON (e.g. {\"rules\":[{\"displayName\":\"Office\",\"value\":\"10.0.0.0/24\"}]})"}
-                    }
-                },
-                "get-git-outbound-policy": {
-                    "description": "Get workspace git outbound policy",
-                    "mutates": false,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"}
-                    }
-                },
-                "set-git-outbound-policy": {
-                    "description": "Set workspace git outbound policy (requires OAP enabled)",
-                    "mutates": true,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
-                        "--file": {"type": "string", "description": "Path to JSON file"},
-                        "--content": {"type": "string", "description": "Inline JSON (e.g. {\"defaultAction\":\"Allow\",\"rules\":[]})"}
-                    }
-                },
-                "get-inbound-azure-resource-rules": {
-                    "description": "Get workspace inbound Azure resource instance rules",
-                    "mutates": false,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"}
-                    }
-                },
-                "set-inbound-azure-resource-rules": {
-                    "description": "Set workspace inbound Azure resource instance rules",
-                    "mutates": true,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
-                        "--file": {"type": "string", "description": "Path to JSON file"},
-                        "--content": {"type": "string", "description": "Inline JSON with resource rules"}
-                    }
-                },
-                "get-outbound-cloud-connection-rules": {
-                    "description": "Get workspace outbound cloud connection rules (requires OAP enabled)",
-                    "mutates": false,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"}
-                    }
-                },
-                "set-outbound-cloud-connection-rules": {
-                    "description": "Set workspace outbound cloud connection rules (requires OAP enabled)",
-                    "mutates": true,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
-                        "--file": {"type": "string", "description": "Path to JSON file"},
-                        "--content": {"type": "string", "description": "Inline JSON with cloud connection rules"}
-                    }
-                },
-                "get-outbound-gateway-rules": {
-                    "description": "Get workspace outbound gateway rules (requires OAP enabled)",
-                    "mutates": false,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"}
-                    }
-                },
-                "set-outbound-gateway-rules": {
-                    "description": "Set workspace outbound gateway rules (requires OAP enabled)",
-                    "mutates": true,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
-                        "--file": {"type": "string", "description": "Path to JSON file"},
-                        "--content": {"type": "string", "description": "Inline JSON with gateway rules"}
-                    }
-                },
-                "set-dataset-storage-format": {
-                    "description": "Set default dataset storage format (Small or Large) via Power BI API",
-                    "mutates": true,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
-                        "--format": {"type": "string", "required": true, "description": "Storage format: Small or Large"}
-                    }
-                },
-                "get-dataset-storage-format": {
-                    "description": "Get default dataset storage format via Power BI API",
-                    "mutates": false,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"}
-                    }
-                }
+                "list": {"description": "List all workspaces", "mutates": false, "flags": {"--roles": {"type": "string", "description": "Filter by role: Admin,Member,Contributor,Viewer"}}},
+                "show": {"description": "Show workspace details", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a workspace", "mutates": true, "flags": {"--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update workspace name/description", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a workspace", "mutates": true, "destructive": true, "flags": {"--id": {"type": "string", "required": true}}},
+                "assign-capacity": {"description": "Assign workspace to a capacity", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--capacity": {"type": "string", "required": true}}},
+                "unassign-capacity": {"description": "Unassign workspace from capacity", "mutates": true, "flags": {"--id": {"type": "string", "required": true}}},
+                "provision-identity": {"description": "Provision workspace identity (service principal)", "mutates": true, "async": true, "flags": {"--id": {"type": "string", "required": true}}},
+                "deprovision-identity": {"description": "Deprovision workspace identity", "mutates": true, "flags": {"--id": {"type": "string", "required": true}}},
+                "list-role-assignments": {"description": "List workspace role assignments", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "add-role-assignment": {"description": "Add a role assignment", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--principal-id": {"type": "string", "required": true}, "--principal-type": {"type": "enum", "values": ["User", "Group", "ServicePrincipal", "ServicePrincipalProfile"]}, "--role": {"type": "enum", "values": ["Admin", "Member", "Contributor", "Viewer"]}}},
+                "update-role-assignment": {"description": "Update a role assignment", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--principal-id": {"type": "string", "required": true}, "--principal-type": {"type": "string"}, "--role": {"type": "string", "required": true}}},
+                "delete-role-assignment": {"description": "Delete a role assignment", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--principal-id": {"type": "string", "required": true}, "--principal-type": {"type": "string"}}},
+                "get-settings": {"description": "Get workspace settings and properties", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "update-settings": {"description": "Update workspace settings via PATCH", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "get-network-policy": {"description": "Get workspace network communication policy", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "set-network-policy": {"description": "Set workspace network communication policy", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "get-firewall-rules": {"description": "Get IP firewall rules", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "set-firewall-rules": {"description": "Set IP firewall rules (replaces all, max 256)", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "get-git-outbound": {"description": "Get git outbound policy", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "set-git-outbound": {"description": "Set git outbound policy (requires OAP)", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "get-inbound-azure-resources": {"description": "Get inbound Azure resource rules", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "set-inbound-azure-resources": {"description": "Set inbound Azure resource rules", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "get-outbound-cloud-connections": {"description": "Get outbound cloud connection rules", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "set-outbound-cloud-connections": {"description": "Set outbound cloud connection rules", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "get-outbound-gateways": {"description": "Get outbound gateway rules", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "set-outbound-gateways": {"description": "Set outbound gateway rules", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "get-onelake-settings": {"description": "Get OneLake settings (tier, diagnostics, immutability)", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "modify-default-tier": {"description": "Modify OneLake default tier (Hot/Cool/Cold)", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--tier": {"type": "enum", "values": ["Hot", "Cool", "Cold"]}}},
+                "modify-diagnostics": {"description": "Modify OneLake diagnostics settings", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "modify-immutability-policy": {"description": "Modify OneLake immutability policy", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "export-lifecycle-policy": {"description": "Export OneLake lifecycle policy", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "import-lifecycle-policy": {"description": "Import OneLake lifecycle policy", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "reset-shortcut-cache": {"description": "Reset OneLake shortcut cache", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "assign-to-domain": {"description": "Assign workspace to a domain", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--domain-id": {"type": "string", "required": true}}},
+                "unassign-from-domain": {"description": "Unassign workspace from domain", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "get-storage-format": {"description": "Get default dataset storage format", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "set-storage-format": {"description": "Set default dataset storage format (Small/Large)", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--format": {"type": "enum", "values": ["Small", "Large"]}}},
+                "apply-tags": {"description": "Apply tags to workspace", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--tag-ids": {"type": "string", "required": true}}},
+                "unapply-tags": {"description": "Remove tags from workspace", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--tag-ids": {"type": "string", "required": true}}},
+                "list-folders": {"description": "List folders in workspace", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "create-folder": {"description": "Create a folder", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--parent-folder-id": {"type": "string"}}},
+                "update-folder": {"description": "Update folder name/description", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--folder-id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete-folder": {"description": "Delete a folder", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--folder-id": {"type": "string", "required": true}}},
+                "move-folder": {"description": "Move a folder", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--folder-id": {"type": "string", "required": true}, "--target-folder-id": {"type": "string"}}},
+                "list-items": {"description": "List all items in workspace", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--type": {"type": "string"}}}
             }
         },
         "item": {
@@ -524,8 +421,13 @@ fn commands_schema() -> serde_json::Value {
             }
         },
         "lakehouse": {
-            "description": "Manage lakehouses (tables, files, shortcuts)",
+            "description": "Manage lakehouses (tables, files, shortcuts, maintenance)",
             "subcommands": {
+                "list": {"description": "List lakehouses in a workspace", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show lakehouse details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a lakehouse", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}, "--enable-schemas": {"type": "bool", "description": "Enable multi-schema lakehouse"}}},
+                "update": {"description": "Update lakehouse properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a lakehouse", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "list-tables": {
                     "description": "List tables in a lakehouse",
                     "aliases": ["tables"],
@@ -726,12 +628,27 @@ fn commands_schema() -> serde_json::Value {
                         "--table": {"type": "string", "required": true, "description": "Table name"}
                     },
                     "example": "fabio lakehouse table-schema --workspace <WS> --id <ID> --table customers"
+                },
+                "sync": {
+                    "description": "Sync files between lakehouses (copies new/modified, optionally deletes orphans)",
+                    "mutates": true,
+                    "flags": {
+                        "--source-workspace": {"type": "string", "required": true},
+                        "--source-id": {"type": "string", "required": true},
+                        "--dest-workspace": {"type": "string", "required": true},
+                        "--dest-id": {"type": "string", "required": true},
+                        "--path": {"type": "string", "description": "Subdirectory to sync (default: all Files)"},
+                        "--delete": {"type": "bool", "description": "Delete files at destination not present in source"},
+                        "--checksum": {"type": "bool", "description": "Use Content-MD5 comparison instead of ETag"}
+                    }
                 }
             }
         },
         "notebook": {
             "description": "Manage notebooks",
             "subcommands": {
+                "list": {"description": "List notebooks in a workspace", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show notebook details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {
                     "description": "Create a new notebook",
                     "mutates": true,
@@ -792,21 +709,11 @@ fn commands_schema() -> serde_json::Value {
         "warehouse": {
             "description": "Manage warehouses and run SQL queries",
             "subcommands": {
-                "list": {
-                    "description": "List warehouses in a workspace",
-                    "mutates": false,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true}
-                    }
-                },
-                "show": {
-                    "description": "Show details of a warehouse",
-                    "mutates": false,
-                    "flags": {
-                        "--workspace": {"type": "string", "required": true},
-                        "--id": {"type": "string", "required": true}
-                    }
-                },
+                "list": {"description": "List warehouses", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show warehouse details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a warehouse", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update warehouse properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a warehouse", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "query": {
                     "description": "Execute a SQL query against a warehouse",
                     "mutates": true,
@@ -872,7 +779,9 @@ fn commands_schema() -> serde_json::Value {
                         "--id": {"type": "string", "required": true},
                         "--prompt": {"type": "string", "description": "Natural language question (omit for stdin)"}
                     }
-                }
+                },
+                "get-definition": {"description": "Get data agent definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update data agent definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
             }
         },
         "agent-context": {
@@ -1058,7 +967,8 @@ fn commands_schema() -> serde_json::Value {
                 "update": {"description": "Update KQL database properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
                 "delete": {"description": "Delete a KQL database", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "get-definition": {"description": "Get KQL database definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
-                "update-definition": {"description": "Update KQL database definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+                "update-definition": {"description": "Update KQL database definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "query": {"description": "Execute a KQL query against a database", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--kql": {"type": "string", "required": true, "description": "KQL query text"}, "--query-uri": {"type": "string", "description": "Override Kusto query URI"}}}
             }
         },
         "mirrored-database": {
@@ -1103,7 +1013,7 @@ fn commands_schema() -> serde_json::Value {
             }
         },
         "eventstream": {
-            "description": "Manage eventstreams (real-time data ingestion)",
+            "description": "Manage eventstreams (real-time data ingestion and routing)",
             "subcommands": {
                 "list": {"description": "List eventstreams", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
                 "show": {"description": "Show eventstream details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
@@ -1111,7 +1021,20 @@ fn commands_schema() -> serde_json::Value {
                 "update": {"description": "Update eventstream properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
                 "delete": {"description": "Delete an eventstream", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "get-definition": {"description": "Get eventstream definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
-                "update-definition": {"description": "Update eventstream definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+                "update-definition": {"description": "Update eventstream definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "get-topology": {"description": "Get eventstream topology (sources, streams, destinations)", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "pause": {"description": "Pause the eventstream", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "resume": {"description": "Resume the eventstream", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-source": {"description": "Get source details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--source-id": {"type": "string", "required": true}}},
+                "pause-source": {"description": "Pause a source", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--source-id": {"type": "string", "required": true}}},
+                "resume-source": {"description": "Resume a source", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--source-id": {"type": "string", "required": true}}},
+                "get-source-connection": {"description": "Get source connection info (Event Hub endpoint)", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--source-id": {"type": "string", "required": true}}},
+                "get-destination": {"description": "Get destination details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--destination-id": {"type": "string", "required": true}}},
+                "pause-destination": {"description": "Pause a destination", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--destination-id": {"type": "string", "required": true}}},
+                "resume-destination": {"description": "Resume a destination", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--destination-id": {"type": "string", "required": true}}},
+                "get-destination-connection": {"description": "Get destination connection info", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--destination-id": {"type": "string", "required": true}}},
+                "add-source": {"description": "Add a source to the eventstream", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--source-type": {"type": "string", "required": true}, "--properties": {"type": "string"}}},
+                "add-destination": {"description": "Add a destination to the eventstream", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--destination-type": {"type": "string", "required": true}, "--input-node": {"type": "string", "required": true}, "--properties": {"type": "string"}}}
             }
         },
         "kql-queryset": {
@@ -1123,7 +1046,8 @@ fn commands_schema() -> serde_json::Value {
                 "update": {"description": "Update KQL queryset properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
                 "delete": {"description": "Delete a KQL queryset", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "get-definition": {"description": "Get KQL queryset definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
-                "update-definition": {"description": "Update KQL queryset definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+                "update-definition": {"description": "Update KQL queryset definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "run": {"description": "Run a saved KQL query tab against its configured data source", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--tab": {"type": "string", "description": "Tab name or index (default: first tab)"}}}
             }
         },
         "spark-job-definition": {
@@ -1241,6 +1165,413 @@ fn commands_schema() -> serde_json::Value {
                 "create": {"description": "Create an ML experiment", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
                 "update": {"description": "Update ML experiment properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
                 "delete": {"description": "Delete an ML experiment", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+            }
+        },
+        "admin": {
+            "description": "Tenant administration (49 subcommands, requires Fabric admin role)",
+            "subcommands": {
+                "list-tenant-settings": {"description": "List all tenant settings", "mutates": false},
+                "update-tenant-setting": {"description": "Update a tenant setting", "mutates": true, "flags": {"--setting-name": {"type": "string", "required": true}, "--content": {"type": "string", "required": true}}},
+                "list-capacities-tenant-overrides": {"description": "List tenant setting overrides across all capacities", "mutates": false, "flags": {"--setting-name": {"type": "string", "required": true}}},
+                "list-capacity-tenant-overrides": {"description": "List overrides for a specific capacity", "mutates": false, "flags": {"--capacity-id": {"type": "string", "required": true}}},
+                "update-capacity-tenant-override": {"description": "Update a capacity tenant setting override", "mutates": true, "flags": {"--capacity-id": {"type": "string", "required": true}, "--setting-name": {"type": "string", "required": true}, "--content": {"type": "string", "required": true}}},
+                "delete-capacity-tenant-override": {"description": "Delete a capacity override", "mutates": true, "flags": {"--capacity-id": {"type": "string", "required": true}, "--setting-name": {"type": "string", "required": true}}},
+                "list-domains-tenant-overrides": {"description": "List domain-level overrides", "mutates": false, "flags": {"--setting-name": {"type": "string", "required": true}}},
+                "list-workspaces-tenant-overrides": {"description": "List workspace-level overrides", "mutates": false, "flags": {"--setting-name": {"type": "string", "required": true}}},
+                "list-tags": {"description": "List tenant tags", "mutates": false},
+                "create-tags": {"description": "Bulk-create tags", "mutates": true, "flags": {"--content": {"type": "string", "required": true}}},
+                "update-tag": {"description": "Update a tag", "mutates": true, "flags": {"--tag-id": {"type": "string", "required": true}, "--content": {"type": "string", "required": true}}},
+                "delete-tag": {"description": "Delete a tag", "mutates": true, "destructive": true, "flags": {"--tag-id": {"type": "string", "required": true}}},
+                "list-workloads": {"description": "List workloads", "mutates": false},
+                "list-workload-assignments": {"description": "List workload assignments", "mutates": false},
+                "create-workload-assignment": {"description": "Create a workload assignment", "mutates": true, "flags": {"--content": {"type": "string", "required": true}}},
+                "delete-workload-assignment": {"description": "Delete a workload assignment", "mutates": true, "flags": {"--assignment-id": {"type": "string", "required": true}}},
+                "list-workspaces": {"description": "List workspaces (admin view)", "mutates": false},
+                "show-workspace": {"description": "Show workspace (admin view)", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "list-workspace-users": {"description": "List workspace users", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "list-git-connections": {"description": "List git connections across tenant", "mutates": false},
+                "grant-admin-access": {"description": "Grant temporary admin access", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "remove-admin-access": {"description": "Remove temporary admin access", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "restore-workspace": {"description": "Restore a deleted workspace", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--capacity-id": {"type": "string", "required": true}}},
+                "list-network-policies": {"description": "List network policies", "mutates": false},
+                "list-items": {"description": "List items (admin view)", "mutates": false, "flags": {"--workspace": {"type": "string"}, "--type": {"type": "string"}}},
+                "show-item": {"description": "Show item (admin view)", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "list-item-users": {"description": "List item users", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "bulk-set-labels": {"description": "Bulk set sensitivity labels", "mutates": true, "flags": {"--content": {"type": "string", "required": true}}},
+                "bulk-remove-labels": {"description": "Bulk remove sensitivity labels", "mutates": true, "flags": {"--content": {"type": "string", "required": true}}},
+                "list-external-data-shares": {"description": "List external data shares", "mutates": false},
+                "revoke-external-data-share": {"description": "Revoke external data share", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--item-id": {"type": "string", "required": true}, "--share-id": {"type": "string", "required": true}}},
+                "remove-all-sharing-links": {"description": "Remove all sharing links (LRO)", "mutates": true, "async": true, "flags": {"--content": {"type": "string", "required": true}}},
+                "bulk-remove-sharing-links": {"description": "Bulk remove sharing links (LRO)", "mutates": true, "async": true, "flags": {"--content": {"type": "string", "required": true}}},
+                "list-domains": {"description": "List domains", "mutates": false},
+                "create-domain": {"description": "Create domain", "mutates": true, "flags": {"--name": {"type": "string", "required": true}, "--description": {"type": "string"}, "--parent-domain-id": {"type": "string"}}},
+                "show-domain": {"description": "Show domain details", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}},
+                "update-domain": {"description": "Update domain", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete-domain": {"description": "Delete domain", "mutates": true, "destructive": true, "flags": {"--id": {"type": "string", "required": true}}},
+                "list-domain-workspaces": {"description": "List workspaces in domain", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}},
+                "assign-domain-workspaces": {"description": "Assign workspaces to domain", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--workspaces": {"type": "string", "required": true}}},
+                "unassign-domain-workspaces": {"description": "Unassign workspaces from domain", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--workspaces": {"type": "string", "required": true}}},
+                "unassign-all-domain-workspaces": {"description": "Unassign all workspaces from domain", "mutates": true, "flags": {"--id": {"type": "string", "required": true}}},
+                "list-domain-role-assignments": {"description": "List domain role assignments", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}},
+                "bulk-assign-domain-roles": {"description": "Bulk assign domain roles", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--content": {"type": "string", "required": true}}},
+                "bulk-unassign-domain-roles": {"description": "Bulk unassign domain roles", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--content": {"type": "string", "required": true}}},
+                "sync-domain-roles-to-subdomains": {"description": "Sync domain roles to subdomains", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--content": {"type": "string", "required": true}}},
+                "assign-domain-workspaces-by-capacities": {"description": "Assign workspaces by capacity", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--content": {"type": "string", "required": true}}},
+                "assign-domain-workspaces-by-principals": {"description": "Assign workspaces by principal", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--content": {"type": "string", "required": true}}},
+                "list-user-access": {"description": "List user access across tenant", "mutates": false, "flags": {"--user-id": {"type": "string", "required": true}}}
+            }
+        },
+        "catalog": {
+            "description": "Tenant-level search across workspaces",
+            "subcommands": {
+                "search": {"description": "Search catalog items", "mutates": false, "flags": {"--content": {"type": "string", "required": true, "description": "JSON search body with searchString and top"}}}
+            }
+        },
+        "sql-database": {
+            "description": "Manage SQL databases (Fabric-native SQL Server)",
+            "subcommands": {
+                "list": {"description": "List SQL databases", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show SQL database details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a SQL database", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update SQL database properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete a SQL database", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool"}}},
+                "query": {"description": "Execute SQL query", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--sql": {"type": "string"}}},
+                "connection-string": {"description": "Get TDS connection string", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "import": {"description": "Import CSV/JSON into a table (creates table with type inference)", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string", "required": true}, "--table": {"type": "string", "required": true}, "--drop-if-exists": {"type": "bool"}, "--batch-size": {"type": "integer", "default": "100"}}},
+                "get-definition": {"description": "Get SQL database definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update SQL database definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "list-deleted": {"description": "List restorable deleted databases", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "start-mirroring": {"description": "Start mirroring", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "stop-mirroring": {"description": "Stop mirroring", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "revalidate-cmk": {"description": "Revalidate customer-managed key", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-audit-settings": {"description": "Get audit settings", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-audit-settings": {"description": "Update audit settings", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--content": {"type": "string", "required": true}}}
+            }
+        },
+        "sql-endpoint": {
+            "description": "Manage SQL endpoints (read-only companion to lakehouses)",
+            "subcommands": {
+                "list": {"description": "List SQL endpoints", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show SQL endpoint details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "connection-string": {"description": "Get TDS connection string", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "refresh-metadata": {"description": "Refresh table sync metadata", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-audit-settings": {"description": "Get audit settings", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-audit-settings": {"description": "Update audit settings", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--content": {"type": "string", "required": true}}},
+                "set-audit-actions": {"description": "Set audit action groups", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--actions": {"type": "string", "required": true}}}
+            }
+        },
+        "ontology": {
+            "description": "Manage ontologies (entity types, relationships, data bindings)",
+            "subcommands": {
+                "list": {"description": "List ontologies", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show ontology details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create an ontology", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update ontology properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete an ontology", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get ontology definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--decode": {"type": "bool"}, "--dir": {"type": "string"}}},
+                "update-definition": {"description": "Update ontology definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--dir": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "git": {
+            "description": "Manage git integration (connect, commit, pull, status)",
+            "subcommands": {
+                "status": {"description": "Get workspace git status", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "commit": {"description": "Commit workspace changes to git", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--message": {"type": "string", "required": true}, "--items": {"type": "string"}}},
+                "pull": {"description": "Pull remote changes into workspace", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "connect": {"description": "Connect workspace to git repo", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--provider": {"type": "enum", "values": ["azureDevOps", "github"]}, "--org": {"type": "string", "required": true}, "--project": {"type": "string"}, "--repo": {"type": "string", "required": true}, "--branch": {"type": "string", "required": true}, "--directory": {"type": "string"}}},
+                "disconnect": {"description": "Disconnect workspace from git", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "init": {"description": "Initialize git connection (sync workspace/remote)", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--strategy": {"type": "enum", "values": ["prefer-workspace", "prefer-remote"]}}},
+                "checkout": {"description": "Switch to a different branch", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--branch": {"type": "string", "required": true}}},
+                "connection": {"description": "Show git connection details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "credentials": {"description": "Show or update git credentials", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show-tracked": {"description": "Show git-tracked items", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}}
+            }
+        },
+        "deploy": {
+            "description": "CI/CD deployment engine (stateless, content-hash convergence)",
+            "subcommands": {
+                "plan": {"description": "Generate deployment changeset (dry-run by default)", "mutates": false, "flags": {"--source": {"type": "string", "required": true, "description": "Source directory"}, "--workspace": {"type": "string", "required": true, "description": "Target workspace ID or name"}, "--item-types": {"type": "string"}, "--delete-orphans": {"type": "bool"}, "--force-all": {"type": "bool"}, "--out": {"type": "string"}, "--parameters": {"type": "string"}, "--env": {"type": "string"}}},
+                "apply": {"description": "Execute deployment (create/update/rename/delete items)", "mutates": true, "flags": {"--source": {"type": "string"}, "--workspace": {"type": "string"}, "--plan": {"type": "string"}, "--item-types": {"type": "string"}, "--delete-orphans": {"type": "bool"}, "--fail-fast": {"type": "bool"}, "--force": {"type": "bool"}, "--force-all": {"type": "bool"}, "--concurrency": {"type": "integer", "default": "8"}, "--parameters": {"type": "string"}, "--env": {"type": "string"}, "--no-post-hooks": {"type": "bool"}}},
+                "export": {"description": "Export workspace items to directory", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--dir": {"type": "string", "required": true}, "--item-types": {"type": "string"}, "--overwrite": {"type": "bool"}}},
+                "init-params": {"description": "Scaffold parameters.json from GUIDs in source", "mutates": false, "flags": {"--source": {"type": "string", "required": true}, "--compare": {"type": "string"}, "--source-env": {"type": "string"}, "--compare-env": {"type": "string"}, "--out": {"type": "string"}}}
+            }
+        },
+        "gateway": {
+            "description": "Manage VNet gateways and role assignments",
+            "subcommands": {
+                "list": {"description": "List gateways", "mutates": false},
+                "show": {"description": "Show gateway details", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a VNet gateway", "mutates": true, "flags": {"--name": {"type": "string", "required": true}, "--capacity-id": {"type": "string", "required": true}, "--subscription-id": {"type": "string", "required": true}, "--resource-group": {"type": "string", "required": true}, "--vnet-name": {"type": "string", "required": true}, "--subnet-name": {"type": "string", "required": true}}},
+                "update": {"description": "Update gateway settings", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--inactivity-minutes": {"type": "integer"}, "--member-count": {"type": "integer"}}},
+                "delete": {"description": "Delete a gateway", "mutates": true, "destructive": true, "flags": {"--id": {"type": "string", "required": true}}},
+                "list-members": {"description": "List gateway members", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}},
+                "update-member": {"description": "Update a gateway member", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--member-id": {"type": "string", "required": true}, "--content": {"type": "string", "required": true}}},
+                "delete-member": {"description": "Delete a gateway member", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--member-id": {"type": "string", "required": true}}},
+                "list-role-assignments": {"description": "List role assignments", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}},
+                "add-role-assignment": {"description": "Add role assignment", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--principal-id": {"type": "string", "required": true}, "--principal-type": {"type": "string", "required": true}, "--role": {"type": "enum", "values": ["Admin", "ConnectionCreator", "ConnectionCreatorWithResharing"]}}},
+                "show-role-assignment": {"description": "Show role assignment", "mutates": false, "flags": {"--id": {"type": "string", "required": true}, "--assignment-id": {"type": "string", "required": true}}},
+                "update-role-assignment": {"description": "Update role assignment", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--assignment-id": {"type": "string", "required": true}, "--role": {"type": "string", "required": true}}},
+                "delete-role-assignment": {"description": "Delete role assignment", "mutates": true, "destructive": true, "flags": {"--id": {"type": "string", "required": true}, "--assignment-id": {"type": "string", "required": true}}}
+            }
+        },
+        "apache-airflow-job": {
+            "description": "Manage Apache Airflow jobs (environment, files, compute)",
+            "subcommands": {
+                "list": {"description": "List Airflow jobs", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show Airflow job details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create an Airflow job", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update Airflow job properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete an Airflow job", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get Airflow job definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update Airflow job definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "start-environment": {"description": "Start Airflow environment", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "stop-environment": {"description": "Stop Airflow environment", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-environment": {"description": "Get environment status", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "list-files": {"description": "List DAG files", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-file": {"description": "Download a file", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--path": {"type": "string", "required": true}}},
+                "upload-file": {"description": "Upload a file", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--path": {"type": "string", "required": true}, "--file": {"type": "string", "required": true}}},
+                "delete-file": {"description": "Delete a file", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--path": {"type": "string", "required": true}}},
+                "get-compute": {"description": "Get compute pool details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-workspace-settings": {"description": "Get workspace Airflow settings", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "deploy-requirements": {"description": "Deploy Python requirements", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string", "required": true}}}
+            }
+        },
+        "anomaly-detector": {
+            "description": "Manage anomaly detectors",
+            "subcommands": {
+                "list": {"description": "List anomaly detectors", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show anomaly detector details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create an anomaly detector", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update anomaly detector properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete an anomaly detector", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition (Configurations.json)", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "cosmos-db-database": {
+            "description": "Manage Cosmos DB databases (mirrored)",
+            "subcommands": {
+                "list": {"description": "List Cosmos DB databases", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a Cosmos DB database", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "snowflake-database": {
+            "description": "Manage Snowflake databases (mirrored, requires connection)",
+            "subcommands": {
+                "list": {"description": "List Snowflake databases", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create (requires connection payload)", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--content": {"type": "string", "required": true}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "digital-twin-builder": {
+            "description": "Manage Digital Twin Builders (links to lakehouse)",
+            "subcommands": {
+                "list": {"description": "List DTBs", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a DTB", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "digital-twin-builder-flow": {
+            "description": "Manage Digital Twin Builder Flows (requires parent DTB)",
+            "subcommands": {
+                "list": {"description": "List flows", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create a flow (requires --dtb-id)", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--dtb-id": {"type": "string", "required": true}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "event-schema-set": {
+            "description": "Manage event schema sets",
+            "subcommands": {
+                "list": {"description": "List event schema sets", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition (EventSchemaSetDefinition.json)", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "operations-agent": {
+            "description": "Manage operations agents (goals, instructions, data sources, actions)",
+            "subcommands": {
+                "list": {"description": "List operations agents", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition (Configurations.json)", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "mounted-data-factory": {
+            "description": "Manage mounted data factories (link to Azure Data Factory)",
+            "subcommands": {
+                "list": {"description": "List mounted data factories", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create (requires ADF ARM resource ID in definition)", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--content": {"type": "string", "required": true}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "user-data-function": {
+            "description": "Manage user data functions (Python runtime)",
+            "subcommands": {
+                "list": {"description": "List user data functions", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "variable-library": {
+            "description": "Manage variable libraries (variables.json + settings.json)",
+            "subcommands": {
+                "list": {"description": "List variable libraries", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "map": {
+            "description": "Manage maps (geospatial visualization with Azure Maps)",
+            "subcommands": {
+                "list": {"description": "List maps", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition (map.json)", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "graph-query-set": {
+            "description": "Manage graph query sets (read-only definition export)",
+            "subcommands": {
+                "list": {"description": "List graph query sets", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition (exportedDefinition.json, read-only)", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+            }
+        },
+        "graph-model": {
+            "description": "Manage graph models (ontology-linked, requires portal init for refresh)",
+            "subcommands": {
+                "list": {"description": "List graph models", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details (includes queryReadiness)", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create (optionally with --ontology)", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}, "--ontology": {"type": "string", "description": "Ontology ID to link"}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "refresh-graph": {"description": "Trigger graph refresh (requires portal initialization)", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "execute-query": {"description": "Execute a KQL query against the graph", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--query": {"type": "string", "required": true}}},
+                "get-queryable-graph-type": {"description": "Get queryable graph type info", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+            }
+        },
+        "mirrored-catalog": {
+            "description": "Manage mirrored catalogs (requires tenant feature flag)",
+            "subcommands": {
+                "list": {"description": "List mirrored catalogs", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create (requires tenant feature flag)", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "refresh-metadata": {"description": "Refresh catalog metadata", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "mirroring-status": {"description": "Get mirroring status", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "tables-mirroring-status": {"description": "Get tables mirroring status", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+            }
+        },
+        "mirrored-databricks-catalog": {
+            "description": "Manage mirrored Databricks catalogs",
+            "subcommands": {
+                "list": {"description": "List mirrored Databricks catalogs", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "get-definition": {"description": "Get definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "discover-catalogs": {"description": "Discover available catalogs from Databricks", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "refresh-metadata": {"description": "Refresh metadata", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "mirroring-status": {"description": "Get mirroring status", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+            }
+        },
+        "warehouse-snapshot": {
+            "description": "Manage warehouse snapshots",
+            "subcommands": {
+                "list": {"description": "List snapshots", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "show": {"description": "Show snapshot details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "create": {"description": "Create snapshot (requires --warehouse-id)", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--warehouse-id": {"type": "string", "required": true}}},
+                "update": {"description": "Update snapshot properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
+                "delete": {"description": "Delete snapshot", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+            }
+        },
+        "mirrored-warehouse": {
+            "description": "Manage mirrored warehouses (requires tenant feature flag)",
+            "subcommands": {
+                "list": {"description": "List mirrored warehouses", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}}
+            }
+        },
+        "paginated-report": {
+            "description": "Manage paginated reports (read-only creation via portal/SSRS)",
+            "subcommands": {
+                "list": {"description": "List paginated reports", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}},
+                "update": {"description": "Update properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}}
+            }
+        },
+        "dashboard": {
+            "description": "Manage dashboards (read-only, created via portal)",
+            "subcommands": {
+                "list": {"description": "List dashboards", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}}
+            }
+        },
+        "datamart": {
+            "description": "Manage datamarts (read-only, created via portal)",
+            "subcommands": {
+                "list": {"description": "List datamarts", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}}}
+            }
+        },
+        "feedback": {
+            "description": "Two-way CLI friction feedback channel",
+            "subcommands": {
+                "send": {"description": "Send feedback about CLI friction or feature requests", "mutates": true, "flags": {"--message": {"type": "string", "required": true}, "--category": {"type": "string"}}},
+                "list": {"description": "List previously sent feedback", "mutates": false}
+            }
+        },
+        "operation": {
+            "description": "Inspect long-running operation state and results",
+            "subcommands": {
+                "get-state": {"description": "Get LRO operation state", "mutates": false, "flags": {"--operation-id": {"type": "string", "required": true}}},
+                "get-result": {"description": "Get LRO operation result", "mutates": false, "flags": {"--operation-id": {"type": "string", "required": true}}}
             }
         }
     })
