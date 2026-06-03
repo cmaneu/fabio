@@ -35,7 +35,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (664 subcommands across 66 groups): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, profile, jobs, feedback, operation, agent-context
+- **Full Rust implementation** (667 subcommands across 66 groups): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, profile, jobs, feedback, operation, agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`
@@ -53,7 +53,9 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Notebook run**: Captures job instance ID from Location header, status/stop via Jobs API
 - **Notebook `--wait` flag**: Polls job status every 5s until Completed/Failed/Cancelled, with configurable `--timeout` (default 600s)
 - **Item copy/move**: getDefinition LRO + create in dest workspace LRO; move = copy + delete source
-- **Workspace**: 46 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies)
+- **Item exists/url/inspect**: exists returns `{exists: true/false}` (never errors on 404); url returns Fabric portal URL; inspect aggregates metadata + definition + connections in single response
+- **Private link URL routing**: `with_private_link()` builder on FabricClient; `fabric_url()`, `onelake_dfs_url()`, `onelake_blob_url()` helpers transform URLs when `private_link_workspace` is configured via profile
+- **Workspace**: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
 - **Warehouse**: list/show/create/update/delete/query (endpoint resolved, stdin/file/flag SQL input)
 - **Git integration**: status, commit, pull, connect, disconnect, initialize, switch (branch), connection/credentials management, show-tracked
 - **Ontology management**: list, show, create, update, delete, get-definition, update-definition (RDF file support, --dir for Fabric definition format, --decode for readable output)
@@ -121,7 +123,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Dashboard**: list (read-only, portal-created)
 - **Datamart**: list (read-only, portal-created)
 - **Paginated Report**: list/update (read-only creation via portal/SSRS)
-- **1076 Rust tests** (412 unit + 76 offline integration + 588 E2E requiring live tenant), zero clippy warnings, rustfmt clean
+- **1081 Rust tests** (417 unit + 76 offline integration + 588 E2E requiring live tenant), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~16 MB, stripped, full LTO, panic=abort
@@ -192,8 +194,8 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, run_notebook
 - `src/commands/mod.rs`: Command dispatch
 - `src/commands/auth.rs`: login/logout/status (DefaultAzureCredential chain)
-- `src/commands/workspace.rs`: 46 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies)
-- `src/commands/item.rs`: 10 subcommands (CRUD + copy/move + definitions + list-connections)
+- `src/commands/workspace.rs`: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
+- `src/commands/item.rs`: 13 subcommands (CRUD + copy/move + definitions + list-connections + exists/url/inspect)
 - `src/commands/lakehouse.rs`: 23 subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut, optimize-table, vacuum-table, table-schema)
 - `src/commands/notebook.rs`: create/get-definition/run (with --wait/--timeout)/status/stop/delete
 - `src/commands/warehouse.rs`: list/show/create/update/delete/query (endpoint resolved, stdin/file/flag SQL input)
