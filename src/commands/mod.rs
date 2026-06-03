@@ -77,6 +77,11 @@ use crate::client::FabricClient;
 pub async fn execute(cli: Cli) -> Result<()> {
     let mut client = FabricClient::new();
 
+    // Apply LRO timeout from --lro-timeout flag if specified
+    if let Some(timeout_secs) = cli.lro_timeout {
+        client = client.with_lro_timeout(std::time::Duration::from_secs(timeout_secs));
+    }
+
     // Apply private link routing from profile if configured
     if let Some(ws_id) = resolve_private_link_workspace(&cli) {
         client = client.with_private_link(ws_id);

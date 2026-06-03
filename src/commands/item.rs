@@ -26,6 +26,10 @@ pub enum ItemCommand {
         /// Filter by item type (e.g., Notebook, Lakehouse, Warehouse)
         #[arg(short = 't', long = "type", visible_alias = "item-type")]
         item_type: Option<String>,
+
+        /// Filter by folder ID (client-side filter)
+        #[arg(long)]
+        folder: Option<String>,
     },
     /// Show details of an item
     #[command(display_order = 2)]
@@ -420,7 +424,17 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
         ItemCommand::List {
             workspace,
             item_type,
-        } => list(cli, client, workspace, item_type.as_deref()).await,
+            folder,
+        } => {
+            list(
+                cli,
+                client,
+                workspace,
+                item_type.as_deref(),
+                folder.as_deref(),
+            )
+            .await
+        }
         ItemCommand::Show { workspace, id } => show(cli, client, workspace, id).await,
         ItemCommand::GetDefinition {
             workspace,
@@ -623,6 +637,7 @@ async fn list(
     client: &FabricClient,
     workspace: &str,
     item_type: Option<&str>,
+    folder: Option<&str>,
 ) -> Result<()> {
     let mut path = format!("/workspaces/{workspace}/items");
     if let Some(t) = item_type {
@@ -633,9 +648,23 @@ async fn list(
         .get_list(&path, "value", cli.all, cli.continuation_token.as_deref())
         .await?;
 
+    // Client-side filter by folder ID if specified
+    let items = if let Some(folder_id) = folder {
+        resp.items
+            .into_iter()
+            .filter(|item| {
+                item.get("folderId")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|id| id.eq_ignore_ascii_case(folder_id))
+            })
+            .collect()
+    } else {
+        resp.items
+    };
+
     output::render_list_with_token(
         cli,
-        &resp.items,
+        &items,
         &["displayName", "id", "type"],
         &["NAME", "ID", "TYPE"],
         "id",

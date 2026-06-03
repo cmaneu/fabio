@@ -62,6 +62,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub profile: Option<String>,
 
+    /// Maximum seconds to wait for long-running operations (default: 120)
+    #[arg(long, global = true)]
+    pub lro_timeout: Option<u64>,
+
     #[command(subcommand)]
     pub command: Command,
 }

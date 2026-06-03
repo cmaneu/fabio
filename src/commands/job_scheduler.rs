@@ -366,8 +366,14 @@ async fn run_on_demand(
     }
 
     let exec_value: Option<Value> = if let Some(ed) = execution_data {
+        let json_str = if let Some(file_path) = ed.strip_prefix('@') {
+            std::fs::read_to_string(file_path)
+                .map_err(|e| anyhow::anyhow!("Failed to read file '{file_path}': {e}"))?
+        } else {
+            ed.to_string()
+        };
         Some(
-            serde_json::from_str(ed)
+            serde_json::from_str(&json_str)
                 .map_err(|e| anyhow::anyhow!("Invalid --execution-data JSON: {e}"))?,
         )
     } else {

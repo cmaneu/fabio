@@ -27,6 +27,10 @@ pub enum WorkspaceCommand {
         /// Filter by role: Admin, Member, Contributor, Viewer (comma-separated)
         #[arg(long)]
         roles: Option<String>,
+
+        /// Filter by capacity ID (client-side filter)
+        #[arg(long)]
+        capacity: Option<String>,
     },
     /// Show details of a workspace
     #[command(display_order = 2)]
@@ -570,7 +574,9 @@ pub enum WorkspaceCommand {
 #[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceCommand) -> Result<()> {
     match command {
-        WorkspaceCommand::List { roles } => list(cli, client, roles.as_deref()).await,
+        WorkspaceCommand::List { roles, capacity } => {
+            list(cli, client, roles.as_deref(), capacity.as_deref()).await
+        }
         WorkspaceCommand::Show { id } => show(cli, client, id).await,
         WorkspaceCommand::Url { id } => url(cli, id),
         WorkspaceCommand::Create { name, description } => {
@@ -798,7 +804,12 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
 
 // ─── List ────────────────────────────────────────────────────────────────────
 
-async fn list(cli: &Cli, client: &FabricClient, roles: Option<&str>) -> Result<()> {
+async fn list(
+    cli: &Cli,
+    client: &FabricClient,
+    roles: Option<&str>,
+    capacity: Option<&str>,
+) -> Result<()> {
     let path = roles.map_or_else(
         || "/workspaces".to_string(),
         |r| format!("/workspaces?roles={r}"),
@@ -807,9 +818,23 @@ async fn list(cli: &Cli, client: &FabricClient, roles: Option<&str>) -> Result<(
         .get_list(&path, "value", cli.all, cli.continuation_token.as_deref())
         .await?;
 
+    // Client-side filter by capacity ID if specified
+    let items = if let Some(cap_id) = capacity {
+        resp.items
+            .into_iter()
+            .filter(|item| {
+                item.get("capacityId")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|id| id.eq_ignore_ascii_case(cap_id))
+            })
+            .collect()
+    } else {
+        resp.items
+    };
+
     output::render_list_with_token(
         cli,
-        &resp.items,
+        &items,
         &["displayName", "id", "type"],
         &["NAME", "ID", "TYPE"],
         "id",

@@ -116,6 +116,8 @@ pub struct FabricClient {
     credential_source: Arc<tokio::sync::RwLock<Option<CredentialSource>>>,
     /// When set, enables private link URL routing for workspace-scoped requests.
     private_link_workspace: Option<String>,
+    /// Maximum time to wait for LRO polling (default: 120s).
+    lro_max_wait: Duration,
 }
 
 impl FabricClient {
@@ -137,6 +139,7 @@ impl FabricClient {
             sql_token: Arc::new(tokio::sync::RwLock::new(None)),
             credential_source: Arc::new(tokio::sync::RwLock::new(None)),
             private_link_workspace: None,
+            lro_max_wait: LRO_MAX_WAIT,
         }
     }
 
@@ -144,6 +147,12 @@ impl FabricClient {
     /// When enabled, workspace-scoped URLs are transformed to use the private link subdomain.
     pub fn with_private_link(mut self, workspace_id: String) -> Self {
         self.private_link_workspace = Some(workspace_id);
+        self
+    }
+
+    /// Set a custom LRO polling timeout (default: 120s).
+    pub const fn with_lro_timeout(mut self, timeout: Duration) -> Self {
+        self.lro_max_wait = timeout;
         self
     }
 
@@ -1425,7 +1434,8 @@ impl FabricClient {
 
     /// Poll a long-running operation until completion.
     async fn poll_lro(&self, initial_response: Response) -> Result<Value> {
-        self.poll_lro_impl(initial_response, LRO_MAX_WAIT).await
+        self.poll_lro_impl(initial_response, self.lro_max_wait)
+            .await
     }
 
     /// Poll a long-running operation with a custom timeout.
