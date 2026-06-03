@@ -374,7 +374,7 @@ fn lakehouse_table_schema_missing_table_flag() {
 
 /// Live E2E: read schema of a table that exists (requires tenant)
 #[test]
-#[ignore]
+#[ignore = "requires live Fabric tenant"]
 #[serial]
 fn lakehouse_table_schema_succeeds() {
     let cfg = TestConfig::from_env();
@@ -432,7 +432,7 @@ fn lakehouse_table_schema_succeeds() {
 
 /// Live E2E: table-schema on non-existent table returns error
 #[test]
-#[ignore]
+#[ignore = "requires live Fabric tenant"]
 #[serial]
 fn lakehouse_table_schema_nonexistent_table() {
     let cfg = TestConfig::from_env();

@@ -43,10 +43,13 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - OneLake operations: DFS upload (create+append+flush), download, file listing; Blob API copy (server-side async)
 - **Parallel file/table operations**: Upload, copy, move support glob patterns with concurrent execution and rate-limit retry
 - **Sync command**: `lakehouse sync` copies new/modified files between lakehouses using ETag/MD5 comparison
-- **LRO polling**: 2s interval, 120s max, handles 200/202, checks `status` field until Succeeded/Failed
+- **LRO polling**: 2s default interval (respects `Retry-After` header, capped at 60s), 120s max, handles 200/202, checks `status` field until Succeeded/Failed
+- **Transport retry**: Automatic retry on 502/503/504 gateway errors (3 attempts, linear backoff 1-3s)
+- **Error code headers**: Extracts `x-ms-public-api-error-code` / `x-ms-error-code` response headers into error messages
 - **Server-side file copy/move**: Blob API `PUT` with `x-ms-copy-source`, move = copy + delete
 - **Server-side table copy/move/delete**: Root listing + prefix filter, per-file Blob copy, recursive DFS delete
 - **Shortcuts**: Create/get/delete OneLake, ADLS Gen2, S3 shortcuts
+- **Lakehouse table maintenance**: optimize-table (V-Order + Z-Order via Jobs API), vacuum-table (retention period formatting), table-schema (Delta log parsing from OneLake DFS)
 - **Notebook run**: Captures job instance ID from Location header, status/stop via Jobs API
 - **Notebook `--wait` flag**: Polls job status every 5s until Completed/Failed/Cancelled, with configurable `--timeout` (default 600s)
 - **Item copy/move**: getDefinition LRO + create in dest workspace LRO; move = copy + delete source
@@ -134,7 +137,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - OneLake upload uses DFS create+append+flush 3-step pattern
 - Notebook creation builds minimal .ipynb JSON, base64-encodes for Fabric API; `source` must be list of strings
 - Item copy fetches definition from source via LRO, posts to destination workspace via LRO
-- LRO polling: 2s default interval, 120s max wait, handles `Location`/`x-ms-operation-id` headers
+- LRO polling: 2s default interval (respects `Retry-After` header, capped at 60s), 120s max wait, handles `Location`/`x-ms-operation-id` headers
 - `post()` accepts `poll: bool` for LRO-aware operations
 - Load-table requires PascalCase values (`"Overwrite"`, `"Csv"`) and `format` inside `formatOptions`
 - **Load-table only supports Csv and Parquet**: The Fabric REST API `formatOptions` discriminated union only has `Csv` (with `header`/`delimiter`) and `Parquet` (format only). JSON is NOT supported — must convert to CSV/Parquet first. Sending CSV-specific fields (header, delimiter) with Parquet format causes API rejection.
@@ -1147,7 +1150,16 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Parallel execution**: All multi-file operations (upload, copy-file, move-file, delete-table, copy-table, move-table, sync) use concurrent execution with rate-limit retry.
 - **Glob patterns**: Local globs via `glob::glob()`, remote globs via listing + pattern match, table globs via table list API + pattern match.
 - **Materialized views**: `POST /workspaces/{ws}/lakehouses/{id}/jobs/refreshMaterializedLakeViews/instances` triggers refresh. Schedule management at `.../jobs/refreshMaterializedLakeViews/schedules`.
-- **Table maintenance**: `POST /workspaces/{ws}/lakehouses/{id}/jobs/tableMaintenance/instances`.
+- **Table maintenance**: `POST /workspaces/{ws}/items/{id}/jobs/instances?jobType=TableMaintenance` with `executionData` payload. NOT the legacy path-based endpoint.
+- **Optimize-table payload**: `{"executionData": {"tableName": "X", "optimizeSettings": {"vOrder": true, "zOrderBy": ["col1","col2"]}}}`. The `vOrder` flag enables V-Order compaction. `zOrderBy` is optional — accepts an array of column names for Z-Order clustering.
+- **Vacuum-table payload**: `{"executionData": {"tableName": "X", "vacuumSettings": {"retentionPeriod": "7:00:00:00"}}}`. Retention format is `D:HH:MM:SS` (days:hours:minutes:seconds). Example: 30 hours → `"1:06:00:00"`, 48 hours → `"2:00:00:00"`, 168 hours (default) → `"7:00:00:00"`.
+- **Table maintenance schema support**: Both optimize and vacuum accept optional `"schemaName"` in `executionData` for multi-schema lakehouses.
+- **Table maintenance response**: Returns 202 (accepted) with job instance details, or empty body on some capacity sizes. Fire-and-forget (no LRO polling needed — job runs asynchronously).
+- **Table-schema via Delta log**: Read table schema without Spark/SQL by downloading `_delta_log/*.json` commit files from OneLake DFS. Delta commit files are NDJSON (newline-delimited JSON). The `metaData` action contains `schemaString` which is a JSON-encoded string of the Spark StructType schema.
+- **Delta log path**: `Tables/{tableName}/_delta_log/` contains numbered JSON commit files (e.g., `00000000000000000000.json`). Schema may only exist in the first commit or in commits that change the schema — must iterate from newest to oldest.
+- **Delta schemaString format**: `{"type":"struct","fields":[{"name":"col1","type":"string","nullable":true,"metadata":{}}]}`. Field types include: `string`, `integer`, `long`, `double`, `float`, `boolean`, `date`, `timestamp`, `binary`, `decimal(P,S)`, plus complex types (`array<T>`, `map<K,V>`, `struct<...>`).
+- **DFS directory listing for Delta log**: Use `list_onelake_files(ws, id, Some("Tables/{name}/_delta_log"))`. Returns file paths that may include the item-id prefix (e.g., `{item_id}/Tables/...`). Strip prefix before downloading.
+- **No checkpoint support**: Current implementation only reads `.json` commit files (matching Microsoft's `fab` CLI behavior). For tables with 10+ commits, the schema may exist only in a Parquet checkpoint — not yet handled.
 - **Livy sessions**: `GET /workspaces/{ws}/lakehouses/{id}/livySessions` lists active sessions.
 - **Get/Update definition**: LRO via `/workspaces/{ws}/lakehouses/{id}/getDefinition` and `/updateDefinition`.
 

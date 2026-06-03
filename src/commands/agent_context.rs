@@ -691,6 +691,41 @@ fn commands_schema() -> serde_json::Value {
                         "--conflict-policy": {"type": "string", "description": "Abort|GenerateUniqueName|CreateOrOverwrite|OverwriteOnly"}
                     },
                     "example": "fabio lakehouse bulk-create-shortcuts --workspace <WS> --id <ID> --file shortcuts.json"
+                },
+                "optimize-table": {
+                    "description": "Optimize a Delta table (V-Order compaction + optional Z-Order clustering)",
+                    "mutates": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--id": {"type": "string", "required": true, "description": "Lakehouse ID"},
+                        "--table": {"type": "string", "required": true, "description": "Table name"},
+                        "--schema": {"type": "string", "description": "Schema name (multi-schema lakehouses)"},
+                        "--vorder": {"type": "bool", "default": "true", "description": "Enable V-Order optimization"},
+                        "--zorder": {"type": "string", "description": "Columns for Z-Order clustering (comma-separated)"}
+                    },
+                    "example": "fabio lakehouse optimize-table --workspace <WS> --id <ID> --table sales --zorder region,date"
+                },
+                "vacuum-table": {
+                    "description": "Vacuum a Delta table (remove old files beyond retention period)",
+                    "mutates": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--id": {"type": "string", "required": true, "description": "Lakehouse ID"},
+                        "--table": {"type": "string", "required": true, "description": "Table name"},
+                        "--schema": {"type": "string", "description": "Schema name (multi-schema lakehouses)"},
+                        "--retain-hours": {"type": "integer", "default": "168", "description": "Retention period in hours (default: 7 days)"}
+                    },
+                    "example": "fabio lakehouse vacuum-table --workspace <WS> --id <ID> --table logs --retain-hours 48"
+                },
+                "table-schema": {
+                    "description": "Show Delta table schema (reads from OneLake _delta_log without Spark/SQL)",
+                    "mutates": false,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--id": {"type": "string", "required": true, "description": "Lakehouse ID"},
+                        "--table": {"type": "string", "required": true, "description": "Table name"}
+                    },
+                    "example": "fabio lakehouse table-schema --workspace <WS> --id <ID> --table customers"
                 }
             }
         },
