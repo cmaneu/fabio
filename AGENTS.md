@@ -35,7 +35,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (691 subcommands across 67 groups): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, rest, profile, jobs, feedback, operation, agent-context
+- **Full Rust implementation** (761 subcommands across 68 groups): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, rest, profile, jobs, feedback, operation, agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain, CSV, TSV formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`, `--lro-timeout`
@@ -56,7 +56,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Item exists/url/inspect**: exists returns `{exists: true/false}` (never errors on 404); url returns Fabric portal URL; inspect aggregates metadata + definition + connections in single response
 - **Private link URL routing**: `with_private_link()` builder on FabricClient; `fabric_url()`, `onelake_dfs_url()`, `onelake_blob_url()` helpers transform URLs when `private_link_workspace` is configured via profile
 - **Workspace**: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
-- **Warehouse**: list/show/create/update/delete/query (endpoint resolved, stdin/file/flag SQL input)
+- **Warehouse**: list/show/create/update/delete/query/connection-string (endpoint resolved, stdin/file/flag SQL input)
 - **Git integration**: status, commit, pull, connect, disconnect, initialize, switch (branch), connection/credentials management, show-tracked
 - **Ontology management**: list, show, create, update, delete, get-definition, update-definition (RDF file support, --dir for Fabric definition format, --decode for readable output)
 - **Environment**: list, show, create, update, delete, publish, cancel-publish, get-spark-settings, get-staging-spark-settings
@@ -71,10 +71,10 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **ML Model**: list, show, create, update, delete (CRUD only, no definition support)
 - **ML Experiment**: list, show, create, update, delete (CRUD only, no definition support)
 - **Copy Job**: list, show, create, update, delete, get-definition, update-definition (data movement)
-- **Dataflow**: list, show, create, update, delete, get-definition, update-definition (Power BI transformation)
+- **Dataflow**: list, show, create, update, delete, get-definition, update-definition, discover-parameters (Power BI transformation)
 - **GraphQL API**: list, show, create, update, delete, get-definition, update-definition (schema.graphql)
 - **Report**: list, show, create (from definition file), update, delete, get-definition, update-definition
-- **Semantic Model**: list, show, create (from model.bim), update, delete, get-definition, update-definition, query, refresh, bind-connection, takeover
+- **Semantic Model**: list, show, create (from model.bim), update, delete, get-definition, update-definition, query, refresh, bind-connection, unbind-connection, takeover
 - **Map**: list, show, create, update, delete, get-definition, update-definition (geospatial visualization with Azure Maps)
 - **Spark Job Definition**: list, show, create, update, delete, get-definition, update-definition, run
 - **Capacity**: list, show, suspend, resume, create, update, delete, list-skus, check-name (Fabric read-only API + ARM API for lifecycle management)
@@ -131,10 +131,17 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Semantic Model export-pbix**: POST `.../Default.Export` → binary download to `--file` path; creates parent dirs; reports `size_bytes` in output
 - **Semantic Model import-pbix**: POST `/groups/{ws}/imports` multipart/form-data; `--name`, `--file`, `--name-conflict` (Abort|Overwrite|CreateOrOverwrite|GenerateUniqueName); validates file exists client-side
 - **Item bulk-create/bulk-delete**: Client-side parallel operations using `execute_parallel` with bounded concurrency and rate-limit retry; per-item success/failure reporting
+- **Item move-to-folder**: `POST /workspaces/{ws}/items/{id}/move` with `targetFolderId`; omit folder-id to move to workspace root
+- **Item create-external-data-share**: Polymorphic recipients (`--recipient-type User|ServicePrincipal`, `--recipient-id`)
+- **`--hard-delete` on all item deletes**: 38 item type delete commands support `--hard-delete` flag to permanently delete (skip recycle bin); appends `?hardDelete=true` to URL
+- **Semantic Model unbind-connection**: Sends `{"connectionId": null}` to the bind endpoint to unbind
+- **Dataflow discover-parameters**: `GET /workspaces/{ws}/dataflows/{id}/parameters` with pagination support
+- **Warehouse connection-string extended**: `--guest-tenant-id` and `--private-link-type` optional query params for cross-tenant and private link scenarios
+- **Error `isRetriable` field**: Parsed from API response `error.isRetriable` into `FabioError.retriable: Option<bool>`; emitted in structured error output when present
 - **Notebook --strip-output**: `get-definition --strip-output` clears `outputs`/`execution_count` from ipynb cells; gracefully passes through `.py` format
 - **CSV/TSV output**: Global `--output csv|tsv` on all commands; RFC 4180 quoting via `format_csv_value()`
 - **Deploy validate**: Local-only pre-flight checks on source directory (validates .platform files, item types, definition structure, logical ID references); no API calls required
-- **1234 Rust tests** (475 unit + 82 offline integration + 677 E2E requiring live tenant), zero clippy warnings, rustfmt clean
+- **1255 Rust tests** (487 unit + 113 offline integration + 655 E2E requiring live tenant), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~16 MB, stripped, full LTO, panic=abort
@@ -206,10 +213,10 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/mod.rs`: Command dispatch
 - `src/commands/auth.rs`: login/logout/status (DefaultAzureCredential chain)
 - `src/commands/workspace.rs`: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
-- `src/commands/item.rs`: 15 subcommands (CRUD + copy/move + definitions + list-connections + exists/url/inspect + bulk-create/bulk-delete)
+- `src/commands/item.rs`: 18 subcommands (CRUD + copy/move + definitions + list-connections + exists/url/inspect + bulk-create/bulk-delete + move-to-folder + create-external-data-share)
 - `src/commands/lakehouse.rs`: 23 subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut, optimize-table, vacuum-table, table-schema, query)
 - `src/commands/notebook.rs`: create/get-definition (with --strip-output)/run (with --wait/--timeout)/status/stop/delete
-- `src/commands/warehouse.rs`: list/show/create/update/delete/query (endpoint resolved, stdin/file/flag SQL input)
+- `src/commands/warehouse.rs`: list/show/create/update/delete/query/connection-string (endpoint resolved, stdin/file/flag SQL input)
 - `src/commands/sql_database.rs`: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
 - `src/commands/tds_utils.rs`: Shared TDS utilities (resolve_sql_input, parse_connection_string, execute_and_render_sql, column_value_to_json)
 - `src/commands/dataagent.rs`: list/show/create/update/delete/query
@@ -218,7 +225,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings
 - `src/commands/data_pipeline.rs`: list/show/create/update/delete/run
 - `src/commands/report.rs`: list/show/create/update/delete/get-definition/update-definition
-- `src/commands/semantic_model.rs`: list/show/create/update/delete/get-definition/update-definition + query/refresh/bind-connection/takeover + list-parameters/update-parameters/list-datasources/update-datasources/list-users/add-user/delete-user/refresh-status/list-upstream/clone/export-pbix/import-pbix
+- `src/commands/semantic_model.rs`: list/show/create/update/delete/get-definition/update-definition + query/refresh/bind-connection/unbind-connection/takeover + list-parameters/update-parameters/list-datasources/update-datasources/list-users/add-user/delete-user/refresh-status/list-upstream/clone/export-pbix/import-pbix
 - `src/commands/eventhouse.rs`: list/show/create/update/delete
 - `src/commands/eventstream.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/kql_database.rs`: list/show/create/update/delete/get-definition/update-definition
@@ -229,7 +236,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/ml_model.rs`: list/show/create/update/delete (CRUD only)
 - `src/commands/ml_experiment.rs`: list/show/create/update/delete (CRUD only)
 - `src/commands/copy_job.rs`: list/show/create/update/delete/get-definition/update-definition
-- `src/commands/dataflow.rs`: list/show/create/update/delete/get-definition/update-definition
+- `src/commands/dataflow.rs`: list/show/create/update/delete/get-definition/update-definition/discover-parameters
 - `src/commands/graphql_api.rs`: list/show/create/update/delete/get-definition/update-definition (schema.graphql)
 - `src/commands/spark.rs`: get-settings/update-settings/list-pools/get-pool/create-pool/update-pool/delete-pool
 - `src/commands/spark_job_definition.rs`: list/show/create/update/delete/get-definition/update-definition/run
@@ -1147,9 +1154,11 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
   - `POST /workspaces/{ws}/items/bulkExportDefinitions` — exports multiple item definitions
   - `POST /workspaces/{ws}/items/bulkImportDefinitions` — imports multiple item definitions
   - `POST /workspaces/{ws}/items/bulkMove` — moves multiple items between folders/workspaces
-- **External data shares**: CRUD at `/workspaces/{ws}/items/{id}/externalDataShares`. Create body: `{"paths": [...], "recipient": {"tenantId": "<id>"}}`. Accept invitations at `/externalDataShares/invitations/{id}/accept`.
+- **External data shares**: CRUD at `/workspaces/{ws}/items/{id}/externalDataShares`. Create body: `{"paths": [...], "recipient": {"tenantId": "<id>"}}`. Accept invitations at `/externalDataShares/invitations/{id}/accept`. Supports polymorphic recipients: add `"userPrincipal": {"userPrincipalName": "<upn>"}` or `"servicePrincipal": {"id": "<sp-id>"}` to the `recipient` object.
+- **Move to folder**: `POST /workspaces/{ws}/items/{id}/move` with `{"targetFolderId": "<id>"}`. Omit `targetFolderId` or pass `null` to move to workspace root.
 - **Identity assignment**: `POST /workspaces/{ws}/items/{id}/identities/default/assign`.
 - **Tags**: `POST /workspaces/{ws}/items/{id}/applyTags` and `/unapplyTags` with `{"tagIds": [...]}`.
+- **Hard delete query param**: `DELETE /workspaces/{ws}/items/{id}?hardDelete=true` permanently deletes (skips recycle bin). Supported on all workspace-scoped item types.
 
 ## Lakehouse API Behaviors Discovered
 - **Load table format validation**: Only `"Csv"` and `"Parquet"` are valid (PascalCase). JSON is NOT supported by the Fabric REST API. Mode values: `"Overwrite"`, `"Append"` (PascalCase).
@@ -1341,6 +1350,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Get/Update definition are LRO**: Both use `poll: true`. Get Definition sends empty body `{}`.
 - **Required roles**: Create/Delete require "Member"; Update/Definition require "Contributor".
 - **Identical structure to Copy Job**: Same LRO patterns, same role requirements, different definition file name.
+- **Discover parameters**: `GET /workspaces/{ws}/dataflows/{id}/parameters` returns paginated list of M parameters. Uses standard `get_list()` with `"value"` key.
 
 ## SQL Database API Behaviors Discovered
 - **Creation modes**: `New` (fresh database), `Restore` (point-in-time restore from existing), `RestoreDeletedDatabase` (restore from deleted). Each mode has different `creationPayload` fields.
@@ -1392,9 +1402,11 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **List pagination**: All list endpoints use `get_list()` with `"value"` key (except lakehouse tables which use `"data"`). Supports `--all` (fetches all pages), `--continuation-token` (resumes from token), `--limit` (client-side truncation).
 - **Create responses**: Return the created object with at minimum `id`, `displayName`, `type`.
 - **Delete responses**: Return `{"status": "deleted", "id": "<id>"}`.
+- **Hard delete**: All 38 workspace-scoped item delete commands support `--hard-delete` flag. Appends `?hardDelete=true` to the DELETE URL. Permanently removes items (skips recycle bin). Non-item deletes (connection, deployment-pipeline, domain, gateway, managed-private-endpoint, onelake-security, profile, workspace) do NOT have this flag.
 - **Update validation**: All update commands require at least one field (`--name` or `--description`). Fail with `INVALID_INPUT` if neither provided.
 - **LRO standard pattern**: POST returns 202 + `Location` header. Poll every 2s, max 120s. Terminal: `status == "Succeeded"` or `"Failed"`.
 - **Error enrichment**: All commands use `enrich_forbidden()` to add required role hints on 403 errors. Not-found errors include `fabio <group> list` suggestions.
+- **Error `isRetriable` field**: API responses may include `error.isRetriable: bool`. When present, serialized in `FabioError` output as `"retriable": true/false`.
 - **Dry-run guard**: All mutations support `--dry-run` which returns the planned request body without executing. Output: `{"status": "dry_run", "message": "Would <action>..."}`.
 - **Definition operations pattern**: `POST .../getDefinition` (LRO, empty body `{}`) returns base64-encoded parts. `POST .../updateDefinition` (LRO) accepts `{"definition": {"parts": [{"path": "<file>", "payload": "<base64>", "payloadType": "InlineBase64"}]}}`.
 - **Tenant-level vs workspace-scoped resources**:

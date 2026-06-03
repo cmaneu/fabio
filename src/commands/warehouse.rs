@@ -74,6 +74,10 @@ pub enum WarehouseCommand {
         /// Warehouse item ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
     /// Execute a SQL query against a warehouse or SQL endpoint
     #[command(display_order = 10)]
@@ -100,6 +104,14 @@ pub enum WarehouseCommand {
         /// Warehouse item ID
         #[arg(long)]
         id: String,
+
+        /// Guest tenant ID (for cross-tenant access)
+        #[arg(long)]
+        guest_tenant_id: Option<String>,
+
+        /// Private link type (for private endpoint access)
+        #[arg(long)]
+        private_link_type: Option<String>,
     },
     /// Get SQL pools configuration for a workspace
     #[command(display_order = 20)]
@@ -294,16 +306,31 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             )
             .await
         }
-        WarehouseCommand::Delete { workspace, id } => {
-            delete_warehouse(cli, client, workspace, id).await
-        }
+        WarehouseCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete_warehouse(cli, client, workspace, id, *hard_delete).await,
         WarehouseCommand::Query { workspace, id, sql } => {
             query(cli, client, workspace, id, sql.as_deref())
                 .await
                 .map_err(|e| enrich_forbidden(e, "warehouse query", "Viewer"))
         }
-        WarehouseCommand::ConnectionString { workspace, id } => {
-            connection_string(cli, client, workspace, id).await
+        WarehouseCommand::ConnectionString {
+            workspace,
+            id,
+            guest_tenant_id,
+            private_link_type,
+        } => {
+            connection_string(
+                cli,
+                client,
+                workspace,
+                id,
+                guest_tenant_id.as_deref(),
+                private_link_type.as_deref(),
+            )
+            .await
         }
         WarehouseCommand::GetSqlPoolsConfig { workspace } => {
             get_sql_pools_config(cli, client, workspace).await
@@ -491,20 +518,27 @@ async fn delete_warehouse(
     client: &FabricClient,
     workspace: &str,
     id: &str,
+    hard_delete: bool,
 ) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "warehouse delete",
         &serde_json::json!({
             "workspace": workspace,
-            "id": id
+            "id": id, "hardDelete": hard_delete
         }),
     ) {
         return Ok(());
     }
 
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/warehouses/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/warehouses/{id}")
+    };
+
     client
-        .delete(&format!("/workspaces/{workspace}/warehouses/{id}"))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "warehouse delete", "Member"))?;
 
@@ -604,11 +638,24 @@ async fn connection_string(
     client: &FabricClient,
     workspace: &str,
     id: &str,
+    guest_tenant_id: Option<&str>,
+    private_link_type: Option<&str>,
 ) -> Result<()> {
+    let mut url = format!("/workspaces/{workspace}/warehouses/{id}/connectionString");
+    let mut params = Vec::new();
+    if let Some(tenant) = guest_tenant_id {
+        params.push(format!("guestTenantId={tenant}"));
+    }
+    if let Some(link_type) = private_link_type {
+        params.push(format!("privateLinkType={link_type}"));
+    }
+    if !params.is_empty() {
+        url.push('?');
+        url.push_str(&params.join("&"));
+    }
+
     let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/warehouses/{id}/connectionString"
-        ))
+        .get(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "warehouse connection-string", "Viewer"))?;
     output::render_object(cli, &data, "id");

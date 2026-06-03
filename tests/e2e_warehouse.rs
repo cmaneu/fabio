@@ -344,3 +344,92 @@ fn warehouse_update_requires_field() {
     let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
     assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
 }
+
+// ─── Connection String ───────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_connection_string_not_found() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "warehouse",
+            "connection-string",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_connection_string_with_guest_tenant_not_found() {
+    let cfg = TestConfig::from_env();
+
+    // Verify the --guest-tenant-id flag is accepted by the CLI
+    fabio()
+        .args([
+            "warehouse",
+            "connection-string",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--guest-tenant-id",
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_connection_string_with_private_link_not_found() {
+    let cfg = TestConfig::from_env();
+
+    // Verify the --private-link-type flag is accepted by the CLI
+    fabio()
+        .args([
+            "warehouse",
+            "connection-string",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--private-link-type",
+            "OneLake",
+        ])
+        .assert()
+        .failure();
+}
+
+// ─── Hard Delete ─────────────────────────────────────────────────────────────
+
+#[test]
+fn warehouse_delete_hard_delete_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "delete",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--hard-delete",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["hardDelete"], true);
+}

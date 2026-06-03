@@ -1400,3 +1400,131 @@ fn item_bulk_create_and_delete_live() {
     assert_eq!(data["succeeded"], 2);
     assert_eq!(data["failed"], 0);
 }
+
+// ===========================================================================
+// item delete --hard-delete (dry-run, no live tenant required)
+// ===========================================================================
+
+#[test]
+fn item_delete_hard_delete_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "item",
+            "delete",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--hard-delete",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["hardDelete"], true);
+}
+
+#[test]
+fn item_delete_without_hard_delete_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "item",
+            "delete",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["hardDelete"], false);
+}
+
+// ===========================================================================
+// item move-to-folder (dry-run + live)
+// ===========================================================================
+
+#[test]
+fn item_move_to_folder_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "item",
+            "move-to-folder",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--folder-id",
+            "cccccccc-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(
+        data["details"]["targetFolderId"],
+        "cccccccc-1111-2222-3333-444444444444"
+    );
+}
+
+#[test]
+fn item_move_to_folder_root_dry_run() {
+    // Omitting --folder-id moves to workspace root (null)
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "item",
+            "move-to-folder",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert!(data["details"]["targetFolderId"].is_null());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_move_to_folder_not_found() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "move-to-folder",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--folder-id",
+            "00000000-0000-0000-0000-000000000001",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    let code = err_json["error"]["code"].as_str().unwrap_or("");
+    assert!(
+        code == "NOT_FOUND" || code == "API_ERROR",
+        "Expected NOT_FOUND or API_ERROR, got: {code}"
+    );
+}

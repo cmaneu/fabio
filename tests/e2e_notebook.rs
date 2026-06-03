@@ -707,3 +707,27 @@ fn notebook_get_definition_strip_output() {
     });
     assert!(has_content_part);
 }
+
+// ─── Hard Delete ─────────────────────────────────────────────────────────────
+
+#[test]
+fn notebook_delete_hard_delete_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "notebook",
+            "delete",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--hard-delete",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["hardDelete"], true);
+}

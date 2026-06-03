@@ -71,6 +71,10 @@ pub enum MlModelCommand {
         /// ML model ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
     /// Get the ML model serving endpoint configuration
     #[command(display_order = 10)]
@@ -262,7 +266,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &MlModelCommand)
             )
             .await
         }
-        MlModelCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
+        MlModelCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete(cli, client, workspace, id, *hard_delete).await,
         MlModelCommand::GetEndpoint { workspace, id } => {
             get_endpoint(cli, client, workspace, id).await
         }
@@ -478,20 +486,32 @@ fn read_json_body(file: Option<&str>, content: Option<&str>, command: &str) -> R
     }
 }
 
-async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "ml-model delete",
         &serde_json::json!({
             "workspace": workspace,
-            "id": id
+            "id": id, "hardDelete": hard_delete
         }),
     ) {
         return Ok(());
     }
 
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/mlModels/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/mlModels/{id}")
+    };
+
     client
-        .delete(&format!("/workspaces/{workspace}/mlModels/{id}"))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "ml-model delete", "Member"))?;
 

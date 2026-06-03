@@ -831,3 +831,27 @@ fn lakehouse_query_table_output() {
     assert!(stdout.contains("product_id"));
     assert!(stdout.contains("Widget A"));
 }
+
+// ─── Hard Delete ─────────────────────────────────────────────────────────────
+
+#[test]
+fn lakehouse_delete_hard_delete_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "lakehouse",
+            "delete",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--hard-delete",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["hardDelete"], true);
+}

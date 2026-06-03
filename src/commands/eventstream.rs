@@ -72,6 +72,10 @@ pub enum EventstreamCommand {
         /// Eventstream ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
 
     // ── Definitions ──────────────────────────────────────────────────────
@@ -347,7 +351,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventstreamComm
             )
             .await
         }
-        EventstreamCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
+        EventstreamCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete(cli, client, workspace, id, *hard_delete).await,
         EventstreamCommand::GetDefinition { workspace, id } => {
             get_definition(cli, client, workspace, id).await
         }
@@ -564,20 +572,32 @@ async fn update(
     Ok(())
 }
 
-async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "eventstream delete",
         &serde_json::json!({
             "workspace": workspace,
-            "id": id
+            "id": id, "hardDelete": hard_delete
         }),
     ) {
         return Ok(());
     }
 
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/eventstreams/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/eventstreams/{id}")
+    };
+
     client
-        .delete(&format!("/workspaces/{workspace}/eventstreams/{id}"))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "eventstream delete", "Member"))?;
 

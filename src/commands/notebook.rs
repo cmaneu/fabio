@@ -114,6 +114,10 @@ pub enum NotebookCommand {
         /// Notebook item ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
 
     // ── Execution ────────────────────────────────────────────────────────
@@ -297,7 +301,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
             id,
             livy_id,
         } => get_livy_session(cli, client, workspace, id, livy_id).await,
-        NotebookCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
+        NotebookCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete(cli, client, workspace, id, *hard_delete).await,
     }
 }
 
@@ -686,9 +694,32 @@ async fn stop(
     Ok(())
 }
 
-async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "notebook delete",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id, "hardDelete": hard_delete
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/items/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/items/{id}")
+    };
+
     client
-        .delete(&format!("/workspaces/{workspace}/items/{id}"))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "notebook delete", "Member"))?;
 

@@ -84,6 +84,10 @@ pub enum KqlDatabaseCommand {
         /// KQL database ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
 
     /// Execute a KQL query against a KQL database
@@ -267,7 +271,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseComm
             )
             .await
         }
-        KqlDatabaseCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
+        KqlDatabaseCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete(cli, client, workspace, id, *hard_delete).await,
         KqlDatabaseCommand::Query {
             workspace,
             id,
@@ -460,17 +468,29 @@ async fn update(
     Ok(())
 }
 
-async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "kql-database delete",
-        &serde_json::json!({ "workspace": workspace, "id": id }),
+        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
     ) {
         return Ok(());
     }
 
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/kqlDatabases/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/kqlDatabases/{id}")
+    };
+
     client
-        .delete(&format!("/workspaces/{workspace}/kqlDatabases/{id}"))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "kql-database delete", "Member"))?;
 

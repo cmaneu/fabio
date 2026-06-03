@@ -182,6 +182,10 @@ pub enum ItemCommand {
         /// Item ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
 
     // ── Copy/Move ────────────────────────────────────────────────────────
@@ -222,6 +226,21 @@ pub enum ItemCommand {
         /// New name (optional, defaults to source name)
         #[arg(long)]
         name: Option<String>,
+    },
+    /// Move an item to a folder within the same workspace
+    #[command(name = "move-to-folder", display_order = 16)]
+    MoveToFolder {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+
+        /// Target folder ID (omit or pass empty string to move to workspace root)
+        #[arg(long)]
+        folder_id: Option<String>,
     },
 
     // ── Tags ─────────────────────────────────────────────────────────────
@@ -537,7 +556,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             )
             .await
         }
-        ItemCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
+        ItemCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete(cli, client, workspace, id, *hard_delete).await,
         ItemCommand::Copy {
             source_workspace,
             id,
@@ -570,6 +593,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             )
             .await
         }
+        ItemCommand::MoveToFolder {
+            workspace,
+            id,
+            folder_id,
+        } => move_to_folder(cli, client, workspace, id, folder_id.as_deref()).await,
         ItemCommand::ApplyTags {
             workspace,
             id,
@@ -1050,20 +1078,32 @@ async fn update_definition(
 
 // ─── Delete ──────────────────────────────────────────────────────────────────
 
-async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "item delete",
         &serde_json::json!({
             "workspace": workspace,
-            "id": id
+            "id": id, "hardDelete": hard_delete
         }),
     ) {
         return Ok(());
     }
 
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/items/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/items/{id}")
+    };
+
     client
-        .delete(&format!("/workspaces/{workspace}/items/{id}"))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "item delete", "Member"))?;
 
@@ -1138,6 +1178,37 @@ async fn move_item(
     let mut obj = result;
     obj["status"] = Value::String("moved".to_string());
     output::render_object(cli, &obj, "id");
+    Ok(())
+}
+
+async fn move_to_folder(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    folder_id: Option<&str>,
+) -> Result<()> {
+    let body = serde_json::json!({ "targetFolderId": folder_id });
+
+    if output::dry_run_guard(cli, "item move-to-folder", &body) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/items/{id}/move"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "item move-to-folder", "Contributor"))?;
+
+    let obj = serde_json::json!({
+        "id": id,
+        "targetFolderId": folder_id,
+        "status": "moved"
+    });
+    output::render_object(cli, &obj, "status");
     Ok(())
 }
 

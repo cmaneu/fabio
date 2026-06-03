@@ -76,6 +76,10 @@ pub enum DataAgentCommand {
         /// Data agent ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
     /// Query (chat with) a published data agent using natural language
     Query {
@@ -178,7 +182,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
         )
         .await
         .map_err(|e| enrich_forbidden(e, "data-agent update", "Contributor")),
-        DataAgentCommand::Delete { workspace, id } => delete(cli, client, workspace, id)
+        DataAgentCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete(cli, client, workspace, id, *hard_delete)
             .await
             .map_err(|e| enrich_forbidden(e, "data-agent delete", "Member")),
         DataAgentCommand::Query {
@@ -319,10 +327,20 @@ async fn update(
     Ok(())
 }
 
-async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
-    client
-        .delete(&format!("/workspaces/{workspace}/dataAgents/{id}"))
-        .await?;
+async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/dataAgents/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/dataAgents/{id}")
+    };
+
+    client.delete(&url).await?;
 
     let result = serde_json::json!({
         "id": id,

@@ -68,6 +68,10 @@ pub enum MountedDataFactoryCommand {
         /// Mounted Data Factory ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
     /// Get the definition of a Mounted Data Factory
     #[command(display_order = 6)]
@@ -130,9 +134,11 @@ pub async fn execute(
             )
             .await
         }
-        MountedDataFactoryCommand::Delete { workspace, id } => {
-            delete(cli, client, workspace, id).await
-        }
+        MountedDataFactoryCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete(cli, client, workspace, id, *hard_delete).await,
         MountedDataFactoryCommand::GetDefinition {
             workspace,
             id,
@@ -270,18 +276,27 @@ async fn update(
     Ok(())
 }
 
-async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "mounted-data-factory delete",
-        &serde_json::json!({ "workspace": workspace, "id": id }),
+        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
     ) {
         return Ok(());
     }
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/mountedDataFactories/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/mountedDataFactories/{id}")
+    };
     client
-        .delete(&format!(
-            "/workspaces/{workspace}/mountedDataFactories/{id}"
-        ))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "mounted-data-factory delete", "Contributor"))?;
     let obj = serde_json::json!({ "id": id, "status": "deleted" });

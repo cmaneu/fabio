@@ -128,3 +128,48 @@ fn dataflow_dry_run_create() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["would_execute"], "dataflow create");
 }
+
+// ─── Discover Parameters ─────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataflow_discover_parameters_not_found() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "dataflow",
+            "discover-parameters",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+}
+
+// ─── Hard Delete ─────────────────────────────────────────────────────────────
+
+#[test]
+fn dataflow_delete_hard_delete_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "dataflow",
+            "delete",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--hard-delete",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["hardDelete"], true);
+}

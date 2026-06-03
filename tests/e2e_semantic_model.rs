@@ -1174,3 +1174,79 @@ fn semantic_model_import_pbix_invalid_file() {
         .assert()
         .failure();
 }
+
+// ─── Unbind Connection ───────────────────────────────────────────────────────
+
+#[test]
+fn semantic_model_unbind_connection_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "semantic-model",
+            "unbind-connection",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "semantic-model unbind-connection");
+    // Should show null connectionId in the details
+    assert!(data["details"]["connectionId"].is_null());
+}
+
+#[test]
+fn semantic_model_bind_connection_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "semantic-model",
+            "bind-connection",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--connection-id",
+            "cccccccc-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "semantic-model bind-connection");
+    assert_eq!(
+        data["details"]["connectionId"],
+        "cccccccc-1111-2222-3333-444444444444"
+    );
+}
+
+// ─── Hard Delete ─────────────────────────────────────────────────────────────
+
+#[test]
+fn semantic_model_delete_hard_delete_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "semantic-model",
+            "delete",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--hard-delete",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["hardDelete"], true);
+}

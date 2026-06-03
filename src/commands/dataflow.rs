@@ -73,6 +73,10 @@ pub enum DataflowCommand {
         /// Dataflow ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
 
     // ── Definitions ──────────────────────────────────────────────────────
@@ -110,6 +114,19 @@ pub enum DataflowCommand {
         #[arg(long)]
         content: Option<String>,
     },
+
+    // ── Parameters ───────────────────────────────────────────────────────
+    /// Discover parameters of a dataflow
+    #[command(name = "discover-parameters", display_order = 8)]
+    DiscoverParameters {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Dataflow ID
+        #[arg(long)]
+        id: String,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataflowCommand) -> Result<()> {
@@ -137,7 +154,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataflowCommand
             )
             .await
         }
-        DataflowCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
+        DataflowCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete(cli, client, workspace, id, *hard_delete).await,
         DataflowCommand::GetDefinition {
             workspace,
             id,
@@ -158,6 +179,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataflowCommand
                 content.as_deref(),
             )
             .await
+        }
+        DataflowCommand::DiscoverParameters { workspace, id } => {
+            discover_parameters(cli, client, workspace, id).await
         }
     }
 }
@@ -257,17 +281,29 @@ async fn update(
     Ok(())
 }
 
-async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "dataflow delete",
-        &serde_json::json!({ "workspace": workspace, "id": id }),
+        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
     ) {
         return Ok(());
     }
 
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/dataflows/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/dataflows/{id}")
+    };
+
     client
-        .delete(&format!("/workspaces/{workspace}/dataflows/{id}"))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "dataflow delete", "Member"))?;
 
@@ -364,5 +400,34 @@ async fn update_definition(
     } else {
         output::render_object(cli, &data, "id");
     }
+    Ok(())
+}
+
+// ─── Parameters ──────────────────────────────────────────────────────────────
+
+async fn discover_parameters(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/dataflows/{id}/parameters"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "dataflow discover-parameters", "Contributor"))?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["name", "type", "currentValue", "isRequired"],
+        &["NAME", "TYPE", "CURRENT VALUE", "REQUIRED"],
+        "name",
+        resp.continuation_token.as_deref(),
+    );
     Ok(())
 }

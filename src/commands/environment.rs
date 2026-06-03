@@ -73,6 +73,10 @@ pub enum EnvironmentCommand {
         /// Environment ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
 
     // ── Publish ──────────────────────────────────────────────────────────
@@ -298,7 +302,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
             )
             .await
         }
-        EnvironmentCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
+        EnvironmentCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete(cli, client, workspace, id, *hard_delete).await,
         EnvironmentCommand::Publish { workspace, id } => publish(cli, client, workspace, id).await,
         EnvironmentCommand::CancelPublish { workspace, id } => {
             cancel_publish(cli, client, workspace, id).await
@@ -492,20 +500,32 @@ async fn update(
     Ok(())
 }
 
-async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "environment delete",
         &serde_json::json!({
             "workspace": workspace,
-            "id": id
+            "id": id, "hardDelete": hard_delete
         }),
     ) {
         return Ok(());
     }
 
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/environments/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/environments/{id}")
+    };
+
     client
-        .delete(&format!("/workspaces/{workspace}/environments/{id}"))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "environment delete", "Member"))?;
 

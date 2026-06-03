@@ -386,7 +386,7 @@ fn commands_schema() -> serde_json::Value {
             }
         },
         "item": {
-            "description": "Manage items (13 subcommands: CRUD + copy/move + definitions + exists/url/inspect)",
+            "description": "Manage items (18 subcommands: CRUD + copy/move + definitions + exists/url/inspect + bulk-create/bulk-delete + move-to-folder + external-data-share)",
             "subcommands": {
                 "list": {
                     "description": "List items in a workspace",
@@ -461,7 +461,47 @@ fn commands_schema() -> serde_json::Value {
                     "destructive": true,
                     "flags": {
                         "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
-                        "--id": {"type": "string", "required": true, "description": "Item ID"}
+                        "--id": {"type": "string", "required": true, "description": "Item ID"},
+                        "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}
+                    }
+                },
+                "move-to-folder": {
+                    "description": "Move an item to a folder within the same workspace (or to root)",
+                    "mutates": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--id": {"type": "string", "required": true, "description": "Item ID"},
+                        "--folder-id": {"type": "string", "description": "Target folder ID (omit to move to workspace root)"}
+                    }
+                },
+                "bulk-create": {
+                    "description": "Create multiple items in parallel from JSON spec",
+                    "mutates": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--content": {"type": "string", "required": true, "description": "JSON array of items to create"}
+                    }
+                },
+                "bulk-delete": {
+                    "description": "Delete multiple items in parallel",
+                    "mutates": true,
+                    "destructive": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--ids": {"type": "string", "required": true, "description": "Comma-separated item IDs"},
+                        "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}
+                    }
+                },
+                "create-external-data-share": {
+                    "description": "Create an external data share for an item",
+                    "mutates": true,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--id": {"type": "string", "required": true, "description": "Item ID"},
+                        "--paths": {"type": "string", "required": true, "description": "Comma-separated paths to share"},
+                        "--recipient-tenant-id": {"type": "string", "required": true, "description": "Recipient tenant ID"},
+                        "--recipient-type": {"type": "string", "description": "Recipient type (User or ServicePrincipal)"},
+                        "--recipient-id": {"type": "string", "description": "Recipient principal ID (required if --recipient-type is set)"}
                     }
                 },
                 "copy": {
@@ -519,7 +559,7 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show lakehouse details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a lakehouse", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}, "--enable-schemas": {"type": "bool", "description": "Enable multi-schema lakehouse"}}},
                 "update": {"description": "Update lakehouse properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete a lakehouse", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete a lakehouse", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "list-tables": {
                     "description": "List tables in a lakehouse",
                     "aliases": ["tables"],
@@ -805,7 +845,7 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show warehouse details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a warehouse", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
                 "update": {"description": "Update warehouse properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete a warehouse", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete a warehouse", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "query": {
                     "description": "Execute a SQL query against a warehouse",
                     "mutates": true,
@@ -813,6 +853,16 @@ fn commands_schema() -> serde_json::Value {
                         "--workspace": {"type": "string", "required": true},
                         "--id": {"type": "string", "required": true},
                         "--sql": {"type": "string", "description": "SQL query (prefix @ to read from file, omit for stdin)"}
+                    }
+                },
+                "connection-string": {
+                    "description": "Get TDS connection string for a warehouse",
+                    "mutates": false,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true},
+                        "--id": {"type": "string", "required": true},
+                        "--guest-tenant-id": {"type": "string", "description": "Guest tenant AAD object ID (for cross-tenant access)"},
+                        "--private-link-type": {"type": "string", "description": "Private link type (Dfs or Blob)"}
                     }
                 }
             }
@@ -887,7 +937,7 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show details of an environment", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a new environment", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
                 "update": {"description": "Update environment properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete an environment", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete an environment", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "publish": {"description": "Publish staged changes", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "cancel-publish": {"description": "Cancel a pending publish", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "get-spark-settings": {"description": "Get published Spark settings", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
@@ -901,7 +951,7 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show details of a data pipeline", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a new data pipeline", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
                 "update": {"description": "Update data pipeline properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete a data pipeline", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete a data pipeline", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "run": {"description": "Run a data pipeline", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
             }
         },
@@ -912,7 +962,7 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show details of an eventhouse", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a new eventhouse", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
                 "update": {"description": "Update eventhouse properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete an eventhouse", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+                "delete": {"description": "Delete an eventhouse", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}}
             }
         },
         "connection": {
@@ -1057,7 +1107,7 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show KQL database details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a KQL database", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--eventhouse-id": {"type": "string", "required": true}, "--database-type": {"type": "enum", "values": ["ReadWrite", "ReadOnlyFollowing"]}}},
                 "update": {"description": "Update KQL database properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete a KQL database", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete a KQL database", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "get-definition": {"description": "Get KQL database definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "update-definition": {"description": "Update KQL database definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
                 "query": {"description": "Execute a KQL query against a database", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--kql": {"type": "string", "required": true, "description": "KQL query text"}, "--query-uri": {"type": "string", "description": "Override Kusto query URI"}}}
@@ -1070,7 +1120,7 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show mirrored database details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a mirrored database", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
                 "update": {"description": "Update mirrored database", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete a mirrored database", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete a mirrored database", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "get-definition": {"description": "Get definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "update-definition": {"description": "Update definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
                 "start": {"description": "Start mirroring", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
@@ -1111,7 +1161,7 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show eventstream details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create an eventstream", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
                 "update": {"description": "Update eventstream properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete an eventstream", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete an eventstream", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "get-definition": {"description": "Get eventstream definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "update-definition": {"description": "Update eventstream definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
                 "get-topology": {"description": "Get eventstream topology (sources, streams, destinations)", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
@@ -1136,7 +1186,7 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show KQL queryset details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a KQL queryset", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
                 "update": {"description": "Update KQL queryset properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete a KQL queryset", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete a KQL queryset", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "get-definition": {"description": "Get KQL queryset definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "update-definition": {"description": "Update KQL queryset definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
                 "run": {"description": "Run a saved KQL query tab against its configured data source", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--tab": {"type": "string", "description": "Tab name or index (default: first tab)"}}}
@@ -1149,7 +1199,7 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show Spark job definition details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a Spark job definition", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
                 "update": {"description": "Update Spark job definition properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete a Spark job definition", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete a Spark job definition", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "get-definition": {"description": "Get Spark job definition content", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "update-definition": {"description": "Update Spark job definition content", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
                 "run": {"description": "Run a Spark job definition", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
@@ -1162,7 +1212,7 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show report details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a report from definition file", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}, "--file": {"type": "string", "required": true}}},
                 "update": {"description": "Update report properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete a report", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete a report", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "get-definition": {"description": "Get report definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "update-definition": {"description": "Update report definition from file", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string", "required": true}}}
             }
@@ -1174,12 +1224,13 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show semantic model details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a semantic model from definition file (model.bim)", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}, "--file": {"type": "string", "required": true}}},
                 "update": {"description": "Update semantic model properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete a semantic model", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete a semantic model", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "get-definition": {"description": "Get semantic model definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "update-definition": {"description": "Update semantic model definition from file", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string", "required": true}}},
                 "query": {"description": "Execute DAX query against a semantic model", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--dax": {"type": "string"}, "--file": {"type": "string"}}},
                 "refresh": {"description": "Trigger a refresh on a semantic model", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--type": {"type": "string"}}},
                 "bind-connection": {"description": "Bind a semantic model to a connection (lakehouse SQL endpoint ID)", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--connection-id": {"type": "string", "required": true}}},
+                "unbind-connection": {"description": "Unbind a semantic model from its current connection", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "takeover": {"description": "Take ownership of a definition-managed semantic model (makes it editable in portal)", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "list-parameters": {"description": "List parameters of a semantic model", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "update-parameters": {"description": "Update parameter values", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--content": {"type": "string", "required": true}}},
@@ -1202,7 +1253,7 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show copy job details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a copy job", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
                 "update": {"description": "Update copy job properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete a copy job", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete a copy job", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "get-definition": {"description": "Get copy job definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "update-definition": {"description": "Update copy job definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
             }
@@ -1214,9 +1265,10 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show dataflow details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a dataflow", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
                 "update": {"description": "Update dataflow properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete a dataflow", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete a dataflow", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "get-definition": {"description": "Get dataflow definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
-                "update-definition": {"description": "Update dataflow definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
+                "update-definition": {"description": "Update dataflow definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
+                "discover-parameters": {"description": "Discover parameters of a dataflow", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
             }
         },
         "kql-dashboard": {
@@ -1226,7 +1278,7 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show KQL dashboard details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a KQL dashboard", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
                 "update": {"description": "Update KQL dashboard properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete a KQL dashboard", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete a KQL dashboard", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "get-definition": {"description": "Get KQL dashboard definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "update-definition": {"description": "Update KQL dashboard definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
             }
@@ -1238,7 +1290,7 @@ fn commands_schema() -> serde_json::Value {
                 "show": {"description": "Show reflex details", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a reflex", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
                 "update": {"description": "Update reflex properties", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
-                "delete": {"description": "Delete a reflex", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "delete": {"description": "Delete a reflex", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "get-definition": {"description": "Get reflex definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "update-definition": {"description": "Update reflex definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}}
             }

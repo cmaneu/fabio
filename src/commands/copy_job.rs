@@ -73,6 +73,10 @@ pub enum CopyJobCommand {
         /// Copy job ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
 
     // ── Definitions ──────────────────────────────────────────────────────
@@ -137,7 +141,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CopyJobCommand)
             )
             .await
         }
-        CopyJobCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
+        CopyJobCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete(cli, client, workspace, id, *hard_delete).await,
         CopyJobCommand::GetDefinition {
             workspace,
             id,
@@ -257,17 +265,29 @@ async fn update(
     Ok(())
 }
 
-async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "copy-job delete",
-        &serde_json::json!({ "workspace": workspace, "id": id }),
+        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
     ) {
         return Ok(());
     }
 
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/copyJobs/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/copyJobs/{id}")
+    };
+
     client
-        .delete(&format!("/workspaces/{workspace}/copyJobs/{id}"))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "copy-job delete", "Member"))?;
 

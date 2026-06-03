@@ -71,6 +71,10 @@ pub enum MlExperimentCommand {
         /// ML experiment ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
 }
 
@@ -103,7 +107,11 @@ pub async fn execute(
             )
             .await
         }
-        MlExperimentCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
+        MlExperimentCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete(cli, client, workspace, id, *hard_delete).await,
     }
 }
 
@@ -215,20 +223,32 @@ async fn update(
     Ok(())
 }
 
-async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "ml-experiment delete",
         &serde_json::json!({
             "workspace": workspace,
-            "id": id
+            "id": id, "hardDelete": hard_delete
         }),
     ) {
         return Ok(());
     }
 
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/mlExperiments/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/mlExperiments/{id}")
+    };
+
     client
-        .delete(&format!("/workspaces/{workspace}/mlExperiments/{id}"))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "ml-experiment delete", "Member"))?;
 

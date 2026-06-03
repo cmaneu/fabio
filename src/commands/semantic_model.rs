@@ -82,6 +82,10 @@ pub enum SemanticModelCommand {
         /// Semantic model ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
     /// Get the definition of a semantic model
     #[command(name = "get-definition", display_order = 6)]
@@ -142,6 +146,17 @@ pub enum SemanticModelCommand {
         /// Connection ID to bind
         #[arg(long)]
         connection_id: String,
+    },
+    /// Unbind a connection from a semantic model
+    #[command(name = "unbind-connection", display_order = 10)]
+    UnbindConnection {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
     },
     /// Refresh a semantic model (required to frame Direct Lake models after creation)
     #[command(display_order = 11)]
@@ -393,7 +408,11 @@ pub async fn execute(
             )
             .await
         }
-        SemanticModelCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
+        SemanticModelCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete(cli, client, workspace, id, *hard_delete).await,
         SemanticModelCommand::GetDefinition { workspace, id } => {
             get_definition(cli, client, workspace, id).await
         }
@@ -413,6 +432,9 @@ pub async fn execute(
             id,
             connection_id,
         } => bind_connection(cli, client, workspace, id, connection_id).await,
+        SemanticModelCommand::UnbindConnection { workspace, id } => {
+            unbind_connection(cli, client, workspace, id).await
+        }
         SemanticModelCommand::Refresh {
             workspace,
             id,
@@ -674,20 +696,32 @@ async fn update(
     Ok(())
 }
 
-async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "semantic-model delete",
         &serde_json::json!({
             "workspace": workspace,
-            "id": id
+            "id": id, "hardDelete": hard_delete
         }),
     ) {
         return Ok(());
     }
 
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/semanticModels/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/semanticModels/{id}")
+    };
+
     client
-        .delete(&format!("/workspaces/{workspace}/semanticModels/{id}"))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "semantic-model delete", "Member"))?;
 
@@ -786,6 +820,35 @@ async fn bind_connection(
         "id": id,
         "connectionId": connection_id,
         "status": "connection_bound"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn unbind_connection(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let body = serde_json::json!({ "connectionId": null });
+
+    if output::dry_run_guard(cli, "semantic-model unbind-connection", &body) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/semanticModels/{id}/bindConnection"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model unbind-connection", "Contributor"))?;
+
+    let obj = serde_json::json!({
+        "id": id,
+        "status": "connection_unbound"
     });
     output::render_object(cli, &obj, "status");
     Ok(())

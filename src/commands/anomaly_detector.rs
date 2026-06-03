@@ -72,6 +72,10 @@ pub enum AnomalyDetectorCommand {
         /// Anomaly detector ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
     /// Get the definition of an anomaly detector
     #[command(display_order = 6)]
@@ -138,9 +142,11 @@ pub async fn execute(
             )
             .await
         }
-        AnomalyDetectorCommand::Delete { workspace, id } => {
-            delete(cli, client, workspace, id).await
-        }
+        AnomalyDetectorCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete(cli, client, workspace, id, *hard_delete).await,
         AnomalyDetectorCommand::GetDefinition {
             workspace,
             id,
@@ -271,17 +277,29 @@ async fn update(
     Ok(())
 }
 
-async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "anomaly-detector delete",
-        &serde_json::json!({ "workspace": workspace, "id": id }),
+        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
     ) {
         return Ok(());
     }
 
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/anomalyDetectors/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/anomalyDetectors/{id}")
+    };
+
     client
-        .delete(&format!("/workspaces/{workspace}/anomalyDetectors/{id}"))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "anomaly-detector delete", "Member"))?;
 

@@ -80,6 +80,10 @@ pub enum ReportCommand {
         /// Report ID
         #[arg(long)]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
 
     // ── Definitions ──────────────────────────────────────────────────────
@@ -177,7 +181,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
             )
             .await
         }
-        ReportCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
+        ReportCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete(cli, client, workspace, id, *hard_delete).await,
         ReportCommand::GetDefinition {
             workspace,
             id,
@@ -371,20 +379,32 @@ async fn update(
     Ok(())
 }
 
-async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "report delete",
         &serde_json::json!({
             "workspace": workspace,
-            "id": id
+            "id": id, "hardDelete": hard_delete
         }),
     ) {
         return Ok(());
     }
 
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/reports/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/reports/{id}")
+    };
+
     client
-        .delete(&format!("/workspaces/{workspace}/reports/{id}"))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "report delete", "Member"))?;
 

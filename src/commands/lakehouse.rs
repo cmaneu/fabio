@@ -79,6 +79,10 @@ pub enum LakehouseCommand {
         /// Lakehouse ID
         #[arg(long, visible_alias = "lakehouse")]
         id: String,
+
+        /// Permanently delete (cannot be recovered)
+        #[arg(long)]
+        hard_delete: bool,
     },
 
     // ── List ─────────────────────────────────────────────────────────────
@@ -763,9 +767,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             )
             .await
         }
-        LakehouseCommand::Delete { workspace, id } => {
-            delete_lakehouse(cli, client, workspace, id).await
-        }
+        LakehouseCommand::Delete {
+            workspace,
+            id,
+            hard_delete,
+        } => delete_lakehouse(cli, client, workspace, id, *hard_delete).await,
         LakehouseCommand::ListTables { workspace, id } => tables(cli, client, workspace, id).await,
         LakehouseCommand::ListFiles {
             workspace,
@@ -1283,20 +1289,27 @@ async fn delete_lakehouse(
     client: &FabricClient,
     workspace: &str,
     id: &str,
+    hard_delete: bool,
 ) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "lakehouse delete",
         &serde_json::json!({
             "workspace": workspace,
-            "id": id
+            "id": id, "hardDelete": hard_delete
         }),
     ) {
         return Ok(());
     }
 
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/lakehouses/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/lakehouses/{id}")
+    };
+
     client
-        .delete(&format!("/workspaces/{workspace}/lakehouses/{id}"))
+        .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "lakehouse delete", "Member"))?;
 
