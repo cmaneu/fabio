@@ -164,3 +164,61 @@ fn resolve_body(input: &str) -> Result<Value> {
         anyhow::anyhow!("Invalid JSON body: {e}. Provide valid JSON, @<file>, or @- for stdin.")
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_body_inline_json_object() {
+        let result = resolve_body(r#"{"key": "value"}"#).unwrap();
+        assert_eq!(result, serde_json::json!({"key": "value"}));
+    }
+
+    #[test]
+    fn resolve_body_inline_json_array() {
+        let result = resolve_body("[1, 2, 3]").unwrap();
+        assert_eq!(result, serde_json::json!([1, 2, 3]));
+    }
+
+    #[test]
+    fn resolve_body_empty_string_returns_empty_object() {
+        let result = resolve_body("").unwrap();
+        assert_eq!(result, serde_json::json!({}));
+    }
+
+    #[test]
+    fn resolve_body_whitespace_only_returns_empty_object() {
+        let result = resolve_body("   \n  ").unwrap();
+        assert_eq!(result, serde_json::json!({}));
+    }
+
+    #[test]
+    fn resolve_body_invalid_json_errors() {
+        let result = resolve_body("not json at all");
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Invalid JSON body"));
+    }
+
+    #[test]
+    fn resolve_body_file_not_found_errors() {
+        let result = resolve_body("@/nonexistent/path/body.json");
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Failed to read file"));
+    }
+
+    #[test]
+    fn resolve_body_file_reads_json() {
+        let dir = std::env::temp_dir().join("fabio_test_rest");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("body.json");
+        std::fs::write(&file, r#"{"from_file": true}"#).unwrap();
+
+        let result = resolve_body(&format!("@{}", file.display())).unwrap();
+        assert_eq!(result, serde_json::json!({"from_file": true}));
+
+        std::fs::remove_file(file).ok();
+    }
+}
