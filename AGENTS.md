@@ -35,7 +35,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (679 subcommands across 67 groups): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, rest, profile, jobs, feedback, operation, agent-context
+- **Full Rust implementation** (691 subcommands across 67 groups): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, rest, profile, jobs, feedback, operation, agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain, CSV, TSV formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`, `--lro-timeout`
@@ -74,7 +74,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Dataflow**: list, show, create, update, delete, get-definition, update-definition (Power BI transformation)
 - **GraphQL API**: list, show, create, update, delete, get-definition, update-definition (schema.graphql)
 - **Report**: list, show, create (from definition file), update, delete, get-definition, update-definition
-- **Semantic Model**: list, show, create (from model.bim), update, delete, get-definition, update-definition
+- **Semantic Model**: list, show, create (from model.bim), update, delete, get-definition, update-definition, query, refresh, bind-connection, takeover
 - **Map**: list, show, create, update, delete, get-definition, update-definition (geospatial visualization with Azure Maps)
 - **Spark Job Definition**: list, show, create, update, delete, get-definition, update-definition, run
 - **Capacity**: list, show, suspend, resume, create, update, delete, list-skus, check-name (Fabric read-only API + ARM API for lifecycle management)
@@ -124,12 +124,17 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Datamart**: list (read-only, portal-created)
 - **Paginated Report**: list/update (read-only creation via portal/SSRS)
 - **Lakehouse query**: Resolves SQL analytics endpoint from lakehouse properties, executes T-SQL via shared TDS utilities
-- **Rest**: Raw REST passthrough command (`fabio rest call`); supports GET/POST/PUT/PATCH/DELETE; `--body` accepts inline JSON, `@file`, `@-` (stdin); `--query-params` for URL params; `--poll` for LRO; dry-run for mutating methods
+- **Rest**: Raw REST passthrough command (`fabio rest call`); supports GET/POST/PUT/PATCH/DELETE; `--body` accepts inline JSON, `@file`, `@-` (stdin); `--query-params` for URL params; `--poll` for LRO; dry-run for mutating methods; `--api powerbi` targets Power BI REST API
+- **Power BI API pass-through**: `fabio rest call --api powerbi` routes to `https://api.powerbi.com/v1.0/myorg`; reuses Fabric token (no separate scope needed); supports all HTTP methods; dry-run shows `"api": "powerbi"` in output
+- **Semantic Model Power BI commands** (12 subcommands via Power BI REST API): `list-parameters`, `update-parameters`, `list-datasources`, `update-datasources`, `list-users`, `add-user`, `delete-user`, `refresh-status`, `list-upstream`, `clone`, `export-pbix`, `import-pbix`
+- **Semantic Model clone**: POST `/groups/{ws}/datasets/{id}/Default.Clone` with `--name`, `--target-workspace` (optional cross-workspace clone)
+- **Semantic Model export-pbix**: POST `.../Default.Export` → binary download to `--file` path; creates parent dirs; reports `size_bytes` in output
+- **Semantic Model import-pbix**: POST `/groups/{ws}/imports` multipart/form-data; `--name`, `--file`, `--name-conflict` (Abort|Overwrite|CreateOrOverwrite|GenerateUniqueName); validates file exists client-side
 - **Item bulk-create/bulk-delete**: Client-side parallel operations using `execute_parallel` with bounded concurrency and rate-limit retry; per-item success/failure reporting
 - **Notebook --strip-output**: `get-definition --strip-output` clears `outputs`/`execution_count` from ipynb cells; gracefully passes through `.py` format
 - **CSV/TSV output**: Global `--output csv|tsv` on all commands; RFC 4180 quoting via `format_csv_value()`
 - **Deploy validate**: Local-only pre-flight checks on source directory (validates .platform files, item types, definition structure, logical ID references); no API calls required
-- **1189 Rust tests** (460 unit + 76 offline integration + 653 E2E requiring live tenant), zero clippy warnings, rustfmt clean
+- **1234 Rust tests** (475 unit + 82 offline integration + 677 E2E requiring live tenant), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~16 MB, stripped, full LTO, panic=abort
@@ -197,7 +202,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/errors.rs`: ErrorCode enum + FabioError struct with thiserror
 - `src/output.rs`: render_list_with_token, render_object, render_error (respects --quiet/--query), apply_query, dry_run_guard, unit tests
 - `src/parallel.rs`: Parallel execution framework for concurrent file/table operations with rate-limit retry
-- `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, ARM API methods (arm_get/post/put/patch/delete with ARM LRO polling), run_notebook, trigger_item_job
+- `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, ARM API methods (arm_get/post/put/patch/delete with ARM LRO polling), Power BI API methods (get/post/put/patch/delete/bytes/multipart_powerbi), run_notebook, trigger_item_job
 - `src/commands/mod.rs`: Command dispatch
 - `src/commands/auth.rs`: login/logout/status (DefaultAzureCredential chain)
 - `src/commands/workspace.rs`: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
@@ -213,7 +218,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings
 - `src/commands/data_pipeline.rs`: list/show/create/update/delete/run
 - `src/commands/report.rs`: list/show/create/update/delete/get-definition/update-definition
-- `src/commands/semantic_model.rs`: list/show/create/update/delete/get-definition/update-definition
+- `src/commands/semantic_model.rs`: list/show/create/update/delete/get-definition/update-definition + query/refresh/bind-connection/takeover + list-parameters/update-parameters/list-datasources/update-datasources/list-users/add-user/delete-user/refresh-status/list-upstream/clone/export-pbix/import-pbix
 - `src/commands/eventhouse.rs`: list/show/create/update/delete
 - `src/commands/eventstream.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/kql_database.rs`: list/show/create/update/delete/get-definition/update-definition
@@ -272,7 +277,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/jobs.rs`: list/get/prune (local async job ledger)
 - `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
 - `src/commands/agent_context.rs`: Machine-readable command schema for AI agents
-- `src/commands/rest.rs`: Raw REST passthrough (method/path/body/query-params/poll); `resolve_body()` for @file/@- support
+- `src/commands/rest.rs`: Raw REST passthrough (method/path/body/query-params/poll); `resolve_body()` for @file/@- support; `--api powerbi` targets Power BI REST API
 - `tests/common/mod.rs`: Shared E2E test harness (TestConfig, helpers)
 - `tests/e2e_auth.rs`: Auth integration tests
 - `tests/e2e_workspace.rs`: Workspace CRUD + assign-capacity + networking + OneLake settings + folders + storage format + roles filter tests
@@ -1642,6 +1647,31 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **`bulk-set-labels` requires Microsoft Purview**: Returns "Label is not assigned to user" when Purview sensitivity labels are not configured in the tenant. Requires M365 E5 licensing + Purview label policy.
 - **`revoke-external-data-share`**: Returns NOT_FOUND for non-existent share IDs. Endpoint: `POST /admin/workspaces/{ws}/items/{item}/externalDataShares/{share}/revoke`.
 - **`list-external-data-shares` requires tenant setting**: Only works after enabling "External data sharing" (`AllowExternalDataSharingSwitch`) in tenant admin settings. Returns FORBIDDEN otherwise.
+
+## Power BI REST API Integration Behaviors Discovered
+- **Single token for both APIs**: The Fabric token (`https://api.fabric.microsoft.com/.default` scope) is accepted by both `api.fabric.microsoft.com` and `api.powerbi.com`. No separate Power BI scope is needed.
+- **Power BI API base URL**: `https://api.powerbi.com/v1.0/myorg`. Workspaces are referenced as "groups": `/groups/{workspace-id}/datasets/{dataset-id}`.
+- **`datasets` = semantic models**: The Power BI REST API uses the legacy term "datasets" for what Fabric calls "semantic models". The ID is the same UUID.
+- **`--api powerbi` flag on `fabio rest call`**: Routes requests to the Power BI API instead of Fabric. Dry-run output includes `"api": "powerbi"` field.
+- **Env var override**: `FABIO_POWERBI_ENDPOINT` overrides the Power BI base URL (for sovereign clouds).
+- **Auth reuse**: All Power BI methods (`get_powerbi`, `post_powerbi`, `put_powerbi`, `patch_powerbi`, `delete_powerbi`) share the same `require_auth()` token cache as Fabric methods.
+- **list-parameters**: `GET /groups/{ws}/datasets/{id}/parameters` → returns `{"value": [...]}` with M parameters.
+- **update-parameters**: `POST /groups/{ws}/datasets/{id}/Default.UpdateParameters` with `{"updateDetails": [...]}`.
+- **list-datasources**: `GET /groups/{ws}/datasets/{id}/datasources` → returns `{"value": [...]}`.
+- **update-datasources**: `POST /groups/{ws}/datasets/{id}/Default.UpdateDatasources` with `{"updateDetails": [...]}`.
+- **list-users**: `GET /groups/{ws}/datasets/{id}/users` → returns `{"value": [...]}` with access rights per principal.
+- **add-user**: `POST /groups/{ws}/datasets/{id}/users` with `{"identifier": "...", "principalType": "...", "datasetUserAccessRight": "..."}`.
+- **delete-user**: `DELETE /groups/{ws}/datasets/{id}/users/{user}` where `user` is the email or object ID.
+- **refresh-status**: `GET /groups/{ws}/datasets/{id}/refreshes?$top=N` returns refresh history (status, startTime, endTime).
+- **list-upstream**: `GET /groups/{ws}/datasets/{id}/upstreamDatasets` returns upstream dataset dependencies.
+- **clone**: `POST /groups/{ws}/datasets/{id}/Default.Clone` with `{"name": "...", "targetWorkspaceId"?: "..."}`. Returns new dataset ID.
+- **export-pbix**: `POST /groups/{ws}/datasets/{id}/Default.Export` → returns binary .pbix stream. Uses `post_powerbi_bytes()` for binary download. Reports `size_bytes` in output.
+- **import-pbix**: `POST /groups/{ws}/imports?datasetDisplayName={name}&nameConflict={policy}` with `multipart/form-data` file upload. Uses `post_powerbi_multipart()`. Validates file existence client-side before upload.
+- **import-pbix cannot retry on 401**: The multipart form body is consumed on first send attempt. If auth expires mid-upload, returns auth error instead of retrying.
+- **nameConflict values**: `Abort` (default, fails if exists), `Overwrite`, `CreateOrOverwrite`, `GenerateUniqueName`.
+- **accessRight values for add-user**: `Read`, `ReadWrite`, `ReadWriteReshare`, `ReadWriteReshareExplore`, `ReadExplore`, `ReadReshareExplore`, `ReadWriteExplore`.
+- **principalType values for add-user**: `User`, `Group`, `App` (service principal).
+- **`--content` flag pattern**: Phase 2 mutation commands use `--content` for inline JSON (not `--file`). Validated with `parse_json_content()` which provides error hints showing expected format.
 
 ## Deploy Command Design & Behaviors
 

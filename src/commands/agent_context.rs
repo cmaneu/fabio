@@ -1681,6 +1681,29 @@ fn commands_schema() -> serde_json::Value {
                 "get-state": {"description": "Get LRO operation state", "mutates": false, "flags": {"--operation-id": {"type": "string", "required": true}}},
                 "get-result": {"description": "Get LRO operation result", "mutates": false, "flags": {"--operation-id": {"type": "string", "required": true}}}
             }
+        },
+        "rest": {
+            "description": "Raw REST API passthrough (supports Fabric and Power BI APIs)",
+            "subcommands": {
+                "call": {
+                    "description": "Execute a raw REST API call",
+                    "mutates": true,
+                    "flags": {
+                        "--method": {"type": "enum", "values": ["get", "post", "put", "patch", "delete"], "required": true, "description": "HTTP method"},
+                        "--path": {"type": "string", "required": true, "description": "API path (appended to base URL)"},
+                        "--body": {"type": "string", "description": "Request body (inline JSON, @file, or @- for stdin)"},
+                        "--query-params": {"type": "string", "description": "URL query parameters as key=value pairs"},
+                        "--api": {"type": "enum", "values": ["fabric", "powerbi"], "default": "fabric", "description": "Target API endpoint"},
+                        "--poll": {"type": "bool", "description": "Poll LRO until completion (Fabric API only)"}
+                    },
+                    "examples": [
+                        "fabio rest call --method get --path /workspaces",
+                        "fabio rest call --method get --path /groups/{ws}/datasets --api powerbi",
+                        "fabio rest call --method post --path /groups/{ws}/datasets/{id}/refreshes --api powerbi --body '{}'",
+                        "fabio rest call --method post --path /workspaces/{ws}/items/{id}/getDefinition --poll"
+                    ]
+                }
+            }
         }
     })
 }
