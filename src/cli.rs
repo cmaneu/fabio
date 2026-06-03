@@ -9,7 +9,7 @@ use crate::commands::{
     kql_queryset, lakehouse, lro, managed_private_endpoint, map, mirrored_catalog,
     mirrored_database, mirrored_databricks_catalog, mirrored_warehouse, ml_experiment, ml_model,
     mounted_data_factory, notebook, onelake_security, ontology, operations_agent, paginated_report,
-    profile, reflex, report, semantic_model, snowflake_database, spark, spark_job_definition,
+    profile, reflex, report, rest, semantic_model, snowflake_database, spark, spark_job_definition,
     sql_database, sql_endpoint, user_data_function, variable_library, warehouse,
     warehouse_snapshot, workspace,
 };
@@ -493,7 +493,13 @@ pub enum Command {
         #[command(subcommand)]
         command: lro::LroCommand,
     },
+    /// Send raw REST requests to the Fabric API (like `az rest`)
+    #[command(display_order = 64)]
+    Rest {
+        #[command(subcommand)]
+        command: rest::RestCommand,
+    },
     /// Machine-readable CLI schema for agent introspection
-    #[command(name = "agent-context", display_order = 64)]
+    #[command(name = "agent-context", display_order = 65)]
     AgentContext,
 }

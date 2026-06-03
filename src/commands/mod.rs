@@ -52,6 +52,7 @@ pub mod paginated_report;
 pub mod profile;
 pub mod reflex;
 pub mod report;
+pub mod rest;
 pub mod semantic_model;
 pub mod snowflake_database;
 pub mod spark;
@@ -203,6 +204,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Jobs { command } => jobs::execute(&cli, command),
         Command::Feedback { command } => feedback::execute(&cli, command),
         Command::Lro { command } => lro::execute(&cli, &client, command).await,
+        Command::Rest { command } => rest::execute(&cli, &client, command).await,
         Command::AgentContext => agent_context::execute(&cli),
     }
 }

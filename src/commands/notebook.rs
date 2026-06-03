@@ -80,6 +80,10 @@ pub enum NotebookCommand {
         /// Notebook item ID
         #[arg(long)]
         id: String,
+
+        /// Strip cell outputs and execution counts (useful for version control)
+        #[arg(long)]
+        strip_output: bool,
     },
     /// Update the definition (source code) of a notebook
     #[command(display_order = 4)]
@@ -243,9 +247,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
             )
             .await
         }
-        NotebookCommand::GetDefinition { workspace, id } => {
-            get_definition(cli, client, workspace, id).await
-        }
+        NotebookCommand::GetDefinition {
+            workspace,
+            id,
+            strip_output,
+        } => get_definition(cli, client, workspace, id, *strip_output).await,
         NotebookCommand::UpdateDefinition {
             workspace,
             id,
@@ -521,14 +527,25 @@ async fn create(
     Ok(())
 }
 
-async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
-    let data = client
+async fn get_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    strip_output: bool,
+) -> Result<()> {
+    let mut data = client
         .post(
             &format!("/workspaces/{workspace}/items/{id}/getDefinition"),
             &serde_json::json!({}),
             true,
         )
         .await?;
+
+    if strip_output {
+        strip_notebook_outputs(&mut data);
+    }
+
     output::render_object(cli, &data, "definition");
     Ok(())
 }
@@ -739,4 +756,160 @@ async fn get_livy_session(
         .await?;
     output::render_object(cli, &data, "id");
     Ok(())
+}
+
+// ─── Utilities ───────────────────────────────────────────────────────────────
+
+/// Strip cell outputs and execution counts from notebook definition parts.
+///
+/// Walks through the `definition.parts` array, finds the `notebook-content.py`
+/// part, decodes its base64 payload as ipynb JSON, clears `outputs` and
+/// `execution_count` on every cell, then re-encodes the payload.
+fn strip_notebook_outputs(data: &mut Value) {
+    let base64_engine = base64::engine::general_purpose::STANDARD;
+
+    let Some(parts) = data
+        .get_mut("definition")
+        .and_then(|d| d.get_mut("parts"))
+        .and_then(|p| p.as_array_mut())
+    else {
+        return;
+    };
+
+    for part in parts {
+        let path = part
+            .get("path")
+            .and_then(|p| p.as_str())
+            .unwrap_or_default();
+
+        // Only process the notebook content part
+        if !path.contains("notebook-content") {
+            continue;
+        }
+
+        let payload_str = match part.get("payload").and_then(|p| p.as_str()) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+
+        // Decode base64
+        let Ok(decoded) = base64::Engine::decode(&base64_engine, &payload_str) else {
+            continue;
+        };
+
+        // Parse as UTF-8 string, then as JSON
+        let Ok(text) = String::from_utf8(decoded) else {
+            continue;
+        };
+
+        let mut notebook: Value = match serde_json::from_str(&text) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        // Strip outputs and execution_count from all cells
+        if let Some(cells) = notebook.get_mut("cells").and_then(|c| c.as_array_mut()) {
+            for cell in cells {
+                if let Some(obj) = cell.as_object_mut() {
+                    obj.insert("outputs".to_string(), Value::Array(vec![]));
+                    obj.remove("execution_count");
+                }
+            }
+        }
+
+        // Re-encode to base64 and update the part
+        let cleaned_json = serde_json::to_string(&notebook).unwrap_or_default();
+        let encoded = base64::Engine::encode(&base64_engine, cleaned_json.as_bytes());
+        part["payload"] = Value::String(encoded);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::Engine;
+    use serde_json::json;
+
+    #[test]
+    fn strip_notebook_outputs_clears_cells() {
+        let base64_engine = base64::engine::general_purpose::STANDARD;
+        let notebook = json!({
+            "nbformat": 4,
+            "nbformat_minor": 5,
+            "metadata": {},
+            "cells": [
+                {
+                    "cell_type": "code",
+                    "source": ["print('hello')\n"],
+                    "outputs": [{"output_type": "stream", "text": ["hello\n"]}],
+                    "execution_count": 1
+                },
+                {
+                    "cell_type": "code",
+                    "source": ["x = 42\n"],
+                    "outputs": [{"output_type": "execute_result", "data": {"text/plain": ["42"]}}],
+                    "execution_count": 2
+                }
+            ]
+        });
+
+        let payload = base64_engine.encode(serde_json::to_string(&notebook).unwrap());
+        let mut data = json!({
+            "definition": {
+                "parts": [
+                    {
+                        "path": "notebook-content.py",
+                        "payload": payload,
+                        "payloadType": "InlineBase64"
+                    }
+                ]
+            }
+        });
+
+        strip_notebook_outputs(&mut data);
+
+        // Decode the result and verify outputs are stripped
+        let result_payload = data["definition"]["parts"][0]["payload"].as_str().unwrap();
+        let decoded = base64_engine.decode(result_payload).unwrap();
+        let result: Value = serde_json::from_slice(&decoded).unwrap();
+
+        let cells = result["cells"].as_array().unwrap();
+        assert_eq!(cells.len(), 2);
+        // outputs should be empty arrays
+        assert_eq!(cells[0]["outputs"], json!([]));
+        assert_eq!(cells[1]["outputs"], json!([]));
+        // execution_count should be removed
+        assert!(cells[0].get("execution_count").is_none());
+        assert!(cells[1].get("execution_count").is_none());
+        // source should be preserved
+        assert_eq!(cells[0]["source"], json!(["print('hello')\n"]));
+    }
+
+    #[test]
+    fn strip_notebook_outputs_preserves_non_notebook_parts() {
+        let mut data = json!({
+            "definition": {
+                "parts": [
+                    {
+                        "path": ".platform",
+                        "payload": "eyJ0ZXN0IjogdHJ1ZX0=",
+                        "payloadType": "InlineBase64"
+                    }
+                ]
+            }
+        });
+
+        let original = data.clone();
+        strip_notebook_outputs(&mut data);
+        // Non-notebook parts should be unchanged
+        assert_eq!(data, original);
+    }
+
+    #[test]
+    fn strip_notebook_outputs_handles_no_definition() {
+        let mut data = json!({"id": "test"});
+        strip_notebook_outputs(&mut data);
+        // Should not panic
+        assert_eq!(data, json!({"id": "test"}));
+    }
 }

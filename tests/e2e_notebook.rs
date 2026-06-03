@@ -672,3 +672,38 @@ fn notebook_update_definition_requires_input() {
     let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
     assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn notebook_get_definition_strip_output() {
+    let cfg = TestConfig::from_env();
+
+    // --strip-output should succeed and return a valid definition
+    let assert = fabio()
+        .args([
+            "notebook",
+            "get-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.notebook_id,
+            "--strip-output",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Should still have definition.parts
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    assert!(!parts.is_empty());
+    // Should have notebook-content part
+    let has_content_part = parts.iter().any(|p| {
+        p["path"]
+            .as_str()
+            .unwrap_or("")
+            .contains("notebook-content")
+    });
+    assert!(has_content_part);
+}
