@@ -183,7 +183,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - Fabric REST base URL: `https://api.fabric.microsoft.com/v1`
 - OneLake DFS base URL: `https://onelake.dfs.fabric.microsoft.com`
 - OneLake Blob base URL: `https://onelake.blob.fabric.microsoft.com`
-- Fabric scope: `https://analysis.windows.net/powerbi/api/.default`
+- Fabric scope: `https://api.fabric.microsoft.com/.default`
 - Storage scope: `https://storage.azure.com/.default`
 - Spark rate limit on small capacity: LRO reports 430 `TooManyRequestsForCapacity` (non-standard code)
 - Test env vars: `FABIO_TEST_SOURCE_WORKSPACE`, `FABIO_TEST_SOURCE_LAKEHOUSE`, `FABIO_TEST_DEST_WORKSPACE`, `FABIO_TEST_DEST_LAKEHOUSE`, `FABIO_TEST_NOTEBOOK_ID`, `FABIO_TEST_CAPACITY_ID`
@@ -399,7 +399,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Published URL**: Only available from the portal Settings page AFTER publishing. Not exposed in `GET /dataAgents/{id}` response (which only returns `id`, `type`, `displayName`, `description`, `workspaceId`). Will be in `/settings` once V3 is enabled.
 - **Published URL pattern**: `https://api.fabric.microsoft.com/v1/workspaces/{wsId}/dataagents/{agentId}/aiassistant/openai` — this is the OpenAI Assistants-compatible endpoint activated by publishing from the portal.
 - **Chat protocol**: Data agents expose an OpenAI Assistants-compatible API at the published URL. Flow: `POST /assistants` → `POST /threads` → `POST /threads/{id}/messages` → `POST /threads/{id}/runs` → poll until terminal → `GET /threads/{id}/messages`. Query param: `?api-version=2024-05-01-preview`.
-- **Authentication for chat**: Uses same Fabric bearer token (`https://analysis.windows.net/powerbi/api/.default` scope), sent as `Authorization: Bearer {token}`.
+- **Authentication for chat**: Uses same Fabric bearer token (`https://api.fabric.microsoft.com/.default` scope), sent as `Authorization: Bearer {token}`.
 - **PATCH /dataAgents/{id}**: Only accepts `displayName` and `description` fields. Passing `properties` or other fields returns `InvalidInput: UpdateArtifactRequest should have at least one valid field to update`.
 - **Admin tenant settings API**: `GET /v1/admin/tenantsettings` returns error (insufficient privileges required). PowerBI admin API (`api.powerbi.com/v1.0/myorg/admin/tenantsettings`) returns 404.
 - **Data source configuration via definition IS supported**: Include `datasource.json` parts at path `Files/Config/draft/{type}-{DisplayName}/datasource.json`. The server normalizes the path (e.g., `lakehouse-SalesLH` → `lakehouse-tables-SalesLH`). Schema: `dataSource/1.0.0/schema.json`. The server adds `$schema` URL automatically.
@@ -460,7 +460,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **PBIR format does NOT support programmatic visual data rendering**: PBIR visuals with `query.queryState` are stored correctly but render NO data in the portal. The PBIR schema does not allow `prototypeQuery` (rejected by schema validator). PBIR appears to require internal metadata that only Power BI Desktop or the portal editor generates. **Use PBIR-Legacy with `prototypeQuery` for programmatic report creation with working visuals.**
 - **Server preserves original binding**: When `updateDefinition` is called with a new `definition.pbir` that has null values, the server uses the connection string from the original creation. The binding is stable.
 - **publish-to-web**: `POST https://api.powerbi.com/v1.0/myorg/groups/{groupId}/reports/{reportId}/publishtoweb` returns 404 for Fabric reports. Attempted with various body formats (`{"accessLevel":"View","allowFullScreen":true}`). Likely requires: (1) tenant admin to enable "Publish to web" in admin portal, AND (2) may only work with classic Power BI reports (not Fabric-native reports created via Items API).
-- **PowerBI API scope**: Report publish-to-web uses `api.powerbi.com` (not `api.fabric.microsoft.com`). Requires the same bearer token (`https://analysis.windows.net/powerbi/api/.default` scope).
+- **PowerBI API scope**: Report publish-to-web uses `api.powerbi.com` (not `api.fabric.microsoft.com`). Requires the same bearer token (`https://api.fabric.microsoft.com/.default` scope).
 
 ## Power BI File Formats Overview
 
@@ -927,7 +927,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 
 ## GraphQL API Behaviors Discovered
 - **Query endpoint**: `POST /workspaces/{ws}/graphqlApis/{id}/graphql` with body `{"query": "...", "variables": {...}, "operationName": "..."}`.
-- **Scope is standard Fabric scope**: Uses `https://analysis.windows.net/powerbi/api/.default` (same as all Fabric APIs, NOT a GraphQL-specific scope).
+- **Scope is standard Fabric scope**: Uses `https://api.fabric.microsoft.com/.default` (same as all Fabric APIs, NOT a GraphQL-specific scope).
 - **Response envelope**: Returns `{"data": {...}}` on success, `{"errors": [...]}` on failure, or both for partial results.
 - **Introspection blocked by default**: `__schema` and `__type` introspection queries return a security error unless explicitly enabled in tenant settings.
 - **Definition format**: `graphql-definition.json` with `datasources[]` array. Each datasource has `sourceItemId`, `sourceWorkspaceId`, `sourceType` (e.g., `SqlAnalyticsEndpoint`, `Warehouse`), and `objects[]` with field mappings.

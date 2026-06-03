@@ -20,7 +20,7 @@ const PUBLIC_CLIENT_ID: &str = "38715dcd-c115-46b4-8ed1-967d06c9ec6d";
 const DEFAULT_TENANT: &str = "common";
 
 /// Fabric API scope.
-const FABRIC_SCOPE: &str = "https://analysis.windows.net/powerbi/api/.default";
+const FABRIC_SCOPE: &str = "https://api.fabric.microsoft.com/.default";
 
 /// Margin before expiry to consider token stale and attempt refresh.
 const REFRESH_MARGIN: Duration = Duration::from_secs(300); // 5 minutes
