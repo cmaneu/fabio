@@ -2678,3 +2678,91 @@ fn workspace_url_returns_portal_url() {
     );
     assert_eq!(data["workspaceId"], cfg.source_workspace);
 }
+
+// ===========================================================================
+// workspace list --capacity filter
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_list_with_capacity_filter() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args(["workspace", "list", "--capacity", &cfg.capacity_id])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data.is_array());
+    let arr = data.as_array().unwrap();
+
+    // Our source workspace is assigned to this capacity, so at least one match
+    assert!(
+        !arr.is_empty(),
+        "expected at least one workspace on capacity"
+    );
+
+    // Verify all returned workspaces have the correct capacityId
+    for ws in arr {
+        let cap = ws.get("capacityId").and_then(|v| v.as_str()).unwrap_or("");
+        assert_eq!(
+            cap.to_lowercase(),
+            cfg.capacity_id.to_lowercase(),
+            "workspace {} has unexpected capacityId: {cap}",
+            ws["displayName"]
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_list_with_capacity_filter_nonexistent() {
+    // A capacity ID that doesn't exist should return zero results
+    let assert = fabio()
+        .args([
+            "workspace",
+            "list",
+            "--capacity",
+            "00000000-0000-0000-0000-000000000099",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let arr = data.as_array().unwrap();
+    assert!(arr.is_empty(), "expected no workspaces for fake capacity");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_list_capacity_combined_with_roles() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "list",
+            "--roles",
+            "Admin",
+            "--capacity",
+            &cfg.capacity_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data.is_array());
+    // Combined filter: Admin role AND on our capacity
+    let arr = data.as_array().unwrap();
+    assert!(
+        !arr.is_empty(),
+        "expected at least one Admin workspace on our capacity"
+    );
+}

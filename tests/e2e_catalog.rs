@@ -1,22 +1,136 @@
-use assert_cmd::Command;
-use serial_test::serial;
+//! End-to-end integration tests for `fabio catalog` commands.
 
 mod common;
 
-fn fabio() -> Command {
-    Command::cargo_bin("fabio").unwrap()
-}
+use common::{fabio, parse_json};
+use serial_test::serial;
 
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn catalog_search_succeeds() {
     let assert = fabio()
-        .args(["catalog", "search", "--query", "test"])
+        .args(["catalog", "search", "--search", "test"])
         .assert()
         .success();
-    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let json = parse_json(&assert);
     // Result may be null (no matches), an array, or an object
+    assert!(json.get("data").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn catalog_search_with_type_filter() {
+    let assert = fabio()
+        .args([
+            "catalog",
+            "search",
+            "--search",
+            "Sales",
+            "--type",
+            "Lakehouse",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(json.get("data").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn catalog_search_with_top() {
+    let assert = fabio()
+        .args(["catalog", "search", "--search", "test", "--top", "2"])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(json.get("data").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn catalog_search_with_exclude_type() {
+    let assert = fabio()
+        .args([
+            "catalog",
+            "search",
+            "--search",
+            "test",
+            "--exclude-type",
+            "Dashboard",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(json.get("data").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn catalog_search_with_multiple_types() {
+    let assert = fabio()
+        .args([
+            "catalog",
+            "search",
+            "--search",
+            "test",
+            "--type",
+            "Notebook,Lakehouse",
+            "--top",
+            "5",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(json.get("data").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn catalog_search_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "catalog",
+            "search",
+            "--search",
+            "test",
+            "--type",
+            "Notebook",
+            "--top",
+            "3",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("missing data");
+    assert_eq!(data["dry_run"], true);
+    // Verify the search body was built correctly (flat format)
+    let details = &data["details"];
+    assert_eq!(details["searchString"], "test");
+    assert_eq!(details["top"], 3);
+    assert_eq!(details["itemTypes"][0], "Notebook");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn catalog_search_content_flag_override() {
+    // --content should override convenience flags
+    let assert = fabio()
+        .args([
+            "catalog",
+            "search",
+            "--content",
+            r#"{"searchString":"Sales","top":1}"#,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
     assert!(json.get("data").is_some());
 }

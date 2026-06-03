@@ -126,6 +126,12 @@ fn global_flags() -> Vec<Flag> {
             description: "Use a named profile for default settings",
             default: None,
         },
+        Flag {
+            name: "--lro-timeout",
+            kind: "integer",
+            description: "Maximum seconds to wait for long-running operations (default: 120)",
+            default: Some("120"),
+        },
     ]
 }
 
@@ -271,7 +277,7 @@ fn commands_schema() -> serde_json::Value {
         "workspace": {
             "description": "Manage workspaces (46 subcommands)",
             "subcommands": {
-                "list": {"description": "List all workspaces", "mutates": false, "flags": {"--roles": {"type": "string", "description": "Filter by role: Admin,Member,Contributor,Viewer"}}},
+                "list": {"description": "List all workspaces", "mutates": false, "flags": {"--roles": {"type": "string", "description": "Filter by role: Admin,Member,Contributor,Viewer"}, "--capacity": {"type": "string", "description": "Filter by capacity ID (client-side)"}}},
                 "show": {"description": "Show workspace details", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}},
                 "create": {"description": "Create a workspace", "mutates": true, "flags": {"--name": {"type": "string", "required": true}, "--description": {"type": "string"}}},
                 "update": {"description": "Update workspace name/description", "mutates": true, "flags": {"--id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
@@ -328,7 +334,8 @@ fn commands_schema() -> serde_json::Value {
                     "mutates": false,
                     "flags": {
                         "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
-                        "--type": {"type": "string", "description": "Filter by item type (e.g., Notebook, Lakehouse, Warehouse)"}
+                        "--type": {"type": "string", "description": "Filter by item type (e.g., Notebook, Lakehouse, Warehouse)"},
+                        "--folder": {"type": "string", "description": "Filter by folder ID (client-side)"}
                     }
                 },
                 "show": {
@@ -1250,7 +1257,7 @@ fn commands_schema() -> serde_json::Value {
         "catalog": {
             "description": "Tenant-level search across workspaces",
             "subcommands": {
-                "search": {"description": "Search catalog items", "mutates": false, "flags": {"--content": {"type": "string", "required": true, "description": "JSON search body with searchString and top"}}}
+                "search": {"description": "Search catalog items", "mutates": false, "flags": {"--content": {"type": "string", "description": "Full JSON search body (overrides convenience flags)"}, "--type": {"type": "string", "description": "Filter by item type(s), comma-separated (e.g., Notebook,Lakehouse)"}, "--exclude-type": {"type": "string", "description": "Exclude item type(s), comma-separated"}, "--top": {"type": "integer", "description": "Maximum results to return"}, "--search": {"type": "string", "description": "Search string (-s/--search)"}}}
             }
         },
         "sql-database": {

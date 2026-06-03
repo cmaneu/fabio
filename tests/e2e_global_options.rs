@@ -298,3 +298,40 @@ fn continuation_token_flag_accepted_on_list_command() {
         .assert()
         .success();
 }
+
+// --- --lro-timeout flag tests ---
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lro_timeout_flag_accepted() {
+    // Verify the --lro-timeout flag is accepted and doesn't break normal commands
+    fabio()
+        .args(["--lro-timeout", "300", "workspace", "list", "--limit", "1"])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lro_timeout_flag_works_with_show() {
+    let cfg = TestConfig::from_env();
+
+    // Verify --lro-timeout works alongside other commands
+    let assert = fabio()
+        .args([
+            "--lro-timeout",
+            "60",
+            "workspace",
+            "show",
+            "--id",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["id"], cfg.source_workspace);
+}

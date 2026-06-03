@@ -2455,6 +2455,18 @@ mod tests {
         let _client = FabricClient::new();
     }
 
+    #[test]
+    fn fabric_client_default_lro_timeout_is_120s() {
+        let client = FabricClient::new();
+        assert_eq!(client.lro_max_wait, Duration::from_secs(120));
+    }
+
+    #[test]
+    fn fabric_client_with_lro_timeout_overrides_default() {
+        let client = FabricClient::new().with_lro_timeout(Duration::from_secs(300));
+        assert_eq!(client.lro_max_wait, Duration::from_secs(300));
+    }
+
     // ── handle_response (via wiremock) ───────────────────────────────────
 
     mod handle_response_tests {

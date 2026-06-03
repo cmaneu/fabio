@@ -1176,3 +1176,66 @@ fn item_inspect_nonexistent_item_fails() {
         .assert()
         .failure();
 }
+
+// ---------------------------------------------------------------------------
+// item list --folder filter
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_list_with_folder_filter_nonexistent() {
+    let cfg = TestConfig::from_env();
+
+    // A folder ID that doesn't exist should return zero results
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+            "--folder",
+            "00000000-0000-0000-0000-000000000099",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let arr = data.as_array().unwrap();
+    assert!(
+        arr.is_empty(),
+        "expected no items for nonexistent folder, got {}",
+        arr.len()
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_list_folder_combined_with_type() {
+    let cfg = TestConfig::from_env();
+
+    // Both filters together — should succeed even with no matches
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+            "--type",
+            "Notebook",
+            "--folder",
+            "00000000-0000-0000-0000-000000000099",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let arr = data.as_array().unwrap();
+    assert!(
+        arr.is_empty(),
+        "expected no items for nonexistent folder + type combo"
+    );
+}

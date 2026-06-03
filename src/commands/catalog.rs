@@ -13,8 +13,8 @@ pub enum CatalogCommand {
     #[command(display_order = 1)]
     Search {
         /// Search query string
-        #[arg(short, long)]
-        query: Option<String>,
+        #[arg(short = 's', long = "search")]
+        search_query: Option<String>,
 
         /// Filter by item type (e.g., Notebook, Lakehouse). Comma-separated for multiple.
         #[arg(short = 't', long = "type")]
@@ -41,7 +41,7 @@ pub enum CatalogCommand {
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &CatalogCommand) -> Result<()> {
     match command {
         CatalogCommand::Search {
-            query,
+            search_query,
             item_type,
             exclude_type,
             top,
@@ -51,7 +51,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CatalogCommand)
             search(
                 cli,
                 client,
-                query.as_deref(),
+                search_query.as_deref(),
                 item_type.as_deref(),
                 exclude_type.as_deref(),
                 *top,
@@ -126,27 +126,21 @@ fn build_search_body(
         body.insert("top".to_string(), Value::Number(t.into()));
     }
 
-    // Build filter object if type filters are specified
-    if item_type.is_some() || exclude_type.is_some() {
-        let mut filter = serde_json::Map::new();
+    // itemTypes and excludeItemTypes are top-level arrays (NOT nested under "filter")
+    if let Some(types) = item_type {
+        let type_array: Vec<Value> = types
+            .split(',')
+            .map(|s| Value::String(s.trim().to_string()))
+            .collect();
+        body.insert("itemTypes".to_string(), Value::Array(type_array));
+    }
 
-        if let Some(types) = item_type {
-            let type_array: Vec<Value> = types
-                .split(',')
-                .map(|s| Value::String(s.trim().to_string()))
-                .collect();
-            filter.insert("itemTypes".to_string(), Value::Array(type_array));
-        }
-
-        if let Some(types) = exclude_type {
-            let type_array: Vec<Value> = types
-                .split(',')
-                .map(|s| Value::String(s.trim().to_string()))
-                .collect();
-            filter.insert("excludeItemTypes".to_string(), Value::Array(type_array));
-        }
-
-        body.insert("filter".to_string(), Value::Object(filter));
+    if let Some(types) = exclude_type {
+        let type_array: Vec<Value> = types
+            .split(',')
+            .map(|s| Value::String(s.trim().to_string()))
+            .collect();
+        body.insert("excludeItemTypes".to_string(), Value::Array(type_array));
     }
 
     Value::Object(body)
@@ -160,7 +154,7 @@ mod tests {
     fn build_search_body_query_only() {
         let body = build_search_body(Some("lakehouse"), None, None, None);
         assert_eq!(body["searchString"], "lakehouse");
-        assert!(body.get("filter").is_none());
+        assert!(body.get("itemTypes").is_none());
         assert!(body.get("top").is_none());
     }
 
@@ -169,7 +163,7 @@ mod tests {
         let body = build_search_body(Some("test"), Some("Notebook,Lakehouse"), None, Some(5));
         assert_eq!(body["searchString"], "test");
         assert_eq!(body["top"], 5);
-        let types = body["filter"]["itemTypes"].as_array().unwrap();
+        let types = body["itemTypes"].as_array().unwrap();
         assert_eq!(types.len(), 2);
         assert_eq!(types[0], "Notebook");
         assert_eq!(types[1], "Lakehouse");
@@ -178,7 +172,7 @@ mod tests {
     #[test]
     fn build_search_body_with_exclude_type() {
         let body = build_search_body(None, None, Some("Dashboard"), None);
-        let excluded = body["filter"]["excludeItemTypes"].as_array().unwrap();
+        let excluded = body["excludeItemTypes"].as_array().unwrap();
         assert_eq!(excluded.len(), 1);
         assert_eq!(excluded[0], "Dashboard");
     }
@@ -188,7 +182,7 @@ mod tests {
         let body = build_search_body(Some("sales"), Some("Notebook"), Some("Lakehouse"), Some(20));
         assert_eq!(body["searchString"], "sales");
         assert_eq!(body["top"], 20);
-        assert_eq!(body["filter"]["itemTypes"][0], "Notebook");
-        assert_eq!(body["filter"]["excludeItemTypes"][0], "Lakehouse");
+        assert_eq!(body["itemTypes"][0], "Notebook");
+        assert_eq!(body["excludeItemTypes"][0], "Lakehouse");
     }
 }
