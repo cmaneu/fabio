@@ -124,6 +124,7 @@ impl FabricClient {
         let http = Client::builder()
             .timeout(Duration::from_secs(60))
             .redirect(reqwest::redirect::Policy::none())
+            .user_agent(concat!("fabio/", env!("CARGO_PKG_VERSION")))
             .build()
             .unwrap_or_else(|_| Client::new());
 
