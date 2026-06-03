@@ -16,17 +16,32 @@ pub enum HttpMethod {
     Delete,
 }
 
+/// Target API for raw REST calls.
+#[derive(Debug, Clone, Default, clap::ValueEnum)]
+pub enum ApiTarget {
+    /// Fabric REST API (<https://api.fabric.microsoft.com/v1>)
+    #[default]
+    Fabric,
+    /// Power BI REST API (<https://api.powerbi.com/v1.0/myorg>)
+    Powerbi,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum RestCommand {
-    /// Send a raw REST request to the Fabric API
+    /// Send a raw REST request to the Fabric or Power BI API
     ///
     /// Similar to `az rest` or `gh api`. Uses the authenticated client
     /// (same token as all other commands). Paths are relative to the
-    /// Fabric base URL (`https://api.fabric.microsoft.com/v1`).
+    /// selected API base URL.
+    ///
+    /// Fabric API (default): `https://api.fabric.microsoft.com/v1`
+    /// Power BI API (--api powerbi): `https://api.powerbi.com/v1.0/myorg`
     ///
     /// Examples:
     ///   fabio rest call --method get --path /workspaces
     ///   fabio rest call --method post --path /workspaces --body '{"displayName":"Test"}'
+    ///   fabio rest call --method get --path /groups/{ws}/datasets --api powerbi
+    ///   fabio rest call --method post --path /groups/{ws}/datasets/{id}/refreshes --api powerbi
     ///   echo '{"displayName":"X"}' | fabio rest call --method post --path /workspaces --body @-
     ///   fabio rest call --method get --path /capacities --query-params "beta=true"
     #[command(display_order = 0)]
@@ -35,7 +50,7 @@ pub enum RestCommand {
         #[arg(short, long)]
         method: HttpMethod,
 
-        /// API path relative to base URL (e.g., /workspaces or /workspaces/{id}/items)
+        /// API path relative to base URL (e.g., /workspaces or /groups/{ws}/datasets/{id}/refreshes)
         #[arg(short, long)]
         path: String,
 
@@ -50,6 +65,10 @@ pub enum RestCommand {
         /// Use LRO polling for the response (for async operations)
         #[arg(long)]
         poll: bool,
+
+        /// Target API (fabric or powerbi)
+        #[arg(long, default_value = "fabric")]
+        api: ApiTarget,
     },
 }
 
@@ -61,6 +80,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &RestCommand) ->
             body,
             query_params,
             poll,
+            api,
         } => {
             call(
                 cli,
@@ -70,12 +90,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &RestCommand) ->
                 body.as_deref(),
                 query_params.as_deref(),
                 *poll,
+                api,
             )
             .await
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn call(
     cli: &Cli,
     client: &FabricClient,
@@ -84,6 +106,7 @@ async fn call(
     body: Option<&str>,
     query_params: Option<&str>,
     poll: bool,
+    api: &ApiTarget,
 ) -> Result<()> {
     // Build the full path with optional query params
     let full_path = query_params.map_or_else(
@@ -108,9 +131,14 @@ async fn call(
         method,
         HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch | HttpMethod::Delete
     ) {
+        let api_label = match api {
+            ApiTarget::Fabric => "fabric",
+            ApiTarget::Powerbi => "powerbi",
+        };
         let dry_run_details = serde_json::json!({
             "method": format!("{method:?}").to_uppercase(),
             "path": full_path,
+            "api": api_label,
             "body": parsed_body,
         });
         if output::dry_run_guard(cli, "rest call", &dry_run_details) {
@@ -119,26 +147,63 @@ async fn call(
     }
 
     // Execute the request
-    let data = match method {
-        HttpMethod::Get => client.get(&full_path).await?,
-        HttpMethod::Post => {
-            let b = parsed_body.unwrap_or_else(|| serde_json::json!({}));
-            client.post(&full_path, &b, poll).await?
-        }
-        HttpMethod::Put => {
-            let b = parsed_body.unwrap_or_else(|| serde_json::json!({}));
-            client.put(&full_path, &b).await?
-        }
-        HttpMethod::Patch => {
-            let b = parsed_body.unwrap_or_else(|| serde_json::json!({}));
-            client.patch(&full_path, &b).await?
-        }
-        HttpMethod::Delete => client.delete(&full_path).await?,
+    let data = match api {
+        ApiTarget::Fabric => execute_fabric(client, method, &full_path, parsed_body, poll).await?,
+        ApiTarget::Powerbi => execute_powerbi(client, method, &full_path, parsed_body).await?,
     };
 
     // Render response — for raw REST we pass through as-is
     output::render_object(cli, &data, "data");
     Ok(())
+}
+
+async fn execute_fabric(
+    client: &FabricClient,
+    method: &HttpMethod,
+    path: &str,
+    body: Option<Value>,
+    poll: bool,
+) -> Result<Value> {
+    match method {
+        HttpMethod::Get => client.get(path).await,
+        HttpMethod::Post => {
+            let b = body.unwrap_or_else(|| serde_json::json!({}));
+            client.post(path, &b, poll).await
+        }
+        HttpMethod::Put => {
+            let b = body.unwrap_or_else(|| serde_json::json!({}));
+            client.put(path, &b).await
+        }
+        HttpMethod::Patch => {
+            let b = body.unwrap_or_else(|| serde_json::json!({}));
+            client.patch(path, &b).await
+        }
+        HttpMethod::Delete => client.delete(path).await,
+    }
+}
+
+async fn execute_powerbi(
+    client: &FabricClient,
+    method: &HttpMethod,
+    path: &str,
+    body: Option<Value>,
+) -> Result<Value> {
+    match method {
+        HttpMethod::Get => client.get_powerbi(path).await,
+        HttpMethod::Post => {
+            let b = body.unwrap_or_else(|| serde_json::json!({}));
+            client.post_powerbi(path, &b).await
+        }
+        HttpMethod::Put => {
+            let b = body.unwrap_or_else(|| serde_json::json!({}));
+            client.put_powerbi(path, &b).await
+        }
+        HttpMethod::Patch => {
+            let b = body.unwrap_or_else(|| serde_json::json!({}));
+            client.patch_powerbi(path, &b).await
+        }
+        HttpMethod::Delete => client.delete_powerbi(path).await,
+    }
 }
 
 /// Resolve body from inline JSON, @file, or @- (stdin).

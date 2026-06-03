@@ -70,6 +70,13 @@ static ONELAKE_BLOB_URL: LazyLock<String> = LazyLock::new(|| {
 static ARM_BASE_URL: LazyLock<String> =
     LazyLock::new(|| env_or_default("FABIO_ARM_ENDPOINT", "https://management.azure.com"));
 
+static POWERBI_BASE_URL: LazyLock<String> = LazyLock::new(|| {
+    env_or_default(
+        "FABIO_POWERBI_ENDPOINT",
+        "https://api.powerbi.com/v1.0/myorg",
+    )
+});
+
 static FABRIC_SCOPE: LazyLock<String> = LazyLock::new(|| {
     env_or_default(
         "FABIO_FABRIC_SCOPE",
@@ -1211,7 +1218,7 @@ impl FabricClient {
     /// PATCH request to Power BI REST API (retries once on 401).
     pub async fn patch_powerbi(&self, path: &str, body: &Value) -> Result<Value> {
         let token = self.require_auth().await?;
-        let url = format!("https://api.powerbi.com/v1.0/myorg{path}");
+        let url = format!("{}{path}", *POWERBI_BASE_URL);
 
         let resp = self
             .http
@@ -1241,7 +1248,7 @@ impl FabricClient {
 
     pub async fn get_powerbi(&self, path: &str) -> Result<Value> {
         let token = self.require_auth().await?;
-        let url = format!("https://api.powerbi.com/v1.0/myorg{path}");
+        let url = format!("{}{path}", *POWERBI_BASE_URL);
 
         let resp = self
             .http
@@ -1269,7 +1276,7 @@ impl FabricClient {
 
     pub async fn post_powerbi(&self, path: &str, body: &Value) -> Result<Value> {
         let token = self.require_auth().await?;
-        let url = format!("https://api.powerbi.com/v1.0/myorg{path}");
+        let url = format!("{}{path}", *POWERBI_BASE_URL);
 
         let resp = self
             .http
@@ -1288,6 +1295,66 @@ impl FabricClient {
                 .post(&url)
                 .header(AUTHORIZATION, &token)
                 .json(body)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return handle_response(resp).await;
+        }
+
+        handle_response(resp).await
+    }
+
+    /// PUT request to Power BI REST API (retries once on 401).
+    pub async fn put_powerbi(&self, path: &str, body: &Value) -> Result<Value> {
+        let token = self.require_auth().await?;
+        let url = format!("{}{path}", *POWERBI_BASE_URL);
+
+        let resp = self
+            .http
+            .put(&url)
+            .header(AUTHORIZATION, &token)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .put(&url)
+                .header(AUTHORIZATION, &token)
+                .json(body)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return handle_response(resp).await;
+        }
+
+        handle_response(resp).await
+    }
+
+    /// DELETE request to Power BI REST API (retries once on 401).
+    pub async fn delete_powerbi(&self, path: &str) -> Result<Value> {
+        let token = self.require_auth().await?;
+        let url = format!("{}{path}", *POWERBI_BASE_URL);
+
+        let resp = self
+            .http
+            .delete(&url)
+            .header(AUTHORIZATION, &token)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .delete(&url)
+                .header(AUTHORIZATION, &token)
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -3238,5 +3305,10 @@ mod tests {
             *ONELAKE_BLOB_URL,
             "https://onelake.blob.fabric.microsoft.com"
         );
+    }
+
+    #[test]
+    fn default_powerbi_base_url_is_correct() {
+        assert_eq!(*POWERBI_BASE_URL, "https://api.powerbi.com/v1.0/myorg");
     }
 }

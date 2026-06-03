@@ -209,3 +209,126 @@ fn rest_with_query_flag() {
     // Should have extracted the displayName field
     assert!(stdout.contains("fabio-demo-source"));
 }
+
+// --- Power BI API (--api powerbi) dry-run tests ---
+
+#[test]
+#[serial]
+fn rest_powerbi_post_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "rest",
+            "call",
+            "--method",
+            "post",
+            "--path",
+            "/groups/abc/datasets/def/refreshes",
+            "--api",
+            "powerbi",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["api"], "powerbi");
+    assert_eq!(data["details"]["method"], "POST");
+    assert!(data["details"]["path"]
+        .as_str()
+        .unwrap()
+        .contains("datasets/def/refreshes"));
+}
+
+#[test]
+#[serial]
+fn rest_powerbi_delete_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "rest",
+            "call",
+            "--method",
+            "delete",
+            "--path",
+            "/groups/abc/datasets/def/users/user123",
+            "--api",
+            "powerbi",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["api"], "powerbi");
+    assert_eq!(data["details"]["method"], "DELETE");
+}
+
+#[test]
+#[serial]
+fn rest_powerbi_patch_dry_run_with_body() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "rest",
+            "call",
+            "--method",
+            "patch",
+            "--path",
+            "/groups/abc/datasets/def/Default.UpdateDatasources",
+            "--api",
+            "powerbi",
+            "--body",
+            r#"{"updateDetails":[{"datasourceSelector":{"datasourceType":"Sql"}}]}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["api"], "powerbi");
+    assert_eq!(data["details"]["method"], "PATCH");
+    assert!(data["details"]["body"]["updateDetails"].is_array());
+}
+
+// --- Power BI API live tests ---
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn rest_powerbi_get_datasets() {
+    let cfg = TestConfig::from_env();
+
+    let path = format!("/groups/{}/datasets", cfg.source_workspace);
+    let assert = fabio()
+        .args([
+            "rest", "call", "--method", "get", "--path", &path, "--api", "powerbi",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Power BI API returns a "value" array of datasets
+    assert!(data.get("value").unwrap().is_array());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn rest_powerbi_get_workspaces() {
+    let assert = fabio()
+        .args([
+            "rest", "call", "--method", "get", "--path", "/groups", "--api", "powerbi",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Power BI API returns a "value" array of workspaces (groups)
+    assert!(data.get("value").unwrap().is_array());
+}

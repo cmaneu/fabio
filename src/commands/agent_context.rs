@@ -186,6 +186,11 @@ fn environment_variables() -> Vec<EnvVar> {
             description: "Override the Azure Resource Manager token scope",
             default: "https://management.azure.com/.default",
         },
+        EnvVar {
+            name: "FABIO_POWERBI_ENDPOINT",
+            description: "Override the Power BI REST API base URL (used by --api powerbi)",
+            default: "https://api.powerbi.com/v1.0/myorg",
+        },
     ]
 }
 
