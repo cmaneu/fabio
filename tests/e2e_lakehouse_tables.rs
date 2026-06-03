@@ -354,6 +354,61 @@ fn lakehouse_move_table_across_workspaces() {
         .success();
 }
 
+// ─── Load Table with --schema flag ──────────────────────────────────────────
+
+#[test]
+fn load_table_schema_flag_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "lakehouse",
+            "load-table",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--source-path",
+            "Files/data.csv",
+            "--table",
+            "my_table",
+            "--schema",
+            "dbo",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "lakehouse load-table");
+}
+
+#[test]
+fn load_table_without_schema_flag_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "lakehouse",
+            "load-table",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--source-path",
+            "Files/data.parquet",
+            "--table",
+            "my_table",
+            "--format",
+            "Parquet",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+}
+
 // ─── table-schema tests ──────────────────────────────────────────────────────
 
 #[test]

@@ -269,3 +269,66 @@ fn lakehouse_bulk_create_shortcuts_with_conflict_policy_dry_run() {
     let data = extract_data(&json);
     assert_eq!(data["would_execute"], "lakehouse bulk-create-shortcuts");
 }
+
+// ─── Create Shortcut with --conflict-policy ─────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_create_shortcut_with_conflict_policy() {
+    let cfg = TestConfig::from_env();
+
+    // First create a shortcut
+    let shortcut_name = common::unique_name("sc_policy");
+    let target = serde_json::json!({
+        "oneLake": {
+            "workspaceId": cfg.source_workspace,
+            "itemId": cfg.source_lakehouse,
+            "path": "Files"
+        }
+    });
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "create-shortcut",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--name",
+            &shortcut_name,
+            "--path",
+            "Files",
+            "--target-type",
+            "oneLake",
+            "--target",
+            &target.to_string(),
+            "--conflict-policy",
+            "GenerateUniqueName",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data["name"].as_str().is_some());
+
+    // Clean up
+    let created_name = data["name"].as_str().unwrap();
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-shortcut",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--name",
+            created_name,
+            "--path",
+            "Files",
+        ])
+        .assert()
+        .success();
+}

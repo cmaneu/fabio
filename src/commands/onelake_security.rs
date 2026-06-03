@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
+use crate::errors::enrich_forbidden;
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -35,8 +35,27 @@ pub enum OnelakeSecurityCommand {
         #[arg(long)]
         role_name: String,
     },
-    /// Create or replace all data access roles for an item
+    /// Create or update a single data access role
     #[command(display_order = 3)]
+    Create {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+
+        /// Role definition as JSON or path to JSON file (prefix with @)
+        #[arg(long)]
+        role: String,
+
+        /// Conflict policy when role already exists (Abort or Overwrite)
+        #[arg(long, default_value = "Overwrite")]
+        conflict_policy: String,
+    },
+    /// Replace all data access roles for an item (atomic PUT)
+    #[command(display_order = 4)]
     Upsert {
         /// Workspace ID
         #[arg(short, long)]
@@ -80,6 +99,12 @@ pub async fn execute(
             id,
             role_name,
         } => show(cli, client, workspace, id, role_name).await,
+        OnelakeSecurityCommand::Create {
+            workspace,
+            id,
+            role,
+            conflict_policy,
+        } => create(cli, client, workspace, id, role, conflict_policy).await,
         OnelakeSecurityCommand::Upsert {
             workspace,
             id,
@@ -121,31 +146,57 @@ async fn show(
     item_id: &str,
     role_name: &str,
 ) -> Result<()> {
-    // The API doesn't have a single-role GET; list and filter
-    let resp = client
-        .get_list(
-            &format!("/workspaces/{workspace}/items/{item_id}/dataAccessRoles"),
-            "value",
-            true,
-            None,
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/items/{item_id}/dataAccessRoles/{role_name}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "onelake-security show", "Member"))?;
+
+    output::render_object(cli, &data, "name");
+    Ok(())
+}
+
+async fn create(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    item_id: &str,
+    role: &str,
+    conflict_policy: &str,
+) -> Result<()> {
+    let role_value: Value = if let Some(path) = role.strip_prefix('@') {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?;
+        serde_json::from_str(&content)
+            .map_err(|e| anyhow::anyhow!("Invalid JSON in file '{path}': {e}"))?
+    } else {
+        serde_json::from_str(role).map_err(|e| anyhow::anyhow!("Invalid --role JSON: {e}"))?
+    };
+
+    if output::dry_run_guard(cli, "onelake-security create", &role_value) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!(
+                "/workspaces/{workspace}/items/{item_id}/dataAccessRoles?dataAccessRoleConflictPolicy={conflict_policy}"
+            ),
+            &role_value,
+            false,
         )
-        .await?;
+        .await
+        .map_err(|e| enrich_forbidden(e, "onelake-security create", "Admin"))?;
 
-    let role = resp
-        .items
-        .iter()
-        .find(|r| r.get("name").and_then(Value::as_str) == Some(role_name));
-
-    match role {
-        Some(r) => output::render_object(cli, r, "name"),
-        None => {
-            return Err(FabioError::with_hint(
-                ErrorCode::NotFound,
-                format!("Data access role '{role_name}' not found"),
-                "Use 'fabio onelake-security list' to see available roles".to_string(),
-            )
-            .into());
-        }
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({
+            "itemId": item_id,
+            "status": "role_created"
+        });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "name");
     }
     Ok(())
 }
@@ -207,39 +258,10 @@ async fn delete(
         return Ok(());
     }
 
-    // The Fabric API uses PUT with the full list minus the role to delete.
-    // We need to: 1) list, 2) remove the role, 3) PUT back
-    let resp = client
-        .get_list(
-            &format!("/workspaces/{workspace}/items/{item_id}/dataAccessRoles"),
-            "value",
-            true,
-            None,
-        )
-        .await?;
-
-    let remaining: Vec<&Value> = resp
-        .items
-        .iter()
-        .filter(|r| r.get("name").and_then(Value::as_str) != Some(role_name))
-        .collect();
-
-    if remaining.len() == resp.items.len() {
-        return Err(FabioError::with_hint(
-            ErrorCode::NotFound,
-            format!("Data access role '{role_name}' not found"),
-            "Use 'fabio onelake-security list' to see available roles".to_string(),
-        )
-        .into());
-    }
-
-    let body = serde_json::json!({ "value": remaining });
-
     client
-        .put(
-            &format!("/workspaces/{workspace}/items/{item_id}/dataAccessRoles"),
-            &body,
-        )
+        .delete(&format!(
+            "/workspaces/{workspace}/items/{item_id}/dataAccessRoles/{role_name}"
+        ))
         .await
         .map_err(|e| enrich_forbidden(e, "onelake-security delete", "Admin"))?;
 

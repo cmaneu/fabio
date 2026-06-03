@@ -234,6 +234,10 @@ pub enum LakehouseCommand {
         /// CSV delimiter character (default: comma)
         #[arg(long, default_value = ",")]
         delimiter: String,
+
+        /// Schema name for multi-schema lakehouses (beta; e.g., dbo)
+        #[arg(long)]
+        schema: Option<String>,
     },
 
     // ── Copy/Move/Sync ───────────────────────────────────────────────────
@@ -440,6 +444,10 @@ pub enum LakehouseCommand {
         /// Target body as JSON string
         #[arg(long = "target")]
         target: String,
+
+        /// Conflict policy: Abort or `GenerateUniqueName`
+        #[arg(long)]
+        conflict_policy: Option<String>,
     },
     /// Get shortcut details
     #[command(display_order = 41)]
@@ -824,6 +832,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             wait: _,
             no_header,
             delimiter,
+            schema,
         } => load_table(
             cli,
             client,
@@ -835,6 +844,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             format,
             !*no_header,
             delimiter,
+            schema.as_deref(),
         )
         .await
         .map_err(|e| enrich_forbidden(e, "lakehouse load-table", "Contributor")),
@@ -958,9 +968,20 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             path,
             target_type,
             target,
-        } => create_shortcut(cli, client, workspace, id, name, path, target_type, target)
-            .await
-            .map_err(|e| enrich_forbidden(e, "lakehouse create-shortcut", "Contributor")),
+            conflict_policy,
+        } => create_shortcut(
+            cli,
+            client,
+            workspace,
+            id,
+            name,
+            path,
+            target_type,
+            target,
+            conflict_policy.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse create-shortcut", "Contributor")),
         LakehouseCommand::GetShortcut {
             workspace,
             id,
@@ -1485,6 +1506,7 @@ async fn load_table(
     format: &str,
     header: bool,
     delimiter: &str,
+    schema: Option<&str>,
 ) -> Result<()> {
     const VALID_MODES: &[&str] = &["Overwrite", "Append"];
     const VALID_FORMATS: &[&str] = &["Csv", "Parquet"];
@@ -1562,13 +1584,16 @@ async fn load_table(
         "formatOptions": format_options
     });
 
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/lakehouses/{id}/tables/{table}/load"),
-            &body,
-            true,
-        )
-        .await?;
+    let url = schema.map_or_else(
+        || format!("/workspaces/{workspace}/lakehouses/{id}/tables/{table}/load"),
+        |schema_name| {
+            format!(
+                "/workspaces/{workspace}/lakehouses/{id}/schemas/{schema_name}/tables/{table}/load?beta=true"
+            )
+        },
+    );
+
+    let data = client.post(&url, &body, true).await?;
 
     let obj = if data.is_null() {
         serde_json::json!({
@@ -2881,6 +2906,7 @@ async fn create_shortcut(
     path: &str,
     target_type: &str,
     target: &str,
+    conflict_policy: Option<&str>,
 ) -> Result<()> {
     let target_body: Value = serde_json::from_str(target).map_err(|e| {
         crate::errors::FabioError::invalid_input(format!("Invalid target JSON: {e}"))
@@ -2894,13 +2920,14 @@ async fn create_shortcut(
         }
     });
 
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/items/{id}/shortcuts"),
-            &body,
-            false,
-        )
-        .await?;
+    let url = conflict_policy.map_or_else(
+        || format!("/workspaces/{workspace}/items/{id}/shortcuts"),
+        |policy| {
+            format!("/workspaces/{workspace}/items/{id}/shortcuts?shortcutConflictPolicy={policy}")
+        },
+    );
+
+    let data = client.post(&url, &body, false).await?;
     output::render_object(cli, &data, "name");
     Ok(())
 }

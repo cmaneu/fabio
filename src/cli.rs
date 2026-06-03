@@ -9,9 +9,9 @@ use crate::commands::{
     kql_queryset, lakehouse, lro, managed_private_endpoint, map, mirrored_catalog,
     mirrored_database, mirrored_databricks_catalog, mirrored_warehouse, ml_experiment, ml_model,
     mounted_data_factory, notebook, onelake_security, ontology, operations_agent, paginated_report,
-    profile, reflex, report, rest, semantic_model, snowflake_database, spark, spark_job_definition,
-    sql_database, sql_endpoint, user_data_function, variable_library, warehouse,
-    warehouse_snapshot, workspace,
+    profile, reflex, report, rest, rti, semantic_model, snowflake_database, spark,
+    spark_job_definition, sql_database, sql_endpoint, user_data_function, variable_library,
+    warehouse, warehouse_snapshot, workspace,
 };
 
 /// Agent-first CLI for managing Microsoft Fabric artifacts and data.
@@ -234,6 +234,12 @@ pub enum Command {
     KqlDashboard {
         #[command(subcommand)]
         command: kql_dashboard::KqlDashboardCommand,
+    },
+    /// Real-Time Intelligence copilot (NL-to-KQL)
+    #[command(display_order = 24)]
+    Rti {
+        #[command(subcommand)]
+        command: rti::RtiCommand,
     },
     /// Manage mirrored databases (real-time replication)
     #[command(display_order = 25)]

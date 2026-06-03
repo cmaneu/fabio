@@ -366,6 +366,7 @@ pub enum SemanticModelCommand {
     },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(
     cli: &Cli,
     client: &FabricClient,

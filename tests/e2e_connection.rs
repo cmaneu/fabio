@@ -224,3 +224,78 @@ fn connection_list_supported_types() {
         "expected at least one supported connection type"
     );
 }
+
+// ─── Credential Type Validation ─────────────────────────────────────────────
+
+#[test]
+fn connection_create_workspace_identity_credential_type_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "connection",
+            "create",
+            "--name",
+            "test-conn",
+            "--connectivity-type",
+            "ShareableCloud",
+            "--connection-type",
+            "Web",
+            "--parameters",
+            r#"{"url": "https://example.com"}"#,
+            "--credential-type",
+            "WorkspaceIdentity",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "dry_run");
+}
+
+#[test]
+fn connection_create_keypair_credential_type_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "connection",
+            "create",
+            "--name",
+            "test-conn",
+            "--connectivity-type",
+            "ShareableCloud",
+            "--connection-type",
+            "Snowflake",
+            "--parameters",
+            r#"{"server": "acct.snowflakecomputing.com"}"#,
+            "--credential-type",
+            "KeyPair",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "dry_run");
+}
+
+#[test]
+fn connection_create_invalid_credential_type_rejected() {
+    fabio()
+        .args([
+            "connection",
+            "create",
+            "--name",
+            "test-conn",
+            "--connectivity-type",
+            "ShareableCloud",
+            "--connection-type",
+            "Web",
+            "--parameters",
+            r#"{"url": "https://example.com"}"#,
+            "--credential-type",
+            "InvalidType",
+        ])
+        .assert()
+        .failure();
+}

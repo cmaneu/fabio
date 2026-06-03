@@ -978,6 +978,87 @@ impl FabricClient {
         handle_response(resp).await
     }
 
+    /// POST binary data with `application/octet-stream` content type (retries once on 401).
+    pub async fn post_octet_stream(&self, path: &str, data: Vec<u8>) -> Result<Value> {
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(path);
+
+        let resp = self
+            .http
+            .post(&url)
+            .header(AUTHORIZATION, &token)
+            .header("Content-Type", "application/octet-stream")
+            .body(data.clone())
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .post(&url)
+                .header(AUTHORIZATION, &token)
+                .header("Content-Type", "application/octet-stream")
+                .body(data)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return handle_response(resp).await;
+        }
+
+        handle_response(resp).await
+    }
+
+    /// POST JSON request returning binary response bytes (retries once on 401).
+    /// Used for endpoints that return non-JSON content (e.g., Apache Arrow IPC).
+    pub async fn post_fabric_bytes(&self, path: &str, body: &Value) -> Result<Vec<u8>> {
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(path);
+
+        let resp = self
+            .http
+            .post(&url)
+            .header(AUTHORIZATION, &token)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .post(&url)
+                .header(AUTHORIZATION, &token)
+                .json(body)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return Ok(resp.bytes().await?.to_vec());
+        }
+
+        if !resp.status().is_success() {
+            // Try to parse error response as JSON
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            let msg = serde_json::from_str::<Value>(&text)
+                .ok()
+                .and_then(|v| {
+                    v.get("error")
+                        .and_then(|e| e.get("message"))
+                        .and_then(Value::as_str)
+                        .map(String::from)
+                })
+                .unwrap_or_else(|| format!("HTTP {status}"));
+            return Err(FabioError::new(ErrorCode::ApiError, msg).into());
+        }
+
+        Ok(resp.bytes().await?.to_vec())
+    }
+
     /// POST request with configurable LRO wait and timeout (retries once on 401).
     pub async fn post_with_timeout(
         &self,
@@ -1763,17 +1844,24 @@ impl FabricClient {
     }
 
     /// Run a notebook and return the job instance ID.
-    pub async fn run_notebook(&self, workspace: &str, item_id: &str) -> Result<String> {
+    pub async fn run_notebook(
+        &self,
+        workspace: &str,
+        item_id: &str,
+        body: Option<&Value>,
+    ) -> Result<String> {
         let token = self.require_auth().await?;
         let url = self.fabric_url(&format!(
             "/workspaces/{workspace}/items/{item_id}/jobs/instances?jobType=RunNotebook"
         ));
 
+        let request_body = body.cloned().unwrap_or_else(|| serde_json::json!({}));
+
         let resp = self
             .http
             .post(&url)
             .header(AUTHORIZATION, &token)
-            .json(&serde_json::json!({}))
+            .json(&request_body)
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -1874,6 +1962,40 @@ impl FabricClient {
         }
 
         Ok(job_id)
+    }
+
+    /// Trigger a job at a specific URL path (for item types that use path-based
+    /// job endpoints instead of `?jobType=` query parameter).
+    pub async fn trigger_item_job_at(&self, path: &str, body: Option<&Value>) -> Result<String> {
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(path);
+
+        let request_body = body.cloned().unwrap_or_else(|| serde_json::json!({}));
+
+        let resp = self
+            .http
+            .post(&url)
+            .header(AUTHORIZATION, &token)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .post(&url)
+                .header(AUTHORIZATION, &token)
+                .json(&request_body)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return Self::extract_job_id_from_response(resp).await;
+        }
+
+        Self::extract_job_id_from_response(resp).await
     }
 
     /// Poll a long-running operation until completion.

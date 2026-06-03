@@ -27,9 +27,17 @@ pub enum ItemCommand {
         #[arg(short = 't', long = "type", visible_alias = "item-type")]
         item_type: Option<String>,
 
-        /// Filter by folder ID (client-side filter)
+        /// Filter by folder ID (server-side)
         #[arg(long)]
         folder: Option<String>,
+
+        /// List items in nested subfolders (default: true when folder is specified)
+        #[arg(long)]
+        recursive: Option<bool>,
+
+        /// Include additional properties in the response (e.g., description,folderId)
+        #[arg(long)]
+        include: Option<String>,
     },
     /// Show details of an item
     #[command(display_order = 2)]
@@ -479,6 +487,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             workspace,
             item_type,
             folder,
+            recursive,
+            include,
         } => {
             list(
                 cli,
@@ -486,6 +496,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
                 workspace,
                 item_type.as_deref(),
                 folder.as_deref(),
+                *recursive,
+                include.as_deref(),
             )
             .await
         }
@@ -721,33 +733,34 @@ async fn list(
     workspace: &str,
     item_type: Option<&str>,
     folder: Option<&str>,
+    recursive: Option<bool>,
+    include: Option<&str>,
 ) -> Result<()> {
     let mut path = format!("/workspaces/{workspace}/items");
+    let mut params: Vec<String> = Vec::new();
     if let Some(t) = item_type {
-        let _ = write!(path, "?type={t}");
+        params.push(format!("type={t}"));
+    }
+    if let Some(folder_id) = folder {
+        params.push(format!("rootFolderId={folder_id}"));
+    }
+    if let Some(r) = recursive {
+        params.push(format!("recursive={r}"));
+    }
+    if let Some(inc) = include {
+        params.push(format!("include={inc}"));
+    }
+    if !params.is_empty() {
+        let _ = write!(path, "?{}", params.join("&"));
     }
 
     let resp = client
         .get_list(&path, "value", cli.all, cli.continuation_token.as_deref())
         .await?;
 
-    // Client-side filter by folder ID if specified
-    let items = if let Some(folder_id) = folder {
-        resp.items
-            .into_iter()
-            .filter(|item| {
-                item.get("folderId")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|id| id.eq_ignore_ascii_case(folder_id))
-            })
-            .collect()
-    } else {
-        resp.items
-    };
-
     output::render_list_with_token(
         cli,
-        &items,
+        &resp.items,
         &["displayName", "id", "type"],
         &["NAME", "ID", "TYPE"],
         "id",

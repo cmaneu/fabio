@@ -39,7 +39,7 @@ pub enum ConnectionCommand {
         parameters: String,
 
         /// Credential type
-        #[arg(long, value_parser = ["Basic", "OAuth2", "Key", "Anonymous", "ServicePrincipal", "SharedAccessSignature"])]
+        #[arg(long, value_parser = ["Basic", "OAuth2", "Key", "Anonymous", "ServicePrincipal", "SharedAccessSignature", "WorkspaceIdentity", "KeyPair"])]
         credential_type: String,
 
         /// Credentials as JSON (format depends on credential type)
@@ -70,7 +70,7 @@ pub enum ConnectionCommand {
         privacy_level: Option<String>,
 
         /// New credential type
-        #[arg(long, value_parser = ["Basic", "OAuth2", "Key", "Anonymous", "ServicePrincipal", "SharedAccessSignature"])]
+        #[arg(long, value_parser = ["Basic", "OAuth2", "Key", "Anonymous", "ServicePrincipal", "SharedAccessSignature", "WorkspaceIdentity", "KeyPair"])]
         credential_type: Option<String>,
 
         /// New credentials as JSON

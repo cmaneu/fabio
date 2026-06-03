@@ -253,6 +253,25 @@ pub enum EnvironmentCommand {
         #[arg(long)]
         library_name: String,
     },
+    /// Upload a custom library file into staging
+    #[command(display_order = 45)]
+    UploadStagingLibrary {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+
+        /// Path to the library file to upload (.jar, .whl, .tar.gz, etc.)
+        #[arg(long)]
+        file: String,
+
+        /// Library name (defaults to filename)
+        #[arg(long)]
+        library_name: Option<String>,
+    },
 
     // ── Staging Spark Compute ────────────────────────────────────────────
     /// Update staging Spark compute configuration
@@ -374,6 +393,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
             id,
             library_name,
         } => remove_staging_library(cli, client, workspace, id, library_name).await,
+        EnvironmentCommand::UploadStagingLibrary {
+            workspace,
+            id,
+            file,
+            library_name,
+        } => {
+            upload_staging_library(cli, client, workspace, id, file, library_name.as_deref()).await
+        }
         EnvironmentCommand::UpdateStagingSparkCompute {
             workspace,
             id,
@@ -929,6 +956,57 @@ async fn update_staging_spark_compute(
 
     if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
         let obj = serde_json::json!({ "id": id, "status": "spark_compute_updated" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
+
+// ─── Upload Staging Library ─────────────────────────────────────────────────
+
+async fn upload_staging_library(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: &str,
+    library_name: Option<&str>,
+) -> Result<()> {
+    let path = std::path::Path::new(file);
+    let lib_name =
+        library_name.unwrap_or_else(|| path.file_name().and_then(|n| n.to_str()).unwrap_or(file));
+
+    let file_data =
+        std::fs::read(file).map_err(|e| anyhow::anyhow!("Failed to read file '{file}': {e}"))?;
+
+    if output::dry_run_guard(
+        cli,
+        "environment upload-staging-library",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "libraryName": lib_name,
+            "sizeBytes": file_data.len()
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .post_octet_stream(
+            &format!("/workspaces/{workspace}/environments/{id}/staging/libraries/{lib_name}"),
+            file_data,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "environment upload-staging-library", "Contributor"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({
+            "id": id,
+            "libraryName": lib_name,
+            "status": "uploaded"
+        });
         output::render_object(cli, &obj, "status");
     } else {
         output::render_object(cli, &data, "id");

@@ -1528,3 +1528,76 @@ fn item_move_to_folder_not_found() {
         "Expected NOT_FOUND or API_ERROR, got: {code}"
     );
 }
+
+// ─── Item List with folder/recursive/include flags ──────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_list_with_recursive_flag() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+            "--recursive",
+            "true",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data.is_array());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_list_with_include_flag() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+            "--include",
+            "description",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data.is_array());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_list_with_type_and_recursive() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+            "--type",
+            "Lakehouse",
+            "--recursive",
+            "true",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data.is_array());
+}

@@ -1,10 +1,14 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use base64::Engine;
 use clap::Subcommand;
 use serde_json::Value;
+use tokio::time::sleep;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::commands::jobs::{JobEntry, JobLedger};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -115,9 +119,46 @@ pub enum DataflowCommand {
         content: Option<String>,
     },
 
+    // ── Execution ────────────────────────────────────────────────────────
+    /// Run a dataflow on demand
+    #[command(display_order = 8)]
+    Run {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Dataflow ID
+        #[arg(long)]
+        id: String,
+
+        /// Job type: execute (default) or apply-changes
+        #[arg(long, default_value = "execute")]
+        job_type: String,
+
+        /// Execute option (only for execute job type): `SkipApplyChanges` (default), `ApplyChangesIfNeeded`
+        #[arg(long)]
+        execute_option: Option<String>,
+
+        /// Parameters JSON array for execution (e.g., '[{"parameterName":"X","type":"Automatic","value":25}]')
+        #[arg(long)]
+        parameters: Option<String>,
+
+        /// Wait for the job to complete (polls until finished)
+        #[arg(long)]
+        wait: bool,
+
+        /// Maximum time to wait in seconds (default: 600). Only used with --wait
+        #[arg(long, default_value = "600")]
+        timeout: u64,
+
+        /// Cancel the job if --wait times out (default: leave running)
+        #[arg(long)]
+        cancel_on_timeout: bool,
+    },
+
     // ── Parameters ───────────────────────────────────────────────────────
     /// Discover parameters of a dataflow
-    #[command(name = "discover-parameters", display_order = 8)]
+    #[command(name = "discover-parameters", display_order = 9)]
     DiscoverParameters {
         /// Workspace ID
         #[arg(short, long)]
@@ -126,6 +167,29 @@ pub enum DataflowCommand {
         /// Dataflow ID
         #[arg(long)]
         id: String,
+    },
+    /// Execute a query against a dataflow (returns Apache Arrow IPC)
+    #[command(display_order = 15)]
+    ExecuteQuery {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Dataflow ID
+        #[arg(long)]
+        id: String,
+
+        /// Name of the query to execute from the dataflow
+        #[arg(long)]
+        query_name: String,
+
+        /// Optional custom mashup document (M expression) to override the dataflow's default
+        #[arg(long)]
+        mashup: Option<String>,
+
+        /// Output file path (writes raw Apache Arrow IPC bytes). If not specified, reports metadata only.
+        #[arg(long)]
+        file: Option<String>,
     },
 }
 
@@ -182,6 +246,48 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataflowCommand
         }
         DataflowCommand::DiscoverParameters { workspace, id } => {
             discover_parameters(cli, client, workspace, id).await
+        }
+        DataflowCommand::ExecuteQuery {
+            workspace,
+            id,
+            query_name,
+            mashup,
+            file,
+        } => {
+            execute_query(
+                cli,
+                client,
+                workspace,
+                id,
+                query_name,
+                mashup.as_deref(),
+                file.as_deref(),
+            )
+            .await
+        }
+        DataflowCommand::Run {
+            workspace,
+            id,
+            job_type,
+            execute_option,
+            parameters,
+            wait,
+            timeout,
+            cancel_on_timeout,
+        } => {
+            run(
+                cli,
+                client,
+                workspace,
+                id,
+                job_type,
+                execute_option.as_deref(),
+                parameters.as_deref(),
+                *wait,
+                *timeout,
+                *cancel_on_timeout,
+            )
+            .await
         }
     }
 }
@@ -429,5 +535,270 @@ async fn discover_parameters(
         "name",
         resp.continuation_token.as_deref(),
     );
+    Ok(())
+}
+
+// ─── Execution ───────────────────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
+async fn run(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    job_type: &str,
+    execute_option: Option<&str>,
+    parameters: Option<&str>,
+    wait: bool,
+    timeout_secs: u64,
+    cancel_on_timeout: bool,
+) -> Result<()> {
+    // Validate job type
+    let job_path = match job_type {
+        "execute" => "execute",
+        "apply-changes" | "applyChanges" => "applyChanges",
+        _ => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid --job-type '{job_type}'. Valid values: execute, apply-changes"),
+                "Example: fabio dataflow run --workspace <WS> --id <ID> --job-type execute"
+                    .to_string(),
+            )
+            .into());
+        }
+    };
+
+    // Build execution data body
+    let body = build_execution_body(job_path, execute_option, parameters)?;
+
+    if output::dry_run_guard(
+        cli,
+        "dataflow run",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "jobType": job_path,
+            "wait": wait,
+            "timeout": timeout_secs,
+            "body": body
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let url = format!("/workspaces/{workspace}/dataflows/{id}/jobs/{job_path}/instances");
+    let job_id = client
+        .trigger_item_job_at(&url, if body.is_null() { None } else { Some(&body) })
+        .await
+        .map_err(|e| enrich_forbidden(e, "dataflow run", "Member"))?;
+
+    // Record in local job ledger
+    let entry = JobEntry::new(&job_id, &format!("dataflow-{job_path}"), workspace, id);
+    let _ = JobLedger::append(&entry);
+
+    if !wait {
+        let obj = serde_json::json!({
+            "itemId": id,
+            "jobId": job_id,
+            "jobType": job_path,
+            "status": "accepted"
+        });
+        output::render_object(cli, &obj, "jobId");
+        return Ok(());
+    }
+
+    // Poll until completion
+    let poll_interval = Duration::from_secs(5);
+    let max_wait = Duration::from_secs(timeout_secs);
+    let start = std::time::Instant::now();
+
+    loop {
+        if start.elapsed() > max_wait {
+            if cancel_on_timeout {
+                let _ = client
+                    .post(
+                        &format!(
+                            "/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}/cancel"
+                        ),
+                        &serde_json::json!({}),
+                        false,
+                    )
+                    .await;
+                let _ = JobLedger::update(&job_id, "cancelled", None);
+            } else {
+                let _ = JobLedger::update(&job_id, "timeout", None);
+            }
+            return Err(FabioError::with_hint(
+                ErrorCode::Timeout,
+                format!("Dataflow run timed out after {timeout_secs}s. Job ID: {job_id}"),
+                format!(
+                    "Check status: fabio job-scheduler get-instance --workspace {workspace} --id {id} --job-instance-id {job_id}"
+                ),
+            )
+            .into());
+        }
+
+        sleep(poll_interval).await;
+
+        let data = client
+            .get(&format!(
+                "/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}"
+            ))
+            .await?;
+
+        let status_str = data
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
+
+        match status_str {
+            "Completed" => {
+                let _ = JobLedger::update(&job_id, "completed", None);
+                let obj = serde_json::json!({
+                    "itemId": id,
+                    "jobId": job_id,
+                    "jobType": job_path,
+                    "status": "Completed"
+                });
+                output::render_object(cli, &obj, "status");
+                return Ok(());
+            }
+            "Failed" => {
+                let message = data
+                    .get("failureReason")
+                    .and_then(|r| r.get("message"))
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Job failed");
+                let _ = JobLedger::update(&job_id, "failed", Some(message));
+                return Err(FabioError::with_hint(
+                    ErrorCode::ApiError,
+                    format!("Dataflow run failed: {message}"),
+                    format!("Job ID: {job_id}"),
+                )
+                .into());
+            }
+            "Cancelled" => {
+                let _ = JobLedger::update(&job_id, "cancelled", None);
+                return Err(FabioError::new(
+                    ErrorCode::ApiError,
+                    format!("Dataflow run was cancelled. Job ID: {job_id}"),
+                )
+                .into());
+            }
+            _ => {} // NotStarted, InProgress, Deduped → keep polling
+        }
+    }
+}
+
+/// Build the request body for a dataflow run.
+fn build_execution_body(
+    job_path: &str,
+    execute_option: Option<&str>,
+    parameters: Option<&str>,
+) -> Result<Value> {
+    // apply-changes job doesn't support execution data
+    if job_path == "applyChanges" {
+        if execute_option.is_some() || parameters.is_some() {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "--execute-option and --parameters are only supported for execute job type"
+                    .to_string(),
+                "Example: fabio dataflow run --workspace <WS> --id <ID> --job-type apply-changes"
+                    .to_string(),
+            )
+            .into());
+        }
+        return Ok(Value::Null);
+    }
+
+    // execute job — build executionData if options/parameters provided
+    if execute_option.is_none() && parameters.is_none() {
+        return Ok(Value::Null);
+    }
+
+    let mut exec_data = serde_json::json!({});
+
+    if let Some(opt) = execute_option {
+        match opt {
+            "SkipApplyChanges" | "ApplyChangesIfNeeded" => {
+                exec_data["executeOption"] = Value::String(opt.to_string());
+            }
+            _ => {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!(
+                        "Invalid --execute-option '{opt}'. Valid values: SkipApplyChanges, ApplyChangesIfNeeded"
+                    ),
+                    "Example: fabio dataflow run --workspace <WS> --id <ID> --execute-option ApplyChangesIfNeeded".to_string(),
+                ).into());
+            }
+        }
+    }
+
+    if let Some(params_str) = parameters {
+        let params: Value = serde_json::from_str(params_str).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid --parameters JSON: {e}"),
+                "Expected JSON array, e.g.: [{\"parameterName\":\"X\",\"type\":\"Automatic\",\"value\":25}]".to_string(),
+            )
+        })?;
+        exec_data["parameters"] = params;
+    }
+
+    Ok(serde_json::json!({ "executionData": exec_data }))
+}
+
+// ─── Execute Query ──────────────────────────────────────────────────────────
+
+async fn execute_query(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    query_name: &str,
+    mashup: Option<&str>,
+    file: Option<&str>,
+) -> Result<()> {
+    let mut body = serde_json::json!({ "queryName": query_name });
+    if let Some(m) = mashup {
+        body["customMashupDocument"] = Value::String(m.to_string());
+    }
+
+    if output::dry_run_guard(cli, "dataflow execute-query", &body) {
+        return Ok(());
+    }
+
+    let bytes = client
+        .post_fabric_bytes(
+            &format!("/workspaces/{workspace}/dataflows/{id}/executeQuery"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "dataflow execute-query", "Contributor"))?;
+
+    if let Some(path) = file {
+        // Create parent dirs if needed
+        if let Some(parent) = std::path::Path::new(path).parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, &bytes)?;
+        let obj = serde_json::json!({
+            "status": "written",
+            "file": path,
+            "sizeBytes": bytes.len(),
+            "format": "apache-arrow-ipc"
+        });
+        output::render_object(cli, &obj, "status");
+    } else {
+        let obj = serde_json::json!({
+            "status": "executed",
+            "queryName": query_name,
+            "sizeBytes": bytes.len(),
+            "format": "apache-arrow-ipc"
+        });
+        output::render_object(cli, &obj, "status");
+    }
     Ok(())
 }

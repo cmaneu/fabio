@@ -731,3 +731,128 @@ fn notebook_delete_hard_delete_dry_run() {
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["details"]["hardDelete"], true);
 }
+
+// ─── Run with parameters ─────────────────────────────────────────────────────
+
+#[test]
+fn notebook_run_dry_run_no_params() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "notebook",
+            "run",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    // body should be null when no parameters
+    assert!(data["details"]["body"].is_null());
+}
+
+#[test]
+fn notebook_run_dry_run_with_parameters() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "notebook",
+            "run",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--parameters",
+            r#"[{"name":"p1","value":"hello","type":"Text"}]"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    let body = &data["details"]["body"];
+    assert_eq!(body["parameters"][0]["name"], "p1");
+}
+
+#[test]
+fn notebook_run_dry_run_with_compute_type() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "notebook",
+            "run",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--compute-type",
+            "Jupyter",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    let body = &data["details"]["body"];
+    assert_eq!(body["executionData"]["compute"], "Jupyter");
+}
+
+#[test]
+fn notebook_run_invalid_compute_type() {
+    let assert = fabio()
+        .args([
+            "notebook",
+            "run",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--compute-type",
+            "Invalid",
+        ])
+        .assert()
+        .failure();
+
+    let json: serde_json::Value = serde_json::from_slice(&assert.get_output().stderr).unwrap();
+    assert!(
+        json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid --compute-type")
+    );
+}
+
+#[test]
+fn notebook_run_dry_run_with_execution_data() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "notebook",
+            "run",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--execution-data",
+            r#"{"compute":"Spark","computeConfiguration":{"name":"mySession"}}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    let body = &data["details"]["body"];
+    assert_eq!(body["executionData"]["compute"], "Spark");
+    assert_eq!(
+        body["executionData"]["computeConfiguration"]["name"],
+        "mySession"
+    );
+}

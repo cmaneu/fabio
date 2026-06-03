@@ -173,3 +173,208 @@ fn dataflow_delete_hard_delete_dry_run() {
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["details"]["hardDelete"], true);
 }
+
+// ─── Run ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn dataflow_run_dry_run_execute() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "dataflow",
+            "run",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["jobType"], "execute");
+}
+
+#[test]
+fn dataflow_run_dry_run_apply_changes() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "dataflow",
+            "run",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--job-type",
+            "apply-changes",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["jobType"], "applyChanges");
+}
+
+#[test]
+fn dataflow_run_dry_run_with_parameters() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "dataflow",
+            "run",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--execute-option",
+            "ApplyChangesIfNeeded",
+            "--parameters",
+            r#"[{"parameterName":"X","type":"Automatic","value":25}]"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    let body = &data["details"]["body"];
+    assert_eq!(
+        body["executionData"]["executeOption"],
+        "ApplyChangesIfNeeded"
+    );
+    assert!(body["executionData"]["parameters"].is_array());
+}
+
+#[test]
+fn dataflow_run_invalid_job_type() {
+    let assert = fabio()
+        .args([
+            "dataflow",
+            "run",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--job-type",
+            "invalid",
+        ])
+        .assert()
+        .failure();
+
+    let json: serde_json::Value = serde_json::from_slice(&assert.get_output().stderr).unwrap();
+    assert!(
+        json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid --job-type")
+    );
+}
+
+#[test]
+fn dataflow_run_apply_changes_rejects_parameters() {
+    let assert = fabio()
+        .args([
+            "dataflow",
+            "run",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--job-type",
+            "apply-changes",
+            "--execute-option",
+            "SkipApplyChanges",
+        ])
+        .assert()
+        .failure();
+
+    let json: serde_json::Value = serde_json::from_slice(&assert.get_output().stderr).unwrap();
+    assert!(
+        json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("only supported for execute")
+    );
+}
+
+// ─── Execute Query ──────────────────────────────────────────────────────────
+
+#[test]
+fn dataflow_execute_query_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "dataflow",
+            "execute-query",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--query-name",
+            "MyTable",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "dataflow execute-query");
+    assert_eq!(data["details"]["queryName"], "MyTable");
+}
+
+#[test]
+fn dataflow_execute_query_dry_run_with_mashup() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "dataflow",
+            "execute-query",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--query-name",
+            "MyTable",
+            "--mashup",
+            "let Source = Sql.Database(\"server\", \"db\") in Source",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["details"]["queryName"], "MyTable");
+    assert!(
+        data["details"]["customMashupDocument"]
+            .as_str()
+            .unwrap()
+            .contains("Sql.Database")
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataflow_execute_query_not_found() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "dataflow",
+            "execute-query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--query-name",
+            "NonExistentQuery",
+        ])
+        .assert()
+        .failure();
+}

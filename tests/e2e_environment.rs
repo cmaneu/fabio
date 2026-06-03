@@ -168,3 +168,74 @@ fn environment_dry_run_create() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["would_execute"], "environment create");
 }
+
+// ─── Upload Staging Library ─────────────────────────────────────────────────
+
+#[test]
+fn environment_upload_staging_library_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "environment",
+            "upload-staging-library",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--file",
+            "Cargo.toml",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "environment upload-staging-library");
+    assert_eq!(data["details"]["libraryName"], "Cargo.toml");
+    assert!(data["details"]["sizeBytes"].as_u64().unwrap() > 0);
+}
+
+#[test]
+fn environment_upload_staging_library_custom_name_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "environment",
+            "upload-staging-library",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--file",
+            "Cargo.toml",
+            "--library-name",
+            "my_lib-1.0.0.whl",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["details"]["libraryName"], "my_lib-1.0.0.whl");
+}
+
+#[test]
+fn environment_upload_staging_library_missing_file() {
+    let assert = fabio()
+        .args([
+            "environment",
+            "upload-staging-library",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--file",
+            "/nonexistent/path/lib.whl",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("Failed to read file"));
+}

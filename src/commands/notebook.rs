@@ -132,6 +132,18 @@ pub enum NotebookCommand {
         #[arg(long)]
         id: String,
 
+        /// Notebook parameters as JSON array (e.g., '[{"name":"p1","value":"v1","type":"Text"}]')
+        #[arg(long)]
+        parameters: Option<String>,
+
+        /// Compute type: `Spark` (default), `Jupyter`, or `DataWarehouse`
+        #[arg(long)]
+        compute_type: Option<String>,
+
+        /// Full execution data as JSON (advanced; overrides --compute-type)
+        #[arg(long)]
+        execution_data: Option<String>,
+
         /// Wait for the notebook run to complete (polls until finished)
         #[arg(long)]
         wait: bool,
@@ -215,6 +227,7 @@ pub enum NotebookCommand {
     },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand) -> Result<()> {
     match command {
         NotebookCommand::List { workspace } => list(cli, client, workspace).await,
@@ -275,9 +288,25 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
         NotebookCommand::Run {
             workspace,
             id,
+            parameters,
+            compute_type,
+            execution_data,
             wait,
             timeout,
-        } => run(cli, client, workspace, id, *wait, *timeout).await,
+        } => {
+            run(
+                cli,
+                client,
+                workspace,
+                id,
+                parameters.as_deref(),
+                compute_type.as_deref(),
+                execution_data.as_deref(),
+                *wait,
+                *timeout,
+            )
+            .await
+        }
         NotebookCommand::Status {
             workspace,
             id,
@@ -558,24 +587,41 @@ async fn get_definition(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     id: &str,
+    parameters: Option<&str>,
+    compute_type: Option<&str>,
+    execution_data: Option<&str>,
     wait: bool,
     timeout_secs: u64,
 ) -> Result<()> {
+    // Build request body from parameters/compute-type/execution-data
+    let body = build_run_body(parameters, compute_type, execution_data)?;
+
     if output::dry_run_guard(
         cli,
         "notebook run",
-        &serde_json::json!({"workspace": workspace, "id": id, "wait": wait, "timeout": timeout_secs}),
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "wait": wait,
+            "timeout": timeout_secs,
+            "body": body
+        }),
     ) {
         return Ok(());
     }
 
     let job_id = client
-        .run_notebook(workspace, id)
+        .run_notebook(
+            workspace,
+            id,
+            if body.is_null() { None } else { Some(&body) },
+        )
         .await
         .map_err(|e| enrich_forbidden(e, "notebook run", "Contributor"))?;
 
@@ -853,6 +899,66 @@ fn strip_notebook_outputs(data: &mut Value) {
         let encoded = base64::Engine::encode(&base64_engine, cleaned_json.as_bytes());
         part["payload"] = Value::String(encoded);
     }
+}
+
+/// Build the request body for notebook run from CLI flags.
+fn build_run_body(
+    parameters: Option<&str>,
+    compute_type: Option<&str>,
+    execution_data: Option<&str>,
+) -> Result<Value> {
+    // If nothing specified, return null (empty body)
+    if parameters.is_none() && compute_type.is_none() && execution_data.is_none() {
+        return Ok(Value::Null);
+    }
+
+    let mut body = serde_json::json!({});
+
+    // Parse parameters
+    if let Some(params_str) = parameters {
+        let params: Value = serde_json::from_str(params_str).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid --parameters JSON: {e}"),
+                r#"Expected JSON array, e.g.: [{"name":"p1","value":"v1","type":"Text"}]"#
+                    .to_string(),
+            )
+        })?;
+        body["parameters"] = params;
+    }
+
+    // Build executionData
+    if let Some(ed_str) = execution_data {
+        // Full execution data overrides --compute-type
+        let ed: Value = serde_json::from_str(ed_str).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid --execution-data JSON: {e}"),
+                r#"Expected JSON object, e.g.: {"compute":"Spark","computeConfiguration":{...}}"#
+                    .to_string(),
+            )
+        })?;
+        body["executionData"] = ed;
+    } else if let Some(ct) = compute_type {
+        // Validate compute type
+        match ct {
+            "Spark" | "Jupyter" | "DataWarehouse" => {}
+            _ => {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!(
+                        "Invalid --compute-type '{ct}'. Valid values: Spark, Jupyter, DataWarehouse"
+                    ),
+                    "Example: fabio notebook run --workspace <WS> --id <ID> --compute-type Spark"
+                        .to_string(),
+                )
+                .into());
+            }
+        }
+        body["executionData"] = serde_json::json!({ "compute": ct });
+    }
+
+    Ok(body)
 }
 
 #[cfg(test)]
