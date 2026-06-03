@@ -83,7 +83,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Domain**: list, show, create, update, delete, list-workspaces, assign-workspaces, unassign-workspaces, assign-by-capacity, assign-by-principal
 - **Job Scheduler**: list-instances, get-instance, run-on-demand (with `--wait`/`--timeout`/`--cancel-on-timeout`), cancel-instance, list-schedules, get-schedule, create-schedule, update-schedule, delete-schedule
 - **Spark**: get-settings, update-settings, list-pools, get-pool, create-pool, update-pool, delete-pool
-- **OneLake Security**: list, show, upsert, delete (data access roles for row/column-level security)
+- **OneLake Security**: list, show, upsert, delete, create (data access roles for row/column-level security)
 - **Managed Private Endpoint**: list, show, create, delete (workspace private networking)
 - **Pagination**: `--all` fetches all pages, `--continuation-token` resumes from a specific token, `--limit` truncates client-side
 - **Agent-native compliance** (all 10 principles implemented):
@@ -216,14 +216,14 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/workspace.rs`: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
 - `src/commands/item.rs`: 18 subcommands (CRUD + copy/move + definitions + list-connections + exists/url/inspect + bulk-create/bulk-delete + move-to-folder + create-external-data-share)
 - `src/commands/lakehouse.rs`: 23 subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut, optimize-table, vacuum-table, table-schema, query)
-- `src/commands/notebook.rs`: create/get-definition (with --strip-output)/run (with --wait/--timeout)/status/stop/delete
+- `src/commands/notebook.rs`: create/get-definition (with --strip-output)/run (with --wait/--timeout/--parameters/--compute-type/--execution-data)/status/stop/delete
 - `src/commands/warehouse.rs`: list/show/create/update/delete/query/connection-string (endpoint resolved, stdin/file/flag SQL input)
 - `src/commands/sql_database.rs`: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
 - `src/commands/tds_utils.rs`: Shared TDS utilities (resolve_sql_input, parse_connection_string, execute_and_render_sql, column_value_to_json)
 - `src/commands/dataagent.rs`: list/show/create/update/delete/query
 - `src/commands/git.rs`: status/commit/pull/connect/disconnect/initialize/switch/connection/credentials/show-tracked
 - `src/commands/ontology.rs`: list/show/create/update/delete/get-definition/update-definition
-- `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings
+- `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings/upload-staging-library
 - `src/commands/data_pipeline.rs`: list/show/create/update/delete/run
 - `src/commands/report.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/semantic_model.rs`: list/show/create/update/delete/get-definition/update-definition + query/refresh/bind-connection/unbind-connection/takeover + list-parameters/update-parameters/list-datasources/update-datasources/list-users/add-user/delete-user/refresh-status/list-upstream/clone/export-pbix/import-pbix
@@ -247,7 +247,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/deployment_pipeline.rs`: list/show/create/update/delete/list-stages/list-stage-items/assign-workspace/unassign-workspace/deploy
 - `src/commands/domain.rs`: list/show/create/update/delete/list-workspaces/assign-workspaces/unassign-workspaces/assign-by-capacity/assign-by-principal
 - `src/commands/job_scheduler.rs`: list-instances/get-instance/run-on-demand (with `--wait`/`--timeout`/`--cancel-on-timeout`), cancel-instance/list-schedules/get-schedule/create-schedule/update-schedule/delete-schedule
-- `src/commands/onelake_security.rs`: list/show/upsert/delete (data access roles)
+- `src/commands/onelake_security.rs`: list/show/upsert/delete/create (data access roles)
 - `src/commands/managed_private_endpoint.rs`: list/show/create/delete
 - `src/commands/variable_library.rs`: list/show/create/update/delete/get-definition/update-definition (variables.json + settings.json)
 - `src/commands/event_schema_set.rs`: list/show/create/update/delete/get-definition/update-definition (EventSchemaSetDefinition.json)
@@ -1016,6 +1016,14 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
   fabio kql-database query --workspace <ws-id> --id <db-id> --kql "MyTable | take 10"
   ```
 
+## RTI NL-to-KQL API Behaviors Discovered
+- **Endpoint**: `POST /workspaces/{ws}/realTimeIntelligence/nltokql?beta=true` (workspace-scoped, requires `beta=true` query param).
+- **Request body (required fields)**: `{"itemIdForBilling": "<item-uuid>", "clusterUrl": "<kusto-uri>", "databaseName": "<db-name>", "naturalLanguage": "<question>"}`. The `itemIdForBilling` is any KQL Database or Eventhouse item ID used for capacity billing.
+- **Request body (optional fields)**: `"userShots"` (JSON array of `{"naturalLanguage":"...","kqlQuery":"..."}` examples), `"chatMessages"` (JSON array of `{"role":"User|Assistant","content":"..."}` for multi-turn context).
+- **Response**: Returns JSON with `"kqlQuery"` field containing the generated KQL, plus `"explanation"` and other metadata.
+- **Authentication**: Uses standard Fabric scope (`https://api.fabric.microsoft.com/.default`).
+- **Error on invalid item**: Returns standard Fabric API error if item ID is not found or user lacks permissions.
+
 ## Eventhouse API Behaviors Discovered
 - **Standard CRUD**: list, show, create, update, delete at `/workspaces/{ws}/eventhouses/{id}`.
 - **Definition file**: `EventhouseProperties.json` (PascalCase, NOT `eventhouse.json`).
@@ -1162,14 +1170,16 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Identity assignment**: `POST /workspaces/{ws}/items/{id}/identities/default/assign`.
 - **Tags**: `POST /workspaces/{ws}/items/{id}/applyTags` and `/unapplyTags` with `{"tagIds": [...]}`.
 - **Hard delete query param**: `DELETE /workspaces/{ws}/items/{id}?hardDelete=true` permanently deletes (skips recycle bin). Supported on all workspace-scoped item types.
+- **List server-side filtering**: `GET /workspaces/{ws}/items` supports query params: `type={ItemType}` (single type filter), `rootFolderId={folderId}` (items in a specific folder), `recursive={true|false}` (include items in subfolders), `include={type1,type2}` (additional metadata to include in response). The `--folder`, `--recursive`, and `--include` CLI flags map to these query params.
 
 ## Lakehouse API Behaviors Discovered
 - **Load table format validation**: Only `"Csv"` and `"Parquet"` are valid (PascalCase). JSON is NOT supported by the Fabric REST API. Mode values: `"Overwrite"`, `"Append"` (PascalCase).
 - **Load table body (Csv)**: `{"relativePath": "<path>", "pathType": "File", "mode": "Overwrite", "formatOptions": {"format": "Csv", "header": true, "delimiter": ","}}`. The `format` key is INSIDE `formatOptions` (discriminated union pattern).
 - **Load table body (Parquet)**: `{"relativePath": "<path>", "pathType": "File", "mode": "Overwrite", "formatOptions": {"format": "Parquet"}}`. Do NOT include `header`/`delimiter` with Parquet — API rejects mixed format options.
+- **Load table with schema (multi-schema lakehouses)**: `POST /workspaces/{ws}/lakehouses/{id}/schemas/{schemaName}/tables/{table}/load?beta=true`. Uses same body format as standard load-table. Requires `?beta=true` query param. Falls back to standard path when `--schema` is not specified.
 - **Upload-table workflow**: Upload file to `Files/.staging/{filename}` → POST load-table → delete staging file (best-effort cleanup).
 - **Table listing uses `"data"` key**: Unlike other list endpoints that use `"value"`, `GET /workspaces/{ws}/lakehouses/{id}/tables` returns `{"data": [...]}`.
-- **Shortcut creation**: `POST /workspaces/{ws}/items/{id}/shortcuts` with body `{"name": "<name>", "path": "<target_path>", "target": {<target_type>: <target_config>}}`.
+- **Shortcut creation**: `POST /workspaces/{ws}/items/{id}/shortcuts` with body `{"name": "<name>", "path": "<target_path>", "target": {<target_type>: <target_config>}}`. Optional `?shortcutConflictPolicy={policy}` query param (`Abort` or `GenerateUniqueName`).
 - **Bulk shortcut creation**: `POST /workspaces/{ws}/items/{id}/shortcuts/bulkCreate?shortcutConflictPolicy={policy}` with `{"createShortcutRequests": [...]}`. LRO.
 - **Shortcut get/delete path**: `GET/DELETE /workspaces/{ws}/items/{id}/shortcuts/{path}/{name}` — path and name are URL path segments.
 - **Enable schemas on create**: `{"displayName": "...", "creationPayload": {"enableSchemas": true}}` enables multi-schema lakehouse.
@@ -1204,6 +1214,9 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Get job instance (beta)**: `GET /workspaces/{ws}/notebooks/{id}/jobs/execute/instances/{job_id}?beta=true` — uses notebook-specific path with beta flag.
 - **Livy sessions**: `GET /workspaces/{ws}/notebooks/{id}/livySessions` lists active Livy sessions for a notebook.
 - **Spark cold start**: First notebook run on small capacity can take 2-5 minutes to transition from `NotStarted` to `InProgress`.
+- **Run with parameters**: `POST /workspaces/{ws}/items/{id}/jobs/instances?jobType=RunNotebook` accepts optional body `{"parameters": [{"name":"p1","value":"v1","type":"Text"}], "executionData": {"computeType": "..."}}`. `--parameters` is a JSON array of name/value/type objects. `--compute-type` wraps in executionData. `--execution-data` provides full JSON override.
+- **Parameter type values**: `Text`, `Int`, `Long`, `Double`, `Bool`, `DateTime` (match Fabric Notebook parameter types).
+- **executionData fields**: `computeType` (e.g., `"Spark"`, `"DataFactory"`) plus other job-type-specific fields. `--execution-data` JSON is merged into the request body directly.
 
 ## Environment API Behaviors Discovered
 - **Staging/publish workflow**: Changes are staged first, then published as a separate step. All modifications go to staging area.
@@ -1213,6 +1226,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Definition file**: Part path is `environment.metadata.json`.
 - **Library management**: Published at `/libraries`, staging at `/staging/libraries`. Delete uses query param: `DELETE .../staging/libraries?libraryToDelete={name}`.
 - **External libraries**: Export via `GET .../libraries/exportExternalLibraries`. Import via `POST .../staging/libraries/importExternalLibraries`. Remove via `POST .../staging/libraries/removeExternalLibrary` with `{"libraryToRemove": "<name>"}`.
+- **Upload staging library**: `POST /workspaces/{ws}/environments/{id}/staging/libraries/{libraryName}` with `Content-Type: application/octet-stream` body. Library name defaults to the filename if `--library-name` not specified. Returns 200 on success.
 - **Get/Update definition are LRO**: Both use `poll: true`.
 - **Create is LRO**: Returns 202, requires polling.
 
@@ -1248,7 +1262,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 ## Connection API Behaviors Discovered
 - **Tenant-level scope**: All connection endpoints use `/connections/{id}` (no workspace prefix). Connections are shared across workspaces.
 - **Connectivity types**: `ShareableCloud`, `OnPremises`, `VirtualNetworkGateway`, `PersonalCloud`.
-- **Credential types**: `Basic`, `OAuth2`, `Key`, `Anonymous`, `ServicePrincipal`, `SharedAccessSignature`.
+- **Credential types**: `Basic`, `OAuth2`, `Key`, `Anonymous`, `ServicePrincipal`, `SharedAccessSignature`, `WorkspaceIdentity`, `KeyPair`.
 - **Privacy levels**: `None`, `Public`, `Organizational`, `Private`.
 - **Parameters format conversion**: User provides JSON object `{"key": "value"}` which is converted to array format `[{"dataType": "Text", "name": "key", "value": "value"}]` for the API.
 - **Create body structure**: `{"displayName": "...", "connectivityType": "...", "connectionDetails": {"type": "...", "creationMethod": "...", "parameters": [...]}, "credentialDetails": {"singleSignOnType": "None", "connectionEncryption": "NotEncrypted", "skipTestConnection": bool, "credentials": {"credentialType": "..."}}, "privacyLevel": "..."}`.
@@ -1298,6 +1312,11 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Show pattern**: GET all roles → find by name (client-side filter). No server-side individual GET.
 - **Body format**: PUT body is the complete array of role definitions. Each role has `name` and members/permissions.
 - **No individual role endpoints**: All CRUD operations go through the same PUT endpoint with the full role set.
+- **Create (POST) endpoint**: `POST /workspaces/{ws}/items/{id}/dataAccessRoles?dataAccessRoleConflictPolicy={policy}` creates a single role. Accepts the role JSON directly as body (not wrapped in array).
+- **Conflict policy values**: `Abort` (default — fails if role exists) or `Overwrite` (replaces existing role with same name). Query parameter: `dataAccessRoleConflictPolicy`.
+- **Native show by roleName**: `GET /workspaces/{ws}/items/{id}/dataAccessRoles/{roleName}` returns a single role directly (no client-side filtering needed).
+- **Native delete by roleName**: `DELETE /workspaces/{ws}/items/{id}/dataAccessRoles/{roleName}` removes a single role without requiring GET-all + PUT-minus-one pattern.
+- **Role JSON input**: `--role` accepts inline JSON or `@path/to/file.json` (file prefix). Validated client-side before sending.
 
 ## Managed Private Endpoint API Behaviors Discovered
 - **Create body**: `{"name": "<endpoint_name>", "privateLinkResourceId": "<ARM_resource_id>", "groupId": "<subresource_type>", "requestMessage"?: "<approval_message>"}`.
@@ -1354,6 +1373,12 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Required roles**: Create/Delete require "Member"; Update/Definition require "Contributor".
 - **Identical structure to Copy Job**: Same LRO patterns, same role requirements, different definition file name.
 - **Discover parameters**: `GET /workspaces/{ws}/dataflows/{id}/parameters` returns paginated list of M parameters. Uses standard `get_list()` with `"value"` key.
+- **Run job types**: Two job types — `execute` (default, runs the dataflow) and `applyChanges` (applies pending definition changes). Endpoints: `POST /workspaces/{ws}/dataflows/{id}/jobs/execute/instances` and `.../jobs/applyChanges/instances`.
+- **Run executionData**: Optional body with `executionOption` ("NoRefreshDuringSave", "AutomaticRefresh") and `parameters` (JSON object). Only applies to `execute` job type; `applyChanges` rejects `executionData` with API_ERROR.
+- **Run with --wait**: Polls job status at `/workspaces/{ws}/items/{id}/jobs/instances/{job_id}` every 5s. Terminal states: `Completed`, `Failed`, `Cancelled`. Supports `--timeout` (default 600s) and `--cancel-on-timeout`.
+- **Execute query endpoint**: `POST /workspaces/{ws}/dataflows/{id}/executeQuery` with body `{"queryName": "<name>", "customMashupDocument"?: "<M expression>"}`. Returns binary Apache Arrow IPC stream (NOT JSON).
+- **Execute query response handling**: Binary response saved to `--file` path. If `--file` is not specified, reports metadata only (size in bytes). Uses `post_fabric_bytes()` method for binary response.
+- **Execute query requires Contributor role**: Returns 403 without sufficient permissions.
 
 ## SQL Database API Behaviors Discovered
 - **Creation modes**: `New` (fresh database), `Restore` (point-in-time restore from existing), `RestoreDeletedDatabase` (restore from deleted). Each mode has different `creationPayload` fields.

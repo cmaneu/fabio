@@ -394,7 +394,9 @@ fn commands_schema() -> serde_json::Value {
                     "flags": {
                         "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
                         "--type": {"type": "string", "description": "Filter by item type (e.g., Notebook, Lakehouse, Warehouse)"},
-                        "--folder": {"type": "string", "description": "Filter by folder ID (client-side)"}
+                        "--folder": {"type": "string", "description": "Filter by folder ID (server-side rootFolderId)"},
+                        "--recursive": {"type": "bool", "description": "Include items in subfolders"},
+                        "--include": {"type": "string", "description": "Additional metadata to include in response"}
                     }
                 },
                 "show": {
@@ -608,7 +610,8 @@ fn commands_schema() -> serde_json::Value {
                         "--source-path": {"type": "string", "required": true, "description": "Relative path to source file"},
                         "--table": {"type": "string", "required": true, "description": "Table name"},
                         "--mode": {"type": "enum", "values": ["Overwrite", "Append"], "default": "Overwrite"},
-                        "--format": {"type": "enum", "values": ["Csv", "Parquet", "Json"], "default": "Csv"}
+                        "--format": {"type": "enum", "values": ["Csv", "Parquet", "Json"], "default": "Csv"},
+                        "--schema": {"type": "string", "description": "Schema name for multi-schema lakehouses (uses beta API)"}
                     }
                 },
                 "copy-file": {
@@ -795,7 +798,8 @@ fn commands_schema() -> serde_json::Value {
                     "mutates": false,
                     "flags": {
                         "--workspace": {"type": "string", "required": true},
-                        "--id": {"type": "string", "required": true}
+                        "--id": {"type": "string", "required": true},
+                        "--strip-output": {"type": "bool", "description": "Clear outputs/execution_count from ipynb cells"}
                     }
                 },
                 "run": {
@@ -805,6 +809,9 @@ fn commands_schema() -> serde_json::Value {
                     "flags": {
                         "--workspace": {"type": "string", "required": true},
                         "--id": {"type": "string", "required": true},
+                        "--parameters": {"type": "string", "description": "JSON array of {name, value, type} objects"},
+                        "--compute-type": {"type": "string", "description": "Compute type (e.g. Spark, DataFactory)"},
+                        "--execution-data": {"type": "string", "description": "Full executionData JSON (advanced)"},
                         "--wait": {"type": "bool", "description": "Wait for completion (polls until finished)"},
                         "--timeout": {"type": "integer", "default": "600", "description": "Maximum wait in seconds"}
                     }
@@ -941,7 +948,8 @@ fn commands_schema() -> serde_json::Value {
                 "publish": {"description": "Publish staged changes", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "cancel-publish": {"description": "Cancel a pending publish", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "get-spark-settings": {"description": "Get published Spark settings", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
-                "get-staging-spark-settings": {"description": "Get staging Spark settings", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+                "get-staging-spark-settings": {"description": "Get staging Spark settings", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "upload-staging-library": {"description": "Upload a library file to the staging area", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string", "required": true, "description": "Path to library file (.whl, .jar, .tar.gz)"}, "--library-name": {"type": "string", "description": "Override library name (defaults to filename)"}}}
             }
         },
         "data-pipeline": {
@@ -1268,7 +1276,9 @@ fn commands_schema() -> serde_json::Value {
                 "delete": {"description": "Delete a dataflow", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--hard-delete": {"type": "bool", "description": "Permanently delete (skip recycle bin)"}}},
                 "get-definition": {"description": "Get dataflow definition", "mutates": false, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
                 "update-definition": {"description": "Update dataflow definition", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--file": {"type": "string"}, "--content": {"type": "string"}}},
-                "discover-parameters": {"description": "Discover parameters of a dataflow", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}}
+                "discover-parameters": {"description": "Discover parameters of a dataflow", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}}},
+                "run": {"description": "Run a dataflow job (execute or apply-changes)", "mutates": true, "async": true, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--job-type": {"type": "string", "description": "execute (default) or apply-changes"}, "--execute-option": {"type": "string", "description": "NoRefreshDuringSave or AutomaticRefresh"}, "--parameters": {"type": "string", "description": "JSON object of parameters"}, "--wait": {"type": "bool"}, "--timeout": {"type": "integer", "description": "Max wait seconds (default 600)"}, "--cancel-on-timeout": {"type": "bool"}}},
+                "execute-query": {"description": "Execute a query (returns Apache Arrow IPC binary)", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--id": {"type": "string", "required": true}, "--query-name": {"type": "string", "required": true}, "--mashup": {"type": "string", "description": "Custom M expression override"}, "--file": {"type": "string", "description": "Output file path for Arrow IPC bytes"}}}
             }
         },
         "kql-dashboard": {
@@ -1754,6 +1764,24 @@ fn commands_schema() -> serde_json::Value {
                         "fabio rest call --method post --path /groups/{ws}/datasets/{id}/refreshes --api powerbi --body '{}'",
                         "fabio rest call --method post --path /workspaces/{ws}/items/{id}/getDefinition --poll"
                     ]
+                }
+            }
+        },
+        "rti": {
+            "description": "Real-Time Intelligence operations",
+            "subcommands": {
+                "nl-to-kql": {
+                    "description": "Translate natural language to KQL query",
+                    "mutates": false,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--item-id": {"type": "string", "required": true, "description": "KQL Database or Eventhouse ID for billing"},
+                        "--cluster-url": {"type": "string", "required": true, "description": "Kusto query URI"},
+                        "--database-name": {"type": "string", "required": true, "description": "Target database name"},
+                        "--question": {"type": "string", "required": true, "description": "Natural language question"},
+                        "--user-shots": {"type": "string", "description": "JSON array of {naturalLanguage, kqlQuery} examples"},
+                        "--chat-messages": {"type": "string", "description": "JSON array of {role, content} for multi-turn context"}
+                    }
                 }
             }
         }
