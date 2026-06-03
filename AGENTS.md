@@ -35,10 +35,10 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (667 subcommands across 66 groups): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, profile, jobs, feedback, operation, agent-context
-- Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain formats
+- **Full Rust implementation** (672 subcommands across 67 groups): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, rest, profile, jobs, feedback, operation, agent-context
+- Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain, CSV, TSV formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
-- Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`
+- Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`, `--lro-timeout`
 - HTTP client: async get/post/put/patch/delete with LRO polling (`Location` + `x-ms-operation-id` + resource follow)
 - OneLake operations: DFS upload (create+append+flush), download, file listing; Blob API copy (server-side async)
 - **Parallel file/table operations**: Upload, copy, move support glob patterns with concurrent execution and rate-limit retry
@@ -123,7 +123,13 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Dashboard**: list (read-only, portal-created)
 - **Datamart**: list (read-only, portal-created)
 - **Paginated Report**: list/update (read-only creation via portal/SSRS)
-- **1110 Rust tests** (434 unit + 76 offline integration + 600 E2E requiring live tenant), zero clippy warnings, rustfmt clean
+- **Lakehouse query**: Resolves SQL analytics endpoint from lakehouse properties, executes T-SQL via shared TDS utilities
+- **Rest**: Raw REST passthrough command (`fabio rest call`); supports GET/POST/PUT/PATCH/DELETE; `--body` accepts inline JSON, `@file`, `@-` (stdin); `--query-params` for URL params; `--poll` for LRO; dry-run for mutating methods
+- **Item bulk-create/bulk-delete**: Client-side parallel operations using `execute_parallel` with bounded concurrency and rate-limit retry; per-item success/failure reporting
+- **Notebook --strip-output**: `get-definition --strip-output` clears `outputs`/`execution_count` from ipynb cells; gracefully passes through `.py` format
+- **CSV/TSV output**: Global `--output csv|tsv` on all commands; RFC 4180 quoting via `format_csv_value()`
+- **Deploy validate**: Local-only pre-flight checks on source directory (validates .platform files, item types, definition structure, logical ID references); no API calls required
+- **1181 Rust tests** (460 unit + 76 offline integration + 645 E2E requiring live tenant), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~16 MB, stripped, full LTO, panic=abort
@@ -195,12 +201,12 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/mod.rs`: Command dispatch
 - `src/commands/auth.rs`: login/logout/status (DefaultAzureCredential chain)
 - `src/commands/workspace.rs`: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
-- `src/commands/item.rs`: 13 subcommands (CRUD + copy/move + definitions + list-connections + exists/url/inspect)
-- `src/commands/lakehouse.rs`: 23 subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut, optimize-table, vacuum-table, table-schema)
-- `src/commands/notebook.rs`: create/get-definition/run (with --wait/--timeout)/status/stop/delete
+- `src/commands/item.rs`: 15 subcommands (CRUD + copy/move + definitions + list-connections + exists/url/inspect + bulk-create/bulk-delete)
+- `src/commands/lakehouse.rs`: 23 subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut, optimize-table, vacuum-table, table-schema, query)
+- `src/commands/notebook.rs`: create/get-definition (with --strip-output)/run (with --wait/--timeout)/status/stop/delete
 - `src/commands/warehouse.rs`: list/show/create/update/delete/query (endpoint resolved, stdin/file/flag SQL input)
 - `src/commands/sql_database.rs`: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
-- `src/commands/tds_utils.rs`: shared `column_value_to_json()` with `to_utf8_string()` fix
+- `src/commands/tds_utils.rs`: Shared TDS utilities (resolve_sql_input, parse_connection_string, execute_and_render_sql, column_value_to_json)
 - `src/commands/dataagent.rs`: list/show/create/update/delete/query
 - `src/commands/git.rs`: status/commit/pull/connect/disconnect/initialize/switch/connection/credentials/show-tracked
 - `src/commands/ontology.rs`: list/show/create/update/delete/get-definition/update-definition
@@ -240,7 +246,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/snowflake_database.rs`: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
 - `src/commands/sql_endpoint.rs`: list/show/connection-string/refresh-metadata/get-audit-settings/update-audit-settings/set-audit-actions
 - `src/commands/anomaly_detector.rs`: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
-- `src/commands/deploy/mod.rs`: DeployCommand enum (plan/apply/export/init-params); execute dispatch; workspace name resolution
+- `src/commands/deploy/mod.rs`: DeployCommand enum (plan/apply/export/init-params/validate); execute dispatch; workspace name resolution
 - `src/commands/deploy/apply.rs`: execute_changeset, execute_post_hooks, Rename handling (PATCH + updateDefinition), build_resolution_map, resolve_logical_ids_in_payload
 - `src/commands/deploy/plan.rs`: build_changeset (two-pass with rename), validate_references, fetch_deployed_logical_id, compute_workspace_fingerprint
 - `src/commands/deploy/params.rs`: Parameter substitution: find_replace, key_value_replace, spark_pool, semantic_model_binding
@@ -266,16 +272,17 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/jobs.rs`: list/get/prune (local async job ledger)
 - `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
 - `src/commands/agent_context.rs`: Machine-readable command schema for AI agents
+- `src/commands/rest.rs`: Raw REST passthrough (method/path/body/query-params/poll); `resolve_body()` for @file/@- support
 - `tests/common/mod.rs`: Shared E2E test harness (TestConfig, helpers)
 - `tests/e2e_auth.rs`: Auth integration tests
 - `tests/e2e_workspace.rs`: Workspace CRUD + assign-capacity + networking + OneLake settings + folders + storage format + roles filter tests
 - `tests/e2e_global_options.rs`: --query, --quiet, --output format tests
-- `tests/e2e_item.rs`: Item list/show/create/delete/copy/move tests
-- `tests/e2e_lakehouse.rs`: Tables/files/upload/download tests
+- `tests/e2e_item.rs`: Item list/show/create/delete/copy/move/bulk-create/bulk-delete tests
+- `tests/e2e_lakehouse.rs`: Tables/files/upload/download/query tests
 - `tests/e2e_lakehouse_files.rs`: File copy/move/delete tests
 - `tests/e2e_lakehouse_tables.rs`: Table load/copy/move/delete tests
 - `tests/e2e_lakehouse_shortcuts.rs`: Shortcut create/get/delete tests
-- `tests/e2e_notebook.rs`: Notebook create/get-definition/run/run --wait/status/stop/delete tests
+- `tests/e2e_notebook.rs`: Notebook create/get-definition/run/run --wait/status/stop/delete/strip-output tests
 - `tests/e2e_warehouse.rs`: Warehouse list/show/query/query-stdin tests
 - `tests/e2e_sql_database.rs`: SQL Database CRUD + query + import tests
 - `tests/e2e_dataagent.rs`: Data agent tests
@@ -310,7 +317,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_onelake_security.rs`: OneLake security tests
 - `tests/e2e_managed_private_endpoint.rs`: Managed private endpoint tests
 - `tests/e2e_admin.rs`: Admin API tests (63 tests: listing, tag lifecycle, domain lifecycle, dry-run validations, sharing links, labels, external data shares)
-- `tests/e2e_deploy.rs`: Deploy plan/apply/export tests (34 tests: create, update, rename, creationPayload, parameters, staleness, logical ID resolution, post-hooks, init-params)
+- `tests/e2e_deploy.rs`: Deploy plan/apply/export/validate tests (42 tests: create, update, rename, creationPayload, parameters, staleness, logical ID resolution, post-hooks, init-params, validate)
 - `tests/e2e_gateway.rs`: Gateway CRUD + role assignment tests
 - `tests/e2e_apache_airflow_job.rs`: Apache Airflow job CRUD + environment + file ops tests
 - `tests/e2e_mirrored_catalog.rs`: Mirrored catalog tests
@@ -338,6 +345,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_jobs.rs`: Jobs ledger tests
 - `tests/e2e_feedback.rs`: Feedback send/list tests
 - `tests/e2e_agent_context.rs`: Agent context schema tests
+- `tests/e2e_rest.rs`: REST passthrough tests (dry-run, body resolution, live calls)
 - `.github/workflows/ci.yml`: Rust CI (fmt, clippy, test, build) on 6 targets (x64+arm64 x linux/macos/windows)
 - `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
 - `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
