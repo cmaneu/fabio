@@ -29,8 +29,7 @@ Or download pre-built binaries from the [releases page](https://github.com/iemej
 ## Quick Start
 
 ```bash
-# 1. Sign in (uses your Azure CLI credentials)
-az login
+# 1. Sign in
 fabio auth login
 
 # 2. Create a workspace and assign compute capacity
@@ -85,7 +84,7 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 
 | Flag | Description |
 |------|-------------|
-| `-o`, `--output` | Output format: `json` (default), `table`, `plain` |
+| `-o`, `--output` | Output format: `json` (default), `table`, `plain`, `csv`, `tsv` |
 | `--json` | Shorthand for `--output json` |
 | `-q`, `--query` | Field projection (dot-notation extraction) |
 | `--quiet` | Suppress all stdout output |
@@ -95,6 +94,8 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 | `--all` | Fetch all pages (auto-paginate) |
 | `--continuation-token` | Resume pagination from a previous token |
 | `--profile` | Use a named profile for default settings |
+| `--lro-timeout` | Override default LRO polling timeout (seconds) |
+| `--hard-delete` | Permanently delete (skip recycle bin) -- on item deletes |
 
 ## Commands
 
@@ -139,18 +140,24 @@ fabio workspace reset-shortcut-cache   Reset OneLake shortcut cache
 fabio workspace get-network-policy     Get network communication policy
 fabio workspace set-network-policy     Set network communication policy
 
-fabio item list              List items in a workspace (--type filter)
+fabio item list              List items in a workspace (--type, --folder, --recursive)
 fabio item show              Show item details
 fabio item create            Create a new item
 fabio item update            Update item properties (name/description)
-fabio item delete            Delete an item
+fabio item delete            Delete an item (--hard-delete for permanent)
 fabio item copy              Copy an item to another workspace
 fabio item move              Move an item to another workspace (copy + delete)
+fabio item move-to-folder    Move an item to a folder (or root)
 fabio item get-definition    Get item definition (source code/content)
 fabio item update-definition Update item definition from file(s)
 fabio item list-connections  List connections used by an item
+fabio item exists            Check if an item exists (returns {exists: true/false})
+fabio item url               Get Fabric portal URL for an item
+fabio item inspect           Get metadata + definition + connections in one call
 fabio item apply-tags        Apply tags to an item
 fabio item unapply-tags      Remove tags from an item
+fabio item bulk-create       Create multiple items in parallel
+fabio item bulk-delete       Delete multiple items in parallel
 fabio item bulk-export-definitions Bulk export item definitions (LRO)
 fabio item bulk-import-definitions Bulk import item definitions (LRO)
 fabio item bulk-move         Bulk move items to another workspace (LRO)
@@ -173,7 +180,11 @@ fabio lakehouse list-files   List files in a lakehouse
 fabio lakehouse upload       Upload files (supports glob patterns, parallel)
 fabio lakehouse download     Download a file from a lakehouse
 fabio lakehouse upload-table Upload a file and load it into a Delta table (one step)
-fabio lakehouse load-table   Load an existing file into a Delta table
+fabio lakehouse load-table   Load an existing file into a Delta table (--schema)
+fabio lakehouse query        Execute T-SQL via SQL analytics endpoint
+fabio lakehouse table-schema Read Delta table schema from OneLake (no Spark)
+fabio lakehouse optimize-table Run V-Order + Z-Order optimization
+fabio lakehouse vacuum-table Remove old files (retention period)
 fabio lakehouse copy-file    Copy files between lakehouses (glob, parallel)
 fabio lakehouse move-file    Move files between lakehouses (glob, parallel)
 fabio lakehouse delete-file  Delete a file
@@ -181,7 +192,7 @@ fabio lakehouse copy-table   Copy a table between lakehouses
 fabio lakehouse move-table   Move a table (copy + delete source)
 fabio lakehouse delete-table Delete a table
 fabio lakehouse sync         Sync files between lakehouses (ETag/MD5 comparison)
-fabio lakehouse create-shortcut      Create a shortcut (OneLake/ADLS/S3)
+fabio lakehouse create-shortcut      Create a shortcut (OneLake/ADLS/S3, --conflict-policy)
 fabio lakehouse get-shortcut         Get shortcut details
 fabio lakehouse delete-shortcut      Delete a shortcut
 fabio lakehouse bulk-create-shortcuts Bulk-create multiple shortcuts (LRO)
@@ -197,6 +208,13 @@ fabio lakehouse get-livy-session     Get Livy session details
 
 fabio capacity list          List available capacities
 fabio capacity show          Show capacity details
+fabio capacity suspend       Suspend (pause) a capacity
+fabio capacity resume        Resume a suspended capacity
+fabio capacity create        Create a new capacity (ARM)
+fabio capacity update        Update capacity properties (ARM)
+fabio capacity delete        Delete a capacity (ARM)
+fabio capacity list-skus     List available SKUs and regions
+fabio capacity check-name    Check capacity name availability
 
 fabio catalog search         Search items across the tenant
 ```
@@ -209,9 +227,9 @@ fabio notebook show          Show notebook details
 fabio notebook create        Create a new notebook (--lakehouse for binding)
 fabio notebook update        Update notebook properties (name/description)
 fabio notebook delete        Delete a notebook
-fabio notebook get-definition   Get notebook source code
+fabio notebook get-definition   Get notebook source code (--strip-output)
 fabio notebook update-definition Update notebook source
-fabio notebook run           Run a notebook (--wait to block, --timeout)
+fabio notebook run           Run a notebook (--wait, --timeout, --parameters)
 fabio notebook status        Check run status
 fabio notebook get-job-instance Get details of a specific job instance
 fabio notebook stop          Stop a running notebook
@@ -295,6 +313,7 @@ fabio environment publish    Publish staged changes
 fabio environment cancel-publish Cancel a pending publish
 fabio environment get-spark-settings Get published Spark settings
 fabio environment get-staging-spark-settings Get staging (draft) settings
+fabio environment upload-staging-library Upload a library to staging (.whl/.jar/.tar.gz)
 fabio environment get-definition   Get environment definition
 fabio environment update-definition Update environment definition
 fabio environment list-libraries   List published libraries
@@ -331,6 +350,9 @@ fabio dataflow update        Update dataflow properties
 fabio dataflow delete        Delete a dataflow
 fabio dataflow get-definition   Get dataflow definition
 fabio dataflow update-definition Update dataflow definition
+fabio dataflow discover-parameters Discover M parameters
+fabio dataflow run           Run a dataflow (--wait, --job-type execute|apply-changes)
+fabio dataflow execute-query Execute a named query (returns Arrow IPC binary)
 ```
 
 ### Analytics & Reporting
@@ -354,8 +376,21 @@ fabio semantic-model get-definition    Get definition
 fabio semantic-model update-definition Update definition
 fabio semantic-model query   Execute a DAX query
 fabio semantic-model bind-connection Bind to a connection
+fabio semantic-model unbind-connection Unbind from a connection
 fabio semantic-model refresh Refresh (frame Direct Lake models)
 fabio semantic-model takeover Convert definition-managed to service-managed
+fabio semantic-model list-parameters   List M parameters (Power BI API)
+fabio semantic-model update-parameters Update M parameters
+fabio semantic-model list-datasources  List data sources
+fabio semantic-model update-datasources Update data sources
+fabio semantic-model list-users        List dataset permissions
+fabio semantic-model add-user          Add a user/principal
+fabio semantic-model delete-user       Remove a user/principal
+fabio semantic-model refresh-status    View refresh history
+fabio semantic-model list-upstream     Show upstream dependencies
+fabio semantic-model clone             Clone a dataset (same/cross-workspace)
+fabio semantic-model export-pbix       Download as .pbix binary
+fabio semantic-model import-pbix       Upload .pbix file
 
 fabio paginated-report list  List paginated reports
 fabio paginated-report update Update paginated report properties
@@ -452,6 +487,8 @@ fabio event-schema-set update Update properties
 fabio event-schema-set delete Delete an event schema set
 fabio event-schema-set get-definition   Get definition
 fabio event-schema-set update-definition Update definition
+
+fabio rti nl-to-kql          Translate natural language to KQL (AI-powered)
 ```
 
 ### Data Science & AI
@@ -755,6 +792,7 @@ fabio deploy plan            Plan deployment (diff source directory vs live work
 fabio deploy apply           Apply deployment (create/update/rename/delete items)
 fabio deploy export          Export a workspace to a source directory
 fabio deploy init-params     Generate parameter file from GUIDs/diffs
+fabio deploy validate        Validate source directory offline (no API calls)
 ```
 
 ### Security & Governance
@@ -762,6 +800,7 @@ fabio deploy init-params     Generate parameter file from GUIDs/diffs
 ```
 fabio onelake-security list  List data access roles
 fabio onelake-security show  Show a data access role
+fabio onelake-security create Create a data access role (--conflict-policy)
 fabio onelake-security upsert Create or replace all roles
 fabio onelake-security delete Delete a data access role
 
@@ -842,6 +881,8 @@ fabio admin list-user-access List access details for a user
 ### Configuration & Tooling
 
 ```
+fabio rest call              Raw REST API passthrough (Fabric or Power BI)
+
 fabio profile save           Save a named profile with default settings
 fabio profile use            Set the active profile
 fabio profile list           List all saved profiles
@@ -863,17 +904,18 @@ fabio agent-context          Machine-readable command schema for AI agents
 
 ## Authentication
 
-Fabio uses the Azure credential chain (`az login` or environment credentials). No built-in token storage -- it delegates to the Azure CLI credential cache.
+Fabio authenticates with its own dedicated Entra ID application ("Fabio CLI"). It also supports the Azure credential chain as a fallback.
 
 ```bash
-# Login via Azure CLI first
-az login
+# Login with Fabio CLI identity (device code flow, works on any machine)
+fabio auth login
 
-# Verify fabio can authenticate
+# Verify authentication
 fabio auth status
 ```
 
-Supported credential sources (via `DefaultAzureCredential`):
+Supported credential sources (via `DefaultAzureCredential` fallback):
+- Fabio CLI identity (`fabio auth login` -- recommended)
 - Azure CLI (`az login`)
 - Environment variables (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`)
 - Managed Identity (when running on Azure)
@@ -1005,6 +1047,10 @@ fabio notebook create --workspace $WS --name "ETL-Pipeline" \
 # Run and wait for completion (default timeout 600s)
 fabio notebook run --workspace $WS --id $NB --wait
 
+# Run with parameters
+fabio notebook run --workspace $WS --id $NB --wait \
+  --parameters '[{"name":"start_date","value":"2024-01-01","type":"Text"}]'
+
 # Run with a custom timeout
 fabio notebook run --workspace $WS --id $NB --wait --timeout 1800
 
@@ -1014,8 +1060,8 @@ fabio notebook status --workspace $WS --id $NB
 # Stop a long-running notebook
 fabio notebook stop --workspace $WS --id $NB
 
-# Get notebook source code (base64-decoded)
-fabio notebook get-definition --workspace $WS --id $NB
+# Get notebook source code (strip outputs for clean diffs)
+fabio notebook get-definition --workspace $WS --id $NB --strip-output
 
 # Update notebook code from file
 fabio notebook update-definition --workspace $WS --id $NB --source updated_etl.py
@@ -1412,10 +1458,10 @@ git clone https://github.com/iemejia/fabio.git && cd fabio
 # Build
 cargo build
 
-# Run tests (unit + offline integration — 479 tests)
+# Run tests (unit + offline integration -- 624 tests)
 cargo test
 
-# Run E2E tests (requires live Fabric tenant — 582 tests)
+# Run E2E tests (requires live Fabric tenant -- 662 tests)
 cargo test -- --ignored
 
 # Lint (pedantic + nursery, zero warnings required)
@@ -1428,14 +1474,14 @@ cargo fmt
 ### CI/CD
 
 - GitHub Actions CI runs on 6 targets: x64 + arm64 for Linux, macOS, and Windows
-- Release workflow: tag-triggered, builds 5 binaries with SHA256 checksums (linux x64/arm64, macOS arm64, Windows x64/arm64)
+- Release workflow: tag-triggered, builds 5 binaries with SHA256 checksums (Linux x64/arm64, macOS arm64, Windows x64/arm64)
 - Dependabot auto-merge for passing dependency updates
 - CodeQL and Secret Scanning enabled
 
 ### Project Stats
 
-- **66 command groups** with **661 subcommands**
-- **1061 tests** (409 unit + 70 offline integration + 582 E2E requiring live tenant)
+- **69 command groups** with **766 subcommands**
+- **1286 tests** (487 unit + 137 offline integration + 662 E2E requiring live tenant)
 - **~16 MB** release binary (stripped, full LTO, panic=abort)
 - Zero clippy warnings, zero unsafe code
 
