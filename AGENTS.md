@@ -81,7 +81,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Connection**: list, show, create, update, delete, list-supported-types
 - **Deployment Pipeline**: list, show, create, update, delete, list-stages, list-stage-items, assign-workspace, unassign-workspace, deploy
 - **Domain**: list, show, create, update, delete, list-workspaces, assign-workspaces, unassign-workspaces, assign-by-capacity, assign-by-principal
-- **Job Scheduler**: list-instances, get-instance, run-on-demand, cancel-instance, list-schedules, get-schedule, create-schedule, update-schedule, delete-schedule
+- **Job Scheduler**: list-instances, get-instance, run-on-demand (with `--wait`/`--timeout`/`--cancel-on-timeout`), cancel-instance, list-schedules, get-schedule, create-schedule, update-schedule, delete-schedule
 - **Spark**: get-settings, update-settings, list-pools, get-pool, create-pool, update-pool, delete-pool
 - **OneLake Security**: list, show, upsert, delete (data access roles for row/column-level security)
 - **Managed Private Endpoint**: list, show, create, delete (workspace private networking)
@@ -123,7 +123,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Dashboard**: list (read-only, portal-created)
 - **Datamart**: list (read-only, portal-created)
 - **Paginated Report**: list/update (read-only creation via portal/SSRS)
-- **1081 Rust tests** (417 unit + 76 offline integration + 588 E2E requiring live tenant), zero clippy warnings, rustfmt clean
+- **1110 Rust tests** (434 unit + 76 offline integration + 600 E2E requiring live tenant), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~16 MB, stripped, full LTO, panic=abort
@@ -191,7 +191,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/errors.rs`: ErrorCode enum + FabioError struct with thiserror
 - `src/output.rs`: render_list_with_token, render_object, render_error (respects --quiet/--query), apply_query, dry_run_guard, unit tests
 - `src/parallel.rs`: Parallel execution framework for concurrent file/table operations with rate-limit retry
-- `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, run_notebook
+- `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, run_notebook, trigger_item_job
 - `src/commands/mod.rs`: Command dispatch
 - `src/commands/auth.rs`: login/logout/status (DefaultAzureCredential chain)
 - `src/commands/workspace.rs`: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
@@ -227,7 +227,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/connection.rs`: list/show/create/update/delete/list-supported-types
 - `src/commands/deployment_pipeline.rs`: list/show/create/update/delete/list-stages/list-stage-items/assign-workspace/unassign-workspace/deploy
 - `src/commands/domain.rs`: list/show/create/update/delete/list-workspaces/assign-workspaces/unassign-workspaces/assign-by-capacity/assign-by-principal
-- `src/commands/job_scheduler.rs`: list-instances/get-instance/run-on-demand/cancel-instance/list-schedules/get-schedule/create-schedule/update-schedule/delete-schedule
+- `src/commands/job_scheduler.rs`: list-instances/get-instance/run-on-demand (with `--wait`/`--timeout`/`--cancel-on-timeout`), cancel-instance/list-schedules/get-schedule/create-schedule/update-schedule/delete-schedule
 - `src/commands/onelake_security.rs`: list/show/upsert/delete (data access roles)
 - `src/commands/managed_private_endpoint.rs`: list/show/create/delete
 - `src/commands/variable_library.rs`: list/show/create/update/delete/get-definition/update-definition (variables.json + settings.json)
@@ -304,7 +304,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_spark_job_definition.rs`: Spark job definition tests
 - `tests/e2e_deployment_pipeline.rs`: Deployment pipeline tests
 - `tests/e2e_domain.rs`: Domain management tests
-- `tests/e2e_job_scheduler.rs`: Job scheduler tests
+- `tests/e2e_job_scheduler.rs`: Job scheduler tests (11 tests: list, dry-run, fire-and-forget, --wait with polling)
 - `tests/e2e_spark.rs`: Spark settings and pool tests
 - `tests/e2e_capacity.rs`: Capacity list/show tests
 - `tests/e2e_onelake_security.rs`: OneLake security tests
@@ -1292,10 +1292,17 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Generic item-scoped**: All endpoints use `/workspaces/{ws}/items/{id}/jobs/...` pattern (works for any item type).
 - **Job type required**: Most endpoints include `{job_type}` in path: `/jobs/{job_type}/schedules`.
 - **Run on demand**: `POST /workspaces/{ws}/items/{id}/jobs/instances?jobType={job_type}` with optional body.
+- **Run on demand response**: Returns 202 + `Location` header containing the job instance URL. Extract job ID from `Location` path segment.
 - **Cancel**: `POST /workspaces/{ws}/items/{id}/jobs/instances/{instance_id}/cancel`.
 - **Schedule CRUD**: At `/workspaces/{ws}/items/{id}/jobs/{job_type}/schedules/{schedule_id}`.
 - **Create schedule body**: Includes `enabled`, `configuration` with cron or interval settings.
-- **Known job types**: Vary by item type — `RunNotebook`, `Pipeline`, `sparkjob`, `RefreshGraph`, `refreshMaterializedLakeViews`, `tableMaintenance`, etc.
+- **Known job types**: Vary by item type — `RunNotebook`, `Pipeline`, `sparkjob`, `RefreshGraph`, `refreshMaterializedLakeViews`, `TableMaintenance`, etc.
+- **`--wait` polling**: Polls `GET /workspaces/{ws}/items/{id}/jobs/instances/{job_id}` every 5 seconds. Terminal statuses: `Completed`, `Failed`, `Cancelled`. Continue on: `NotStarted`, `InProgress`, `Deduped`.
+- **`--timeout` default**: 600 seconds. On timeout without `--cancel-on-timeout`, returns TIMEOUT error with hint showing how to check status manually.
+- **`--cancel-on-timeout`**: Fires `POST .../cancel` on the job instance, then returns TIMEOUT error. Cancel is best-effort.
+- **Job ID extraction from Location header**: Pattern: `/workspaces/{ws}/items/{id}/jobs/instances/{job_id}`. Falls back to `x-ms-operation-id` header, then response body `id` field.
+- **TableMaintenance cold start**: On small capacity (F2), table maintenance jobs can take 2-5 minutes to complete due to Spark session allocation. First run is always slowest.
+- **Fire-and-forget mode**: Without `--wait`, returns immediately with `{"status":"accepted","jobId":"..."}` after recording in local job ledger.
 
 ## Copy Job API Behaviors Discovered
 - **Definition file**: Part path is `CopyJobV1.json`.

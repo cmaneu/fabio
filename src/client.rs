@@ -1349,6 +1349,80 @@ impl FabricClient {
         Ok(job_id)
     }
 
+    /// Trigger an on-demand item job and return the job instance ID from
+    /// the Location header. Generic version of `run_notebook` supporting
+    /// any job type and optional `executionData` payload.
+    pub async fn trigger_item_job(
+        &self,
+        workspace: &str,
+        item_id: &str,
+        job_type: &str,
+        execution_data: Option<&Value>,
+    ) -> Result<String> {
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(&format!(
+            "/workspaces/{workspace}/items/{item_id}/jobs/instances?jobType={job_type}"
+        ));
+
+        let body = execution_data.map_or_else(
+            || serde_json::json!({}),
+            |ed| serde_json::json!({ "executionData": ed }),
+        );
+
+        let resp = self
+            .http
+            .post(&url)
+            .header(AUTHORIZATION, &token)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .post(&url)
+                .header(AUTHORIZATION, &token)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return Self::extract_job_id_from_response(resp).await;
+        }
+
+        Self::extract_job_id_from_response(resp).await
+    }
+
+    /// Extract the job instance ID from a job trigger response's Location
+    /// header. Returns an error if the response indicates failure or if no
+    /// job ID can be found.
+    async fn extract_job_id_from_response(resp: Response) -> Result<String> {
+        let status = resp.status();
+        if status != StatusCode::ACCEPTED && status != StatusCode::OK {
+            let status_code = status.as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(FabioError::from_status(status_code, text).into());
+        }
+
+        let location = resp
+            .headers()
+            .get("location")
+            .or_else(|| resp.headers().get("Location"))
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+
+        let job_id = location.rsplit('/').next().unwrap_or("").to_string();
+        if job_id.is_empty() {
+            return Err(
+                FabioError::api_error("No job instance ID returned from run request").into(),
+            );
+        }
+
+        Ok(job_id)
+    }
+
     /// Poll a long-running operation until completion.
     async fn poll_lro(&self, initial_response: Response) -> Result<Value> {
         self.poll_lro_impl(initial_response, LRO_MAX_WAIT).await
