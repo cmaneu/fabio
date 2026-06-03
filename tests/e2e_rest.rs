@@ -235,10 +235,12 @@ fn rest_powerbi_post_dry_run() {
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["details"]["api"], "powerbi");
     assert_eq!(data["details"]["method"], "POST");
-    assert!(data["details"]["path"]
-        .as_str()
-        .unwrap()
-        .contains("datasets/def/refreshes"));
+    assert!(
+        data["details"]["path"]
+            .as_str()
+            .unwrap()
+            .contains("datasets/def/refreshes")
+    );
 }
 
 #[test]

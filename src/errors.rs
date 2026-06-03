@@ -45,6 +45,8 @@ pub struct FabioError {
     pub message: String,
     /// Optional hint with valid values or corrected command for agent self-correction.
     pub hint: Option<String>,
+    /// Whether the API indicated this error is retriable (from `error.isRetriable` in response).
+    pub retriable: Option<bool>,
 }
 
 impl FabioError {
@@ -53,6 +55,7 @@ impl FabioError {
             code,
             message: message.into(),
             hint: None,
+            retriable: None,
         }
     }
 
@@ -62,6 +65,7 @@ impl FabioError {
             code,
             message: message.into(),
             hint: Some(hint.into()),
+            retriable: None,
         }
     }
 
@@ -79,6 +83,13 @@ impl FabioError {
 
     pub fn invalid_input(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::InvalidInput, message)
+    }
+
+    /// Set the retriable flag (builder pattern).
+    #[must_use]
+    pub const fn set_retriable(mut self, retriable: Option<bool>) -> Self {
+        self.retriable = retriable;
+        self
     }
 }
 
@@ -113,6 +124,7 @@ impl FabioError {
             code,
             message: msg,
             hint,
+            retriable: None,
         }
     }
 }
@@ -614,5 +626,23 @@ mod tests {
         let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
         assert_eq!(fabio_err.code, ErrorCode::NotFound);
         assert!(fabio_err.hint.is_none());
+    }
+
+    #[test]
+    fn set_retriable_sets_field() {
+        let err = FabioError::new(ErrorCode::ApiError, "server error").set_retriable(Some(true));
+        assert_eq!(err.retriable, Some(true));
+    }
+
+    #[test]
+    fn set_retriable_none_leaves_field_none() {
+        let err = FabioError::new(ErrorCode::ApiError, "server error").set_retriable(None);
+        assert_eq!(err.retriable, None);
+    }
+
+    #[test]
+    fn new_error_has_retriable_none() {
+        let err = FabioError::new(ErrorCode::NotFound, "not found");
+        assert_eq!(err.retriable, None);
     }
 }

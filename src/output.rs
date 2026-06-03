@@ -26,6 +26,8 @@ struct ErrorBody {
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     hint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    retriable: Option<bool>,
 }
 
 /// Render a list of items respecting --quiet, --query, and --limit flags.
@@ -239,6 +241,7 @@ pub fn render_error(err: &FabioError) {
             code: err.code.to_string(),
             message: err.message.clone(),
             hint: err.hint.clone(),
+            retriable: err.retriable,
         },
     };
     eprintln!(
@@ -509,5 +512,29 @@ mod tests {
         args.extend_from_slice(extra_args);
         args.push("agent-context");
         Cli::parse_from(args)
+    }
+
+    #[test]
+    fn error_body_serializes_retriable_when_set() {
+        let body = ErrorBody {
+            code: "API_ERROR".to_string(),
+            message: "server error".to_string(),
+            hint: None,
+            retriable: Some(true),
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert!(json.contains(r#""retriable":true"#));
+    }
+
+    #[test]
+    fn error_body_omits_retriable_when_none() {
+        let body = ErrorBody {
+            code: "NOT_FOUND".to_string(),
+            message: "item not found".to_string(),
+            hint: None,
+            retriable: None,
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert!(!json.contains("retriable"));
     }
 }

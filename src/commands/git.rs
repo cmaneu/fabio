@@ -584,6 +584,7 @@ async fn connect(
                  Then: fabio git connect --provider github --connection-id <ID> ..."
                     .into(),
             ),
+            retriable: None,
         }
         .into());
     }

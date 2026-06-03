@@ -2283,8 +2283,9 @@ async fn handle_response(resp: Response) -> Result<Value> {
     }
 
     // Try to extract error message from JSON body
-    let message = serde_json::from_str::<Value>(&text)
-        .ok()
+    let parsed = serde_json::from_str::<Value>(&text).ok();
+    let message = parsed
+        .as_ref()
         .and_then(|v| {
             v.get("error")
                 .and_then(|e| e.get("message"))
@@ -2302,6 +2303,13 @@ async fn handle_response(resp: Response) -> Result<Value> {
             format!("HTTP {status_code}: {truncated}")
         });
 
+    // Extract isRetriable flag from response body (Fabric API surfaces this on errors)
+    let retriable = parsed
+        .as_ref()
+        .and_then(|v| v.get("error"))
+        .and_then(|e| e.get("isRetriable"))
+        .and_then(Value::as_bool);
+
     // Prepend the server error code from headers for machine-readable context.
     // e.g., "ItemNotFound: The requested item does not exist."
     let enriched_message = if let Some(ref code) = api_error_code {
@@ -2310,7 +2318,11 @@ async fn handle_response(resp: Response) -> Result<Value> {
         message
     };
 
-    Err(FabioError::from_status_with_body(status_code, enriched_message, &text).into())
+    Err(
+        FabioError::from_status_with_body(status_code, enriched_message, &text)
+            .set_retriable(retriable)
+            .into(),
+    )
 }
 
 /// Validate that a user-provided URL targets a trusted Microsoft domain.

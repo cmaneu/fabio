@@ -383,63 +383,119 @@ pub async fn execute(
             name,
             description,
         } => {
-            update(cli, client, workspace, id, name.as_deref(), description.as_deref()).await
+            update(
+                cli,
+                client,
+                workspace,
+                id,
+                name.as_deref(),
+                description.as_deref(),
+            )
+            .await
         }
         SemanticModelCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
         SemanticModelCommand::GetDefinition { workspace, id } => {
             get_definition(cli, client, workspace, id).await
         }
-        SemanticModelCommand::UpdateDefinition { workspace, id, file } => {
-            update_definition(cli, client, workspace, id, file).await
-        }
-        SemanticModelCommand::Query { workspace, id, dax, file } => {
-            query(cli, client, workspace, id, dax.as_deref(), file.as_deref()).await
-        }
-        SemanticModelCommand::BindConnection { workspace, id, connection_id } => {
-            bind_connection(cli, client, workspace, id, connection_id).await
-        }
-        SemanticModelCommand::Refresh { workspace, id, r#type } => {
-            refresh(cli, client, workspace, id, r#type).await
-        }
+        SemanticModelCommand::UpdateDefinition {
+            workspace,
+            id,
+            file,
+        } => update_definition(cli, client, workspace, id, file).await,
+        SemanticModelCommand::Query {
+            workspace,
+            id,
+            dax,
+            file,
+        } => query(cli, client, workspace, id, dax.as_deref(), file.as_deref()).await,
+        SemanticModelCommand::BindConnection {
+            workspace,
+            id,
+            connection_id,
+        } => bind_connection(cli, client, workspace, id, connection_id).await,
+        SemanticModelCommand::Refresh {
+            workspace,
+            id,
+            r#type,
+        } => refresh(cli, client, workspace, id, r#type).await,
         SemanticModelCommand::Takeover { workspace, id } => {
             takeover(cli, client, workspace, id).await
         }
         SemanticModelCommand::ListParameters { workspace, id } => {
             list_parameters(cli, client, workspace, id).await
         }
-        SemanticModelCommand::UpdateParameters { workspace, id, content } => {
-            update_parameters(cli, client, workspace, id, content).await
-        }
+        SemanticModelCommand::UpdateParameters {
+            workspace,
+            id,
+            content,
+        } => update_parameters(cli, client, workspace, id, content).await,
         SemanticModelCommand::ListDatasources { workspace, id } => {
             list_datasources(cli, client, workspace, id).await
         }
-        SemanticModelCommand::UpdateDatasources { workspace, id, content } => {
-            update_datasources(cli, client, workspace, id, content).await
-        }
+        SemanticModelCommand::UpdateDatasources {
+            workspace,
+            id,
+            content,
+        } => update_datasources(cli, client, workspace, id, content).await,
         SemanticModelCommand::ListUsers { workspace, id } => {
             list_users(cli, client, workspace, id).await
         }
-        SemanticModelCommand::AddUser { workspace, id, principal, principal_type, access_right } => {
-            add_user(cli, client, workspace, id, principal, principal_type, access_right).await
+        SemanticModelCommand::AddUser {
+            workspace,
+            id,
+            principal,
+            principal_type,
+            access_right,
+        } => {
+            add_user(
+                cli,
+                client,
+                workspace,
+                id,
+                principal,
+                principal_type,
+                access_right,
+            )
+            .await
         }
-        SemanticModelCommand::DeleteUser { workspace, id, user } => {
-            delete_user(cli, client, workspace, id, user).await
-        }
+        SemanticModelCommand::DeleteUser {
+            workspace,
+            id,
+            user,
+        } => delete_user(cli, client, workspace, id, user).await,
         SemanticModelCommand::RefreshStatus { workspace, id, top } => {
             refresh_status(cli, client, workspace, id, *top).await
         }
         SemanticModelCommand::ListUpstream { workspace, id } => {
             list_upstream(cli, client, workspace, id).await
         }
-        SemanticModelCommand::Clone { workspace, id, name, target_workspace } => {
-            clone_model(cli, client, workspace, id, name, target_workspace.as_deref()).await
+        SemanticModelCommand::Clone {
+            workspace,
+            id,
+            name,
+            target_workspace,
+        } => {
+            clone_model(
+                cli,
+                client,
+                workspace,
+                id,
+                name,
+                target_workspace.as_deref(),
+            )
+            .await
         }
-        SemanticModelCommand::ExportPbix { workspace, id, file } => {
-            export_pbix(cli, client, workspace, id, file).await
-        }
-        SemanticModelCommand::ImportPbix { workspace, name, file, name_conflict } => {
-            import_pbix(cli, client, workspace, name, file, name_conflict).await
-        }
+        SemanticModelCommand::ExportPbix {
+            workspace,
+            id,
+            file,
+        } => export_pbix(cli, client, workspace, id, file).await,
+        SemanticModelCommand::ImportPbix {
+            workspace,
+            name,
+            file,
+            name_conflict,
+        } => import_pbix(cli, client, workspace, name, file, name_conflict).await,
     }
 }
 
@@ -1161,12 +1217,7 @@ async fn update_datasources(
     Ok(())
 }
 
-async fn list_users(
-    cli: &Cli,
-    client: &FabricClient,
-    workspace: &str,
-    id: &str,
-) -> Result<()> {
+async fn list_users(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
     let data = client
         .get_powerbi(&format!("/groups/{workspace}/datasets/{id}/users"))
         .await
@@ -1212,10 +1263,7 @@ async fn add_user(
     }
 
     client
-        .post_powerbi(
-            &format!("/groups/{workspace}/datasets/{id}/users"),
-            &body,
-        )
+        .post_powerbi(&format!("/groups/{workspace}/datasets/{id}/users"), &body)
         .await
         .map_err(|e| enrich_forbidden(e, "semantic-model add-user", "Admin"))?;
 
@@ -1246,9 +1294,7 @@ async fn delete_user(
     }
 
     client
-        .delete_powerbi(&format!(
-            "/groups/{workspace}/datasets/{id}/users/{user}"
-        ))
+        .delete_powerbi(&format!("/groups/{workspace}/datasets/{id}/users/{user}"))
         .await
         .map_err(|e| enrich_forbidden(e, "semantic-model delete-user", "Admin"))?;
 
@@ -1290,12 +1336,7 @@ async fn refresh_status(
     Ok(())
 }
 
-async fn list_upstream(
-    cli: &Cli,
-    client: &FabricClient,
-    workspace: &str,
-    id: &str,
-) -> Result<()> {
+async fn list_upstream(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
     let data = client
         .get_powerbi(&format!(
             "/groups/{workspace}/datasets/{id}/upstreamDatasets"
@@ -1356,11 +1397,15 @@ async fn export_pbix(
 ) -> Result<()> {
     let body = serde_json::json!({});
 
-    if output::dry_run_guard(cli, "semantic-model export-pbix", &serde_json::json!({
-        "workspace": workspace,
-        "id": id,
-        "file": output_path
-    })) {
+    if output::dry_run_guard(
+        cli,
+        "semantic-model export-pbix",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "file": output_path
+        }),
+    ) {
         return Ok(());
     }
 
@@ -1398,12 +1443,16 @@ async fn import_pbix(
     file_path: &str,
     name_conflict: &str,
 ) -> Result<()> {
-    if output::dry_run_guard(cli, "semantic-model import-pbix", &serde_json::json!({
-        "workspace": workspace,
-        "name": name,
-        "file": file_path,
-        "nameConflict": name_conflict
-    })) {
+    if output::dry_run_guard(
+        cli,
+        "semantic-model import-pbix",
+        &serde_json::json!({
+            "workspace": workspace,
+            "name": name,
+            "file": file_path,
+            "nameConflict": name_conflict
+        }),
+    ) {
         return Ok(());
     }
 

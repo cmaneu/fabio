@@ -880,10 +880,12 @@ fn semantic_model_add_user_dry_run() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["dry_run"], true);
-    assert!(data["details"]["identifier"]
-        .as_str()
-        .unwrap()
-        .contains("testuser"));
+    assert!(
+        data["details"]["identifier"]
+            .as_str()
+            .unwrap()
+            .contains("testuser")
+    );
 }
 
 #[test]

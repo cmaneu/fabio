@@ -1350,6 +1350,7 @@ mod tests {
             code: ErrorCode::NotFound,
             message: "Not found".to_owned(),
             hint: None,
+            retriable: None,
         };
         let anyhow_err: anyhow::Error = err.into();
         let code = extract_error_code(&anyhow_err);

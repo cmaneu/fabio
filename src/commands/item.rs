@@ -360,6 +360,14 @@ pub enum ItemCommand {
         /// Recipient tenant ID
         #[arg(long)]
         recipient_tenant_id: String,
+
+        /// Recipient type (`User` or `ServicePrincipal`). If omitted, shares with entire tenant.
+        #[arg(long)]
+        recipient_type: Option<String>,
+
+        /// Object ID of the recipient principal (required when --recipient-type is set)
+        #[arg(long)]
+        recipient_id: Option<String>,
     },
     /// Show details of an external data share
     #[command(display_order = 42)]
@@ -633,8 +641,20 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             id,
             paths,
             recipient_tenant_id,
+            recipient_type,
+            recipient_id,
         } => {
-            create_external_data_share(cli, client, workspace, id, paths, recipient_tenant_id).await
+            create_external_data_share(
+                cli,
+                client,
+                workspace,
+                id,
+                paths,
+                recipient_tenant_id,
+                recipient_type.as_deref(),
+                recipient_id.as_deref(),
+            )
+            .await
         }
         ItemCommand::ShowExternalDataShare {
             workspace,
@@ -1466,6 +1486,7 @@ async fn list_external_data_shares(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create_external_data_share(
     cli: &Cli,
     client: &FabricClient,
@@ -1473,10 +1494,33 @@ async fn create_external_data_share(
     id: &str,
     paths: &[String],
     recipient_tenant_id: &str,
+    recipient_type: Option<&str>,
+    recipient_id: Option<&str>,
 ) -> Result<()> {
+    // Validate: if recipient_type is provided, recipient_id must also be provided
+    if recipient_type.is_some() && recipient_id.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--recipient-id is required when --recipient-type is specified",
+            "Provide the object ID of the recipient principal. \
+             Example: --recipient-type User --recipient-id <object-id>",
+        )
+        .into());
+    }
+
+    let recipient = if let (Some(rtype), Some(rid)) = (recipient_type, recipient_id) {
+        serde_json::json!({
+            "tenantId": recipient_tenant_id,
+            "objectId": rid,
+            "recipientType": rtype
+        })
+    } else {
+        serde_json::json!({ "tenantId": recipient_tenant_id })
+    };
+
     let body = serde_json::json!({
         "paths": paths,
-        "recipient": { "tenantId": recipient_tenant_id }
+        "recipient": recipient
     });
 
     if output::dry_run_guard(cli, "item create-external-data-share", &body) {
