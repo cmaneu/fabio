@@ -316,11 +316,12 @@ fn commands_schema() -> serde_json::Value {
                 "update-folder": {"description": "Update folder name/description", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--folder-id": {"type": "string", "required": true}, "--name": {"type": "string"}, "--description": {"type": "string"}}},
                 "delete-folder": {"description": "Delete a folder", "mutates": true, "destructive": true, "flags": {"--workspace": {"type": "string", "required": true}, "--folder-id": {"type": "string", "required": true}}},
                 "move-folder": {"description": "Move a folder", "mutates": true, "flags": {"--workspace": {"type": "string", "required": true}, "--folder-id": {"type": "string", "required": true}, "--target-folder-id": {"type": "string"}}},
-                "list-items": {"description": "List all items in workspace", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--type": {"type": "string"}}}
+                "list-items": {"description": "List all items in workspace", "mutates": false, "flags": {"--workspace": {"type": "string", "required": true}, "--type": {"type": "string"}}},
+                "url": {"description": "Get Fabric portal URL for a workspace", "mutates": false, "flags": {"--id": {"type": "string", "required": true}}}
             }
         },
         "item": {
-            "description": "Manage items (datasets, reports, notebooks, etc.)",
+            "description": "Manage items (13 subcommands: CRUD + copy/move + definitions + exists/url/inspect)",
             "subcommands": {
                 "list": {
                     "description": "List items in a workspace",
@@ -416,6 +417,31 @@ fn commands_schema() -> serde_json::Value {
                         "--id": {"type": "string", "required": true, "description": "Item ID to move"},
                         "--dest-workspace": {"type": "string", "required": true, "description": "Destination workspace ID"},
                         "--name": {"type": "string", "description": "New name"}
+                    }
+                },
+                "exists": {
+                    "description": "Check if an item exists (returns {exists: true/false}, never errors on 404)",
+                    "mutates": false,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--id": {"type": "string", "required": true, "description": "Item ID"}
+                    }
+                },
+                "url": {
+                    "description": "Get Fabric portal URL for an item",
+                    "mutates": false,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--id": {"type": "string", "required": true, "description": "Item ID"},
+                        "--type": {"type": "string", "description": "Item type for accurate portal path segment"}
+                    }
+                },
+                "inspect": {
+                    "description": "Aggregated view: metadata + definition (best-effort) + connections (best-effort)",
+                    "mutates": false,
+                    "flags": {
+                        "--workspace": {"type": "string", "required": true, "description": "Workspace ID"},
+                        "--id": {"type": "string", "required": true, "description": "Item ID"}
                     }
                 }
             }
