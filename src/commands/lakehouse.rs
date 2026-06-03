@@ -662,6 +662,22 @@ pub enum LakehouseCommand {
         retain_hours: u64,
     },
 
+    /// Show Delta table schema (reads from `OneLake` `_delta_log` without Spark/SQL)
+    #[command(display_order = 73)]
+    TableSchema {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Table name
+        #[arg(long)]
+        table: String,
+    },
+
     // ── Livy Sessions ────────────────────────────────────────────────────
     /// List Livy sessions for a lakehouse
     #[command(display_order = 80)]
@@ -1067,6 +1083,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             )
             .await
         }
+        LakehouseCommand::TableSchema {
+            workspace,
+            id,
+            table,
+        } => table_schema(cli, client, workspace, id, table).await,
         LakehouseCommand::ListLivySessions { workspace, id } => {
             list_livy_sessions(cli, client, workspace, id).await
         }
@@ -3246,6 +3267,118 @@ async fn vacuum_table(
         output::render_object(cli, &data, "id");
     }
     Ok(())
+}
+
+// ─── Table Schema ────────────────────────────────────────────────────────────
+
+async fn table_schema(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    table: &str,
+) -> Result<()> {
+    let delta_log_dir = format!("Tables/{table}/_delta_log");
+
+    // List all files in the _delta_log directory
+    let files = client
+        .list_onelake_files(workspace, id, Some(&delta_log_dir))
+        .await
+        .map_err(|e| {
+            // If the table doesn't exist, the listing returns 404
+            let msg = format!("Failed to read Delta log for table '{table}': {e}");
+            FabioError::new(ErrorCode::NotFound, msg)
+        })?;
+
+    // Filter to .json commit files and sort descending (newest first)
+    let mut json_files: Vec<&str> = files
+        .iter()
+        .filter_map(|f| f["name"].as_str())
+        .filter(|name| {
+            std::path::Path::new(name)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        })
+        .collect();
+    json_files.sort_unstable_by(|a, b| b.cmp(a));
+
+    if json_files.is_empty() {
+        return Err(FabioError::new(
+            ErrorCode::NotFound,
+            format!("No Delta log commit files found for table '{table}'"),
+        )
+        .into());
+    }
+
+    // Iterate from newest commit to oldest, looking for metaData with schemaString
+    for file_path in &json_files {
+        // The DFS listing with directory param returns paths relative to {item}/
+        // e.g., "Tables/mytable/_delta_log/00000000000000000000.json"
+        let download_path = if file_path.starts_with("Tables/") {
+            (*file_path).to_string()
+        } else {
+            // Strip the item-id prefix if present (e.g., "{item_id}/Tables/...")
+            file_path.find("/Tables/").map_or_else(
+                || (*file_path).to_string(),
+                |pos| file_path[pos + 1..].to_string(),
+            )
+        };
+
+        let Ok(bytes) = client
+            .download_onelake_file(workspace, id, &download_path)
+            .await
+        else {
+            continue; // Skip files we can't read
+        };
+
+        let Ok(content) = std::str::from_utf8(&bytes) else {
+            continue; // Skip non-UTF-8 files (parquet checkpoints)
+        };
+
+        // Delta commit files are NDJSON — one JSON object per line
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let Ok(obj) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
+
+            if let Some(metadata) = obj.get("metaData") {
+                if let Some(schema_str) = metadata.get("schemaString").and_then(Value::as_str) {
+                    // Parse the schema string (which is itself JSON)
+                    let schema: Value = serde_json::from_str(schema_str).map_err(|e| {
+                        FabioError::new(
+                            ErrorCode::ApiError,
+                            format!("Failed to parse schema from Delta log: {e}"),
+                        )
+                    })?;
+
+                    // Extract fields array and build output
+                    let fields = schema
+                        .get("fields")
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .unwrap_or_default();
+
+                    let result = serde_json::json!({
+                        "table": table,
+                        "schema_type": schema.get("type").unwrap_or(&Value::Null),
+                        "fields": fields,
+                    });
+                    output::render_object(cli, &result, "table");
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    Err(FabioError::new(
+        ErrorCode::NotFound,
+        format!("No schema metadata found in Delta log for table '{table}'"),
+    )
+    .into())
 }
 
 // ─── Livy Sessions ───────────────────────────────────────────────────────────

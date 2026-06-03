@@ -354,6 +354,110 @@ fn lakehouse_move_table_across_workspaces() {
         .success();
 }
 
+// ─── table-schema tests ──────────────────────────────────────────────────────
+
+#[test]
+fn lakehouse_table_schema_missing_table_flag() {
+    // Missing --table should fail with clap argument error
+    fabio()
+        .args([
+            "lakehouse",
+            "table-schema",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+        ])
+        .assert()
+        .failure();
+}
+
+/// Live E2E: read schema of a table that exists (requires tenant)
+#[test]
+#[ignore]
+#[serial]
+fn lakehouse_table_schema_succeeds() {
+    let cfg = TestConfig::from_env();
+    let table_name = create_test_table(&cfg, "e2e_schema_test");
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "table-schema",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            &table_name,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["table"], table_name);
+    assert_eq!(data["schema_type"], "struct");
+    let fields = data["fields"]
+        .as_array()
+        .expect("fields should be an array");
+    assert!(
+        !fields.is_empty(),
+        "should have at least one field in schema"
+    );
+    // Verify field structure
+    let first = &fields[0];
+    assert!(first.get("name").is_some(), "field should have name");
+    assert!(first.get("type").is_some(), "field should have type");
+    assert!(
+        first.get("nullable").is_some(),
+        "field should have nullable"
+    );
+
+    // Cleanup
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            &table_name,
+        ])
+        .assert()
+        .success();
+}
+
+/// Live E2E: table-schema on non-existent table returns error
+#[test]
+#[ignore]
+#[serial]
+fn lakehouse_table_schema_nonexistent_table() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "table-schema",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            "nonexistent_table_xyz_999",
+        ])
+        .assert()
+        .failure();
+
+    let output = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        output.contains("NOT_FOUND") || output.contains("Delta log"),
+        "stderr: {output}"
+    );
+}
+
 // ─── optimize-table tests ────────────────────────────────────────────────────
 
 #[test]
