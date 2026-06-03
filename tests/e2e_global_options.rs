@@ -335,3 +335,127 @@ fn lro_timeout_flag_works_with_show() {
     let data = extract_data(&json);
     assert_eq!(data["id"], cfg.source_workspace);
 }
+
+// --- --output csv/tsv format tests ---
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn output_csv_produces_comma_separated_with_header() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--output",
+            "csv",
+            "item",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+            "--limit",
+            "2",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    // Must have header + at least 1 data row
+    assert!(lines.len() >= 2, "CSV should have header + data rows");
+    // Header should contain comma-separated column names
+    assert!(
+        lines[0].contains(','),
+        "CSV header should use comma separator"
+    );
+    // Header should include common item fields
+    let header = lines[0].to_lowercase();
+    assert!(header.contains("id"), "CSV header should include 'id'");
+    assert!(header.contains("type"), "CSV header should include 'type'");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn output_tsv_produces_tab_separated_with_header() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--output",
+            "tsv",
+            "item",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+            "--limit",
+            "2",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    // Must have header + at least 1 data row
+    assert!(lines.len() >= 2, "TSV should have header + data rows");
+    // Header should contain tab-separated column names
+    assert!(
+        lines[0].contains('\t'),
+        "TSV header should use tab separator"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn output_csv_single_object_produces_key_value_rows() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--output",
+            "csv",
+            "workspace",
+            "show",
+            "--id",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    // Single-object CSV should produce header + 1 data row
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(
+        lines.len() >= 2,
+        "Single-object CSV should have header + data"
+    );
+    assert!(lines[0].contains(','), "Should use comma separator");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn output_csv_with_query_extracts_field() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--output",
+            "csv",
+            "--query",
+            "id",
+            "workspace",
+            "show",
+            "--id",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    // With --query id, output should contain the workspace ID
+    assert!(
+        stdout.contains(&cfg.source_workspace),
+        "CSV with --query should extract the field value"
+    );
+}

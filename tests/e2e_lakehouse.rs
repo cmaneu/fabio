@@ -725,3 +725,109 @@ fn lakehouse_delete_not_found() {
         "Expected NOT_FOUND or API_ERROR, got: {code}"
     );
 }
+
+// ─── Query tests ─────────────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_query_select() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--sql",
+            "SELECT TOP 3 product_id, product_name FROM sales ORDER BY product_id",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let count = extract_count(&json);
+    assert_eq!(count, 3, "expected 3 rows");
+    let data = extract_data(&json);
+    let arr = data.as_array().unwrap();
+    assert_eq!(arr[0]["product_id"], 1);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_query_from_file() {
+    let cfg = TestConfig::from_env();
+    let dir = TempDir::new().unwrap();
+    let sql_file = dir.path().join("test.sql");
+    fs::write(&sql_file, "SELECT COUNT(*) AS cnt FROM sales").unwrap();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--sql",
+            &format!("@{}", sql_file.display()),
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let arr = data.as_array().unwrap();
+    assert!(arr[0]["cnt"].as_i64().unwrap() > 0);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_query_from_stdin() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .write_stdin("SELECT TOP 1 category FROM sales")
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let count = extract_count(&json);
+    assert_eq!(count, 1);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_query_table_output() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "-o",
+            "table",
+            "lakehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--sql",
+            "SELECT TOP 2 product_id, product_name FROM sales ORDER BY product_id",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(stdout.contains("product_id"));
+    assert!(stdout.contains("Widget A"));
+}

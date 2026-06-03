@@ -41,6 +41,7 @@ pub fn render_list(
 }
 
 /// Render a list of items with optional pagination continuation token.
+#[allow(clippy::too_many_lines)]
 pub fn render_list_with_token(
     cli: &Cli,
     items: &[Value],
@@ -138,6 +139,26 @@ pub fn render_list_with_token(
                 }
             }
         }
+        OutputFormat::Csv | OutputFormat::Tsv => {
+            let sep = if matches!(cli.effective_output(), OutputFormat::Tsv) {
+                '\t'
+            } else {
+                ','
+            };
+            // Header row
+            println!("{}", columns.join(&sep.to_string()));
+            // Data rows
+            for item in limited_items {
+                let row: Vec<String> = columns
+                    .iter()
+                    .map(|col| {
+                        let val = resolve_nested(item, col);
+                        format_csv_value(val, sep)
+                    })
+                    .collect();
+                println!("{}", row.join(&sep.to_string()));
+            }
+        }
     }
 }
 
@@ -190,6 +211,22 @@ pub fn render_object(cli: &Cli, obj: &Value, plain_key: &str) {
                         serde_json::to_string_pretty(other).unwrap_or_else(|_| "null".to_string())
                     ),
                 }
+            }
+        }
+        OutputFormat::Csv | OutputFormat::Tsv => {
+            let sep = if matches!(cli.effective_output(), OutputFormat::Tsv) {
+                '\t'
+            } else {
+                ','
+            };
+            // For single objects, emit header row + single data row
+            if let Value::Object(map) = output_data.as_ref() {
+                let keys: Vec<&str> = map.keys().map(String::as_str).collect();
+                println!("{}", keys.join(&sep.to_string()));
+                let vals: Vec<String> = map.values().map(|v| format_csv_value(v, sep)).collect();
+                println!("{}", vals.join(&sep.to_string()));
+            } else {
+                println!("{}", format_value(output_data.as_ref()));
             }
         }
     }
@@ -269,6 +306,17 @@ fn format_value(val: &Value) -> String {
         Value::Bool(b) => b.to_string(),
         Value::Null => String::new(),
         _ => serde_json::to_string(val).unwrap_or_default(),
+    }
+}
+
+/// Format a value for CSV/TSV output. Quotes strings containing the separator,
+/// quotes, or newlines per RFC 4180.
+fn format_csv_value(val: &Value, sep: char) -> String {
+    let raw = format_value(val);
+    if raw.contains(sep) || raw.contains('"') || raw.contains('\n') || raw.contains('\r') {
+        format!("\"{}\"", raw.replace('"', "\"\""))
+    } else {
+        raw
     }
 }
 
@@ -392,6 +440,66 @@ mod tests {
         let cli = make_test_cli(&["--dry-run"]);
         let details = serde_json::json!({"name": "test"});
         assert!(dry_run_guard(&cli, "workspace.create", &details));
+    }
+
+    #[test]
+    fn format_csv_value_plain_string() {
+        let val = Value::String("hello".into());
+        assert_eq!(format_csv_value(&val, ','), "hello");
+    }
+
+    #[test]
+    fn format_csv_value_with_comma_quotes() {
+        let val = Value::String("foo,bar".into());
+        assert_eq!(format_csv_value(&val, ','), "\"foo,bar\"");
+    }
+
+    #[test]
+    fn format_csv_value_with_quotes_escapes() {
+        let val = Value::String("say \"hi\"".into());
+        assert_eq!(format_csv_value(&val, ','), "\"say \"\"hi\"\"\"");
+    }
+
+    #[test]
+    fn format_csv_value_with_newline_quotes() {
+        let val = Value::String("line1\nline2".into());
+        assert_eq!(format_csv_value(&val, ','), "\"line1\nline2\"");
+    }
+
+    #[test]
+    fn format_csv_value_tsv_tab_separator() {
+        let val = Value::String("has\ttab".into());
+        assert_eq!(format_csv_value(&val, '\t'), "\"has\ttab\"");
+    }
+
+    #[test]
+    fn format_csv_value_tsv_comma_no_quote() {
+        // In TSV mode, commas don't need quoting
+        let val = Value::String("foo,bar".into());
+        assert_eq!(format_csv_value(&val, '\t'), "foo,bar");
+    }
+
+    #[test]
+    fn format_csv_value_null_empty() {
+        assert_eq!(format_csv_value(&Value::Null, ','), "");
+    }
+
+    #[test]
+    fn format_csv_value_number() {
+        let val = serde_json::json!(42);
+        assert_eq!(format_csv_value(&val, ','), "42");
+    }
+
+    #[test]
+    fn effective_output_csv_flag() {
+        let cli = make_test_cli(&["--output", "csv"]);
+        assert!(matches!(cli.effective_output(), OutputFormat::Csv));
+    }
+
+    #[test]
+    fn effective_output_tsv_flag() {
+        let cli = make_test_cli(&["--output", "tsv"]);
+        assert!(matches!(cli.effective_output(), OutputFormat::Tsv));
     }
 
     /// Helper to construct a Cli for testing (parses args after "fabio agent-context").

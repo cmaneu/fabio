@@ -1,6 +1,173 @@
+use std::io::{self, Read};
+
 use base64::Engine;
+use mssql_tds::connection::client_context::{ClientContext, TdsAuthenticationMethod};
+use mssql_tds::connection::tds_client::{ResultSet, ResultSetClient};
+use mssql_tds::connection_provider::tds_connection_provider::TdsConnectionProvider;
 use mssql_tds::datatypes::column_values::ColumnValues;
 use serde_json::Value;
+
+use crate::cli::Cli;
+use crate::client::FabricClient;
+use crate::errors::{ErrorCode, FabioError};
+use crate::output;
+
+/// Resolve SQL text from flag, @file, or stdin.
+pub fn resolve_sql_input(sql: Option<&str>) -> anyhow::Result<String> {
+    match sql {
+        Some(s) if s.starts_with('@') => {
+            let file_path = &s[1..];
+            std::fs::read_to_string(file_path).map_err(|e| {
+                FabioError::not_found(format!("SQL file not found: {file_path}: {e}")).into()
+            })
+        }
+        Some(s) => Ok(s.to_string()),
+        None => {
+            let mut buf = String::new();
+            io::stdin().read_to_string(&mut buf).map_err(|e| {
+                FabioError::new(
+                    ErrorCode::ApiError,
+                    format!("Failed to read SQL from stdin: {e}"),
+                )
+            })?;
+            if buf.trim().is_empty() {
+                return Err(FabioError::new(
+                    ErrorCode::ApiError,
+                    "No SQL provided. Use --sql, @file, or pipe SQL via stdin.",
+                )
+                .into());
+            }
+            Ok(buf)
+        }
+    }
+}
+
+/// Parse a connection string into (server, database).
+pub fn parse_connection_string(connection_string: &str) -> (String, String) {
+    let cleaned = connection_string
+        .trim()
+        .trim_start_matches("jdbc:sqlserver://")
+        .trim_start_matches("jdbc:");
+
+    // Extract server: everything before the first ';' or ','
+    let server = cleaned
+        .split(';')
+        .next()
+        .unwrap_or(cleaned)
+        .split(',')
+        .next()
+        .unwrap_or(cleaned)
+        .to_string();
+
+    // Extract database from key-value pairs (case-insensitive)
+    let database = cleaned
+        .split(';')
+        .find_map(|part| {
+            let lower = part.trim().to_lowercase();
+            if lower.starts_with("database=") || lower.starts_with("initial catalog=") {
+                part.trim().split('=').nth(1).map(str::to_string)
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default();
+
+    (server, database)
+}
+
+/// Execute a SQL query over TDS and render results.
+///
+/// `server` is the hostname (without port), `database` is the initial catalog.
+pub async fn execute_and_render_sql(
+    cli: &Cli,
+    client: &FabricClient,
+    server: &str,
+    database: &str,
+    sql_text: &str,
+) -> anyhow::Result<()> {
+    // Acquire AAD token for SQL scope
+    let token = client.require_sql_auth().await?;
+
+    // Build TDS connection
+    let data_source = format!("tcp:{server},1433");
+    let mut context = ClientContext::with_data_source(&data_source);
+    context.database = database.to_string();
+    context.tds_authentication_method = TdsAuthenticationMethod::AccessToken;
+    context.access_token = Some(token);
+    context.application_name = "fabio".to_string();
+    context.connect_timeout = 30;
+
+    let provider = TdsConnectionProvider {};
+    let mut tds_client = provider
+        .create_client(context, &data_source, None)
+        .await
+        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("TDS connection failed: {e}")))?;
+
+    // Execute SQL
+    tds_client
+        .execute(sql_text.to_string(), Some(60), None)
+        .await
+        .map_err(|e| {
+            let msg = format!("{e}");
+            let hint = if msg.contains("Invalid object name") && msg.contains("sys.") {
+                ". Hint: Fabric Warehouse/Lakehouse SQL does not support all SQL Server \
+                 system views. Supported: sys.tables, sys.columns, sys.schemas, \
+                 INFORMATION_SCHEMA.TABLES, INFORMATION_SCHEMA.COLUMNS"
+            } else {
+                ""
+            };
+            FabioError::new(
+                ErrorCode::ApiError,
+                format!("SQL execution failed: {e}{hint}"),
+            )
+        })?;
+
+    // Collect results
+    let mut all_rows: Vec<Value> = Vec::new();
+    let mut columns: Vec<String> = Vec::new();
+
+    if let Some(rs) = tds_client.get_current_resultset() {
+        columns = rs
+            .get_metadata()
+            .iter()
+            .map(|col| col.column_name.clone())
+            .collect();
+
+        while let Some(row) = rs
+            .next_row()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("Failed to read row: {e}")))?
+        {
+            let mut obj = serde_json::Map::new();
+            for (i, val) in row.into_iter().enumerate() {
+                let col_name = columns
+                    .get(i)
+                    .map_or_else(|| format!("column{i}"), std::clone::Clone::clone);
+                obj.insert(col_name, column_value_to_json(&val));
+            }
+            all_rows.push(Value::Object(obj));
+        }
+    }
+
+    tds_client
+        .close_query()
+        .await
+        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("Failed to close query: {e}")))?;
+
+    // Render output
+    if all_rows.is_empty() {
+        let obj = serde_json::json!({
+            "rows_affected": 0,
+            "message": "Query executed successfully (no result set returned)."
+        });
+        output::render_object(cli, &obj, "message");
+    } else {
+        let col_refs: Vec<&str> = columns.iter().map(String::as_str).collect();
+        output::render_list(cli, &all_rows, &col_refs, &col_refs, &columns[0]);
+    }
+
+    Ok(())
+}
 
 /// Convert a TDS `ColumnValues` to a `serde_json::Value`.
 pub fn column_value_to_json(val: &ColumnValues) -> Value {

@@ -1,15 +1,12 @@
-use std::io::{self, Read};
-
 use anyhow::Result;
 use clap::Subcommand;
-use mssql_tds::connection::client_context::{ClientContext, TdsAuthenticationMethod};
-use mssql_tds::connection::tds_client::{ResultSet, ResultSetClient};
-use mssql_tds::connection_provider::tds_connection_provider::TdsConnectionProvider;
 use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::commands::tds_utils::column_value_to_json;
+use crate::commands::tds_utils::{
+    execute_and_render_sql, parse_connection_string, resolve_sql_input,
+};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -524,129 +521,18 @@ async fn query(
     id: &str,
     sql: Option<&str>,
 ) -> Result<()> {
-    // Resolve SQL text: --sql flag, @file prefix, or stdin
-    let sql_text = match sql {
-        Some(s) if s.starts_with('@') => {
-            let file_path = &s[1..];
-            std::fs::read_to_string(file_path).map_err(|e| {
-                FabioError::not_found(format!("SQL file not found: {file_path}: {e}"))
-            })?
-        }
-        Some(s) => s.to_string(),
-        None => {
-            // Read from stdin
-            let mut buf = String::new();
-            io::stdin().read_to_string(&mut buf).map_err(|e| {
-                FabioError::new(
-                    ErrorCode::ApiError,
-                    format!("Failed to read SQL from stdin: {e}"),
-                )
-            })?;
-            if buf.trim().is_empty() {
-                return Err(FabioError::new(
-                    ErrorCode::ApiError,
-                    "No SQL provided. Use --sql, @file, or pipe SQL via stdin.",
-                )
-                .into());
-            }
-            buf
-        }
-    };
+    let sql_text = resolve_sql_input(sql)?;
 
     // Get connection string from warehouse or lakehouse
     let (connection_string, item_name) = get_connection_string(client, workspace, id).await?;
     let (server, parsed_db) = parse_connection_string(&connection_string);
-    // Use item displayName as database catalog; fall back to parsed value from connection string
     let database = if item_name.is_empty() {
         parsed_db
     } else {
         item_name
     };
 
-    // Acquire AAD token for SQL scope
-    let token = client.require_sql_auth().await?;
-
-    // Build TDS connection
-    let data_source = format!("tcp:{server},1433");
-    let mut context = ClientContext::with_data_source(&data_source);
-    context.database = database;
-    context.tds_authentication_method = TdsAuthenticationMethod::AccessToken;
-    context.access_token = Some(token);
-    context.application_name = "fabio".to_string();
-    context.connect_timeout = 30;
-
-    let provider = TdsConnectionProvider {};
-    let mut tds_client = provider
-        .create_client(context, &data_source, None)
-        .await
-        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("TDS connection failed: {e}")))?;
-
-    // Execute SQL
-    tds_client
-        .execute(sql_text, Some(60), None)
-        .await
-        .map_err(|e| {
-            let msg = format!("{e}");
-            let hint = if msg.contains("Invalid object name") && msg.contains("sys.") {
-                ". Hint: Fabric Warehouse/Lakehouse SQL does not support all SQL Server \
-                 system views. Supported: sys.tables, sys.columns, sys.schemas, \
-                 INFORMATION_SCHEMA.TABLES, INFORMATION_SCHEMA.COLUMNS"
-            } else {
-                ""
-            };
-            FabioError::new(
-                ErrorCode::ApiError,
-                format!("SQL execution failed: {e}{hint}"),
-            )
-        })?;
-
-    // Collect results
-    let mut all_rows: Vec<Value> = Vec::new();
-    let mut columns: Vec<String> = Vec::new();
-
-    if let Some(rs) = tds_client.get_current_resultset() {
-        // Get column names from metadata
-        columns = rs
-            .get_metadata()
-            .iter()
-            .map(|col| col.column_name.clone())
-            .collect();
-
-        // Read all rows
-        while let Some(row) = rs
-            .next_row()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("Failed to read row: {e}")))?
-        {
-            let mut obj = serde_json::Map::new();
-            for (i, val) in row.into_iter().enumerate() {
-                let col_name = columns
-                    .get(i)
-                    .map_or_else(|| format!("column{i}"), std::clone::Clone::clone);
-                obj.insert(col_name, column_value_to_json(&val));
-            }
-            all_rows.push(Value::Object(obj));
-        }
-    }
-
-    tds_client
-        .close_query()
-        .await
-        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("Failed to close query: {e}")))?;
-
-    // Render output
-    if all_rows.is_empty() {
-        let obj = serde_json::json!({
-            "rows_affected": 0,
-            "message": "Query executed successfully (no result set returned)."
-        });
-        output::render_object(cli, &obj, "message");
-    } else {
-        let col_refs: Vec<&str> = columns.iter().map(String::as_str).collect();
-        output::render_list(cli, &all_rows, &col_refs, &col_refs, &columns[0]);
-    }
-
-    Ok(())
+    execute_and_render_sql(cli, client, &server, &database, &sql_text).await
 }
 
 /// Get SQL connection string from warehouse or lakehouse metadata.
@@ -710,43 +596,6 @@ async fn get_connection_string(
                 .into(),
         ),
     }.into())
-}
-
-/// Parse connection string into server and database components.
-/// Fabric connection strings come in formats like:
-///   - `<guid>.datawarehouse.fabric.microsoft.com`  (server only)
-///   - `jdbc:sqlserver://<server>;database=<db>;...`  (JDBC style)
-///   - `<server>,1433;Initial Catalog=<db>;...`  (ADO.NET style)
-fn parse_connection_string(connection_string: &str) -> (String, String) {
-    let cleaned = connection_string
-        .trim()
-        .trim_start_matches("jdbc:sqlserver://")
-        .trim_start_matches("jdbc:");
-
-    // Extract server: everything before the first ';' or ','
-    let server = cleaned
-        .split(';')
-        .next()
-        .unwrap_or(cleaned)
-        .split(',')
-        .next()
-        .unwrap_or(cleaned)
-        .to_string();
-
-    // Extract database from key-value pairs (case-insensitive)
-    let database = cleaned
-        .split(';')
-        .find_map(|part| {
-            let lower = part.trim().to_lowercase();
-            if lower.starts_with("database=") || lower.starts_with("initial catalog=") {
-                part.trim().split('=').nth(1).map(str::to_string)
-            } else {
-                None
-            }
-        })
-        .unwrap_or_default();
-
-    (server, database)
 }
 
 async fn connection_string(

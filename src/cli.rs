@@ -86,6 +86,8 @@ pub enum OutputFormat {
     Json,
     Table,
     Plain,
+    Csv,
+    Tsv,
 }
 
 #[derive(Debug, Subcommand)]

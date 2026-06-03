@@ -109,6 +109,23 @@ pub enum LakehouseCommand {
         path: Option<String>,
     },
 
+    // ── Query ────────────────────────────────────────────────────────────
+    /// Execute SQL against the lakehouse SQL endpoint
+    #[command(display_order = 3)]
+    Query {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// SQL query to execute (prefix with @ to read from file, omit to read from stdin)
+        #[arg(long)]
+        sql: Option<String>,
+    },
+
     // ── Read/Write ───────────────────────────────────────────────────────
     /// Upload files to a lakehouse (supports glob patterns for parallel upload)
     #[command(display_order = 10)]
@@ -755,6 +772,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             id,
             path,
         } => files(cli, client, workspace, id, path.as_deref()).await,
+        LakehouseCommand::Query { workspace, id, sql } => {
+            query_lakehouse(cli, client, workspace, id, sql.as_deref()).await
+        }
         LakehouseCommand::Upload {
             workspace,
             id,
@@ -1097,6 +1117,55 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             livy_id,
         } => get_livy_session(cli, client, workspace, id, livy_id).await,
     }
+}
+
+// ─── Query ───────────────────────────────────────────────────────────────────
+
+async fn query_lakehouse(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    sql: Option<&str>,
+) -> Result<()> {
+    use crate::commands::tds_utils::{
+        execute_and_render_sql, parse_connection_string, resolve_sql_input,
+    };
+
+    let sql_text = resolve_sql_input(sql)?;
+
+    // Get lakehouse metadata to extract SQL endpoint connection string
+    let data = client
+        .get(&format!("/workspaces/{workspace}/lakehouses/{id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse query", "Viewer"))?;
+
+    let connection_string = data
+        .get("properties")
+        .and_then(|p| p.get("sqlEndpointProperties"))
+        .and_then(|s| s.get("connectionString"))
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            FabioError::new(
+                ErrorCode::NotFound,
+                "Lakehouse SQL endpoint not available. The lakehouse may not have a SQL endpoint provisioned yet.",
+            )
+        })?;
+
+    let display_name = data
+        .get("displayName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    let (server, parsed_db) = parse_connection_string(connection_string);
+    let database = if display_name.is_empty() {
+        parsed_db
+    } else {
+        display_name.to_string()
+    };
+
+    execute_and_render_sql(cli, client, &server, &database, &sql_text).await
 }
 
 // ─── CRUD Operations ─────────────────────────────────────────────────────────

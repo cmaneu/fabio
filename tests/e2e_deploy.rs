@@ -2378,3 +2378,258 @@ fn deploy_apply_no_post_hooks_flag_accepted() {
         .assert()
         .success();
 }
+
+// ── Validate (offline, no live tenant required) ──────────────────────────────
+
+#[test]
+fn deploy_validate_valid_source_succeeds() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let nb_dir = dir.path().join("MyNotebook.Notebook");
+    std::fs::create_dir_all(&nb_dir).unwrap();
+    std::fs::write(
+        nb_dir.join(".platform"),
+        r#"{"metadata":{"type":"Notebook","displayName":"MyNotebook"},"config":{"version":"2.0","logicalId":"aaaaaaaa-1111-2222-3333-444444444444"}}"#,
+    )
+    .unwrap();
+    std::fs::write(nb_dir.join("notebook-content.py"), "print('hello')").unwrap();
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "validate",
+            "--source",
+            dir.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "valid");
+    assert_eq!(data["items"], 1);
+    assert_eq!(data["summary"]["errors"], 0);
+    assert_eq!(data["summary"]["warnings"], 0);
+}
+
+#[test]
+fn deploy_validate_nonexistent_source_fails() {
+    fabio()
+        .args(["deploy", "validate", "--source", "/nonexistent/path/xyz"])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn deploy_validate_empty_source_reports_error() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let source = dir.path().join("empty");
+    std::fs::create_dir_all(&source).unwrap();
+
+    let assert = fabio()
+        .args(["deploy", "validate", "--source", source.to_str().unwrap()])
+        .assert()
+        .failure();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "invalid");
+    assert!(
+        data["errors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e.as_str().unwrap().contains("No items found"))
+    );
+}
+
+#[test]
+fn deploy_validate_duplicate_type_name_reports_error() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    for suffix in ["A", "B"] {
+        let nb_dir = dir.path().join(format!("DupNB{suffix}.Notebook"));
+        std::fs::create_dir_all(&nb_dir).unwrap();
+        std::fs::write(
+            nb_dir.join(".platform"),
+            r#"{"metadata":{"type":"Notebook","displayName":"SameName"},"config":{"version":"2.0"}}"#,
+        )
+        .unwrap();
+        std::fs::write(nb_dir.join("notebook-content.py"), "x = 1").unwrap();
+    }
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "validate",
+            "--source",
+            dir.path().to_str().unwrap(),
+        ])
+        .assert()
+        .failure();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "invalid");
+    assert!(
+        data["errors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e.as_str().unwrap().contains("Duplicate item"))
+    );
+}
+
+#[test]
+fn deploy_validate_duplicate_logical_id_reports_error() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let lid = "11111111-2222-3333-4444-555555555555";
+
+    for name in ["NB1", "NB2"] {
+        let nb_dir = dir.path().join(format!("{name}.Notebook"));
+        std::fs::create_dir_all(&nb_dir).unwrap();
+        std::fs::write(
+            nb_dir.join(".platform"),
+            format!(r#"{{"metadata":{{"type":"Notebook","displayName":"{name}"}},"config":{{"version":"2.0","logicalId":"{lid}"}}}}"#),
+        )
+        .unwrap();
+        std::fs::write(nb_dir.join("notebook-content.py"), "x = 1").unwrap();
+    }
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "validate",
+            "--source",
+            dir.path().to_str().unwrap(),
+        ])
+        .assert()
+        .failure();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "invalid");
+    assert!(
+        data["errors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e.as_str().unwrap().contains("Duplicate logical ID"))
+    );
+}
+
+#[test]
+fn deploy_validate_unknown_type_warns() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let item_dir = dir.path().join("Thing.UnknownType");
+    std::fs::create_dir_all(&item_dir).unwrap();
+    std::fs::write(
+        item_dir.join(".platform"),
+        r#"{"metadata":{"type":"UnknownType","displayName":"Thing"},"config":{"version":"2.0"}}"#,
+    )
+    .unwrap();
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "validate",
+            "--source",
+            dir.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "valid");
+    assert!(
+        data["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|w| w.as_str().unwrap().contains("unknown item type"))
+    );
+}
+
+#[test]
+fn deploy_validate_invalid_params_reports_error() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let nb_dir = dir.path().join("NB.Notebook");
+    std::fs::create_dir_all(&nb_dir).unwrap();
+    std::fs::write(
+        nb_dir.join(".platform"),
+        r#"{"metadata":{"type":"Notebook","displayName":"NB"},"config":{"version":"2.0"}}"#,
+    )
+    .unwrap();
+    std::fs::write(nb_dir.join("notebook-content.py"), "x = 1").unwrap();
+
+    let params_file = dir.path().join("params.json");
+    std::fs::write(&params_file, "not valid json{{{").unwrap();
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "validate",
+            "--source",
+            dir.path().to_str().unwrap(),
+            "--parameters",
+            params_file.to_str().unwrap(),
+        ])
+        .assert()
+        .failure();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "invalid");
+    assert!(
+        data["errors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e.as_str().unwrap().contains("Parameters file error"))
+    );
+}
+
+#[test]
+fn deploy_validate_params_missing_env_warns() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let nb_dir = dir.path().join("NB.Notebook");
+    std::fs::create_dir_all(&nb_dir).unwrap();
+    std::fs::write(
+        nb_dir.join(".platform"),
+        r#"{"metadata":{"type":"Notebook","displayName":"NB"},"config":{"version":"2.0"}}"#,
+    )
+    .unwrap();
+    std::fs::write(nb_dir.join("notebook-content.py"), "x = 1").unwrap();
+
+    let params_file = dir.path().join("params.json");
+    std::fs::write(
+        &params_file,
+        r#"{"find_replace":[{"find_value":"abc","replace_value":{"dev":"d","prod":"p"}}]}"#,
+    )
+    .unwrap();
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "validate",
+            "--source",
+            dir.path().to_str().unwrap(),
+            "--parameters",
+            params_file.to_str().unwrap(),
+            "--env",
+            "staging",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "valid");
+    assert!(
+        data["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|w| w.as_str().unwrap().contains("no value for env"))
+    );
+}
