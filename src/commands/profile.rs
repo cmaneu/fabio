@@ -58,6 +58,8 @@ pub struct Profile {
     pub workspace: Option<String>,
     pub capacity: Option<String>,
     pub output: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub private_link_workspace: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -144,6 +146,7 @@ fn save(
         workspace: workspace.map(String::from),
         capacity: capacity.map(String::from),
         output: output_fmt.map(String::from),
+        private_link_workspace: None,
     };
     store.profiles.insert(name.to_string(), profile);
     store.save()?;

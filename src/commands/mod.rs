@@ -75,7 +75,12 @@ use crate::client::FabricClient;
 /// Execute the CLI command.
 #[allow(clippy::too_many_lines, clippy::large_stack_frames)]
 pub async fn execute(cli: Cli) -> Result<()> {
-    let client = FabricClient::new();
+    let mut client = FabricClient::new();
+
+    // Apply private link routing from profile if configured
+    if let Some(ws_id) = resolve_private_link_workspace(&cli) {
+        client = client.with_private_link(ws_id);
+    }
 
     match &cli.command {
         // Admin
@@ -195,4 +200,12 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Lro { command } => lro::execute(&cli, &client, command).await,
         Command::AgentContext => agent_context::execute(&cli),
     }
+}
+
+/// Resolve private link workspace ID from the active profile.
+fn resolve_private_link_workspace(cli: &Cli) -> Option<String> {
+    let store = profile::ProfileStore::load();
+    let profile_name = cli.profile.as_deref().or(store.active.as_deref())?;
+    let p = store.profiles.get(profile_name)?;
+    p.private_link_workspace.clone()
 }

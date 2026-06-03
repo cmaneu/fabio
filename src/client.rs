@@ -114,6 +114,8 @@ pub struct FabricClient {
     storage_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
     sql_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
     credential_source: Arc<tokio::sync::RwLock<Option<CredentialSource>>>,
+    /// When set, enables private link URL routing for workspace-scoped requests.
+    private_link_workspace: Option<String>,
 }
 
 impl FabricClient {
@@ -134,6 +136,54 @@ impl FabricClient {
             storage_token: Arc::new(tokio::sync::RwLock::new(None)),
             sql_token: Arc::new(tokio::sync::RwLock::new(None)),
             credential_source: Arc::new(tokio::sync::RwLock::new(None)),
+            private_link_workspace: None,
+        }
+    }
+
+    /// Create a client configured for private link routing.
+    /// When enabled, workspace-scoped URLs are transformed to use the private link subdomain.
+    pub fn with_private_link(mut self, workspace_id: String) -> Self {
+        self.private_link_workspace = Some(workspace_id);
+        self
+    }
+
+    /// Construct the Fabric API base URL, applying private link transform if configured.
+    /// Private link format: `{wsid_no_dashes}.z{first2chars}.w.api.fabric.microsoft.com/v1`
+    fn fabric_url(&self, path: &str) -> String {
+        self.private_link_workspace.as_ref().map_or_else(
+            || format!("{FABRIC_BASE_URL}{path}"),
+            |ws_id| {
+                let no_dashes = ws_id.replace('-', "");
+                let z_prefix = &no_dashes[..2];
+                format!("https://{no_dashes}.z{z_prefix}.w.api.fabric.microsoft.com/v1{path}")
+            },
+        )
+    }
+
+    /// Construct a `OneLake` DFS URL, applying private link transform if configured.
+    /// Private link format: `{wsid_no_dashes}.z{first2chars}.onelake.dfs.fabric.microsoft.com`
+    fn onelake_dfs_url(&self, workspace: &str, suffix: &str) -> String {
+        if self.private_link_workspace.is_some() {
+            let no_dashes = workspace.replace('-', "");
+            let z_prefix = &no_dashes[..2.min(no_dashes.len())];
+            format!(
+                "https://{no_dashes}.z{z_prefix}.onelake.dfs.fabric.microsoft.com/{workspace}/{suffix}"
+            )
+        } else {
+            format!("{ONELAKE_DFS_URL}/{workspace}/{suffix}")
+        }
+    }
+
+    /// Construct a `OneLake` Blob URL, applying private link transform if configured.
+    fn onelake_blob_url(&self, workspace: &str, suffix: &str) -> String {
+        if self.private_link_workspace.is_some() {
+            let no_dashes = workspace.replace('-', "");
+            let z_prefix = &no_dashes[..2.min(no_dashes.len())];
+            format!(
+                "https://{no_dashes}.z{z_prefix}.onelake.blob.fabric.microsoft.com/{workspace}/{suffix}"
+            )
+        } else {
+            format!("{ONELAKE_BLOB_URL}/{workspace}/{suffix}")
         }
     }
 
@@ -245,7 +295,7 @@ impl FabricClient {
         validate_uuid(item, "item")?;
         let mut token = self.require_storage_auth().await?;
         let encoded_path = encode_onelake_path(path);
-        let base = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{encoded_path}");
+        let base = self.onelake_dfs_url(workspace, &format!("{item}/{encoded_path}"));
 
         // Step 1: Create
         let resp = self
@@ -307,7 +357,7 @@ impl FabricClient {
         validate_uuid(item, "item")?;
         let token = self.require_storage_auth().await?;
         let encoded_path = encode_onelake_path(path);
-        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{encoded_path}");
+        let url = self.onelake_dfs_url(workspace, &format!("{item}/{encoded_path}"));
 
         let resp = self
             .http
@@ -354,8 +404,10 @@ impl FabricClient {
         validate_uuid(workspace, "workspace")?;
         validate_uuid(item, "item")?;
         let token = self.require_storage_auth().await?;
-        let mut url =
-            format!("{ONELAKE_DFS_URL}/{workspace}/{item}?resource=filesystem&recursive=true");
+        let mut url = self.onelake_dfs_url(
+            workspace,
+            &format!("{item}?resource=filesystem&recursive=true"),
+        );
         if let Some(dir) = directory {
             let _ = write!(url, "&directory={}", urlencoding::encode(dir));
         }
@@ -410,13 +462,13 @@ impl FabricClient {
         validate_uuid(dst_workspace, "dest-workspace")?;
         validate_uuid(dst_item, "dest-item")?;
         let token = self.require_storage_auth().await?;
-        let source_url = format!(
-            "{ONELAKE_BLOB_URL}/{src_workspace}/{src_item}/{}",
-            encode_onelake_path(src_path)
+        let source_url = self.onelake_blob_url(
+            src_workspace,
+            &format!("{src_item}/{}", encode_onelake_path(src_path)),
         );
-        let dest_url = format!(
-            "{ONELAKE_BLOB_URL}/{dst_workspace}/{dst_item}/{}",
-            encode_onelake_path(dst_path)
+        let dest_url = self.onelake_blob_url(
+            dst_workspace,
+            &format!("{dst_item}/{}", encode_onelake_path(dst_path)),
         );
 
         let resp = self
@@ -477,7 +529,7 @@ impl FabricClient {
         validate_uuid(item, "item")?;
         let token = self.require_storage_auth().await?;
         let encoded_path = encode_onelake_path(path);
-        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{encoded_path}");
+        let url = self.onelake_dfs_url(workspace, &format!("{item}/{encoded_path}"));
 
         let resp = self
             .http
@@ -518,7 +570,7 @@ impl FabricClient {
     pub async fn get(&self, path: &str) -> Result<Value> {
         const MAX_TRANSIENT_RETRIES: u32 = 3;
         let token = self.require_auth().await?;
-        let url = format!("{FABRIC_BASE_URL}{path}");
+        let url = self.fabric_url(path);
 
         let resp = self
             .http
@@ -576,7 +628,7 @@ impl FabricClient {
     /// Used for endpoints that return non-JSON content (e.g., file downloads).
     pub async fn get_text(&self, path: &str) -> Result<String> {
         let token = self.require_auth().await?;
-        let url = format!("{FABRIC_BASE_URL}{path}");
+        let url = self.fabric_url(path);
 
         let resp = self
             .http
@@ -649,11 +701,12 @@ impl FabricClient {
             }
 
             let url = continuation_token.as_ref().map_or_else(
-                || format!("{FABRIC_BASE_URL}{path}"),
+                || self.fabric_url(path),
                 |ct| {
                     let separator = if path.contains('?') { '&' } else { '?' };
                     format!(
-                        "{FABRIC_BASE_URL}{path}{separator}continuationToken={}",
+                        "{}{separator}continuationToken={}",
+                        self.fabric_url(path),
                         urlencoding::encode(ct)
                     )
                 },
@@ -706,7 +759,7 @@ impl FabricClient {
     pub async fn post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
         const MAX_RATE_LIMIT_RETRIES: u32 = 3;
         const MAX_TRANSIENT_RETRIES: u32 = 3;
-        let url = format!("{FABRIC_BASE_URL}{path}");
+        let url = self.fabric_url(path);
         let mut attempt: u32 = 0;
         let mut transient_attempt: u32 = 0;
 
@@ -781,7 +834,7 @@ impl FabricClient {
     /// POST request with raw text body (text/plain content type).
     pub async fn post_raw(&self, path: &str, content: &str) -> Result<Value> {
         let token = self.require_auth().await?;
-        let url = format!("{FABRIC_BASE_URL}{path}");
+        let url = self.fabric_url(path);
 
         let resp = self
             .http
@@ -820,7 +873,7 @@ impl FabricClient {
         timeout_secs: u64,
     ) -> Result<Value> {
         let token = self.require_auth().await?;
-        let url = format!("{FABRIC_BASE_URL}{path}");
+        let url = self.fabric_url(path);
 
         let resp = self
             .http
@@ -889,7 +942,7 @@ impl FabricClient {
     /// GET request that handles LRO (202 Accepted) responses (retries once on 401).
     pub async fn get_with_lro(&self, path: &str) -> Result<Value> {
         let token = self.require_auth().await?;
-        let url = format!("{FABRIC_BASE_URL}{path}");
+        let url = self.fabric_url(path);
 
         let resp = self
             .http
@@ -925,7 +978,7 @@ impl FabricClient {
     /// PATCH request to Fabric REST API (retries once on 401).
     pub async fn patch(&self, path: &str, body: &Value) -> Result<Value> {
         let token = self.require_auth().await?;
-        let url = format!("{FABRIC_BASE_URL}{path}");
+        let url = self.fabric_url(path);
 
         let resp = self
             .http
@@ -956,7 +1009,7 @@ impl FabricClient {
     /// PUT request to Fabric REST API (retries once on 401).
     pub async fn put(&self, path: &str, body: &Value) -> Result<Value> {
         let token = self.require_auth().await?;
-        let url = format!("{FABRIC_BASE_URL}{path}");
+        let url = self.fabric_url(path);
 
         let resp = self
             .http
@@ -987,7 +1040,7 @@ impl FabricClient {
     /// PUT request with raw text body (e.g., for file uploads requiring text/plain).
     pub async fn put_raw(&self, path: &str, content: &str) -> Result<Value> {
         let token = self.require_auth().await?;
-        let url = format!("{FABRIC_BASE_URL}{path}");
+        let url = self.fabric_url(path);
 
         let resp = self
             .http
@@ -1020,7 +1073,7 @@ impl FabricClient {
     /// DELETE request to Fabric REST API (retries once on 401).
     pub async fn delete(&self, path: &str) -> Result<Value> {
         let token = self.require_auth().await?;
-        let url = format!("{FABRIC_BASE_URL}{path}");
+        let url = self.fabric_url(path);
 
         let resp = self
             .http
@@ -1149,7 +1202,7 @@ impl FabricClient {
         validate_uuid(item, "item")?;
         let token = self.require_storage_auth().await?;
         let encoded_path = encode_onelake_path(path);
-        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{encoded_path}");
+        let url = self.onelake_dfs_url(workspace, &format!("{item}/{encoded_path}"));
 
         let resp = self
             .http
@@ -1219,7 +1272,7 @@ impl FabricClient {
         validate_uuid(item, "item")?;
         let token = self.require_storage_auth().await?;
         let encoded_path = encode_onelake_path(path);
-        let url = format!("{ONELAKE_DFS_URL}/{workspace}/{item}/{encoded_path}?recursive=true");
+        let url = self.onelake_dfs_url(workspace, &format!("{item}/{encoded_path}?recursive=true"));
 
         let resp = self
             .http
@@ -1259,9 +1312,9 @@ impl FabricClient {
     /// Run a notebook and return the job instance ID.
     pub async fn run_notebook(&self, workspace: &str, item_id: &str) -> Result<String> {
         let token = self.require_auth().await?;
-        let url = format!(
-            "{FABRIC_BASE_URL}/workspaces/{workspace}/items/{item_id}/jobs/instances?jobType=RunNotebook"
-        );
+        let url = self.fabric_url(&format!(
+            "/workspaces/{workspace}/items/{item_id}/jobs/instances?jobType=RunNotebook"
+        ));
 
         let resp = self
             .http
@@ -1337,7 +1390,7 @@ impl FabricClient {
             .map(String::from);
 
         let Some(poll_url) = location
-            .or_else(|| operation_id.map(|op_id| format!("{FABRIC_BASE_URL}/operations/{op_id}")))
+            .or_else(|| operation_id.map(|op_id| self.fabric_url(&format!("/operations/{op_id}"))))
         else {
             // No LRO info - try to parse response body
             return handle_response(initial_response).await;
@@ -2657,5 +2710,60 @@ mod tests {
                 "should not have spurious error code"
             );
         }
+    }
+
+    // ── Private link URL routing ─────────────────────────────────────────
+
+    #[test]
+    fn fabric_url_without_private_link() {
+        let client = FabricClient::new();
+        let url = client.fabric_url("/workspaces/abc/items/def");
+        assert_eq!(
+            url,
+            "https://api.fabric.microsoft.com/v1/workspaces/abc/items/def"
+        );
+    }
+
+    #[test]
+    fn fabric_url_with_private_link() {
+        let client = FabricClient::new()
+            .with_private_link("12345678-abcd-ef01-2345-6789abcdef00".to_string());
+        let url = client.fabric_url("/workspaces/12345678-abcd-ef01-2345-6789abcdef00/items/x");
+        assert_eq!(
+            url,
+            "https://12345678abcdef0123456789abcdef00.z12.w.api.fabric.microsoft.com/v1/workspaces/12345678-abcd-ef01-2345-6789abcdef00/items/x"
+        );
+    }
+
+    #[test]
+    fn onelake_dfs_url_without_private_link() {
+        let client = FabricClient::new();
+        let url = client.onelake_dfs_url("ws-id", "item-id/Files/test.csv");
+        assert_eq!(
+            url,
+            "https://onelake.dfs.fabric.microsoft.com/ws-id/item-id/Files/test.csv"
+        );
+    }
+
+    #[test]
+    fn onelake_dfs_url_with_private_link() {
+        let client = FabricClient::new()
+            .with_private_link("aabbccdd-1122-3344-5566-778899aabbcc".to_string());
+        let url = client.onelake_dfs_url("aabbccdd-1122-3344-5566-778899aabbcc", "item/path");
+        assert_eq!(
+            url,
+            "https://aabbccdd112233445566778899aabbcc.zaa.onelake.dfs.fabric.microsoft.com/aabbccdd-1122-3344-5566-778899aabbcc/item/path"
+        );
+    }
+
+    #[test]
+    fn onelake_blob_url_with_private_link() {
+        let client = FabricClient::new()
+            .with_private_link("aabbccdd-1122-3344-5566-778899aabbcc".to_string());
+        let url = client.onelake_blob_url("aabbccdd-1122-3344-5566-778899aabbcc", "item/path");
+        assert_eq!(
+            url,
+            "https://aabbccdd112233445566778899aabbcc.zaa.onelake.blob.fabric.microsoft.com/aabbccdd-1122-3344-5566-778899aabbcc/item/path"
+        );
     }
 }

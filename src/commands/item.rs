@@ -68,6 +68,43 @@ pub enum ItemCommand {
         #[arg(long)]
         id: String,
     },
+    /// Check if an item exists (returns {"exists": true/false})
+    #[command(display_order = 5)]
+    Exists {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Get the Fabric portal URL for an item
+    #[command(display_order = 6)]
+    Url {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+
+        /// Item type (e.g., Lakehouse, Notebook, Warehouse). Improves URL accuracy.
+        #[arg(short = 't', long = "type")]
+        item_type: Option<String>,
+    },
+    /// Aggregated item view: metadata + definition + connections
+    #[command(display_order = 7)]
+    Inspect {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+    },
 
     // ── Create/Update/Delete ─────────────────────────────────────────────
     /// Create a new item
@@ -394,6 +431,13 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
         ItemCommand::ListConnections { workspace, id } => {
             list_connections(cli, client, workspace, id).await
         }
+        ItemCommand::Exists { workspace, id } => exists(cli, client, workspace, id).await,
+        ItemCommand::Url {
+            workspace,
+            id,
+            item_type,
+        } => url(cli, workspace, id, item_type.as_deref()),
+        ItemCommand::Inspect { workspace, id } => inspect(cli, client, workspace, id).await,
         ItemCommand::Create {
             workspace,
             name,
@@ -665,6 +709,96 @@ async fn list_connections(
         "id",
         resp.continuation_token.as_deref(),
     );
+    Ok(())
+}
+
+// ─── Exists ──────────────────────────────────────────────────────────────────
+
+async fn exists(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let result = client
+        .get(&format!("/workspaces/{workspace}/items/{id}"))
+        .await;
+    let item_exists = result.is_ok();
+    let data = serde_json::json!({ "exists": item_exists, "id": id, "workspaceId": workspace });
+    output::render_object(cli, &data, "exists");
+    Ok(())
+}
+
+// ─── Url ─────────────────────────────────────────────────────────────────────
+
+#[allow(clippy::unnecessary_wraps)]
+fn url(cli: &Cli, workspace: &str, id: &str, item_type: Option<&str>) -> Result<()> {
+    // Construct a portal URL. The path segment varies by item type.
+    let type_segment = item_type.map_or_else(
+        || format!("/groups/{workspace}/items/{id}"),
+        |t| {
+            let lower = t.to_lowercase();
+            match lower.as_str() {
+                "lakehouse" => format!("/groups/{workspace}/lakehouses/{id}"),
+                "notebook" => format!("/groups/{workspace}/notebooks/{id}"),
+                "warehouse" | "datawarehouse" => format!("/groups/{workspace}/warehouses/{id}"),
+                "report" => format!("/groups/{workspace}/reports/{id}"),
+                "semanticmodel" | "dataset" => format!("/groups/{workspace}/datasets/{id}"),
+                "datapipeline" | "pipeline" => format!("/groups/{workspace}/pipelines/{id}"),
+                "eventhouse" => format!("/groups/{workspace}/eventhouses/{id}"),
+                "kqldatabase" => format!("/groups/{workspace}/kqldatabases/{id}"),
+                "eventstream" => format!("/groups/{workspace}/eventstreams/{id}"),
+                _ => format!("/groups/{workspace}/items/{id}"),
+            }
+        },
+    );
+    let portal_url = format!("https://app.fabric.microsoft.com{type_segment}");
+    let mut data = serde_json::json!({ "url": portal_url, "itemId": id, "workspaceId": workspace });
+    if let Some(t) = item_type {
+        data["itemType"] = Value::String(t.to_string());
+    }
+    output::render_object(cli, &data, "url");
+    Ok(())
+}
+
+// ─── Inspect ─────────────────────────────────────────────────────────────────
+
+async fn inspect(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    // Fetch item metadata (always succeeds for valid items)
+    let metadata = client
+        .get(&format!("/workspaces/{workspace}/items/{id}"))
+        .await
+        .map_err(|e| enrich_item_not_found_error(e, workspace, id))?;
+
+    // Fetch definition (best-effort — some items don't support it)
+    let definition = client
+        .post(
+            &format!("/workspaces/{workspace}/items/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+        .ok();
+
+    // Fetch connections (best-effort)
+    let connections = client
+        .get_list(
+            &format!("/workspaces/{workspace}/items/{id}/connections"),
+            "value",
+            true,
+            None,
+        )
+        .await
+        .ok()
+        .map(|r| r.items);
+
+    // Build aggregated response
+    let mut result = serde_json::json!({
+        "metadata": metadata,
+    });
+    if let Some(def) = definition {
+        result["definition"] = def;
+    }
+    if let Some(conns) = connections {
+        result["connections"] = Value::Array(conns);
+    }
+
+    output::render_object(cli, &result, "metadata.id");
     Ok(())
 }
 

@@ -35,6 +35,13 @@ pub enum WorkspaceCommand {
         #[arg(long)]
         id: String,
     },
+    /// Get the Fabric portal URL for a workspace
+    #[command(display_order = 3)]
+    Url {
+        /// Workspace ID
+        #[arg(long)]
+        id: String,
+    },
 
     // ── Create/Update/Delete ─────────────────────────────────────────────
     /// Create a new workspace
@@ -565,6 +572,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
     match command {
         WorkspaceCommand::List { roles } => list(cli, client, roles.as_deref()).await,
         WorkspaceCommand::Show { id } => show(cli, client, id).await,
+        WorkspaceCommand::Url { id } => url(cli, id),
         WorkspaceCommand::Create { name, description } => {
             create(cli, client, name, description.as_deref()).await
         }
@@ -815,6 +823,14 @@ async fn list(cli: &Cli, client: &FabricClient, roles: Option<&str>) -> Result<(
 async fn show(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
     let data = client.get(&format!("/workspaces/{id}")).await?;
     output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn url(cli: &Cli, id: &str) -> Result<()> {
+    let portal_url = format!("https://app.fabric.microsoft.com/groups/{id}");
+    let data = serde_json::json!({ "url": portal_url, "workspaceId": id });
+    output::render_object(cli, &data, "url");
     Ok(())
 }
 
