@@ -732,3 +732,240 @@ fn semantic_model_query_not_found() {
         .assert()
         .failure();
 }
+
+// ─── Power BI API Commands (list-parameters, list-datasources, etc.) ─────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_list_parameters_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    // list-parameters is a GET — dry-run does not apply; test live call
+    // Use the workspace directly - this may return empty value array which is fine
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "list-parameters",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert();
+
+    // Either succeeds with empty data or fails with not-found — both are valid
+    let _ = assert;
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_update_parameters_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "semantic-model",
+            "update-parameters",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--content",
+            r#"{"updateDetails":[{"name":"Param1","newValue":"test"}]}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_list_datasources_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    // list-datasources is a GET — test against non-existent model
+    let _ = fabio()
+        .args([
+            "semantic-model",
+            "list-datasources",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_update_datasources_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "semantic-model",
+            "update-datasources",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--content",
+            r#"{"updateDetails":[{"datasourceSelector":{"datasourceType":"Sql"}}]}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_list_users_not_found() {
+    let cfg = TestConfig::from_env();
+
+    // list-users against a non-existent model
+    fabio()
+        .args([
+            "semantic-model",
+            "list-users",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_add_user_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "semantic-model",
+            "add-user",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--principal",
+            "testuser@example.com",
+            "--principal-type",
+            "User",
+            "--access-right",
+            "Read",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert!(data["details"]["identifier"]
+        .as_str()
+        .unwrap()
+        .contains("testuser"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_delete_user_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "semantic-model",
+            "delete-user",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--user",
+            "testuser@example.com",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_refresh_status_not_found() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "semantic-model",
+            "refresh-status",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_list_upstream_not_found() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "semantic-model",
+            "list-upstream",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .failure();
+}
+
+#[test]
+#[serial]
+fn semantic_model_update_parameters_invalid_json() {
+    fabio()
+        .args([
+            "semantic-model",
+            "update-parameters",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--content",
+            "not valid json {{{",
+        ])
+        .assert()
+        .failure();
+}

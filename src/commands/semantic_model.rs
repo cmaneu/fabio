@@ -168,6 +168,133 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         id: String,
     },
+    /// List parameters of a semantic model
+    #[command(name = "list-parameters", display_order = 13)]
+    ListParameters {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Update parameters of a semantic model
+    #[command(name = "update-parameters", display_order = 14)]
+    UpdateParameters {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// JSON content with parameter updates (inline or @file or @- for stdin)
+        #[arg(long)]
+        content: String,
+    },
+    /// List datasources of a semantic model
+    #[command(name = "list-datasources", display_order = 15)]
+    ListDatasources {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Update datasources of a semantic model
+    #[command(name = "update-datasources", display_order = 16)]
+    UpdateDatasources {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// JSON content with datasource updates (inline or @file or @- for stdin)
+        #[arg(long)]
+        content: String,
+    },
+    /// List users (permissions) of a semantic model
+    #[command(name = "list-users", display_order = 17)]
+    ListUsers {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Add a user to a semantic model
+    #[command(name = "add-user", display_order = 18)]
+    AddUser {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Principal identifier (email, OID, or group ID)
+        #[arg(long)]
+        principal: String,
+
+        /// Principal type
+        #[arg(long, value_parser = ["User", "Group", "App"])]
+        principal_type: String,
+
+        /// Access right for the dataset
+        #[arg(long, value_parser = ["Read", "ReadExplore", "ReadReshare", "ReadReshareExplore"])]
+        access_right: String,
+    },
+    /// Remove a user from a semantic model
+    #[command(name = "delete-user", display_order = 19)]
+    DeleteUser {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// User email or principal ID to remove
+        #[arg(long)]
+        user: String,
+    },
+    /// Get refresh history and status for a semantic model
+    #[command(name = "refresh-status", display_order = 20)]
+    RefreshStatus {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Maximum number of refresh entries to return (default: 10)
+        #[arg(long, default_value = "10")]
+        top: u32,
+    },
+    /// List upstream (lineage) datasets that this semantic model depends on
+    #[command(name = "list-upstream", display_order = 21)]
+    ListUpstream {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
 }
 
 pub async fn execute(
@@ -202,43 +329,53 @@ pub async fn execute(
             name,
             description,
         } => {
-            update(
-                cli,
-                client,
-                workspace,
-                id,
-                name.as_deref(),
-                description.as_deref(),
-            )
-            .await
+            update(cli, client, workspace, id, name.as_deref(), description.as_deref()).await
         }
         SemanticModelCommand::Delete { workspace, id } => delete(cli, client, workspace, id).await,
         SemanticModelCommand::GetDefinition { workspace, id } => {
             get_definition(cli, client, workspace, id).await
         }
-        SemanticModelCommand::UpdateDefinition {
-            workspace,
-            id,
-            file,
-        } => update_definition(cli, client, workspace, id, file).await,
-        SemanticModelCommand::Query {
-            workspace,
-            id,
-            dax,
-            file,
-        } => query(cli, client, workspace, id, dax.as_deref(), file.as_deref()).await,
-        SemanticModelCommand::BindConnection {
-            workspace,
-            id,
-            connection_id,
-        } => bind_connection(cli, client, workspace, id, connection_id).await,
-        SemanticModelCommand::Refresh {
-            workspace,
-            id,
-            r#type,
-        } => refresh(cli, client, workspace, id, r#type).await,
+        SemanticModelCommand::UpdateDefinition { workspace, id, file } => {
+            update_definition(cli, client, workspace, id, file).await
+        }
+        SemanticModelCommand::Query { workspace, id, dax, file } => {
+            query(cli, client, workspace, id, dax.as_deref(), file.as_deref()).await
+        }
+        SemanticModelCommand::BindConnection { workspace, id, connection_id } => {
+            bind_connection(cli, client, workspace, id, connection_id).await
+        }
+        SemanticModelCommand::Refresh { workspace, id, r#type } => {
+            refresh(cli, client, workspace, id, r#type).await
+        }
         SemanticModelCommand::Takeover { workspace, id } => {
             takeover(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::ListParameters { workspace, id } => {
+            list_parameters(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::UpdateParameters { workspace, id, content } => {
+            update_parameters(cli, client, workspace, id, content).await
+        }
+        SemanticModelCommand::ListDatasources { workspace, id } => {
+            list_datasources(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::UpdateDatasources { workspace, id, content } => {
+            update_datasources(cli, client, workspace, id, content).await
+        }
+        SemanticModelCommand::ListUsers { workspace, id } => {
+            list_users(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::AddUser { workspace, id, principal, principal_type, access_right } => {
+            add_user(cli, client, workspace, id, principal, principal_type, access_right).await
+        }
+        SemanticModelCommand::DeleteUser { workspace, id, user } => {
+            delete_user(cli, client, workspace, id, user).await
+        }
+        SemanticModelCommand::RefreshStatus { workspace, id, top } => {
+            refresh_status(cli, client, workspace, id, *top).await
+        }
+        SemanticModelCommand::ListUpstream { workspace, id } => {
+            list_upstream(cli, client, workspace, id).await
         }
     }
 }
@@ -833,6 +970,288 @@ async fn takeover(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -
         "note": "Model is now service-managed (editable in portal)"
     });
     output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Power BI API Commands ──────────────────────────────────────────────────
+
+fn parse_json_content(content: &str, command: &str) -> Result<Value> {
+    serde_json::from_str(content).map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid JSON in --content: {e}"),
+            format!(
+                "Example: fabio semantic-model {command} --content '{{\"updateDetails\":[...]}}'"
+            ),
+        )
+        .into()
+    })
+}
+
+async fn list_parameters(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .get_powerbi(&format!("/groups/{workspace}/datasets/{id}/parameters"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model list-parameters", "Contributor"))?;
+
+    if let Some(items) = data.get("value").and_then(Value::as_array) {
+        output::render_list_with_token(
+            cli,
+            items,
+            &["name", "type", "currentValue", "isRequired"],
+            &["NAME", "TYPE", "CURRENT VALUE", "REQUIRED"],
+            "name",
+            None,
+        );
+    } else {
+        output::render_object(cli, &data, "name");
+    }
+    Ok(())
+}
+
+async fn update_parameters(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    content: &str,
+) -> Result<()> {
+    let body = parse_json_content(content, "update-parameters")?;
+
+    if output::dry_run_guard(cli, "semantic-model update-parameters", &body) {
+        return Ok(());
+    }
+
+    client
+        .post_powerbi(
+            &format!("/groups/{workspace}/datasets/{id}/Default.UpdateParameters"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model update-parameters", "Contributor"))?;
+
+    let obj = serde_json::json!({
+        "id": id,
+        "status": "parameters_updated"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn list_datasources(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .get_powerbi(&format!("/groups/{workspace}/datasets/{id}/datasources"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model list-datasources", "Contributor"))?;
+
+    if let Some(items) = data.get("value").and_then(Value::as_array) {
+        output::render_list_with_token(
+            cli,
+            items,
+            &["datasourceId", "datasourceType", "gatewayId"],
+            &["DATASOURCE ID", "TYPE", "GATEWAY ID"],
+            "datasourceId",
+            None,
+        );
+    } else {
+        output::render_object(cli, &data, "datasourceId");
+    }
+    Ok(())
+}
+
+async fn update_datasources(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    content: &str,
+) -> Result<()> {
+    let body = parse_json_content(content, "update-datasources")?;
+
+    if output::dry_run_guard(cli, "semantic-model update-datasources", &body) {
+        return Ok(());
+    }
+
+    client
+        .post_powerbi(
+            &format!("/groups/{workspace}/datasets/{id}/Default.UpdateDatasources"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model update-datasources", "Contributor"))?;
+
+    let obj = serde_json::json!({
+        "id": id,
+        "status": "datasources_updated"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn list_users(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .get_powerbi(&format!("/groups/{workspace}/datasets/{id}/users"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model list-users", "Admin"))?;
+
+    if let Some(items) = data.get("value").and_then(Value::as_array) {
+        output::render_list_with_token(
+            cli,
+            items,
+            &[
+                "identifier",
+                "principalType",
+                "datasetUserAccessRight",
+                "displayName",
+            ],
+            &["IDENTIFIER", "TYPE", "ACCESS RIGHT", "DISPLAY NAME"],
+            "identifier",
+            None,
+        );
+    } else {
+        output::render_object(cli, &data, "identifier");
+    }
+    Ok(())
+}
+
+async fn add_user(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    principal: &str,
+    principal_type: &str,
+    access_right: &str,
+) -> Result<()> {
+    let body = serde_json::json!({
+        "identifier": principal,
+        "principalType": principal_type,
+        "datasetUserAccessRight": access_right
+    });
+
+    if output::dry_run_guard(cli, "semantic-model add-user", &body) {
+        return Ok(());
+    }
+
+    client
+        .post_powerbi(
+            &format!("/groups/{workspace}/datasets/{id}/users"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model add-user", "Admin"))?;
+
+    let obj = serde_json::json!({
+        "id": id,
+        "principal": principal,
+        "access_right": access_right,
+        "status": "user_added"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn delete_user(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    user: &str,
+) -> Result<()> {
+    let body = serde_json::json!({
+        "datasetId": id,
+        "user": user
+    });
+
+    if output::dry_run_guard(cli, "semantic-model delete-user", &body) {
+        return Ok(());
+    }
+
+    client
+        .delete_powerbi(&format!(
+            "/groups/{workspace}/datasets/{id}/users/{user}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model delete-user", "Admin"))?;
+
+    let obj = serde_json::json!({
+        "id": id,
+        "user": user,
+        "status": "user_removed"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn refresh_status(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    top: u32,
+) -> Result<()> {
+    let data = client
+        .get_powerbi(&format!(
+            "/groups/{workspace}/datasets/{id}/refreshes?$top={top}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model refresh-status", "Contributor"))?;
+
+    if let Some(items) = data.get("value").and_then(Value::as_array) {
+        output::render_list_with_token(
+            cli,
+            items,
+            &["requestId", "refreshType", "status", "startTime", "endTime"],
+            &["REQUEST ID", "TYPE", "STATUS", "START", "END"],
+            "requestId",
+            None,
+        );
+    } else {
+        output::render_object(cli, &data, "requestId");
+    }
+    Ok(())
+}
+
+async fn list_upstream(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .get_powerbi(&format!(
+            "/groups/{workspace}/datasets/{id}/upstreamDatasets"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model list-upstream", "Contributor"))?;
+
+    if let Some(items) = data.get("value").and_then(Value::as_array) {
+        output::render_list_with_token(
+            cli,
+            items,
+            &["targetDatasetId", "groupId"],
+            &["DATASET ID", "WORKSPACE ID"],
+            "targetDatasetId",
+            None,
+        );
+    } else {
+        output::render_object(cli, &data, "targetDatasetId");
+    }
     Ok(())
 }
 
