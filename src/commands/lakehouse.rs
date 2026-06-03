@@ -3278,26 +3278,31 @@ async fn table_schema(
     id: &str,
     table: &str,
 ) -> Result<()> {
-    let delta_log_dir = format!("Tables/{table}/_delta_log");
-
-    // List all files in the _delta_log directory
+    // List from root (no directory param) to avoid the DFS virtual lakehouse-in-lakehouse
+    // view that doubles top-level dirs when a directory param is specified.
     let files = client
-        .list_onelake_files(workspace, id, Some(&delta_log_dir))
+        .list_onelake_files(workspace, id, None)
         .await
         .map_err(|e| {
-            // If the table doesn't exist, the listing returns 404
             let msg = format!("Failed to read Delta log for table '{table}': {e}");
             FabioError::new(ErrorCode::NotFound, msg)
         })?;
 
-    // Filter to .json commit files and sort descending (newest first)
+    // Filter to .json commit files under {item_id}/Tables/{table}/_delta_log/
+    let delta_log_prefix = format!("{id}/Tables/{table}/_delta_log/");
     let mut json_files: Vec<&str> = files
         .iter()
         .filter_map(|f| f["name"].as_str())
         .filter(|name| {
-            std::path::Path::new(name)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+            // Must be under the delta_log directory
+            let Some(suffix) = name.strip_prefix(delta_log_prefix.as_str()) else {
+                return false;
+            };
+            // Must be a direct child (no further path separators) and a .json file
+            !suffix.contains('/')
+                && std::path::Path::new(suffix)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
         })
         .collect();
     json_files.sort_unstable_by(|a, b| b.cmp(a));
@@ -3305,24 +3310,20 @@ async fn table_schema(
     if json_files.is_empty() {
         return Err(FabioError::new(
             ErrorCode::NotFound,
-            format!("No Delta log commit files found for table '{table}'"),
+            format!("No schema metadata found in Delta log for table '{table}'"),
         )
         .into());
     }
 
     // Iterate from newest commit to oldest, looking for metaData with schemaString
     for file_path in &json_files {
-        // The DFS listing with directory param returns paths relative to {item}/
-        // e.g., "Tables/mytable/_delta_log/00000000000000000000.json"
-        let download_path = if file_path.starts_with("Tables/") {
-            (*file_path).to_string()
-        } else {
-            // Strip the item-id prefix if present (e.g., "{item_id}/Tables/...")
-            file_path.find("/Tables/").map_or_else(
-                || (*file_path).to_string(),
-                |pos| file_path[pos + 1..].to_string(),
-            )
-        };
+        // Strip the item-id prefix to get the path for download
+        // e.g., "{item_id}/Tables/mytable/_delta_log/00000000000000000000.json"
+        //     → "Tables/mytable/_delta_log/00000000000000000000.json"
+        let download_path = file_path
+            .strip_prefix(&format!("{id}/"))
+            .unwrap_or(file_path)
+            .to_string();
 
         let Ok(bytes) = client
             .download_onelake_file(workspace, id, &download_path)
