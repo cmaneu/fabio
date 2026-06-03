@@ -610,6 +610,58 @@ pub enum LakehouseCommand {
         content: Option<String>,
     },
 
+    /// Optimize a Delta table (V-Order compaction + optional Z-Order)
+    #[command(display_order = 71)]
+    OptimizeTable {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Table name to optimize
+        #[arg(long)]
+        table: String,
+
+        /// Schema name (for multi-schema lakehouses)
+        #[arg(long)]
+        schema: Option<String>,
+
+        /// Enable V-Order optimization
+        #[arg(long, default_value_t = true)]
+        vorder: bool,
+
+        /// Columns for Z-Order clustering (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        zorder: Option<Vec<String>>,
+    },
+
+    /// Vacuum a Delta table (remove old files beyond retention period)
+    #[command(display_order = 72)]
+    VacuumTable {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Table name to vacuum
+        #[arg(long)]
+        table: String,
+
+        /// Schema name (for multi-schema lakehouses)
+        #[arg(long)]
+        schema: Option<String>,
+
+        /// Retention period in hours (default: 168 = 7 days)
+        #[arg(long, default_value_t = 168)]
+        retain_hours: u64,
+    },
+
     // ── Livy Sessions ────────────────────────────────────────────────────
     /// List Livy sessions for a lakehouse
     #[command(display_order = 80)]
@@ -974,6 +1026,44 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
                 id,
                 file.as_deref(),
                 content.as_deref(),
+            )
+            .await
+        }
+        LakehouseCommand::OptimizeTable {
+            workspace,
+            id,
+            table,
+            schema,
+            vorder,
+            zorder,
+        } => {
+            optimize_table(
+                cli,
+                client,
+                workspace,
+                id,
+                table,
+                schema.as_deref(),
+                *vorder,
+                zorder.as_deref(),
+            )
+            .await
+        }
+        LakehouseCommand::VacuumTable {
+            workspace,
+            id,
+            table,
+            schema,
+            retain_hours,
+        } => {
+            vacuum_table(
+                cli,
+                client,
+                workspace,
+                id,
+                table,
+                schema.as_deref(),
+                *retain_hours,
             )
             .await
         }
@@ -3044,6 +3134,113 @@ async fn run_table_maintenance(
 
     if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
         let obj = serde_json::json!({ "id": id, "status": "maintenance_triggered" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn optimize_table(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    table: &str,
+    schema: Option<&str>,
+    vorder: bool,
+    zorder: Option<&[String]>,
+) -> Result<()> {
+    let mut optimize_settings = serde_json::json!({ "vOrder": vorder });
+    if let Some(cols) = zorder {
+        if !cols.is_empty() {
+            optimize_settings["zOrderBy"] = serde_json::json!(cols);
+        }
+    }
+
+    let mut execution_data = serde_json::json!({
+        "tableName": table,
+        "optimizeSettings": optimize_settings,
+    });
+    if let Some(s) = schema {
+        execution_data["schemaName"] = serde_json::json!(s);
+    }
+
+    let body = serde_json::json!({ "executionData": execution_data });
+
+    if output::dry_run_guard(cli, "lakehouse optimize-table", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/items/{id}/jobs/instances?jobType=TableMaintenance"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse optimize-table", "Contributor"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({
+            "table": table,
+            "status": "optimize_triggered",
+            "vOrder": vorder,
+            "zOrderBy": zorder.unwrap_or(&[]),
+        });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
+
+async fn vacuum_table(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    table: &str,
+    schema: Option<&str>,
+    retain_hours: u64,
+) -> Result<()> {
+    // Format retention period as D:HH:MM:SS
+    let days = retain_hours / 24;
+    let hours = retain_hours % 24;
+    let retention_period = format!("{days}:{hours:02}:00:00");
+
+    let mut execution_data = serde_json::json!({
+        "tableName": table,
+        "vacuumSettings": {
+            "retentionPeriod": retention_period,
+        },
+    });
+    if let Some(s) = schema {
+        execution_data["schemaName"] = serde_json::json!(s);
+    }
+
+    let body = serde_json::json!({ "executionData": execution_data });
+
+    if output::dry_run_guard(cli, "lakehouse vacuum-table", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/items/{id}/jobs/instances?jobType=TableMaintenance"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse vacuum-table", "Contributor"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({
+            "table": table,
+            "status": "vacuum_triggered",
+            "retentionPeriod": retention_period,
+        });
         output::render_object(cli, &obj, "status");
     } else {
         output::render_object(cli, &data, "id");

@@ -516,6 +516,7 @@ impl FabricClient {
 
     /// GET request to Fabric REST API (retries once on 401 with fresh token).
     pub async fn get(&self, path: &str) -> Result<Value> {
+        const MAX_TRANSIENT_RETRIES: u32 = 3;
         let token = self.require_auth().await?;
         let url = format!("{FABRIC_BASE_URL}{path}");
 
@@ -539,6 +540,33 @@ impl FabricClient {
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
             return handle_response(resp).await;
+        }
+
+        // Retry on transient server errors (502/503/504)
+        let status_code = resp.status().as_u16();
+        if matches!(status_code, 502..=504) {
+            for attempt in 1..=MAX_TRANSIENT_RETRIES {
+                let backoff_secs = u64::from(attempt);
+                eprintln!(
+                    "Transient error (HTTP {status_code}). Retrying in {backoff_secs}s (attempt {attempt}/{MAX_TRANSIENT_RETRIES})..."
+                );
+                sleep(Duration::from_secs(backoff_secs)).await;
+                let token = self.require_auth().await?;
+                let resp = self
+                    .http
+                    .get(&url)
+                    .header(AUTHORIZATION, &token)
+                    .send()
+                    .await
+                    .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+                let retry_status = resp.status().as_u16();
+                if !matches!(retry_status, 502..=504) {
+                    return handle_response(resp).await;
+                }
+                if attempt == MAX_TRANSIENT_RETRIES {
+                    return handle_response(resp).await;
+                }
+            }
         }
 
         handle_response(resp).await
@@ -677,8 +705,10 @@ impl FabricClient {
     /// Retries up to 3 times on 429/430 (rate limited) with exponential backoff.
     pub async fn post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
         const MAX_RATE_LIMIT_RETRIES: u32 = 3;
+        const MAX_TRANSIENT_RETRIES: u32 = 3;
         let url = format!("{FABRIC_BASE_URL}{path}");
         let mut attempt: u32 = 0;
+        let mut transient_attempt: u32 = 0;
 
         loop {
             let token = self.require_auth().await?;
@@ -724,6 +754,17 @@ impl FabricClient {
                     .map_or_else(|| 10u64 * u64::from(attempt), |s| s.min(300)); // fallback: 10s, 20s, 30s
                 eprintln!(
                     "Rate limited (HTTP {status_code}). Retrying in {backoff_secs}s (attempt {attempt}/{MAX_RATE_LIMIT_RETRIES})..."
+                );
+                sleep(Duration::from_secs(backoff_secs)).await;
+                continue;
+            }
+
+            // Retry on transient server errors (502/503/504)
+            if matches!(status_code, 502..=504) && transient_attempt < MAX_TRANSIENT_RETRIES {
+                transient_attempt += 1;
+                let backoff_secs = u64::from(transient_attempt); // 1s, 2s, 3s
+                eprintln!(
+                    "Transient error (HTTP {status_code}). Retrying in {backoff_secs}s (attempt {transient_attempt}/{MAX_TRANSIENT_RETRIES})..."
                 );
                 sleep(Duration::from_secs(backoff_secs)).await;
                 continue;
@@ -1272,6 +1313,16 @@ impl FabricClient {
     /// Unified LRO polling implementation with token refresh for long-running operations.
     #[allow(clippy::too_many_lines)]
     async fn poll_lro_impl(&self, initial_response: Response, max_wait: Duration) -> Result<Value> {
+        // Read initial Retry-After from the 202 response (server-preferred interval).
+        // Cap at 60s to prevent a misconfigured server from stalling the CLI.
+        let mut poll_interval = initial_response
+            .headers()
+            .get("Retry-After")
+            .or_else(|| initial_response.headers().get("retry-after"))
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok())
+            .map_or(LRO_POLL_INTERVAL, |s| Duration::from_secs(s.min(60)));
+
         let location = initial_response
             .headers()
             .get("location")
@@ -1318,7 +1369,7 @@ impl FabricClient {
                 .into());
             }
 
-            sleep(LRO_POLL_INTERVAL).await;
+            sleep(poll_interval).await;
 
             // Refresh token if elapsed > 4 minutes (prevents expiry during long polls)
             if start.elapsed() > Duration::from_secs(240) {
@@ -1334,6 +1385,18 @@ impl FabricClient {
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
             let status = resp.status();
+
+            // Update poll interval from Retry-After if the server provides one.
+            if let Some(retry_secs) = resp
+                .headers()
+                .get("Retry-After")
+                .or_else(|| resp.headers().get("retry-after"))
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok())
+            {
+                poll_interval = Duration::from_secs(retry_secs.min(60));
+            }
+
             if status == StatusCode::OK
                 || status == StatusCode::CREATED
                 || status == StatusCode::ACCEPTED
@@ -1616,6 +1679,16 @@ async fn handle_response(resp: Response) -> Result<Value> {
         return Ok(value);
     }
 
+    // Extract error code from response headers before consuming body.
+    // Fabric APIs set this header with machine-readable codes like
+    // "ItemNotFound", "InvalidItemType", "WorkspaceNotFound", etc.
+    let api_error_code = resp
+        .headers()
+        .get("x-ms-public-api-error-code")
+        .or_else(|| resp.headers().get("x-ms-error-code"))
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+
     let status_code = status.as_u16();
     let text = resp.text().await.unwrap_or_default();
 
@@ -1648,7 +1721,15 @@ async fn handle_response(resp: Response) -> Result<Value> {
             format!("HTTP {status_code}: {truncated}")
         });
 
-    Err(FabioError::from_status_with_body(status_code, message, &text).into())
+    // Prepend the server error code from headers for machine-readable context.
+    // e.g., "ItemNotFound: The requested item does not exist."
+    let enriched_message = if let Some(ref code) = api_error_code {
+        format!("{code}: {message}")
+    } else {
+        message
+    };
+
+    Err(FabioError::from_status_with_body(status_code, enriched_message, &text).into())
 }
 
 /// Validate that a user-provided URL targets a trusted Microsoft domain.
@@ -2501,6 +2582,80 @@ mod tests {
             let resp = get_response(&server).await;
             let result = handle_response(resp).await.unwrap();
             assert_eq!(result["ok"], true);
+        }
+
+        #[tokio::test]
+        async fn error_includes_x_ms_public_api_error_code_header() {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .respond_with(
+                    ResponseTemplate::new(404)
+                        .insert_header("x-ms-public-api-error-code", "ItemNotFound")
+                        .set_body_json(serde_json::json!({
+                            "error": {"code": "ItemNotFound", "message": "The requested item does not exist."}
+                        })),
+                )
+                .mount(&server)
+                .await;
+
+            let resp = get_response(&server).await;
+            let err = handle_response(resp).await.unwrap_err();
+            let msg = format!("{err}");
+            assert!(
+                msg.contains("ItemNotFound"),
+                "error should include API error code from header: {msg}"
+            );
+            assert!(
+                msg.contains("The requested item does not exist"),
+                "error should include body message: {msg}"
+            );
+        }
+
+        #[tokio::test]
+        async fn error_includes_x_ms_error_code_header_fallback() {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .respond_with(
+                    ResponseTemplate::new(400)
+                        .insert_header("x-ms-error-code", "InvalidItemType")
+                        .set_body_json(serde_json::json!({
+                            "error": {"message": "The item type is invalid."}
+                        })),
+                )
+                .mount(&server)
+                .await;
+
+            let resp = get_response(&server).await;
+            let err = handle_response(resp).await.unwrap_err();
+            let msg = format!("{err}");
+            assert!(
+                msg.contains("InvalidItemType"),
+                "error should include error code from x-ms-error-code header: {msg}"
+            );
+        }
+
+        #[tokio::test]
+        async fn error_without_api_error_code_header_still_works() {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .respond_with(ResponseTemplate::new(500).set_body_json(serde_json::json!({
+                    "error": {"message": "Internal server error"}
+                })))
+                .mount(&server)
+                .await;
+
+            let resp = get_response(&server).await;
+            let err = handle_response(resp).await.unwrap_err();
+            let msg = format!("{err}");
+            assert!(
+                msg.contains("Internal server error"),
+                "error message should work without header: {msg}"
+            );
+            // Should NOT contain a colon-prefixed error code
+            assert!(
+                !msg.starts_with("API_ERROR: ItemNotFound"),
+                "should not have spurious error code"
+            );
         }
     }
 }

@@ -354,6 +354,367 @@ fn lakehouse_move_table_across_workspaces() {
         .success();
 }
 
+// ─── optimize-table tests ────────────────────────────────────────────────────
+
+#[test]
+fn lakehouse_optimize_table_dry_run() {
+    // Dry-run does NOT require a live tenant — validates JSON payload construction
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "optimize-table",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--table",
+            "sales_2024",
+            "--vorder",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "lakehouse optimize-table");
+    // Verify the details payload structure
+    let details = &data["details"];
+    let exec_data = &details["executionData"];
+    assert_eq!(exec_data["tableName"], "sales_2024");
+    assert_eq!(exec_data["optimizeSettings"]["vOrder"], true);
+}
+
+#[test]
+fn lakehouse_optimize_table_dry_run_with_zorder() {
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "optimize-table",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--table",
+            "events",
+            "--zorder",
+            "region,timestamp",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    // Verify zOrderBy appears in the request body
+    let exec_data = &data["details"]["executionData"];
+    let z_order = exec_data["optimizeSettings"]["zOrderBy"]
+        .as_array()
+        .expect("zOrderBy should be an array");
+    assert_eq!(z_order.len(), 2);
+    assert_eq!(z_order[0], "region");
+    assert_eq!(z_order[1], "timestamp");
+}
+
+// ─── vacuum-table tests ──────────────────────────────────────────────────────
+
+#[test]
+fn lakehouse_vacuum_table_dry_run() {
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "vacuum-table",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--table",
+            "logs_archive",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "lakehouse vacuum-table");
+    // Default retention: 168 hours = 7 days → "7:00:00:00"
+    let exec_data = &data["details"]["executionData"];
+    let retention = exec_data["vacuumSettings"]["retentionPeriod"]
+        .as_str()
+        .unwrap();
+    assert_eq!(retention, "7:00:00:00");
+}
+
+#[test]
+fn lakehouse_vacuum_table_dry_run_custom_retention() {
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "vacuum-table",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--table",
+            "events",
+            "--retain-hours",
+            "48",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // 48 hours = 2 days 0 hours → "2:00:00:00"
+    let exec_data = &data["details"]["executionData"];
+    let retention = exec_data["vacuumSettings"]["retentionPeriod"]
+        .as_str()
+        .unwrap();
+    assert_eq!(retention, "2:00:00:00");
+}
+
+#[test]
+fn lakehouse_vacuum_table_dry_run_partial_day_retention() {
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "vacuum-table",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--table",
+            "metrics",
+            "--retain-hours",
+            "30",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // 30 hours = 1 day 6 hours → "1:06:00:00"
+    let exec_data = &data["details"]["executionData"];
+    let retention = exec_data["vacuumSettings"]["retentionPeriod"]
+        .as_str()
+        .unwrap();
+    assert_eq!(retention, "1:06:00:00");
+}
+
+// ─── Live optimize/vacuum tests ──────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_optimize_table_succeeds() {
+    let cfg = TestConfig::from_env();
+    let table_name = common::unique_name("opt_test");
+
+    // Create a table to optimize
+    create_test_table(&cfg, &table_name);
+
+    // Run optimize
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "optimize-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            &table_name,
+            "--vorder",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let status = data.get("status").and_then(|s| s.as_str()).unwrap_or("");
+    assert!(
+        status == "optimize_triggered" || data.get("id").is_some(),
+        "unexpected response: {data}"
+    );
+
+    // Cleanup
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            &table_name,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_optimize_table_with_zorder_succeeds() {
+    let cfg = TestConfig::from_env();
+    let table_name = common::unique_name("optz_test");
+
+    // Create a table with columns suitable for z-ordering
+    create_test_table(&cfg, &table_name);
+
+    // Run optimize with z-order on the "name" column
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "optimize-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            &table_name,
+            "--vorder",
+            "--zorder",
+            "name",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let status = data.get("status").and_then(|s| s.as_str()).unwrap_or("");
+    assert!(
+        status == "optimize_triggered" || data.get("id").is_some(),
+        "unexpected response: {data}"
+    );
+
+    // Cleanup
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            &table_name,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_vacuum_table_succeeds() {
+    let cfg = TestConfig::from_env();
+    let table_name = common::unique_name("vac_test");
+
+    // Create a table to vacuum
+    create_test_table(&cfg, &table_name);
+
+    // Run vacuum with default retention (7 days)
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "vacuum-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            &table_name,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let status = data.get("status").and_then(|s| s.as_str()).unwrap_or("");
+    assert!(
+        status == "vacuum_triggered" || data.get("id").is_some(),
+        "unexpected response: {data}"
+    );
+
+    // Cleanup
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            &table_name,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_vacuum_table_custom_retention_succeeds() {
+    let cfg = TestConfig::from_env();
+    let table_name = common::unique_name("vacr_test");
+
+    // Create a table to vacuum
+    create_test_table(&cfg, &table_name);
+
+    // Run vacuum with 2-day retention
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "vacuum-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            &table_name,
+            "--retain-hours",
+            "48",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let status = data.get("status").and_then(|s| s.as_str()).unwrap_or("");
+    assert!(
+        status == "vacuum_triggered" || data.get("id").is_some(),
+        "unexpected response: {data}"
+    );
+
+    // Cleanup
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            &table_name,
+        ])
+        .assert()
+        .success();
+}
+
 // ─── upload-table (single-step upload + load) ────────────────────────────────
 
 #[test]
