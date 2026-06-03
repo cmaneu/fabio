@@ -35,7 +35,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (761 subcommands across 68 groups): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, rest, profile, jobs, feedback, operation, agent-context
+- **Full Rust implementation** (766 subcommands across 69 groups): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, rti, rest, profile, jobs, feedback, operation, agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain, CSV, TSV formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`, `--lro-timeout`
@@ -59,7 +59,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Warehouse**: list/show/create/update/delete/query/connection-string (endpoint resolved, stdin/file/flag SQL input)
 - **Git integration**: status, commit, pull, connect, disconnect, initialize, switch (branch), connection/credentials management, show-tracked
 - **Ontology management**: list, show, create, update, delete, get-definition, update-definition (RDF file support, --dir for Fabric definition format, --decode for readable output)
-- **Environment**: list, show, create, update, delete, publish, cancel-publish, get-spark-settings, get-staging-spark-settings
+- **Environment**: list, show, create, update, delete, publish, cancel-publish, get-spark-settings, get-staging-spark-settings, upload-staging-library
 - **Data Pipeline**: list, show, create, update, delete, run (triggers Pipeline job)
 - **Eventhouse**: list, show, create, update, delete
 - **Eventstream**: list, show, create, update, delete, get-definition, update-definition, get-topology, pause, resume, get/pause/resume-source, get-source-connection, get/pause/resume-destination, get-destination-connection, add-source, add-destination
@@ -71,7 +71,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **ML Model**: list, show, create, update, delete (CRUD only, no definition support)
 - **ML Experiment**: list, show, create, update, delete (CRUD only, no definition support)
 - **Copy Job**: list, show, create, update, delete, get-definition, update-definition (data movement)
-- **Dataflow**: list, show, create, update, delete, get-definition, update-definition, discover-parameters (Power BI transformation)
+- **Dataflow**: list, show, create, update, delete, get-definition, update-definition, discover-parameters, run, execute-query (Power BI transformation)
 - **GraphQL API**: list, show, create, update, delete, get-definition, update-definition (schema.graphql)
 - **Report**: list, show, create (from definition file), update, delete, get-definition, update-definition
 - **Semantic Model**: list, show, create (from model.bim), update, delete, get-definition, update-definition, query, refresh, bind-connection, unbind-connection, takeover
@@ -123,6 +123,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Dashboard**: list (read-only, portal-created)
 - **Datamart**: list (read-only, portal-created)
 - **Paginated Report**: list/update (read-only creation via portal/SSRS)
+- **RTI (Real-Time Intelligence)**: nl-to-kql (natural language to KQL translation via POST /realTimeIntelligence/nltokql?beta=true)
 - **Lakehouse query**: Resolves SQL analytics endpoint from lakehouse properties, executes T-SQL via shared TDS utilities
 - **Rest**: Raw REST passthrough command (`fabio rest call`); supports GET/POST/PUT/PATCH/DELETE; `--body` accepts inline JSON, `@file`, `@-` (stdin); `--query-params` for URL params; `--poll` for LRO; dry-run for mutating methods; `--api powerbi` targets Power BI REST API
 - **Power BI API pass-through**: `fabio rest call --api powerbi` routes to `https://api.powerbi.com/v1.0/myorg`; reuses Fabric token (no separate scope needed); supports all HTTP methods; dry-run shows `"api": "powerbi"` in output
@@ -141,7 +142,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Notebook --strip-output**: `get-definition --strip-output` clears `outputs`/`execution_count` from ipynb cells; gracefully passes through `.py` format
 - **CSV/TSV output**: Global `--output csv|tsv` on all commands; RFC 4180 quoting via `format_csv_value()`
 - **Deploy validate**: Local-only pre-flight checks on source directory (validates .platform files, item types, definition structure, logical ID references); no API calls required
-- **1255 Rust tests** (487 unit + 113 offline integration + 655 E2E requiring live tenant), zero clippy warnings, rustfmt clean
+- **1286 Rust tests** (487 unit + 137 offline integration + 662 E2E requiring live tenant), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~16 MB, stripped, full LTO, panic=abort
@@ -236,7 +237,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/ml_model.rs`: list/show/create/update/delete (CRUD only)
 - `src/commands/ml_experiment.rs`: list/show/create/update/delete (CRUD only)
 - `src/commands/copy_job.rs`: list/show/create/update/delete/get-definition/update-definition
-- `src/commands/dataflow.rs`: list/show/create/update/delete/get-definition/update-definition/discover-parameters
+- `src/commands/dataflow.rs`: list/show/create/update/delete/get-definition/update-definition/discover-parameters/run/execute-query
 - `src/commands/graphql_api.rs`: list/show/create/update/delete/get-definition/update-definition (schema.graphql)
 - `src/commands/spark.rs`: get-settings/update-settings/list-pools/get-pool/create-pool/update-pool/delete-pool
 - `src/commands/spark_job_definition.rs`: list/show/create/update/delete/get-definition/update-definition/run
@@ -285,6 +286,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
 - `src/commands/agent_context.rs`: Machine-readable command schema for AI agents
 - `src/commands/rest.rs`: Raw REST passthrough (method/path/body/query-params/poll); `resolve_body()` for @file/@- support; `--api powerbi` targets Power BI REST API
+- `src/commands/rti.rs`: nl-to-kql (natural language to KQL translation)
 - `tests/common/mod.rs`: Shared E2E test harness (TestConfig, helpers)
 - `tests/e2e_auth.rs`: Auth integration tests
 - `tests/e2e_workspace.rs`: Workspace CRUD + assign-capacity + networking + OneLake settings + folders + storage format + roles filter tests
@@ -316,7 +318,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_ml_model.rs`: ML model CRUD tests
 - `tests/e2e_ml_experiment.rs`: ML experiment CRUD tests
 - `tests/e2e_copy_job.rs`: Copy job CRUD tests
-- `tests/e2e_dataflow.rs`: Dataflow CRUD tests
+- `tests/e2e_dataflow.rs`: Dataflow CRUD + run + execute-query tests
 - `tests/e2e_report.rs`: Report CRUD tests
 - `tests/e2e_semantic_model.rs`: Semantic model CRUD tests
 - `tests/e2e_map.rs`: Map CRUD + definition tests
@@ -358,6 +360,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_feedback.rs`: Feedback send/list tests
 - `tests/e2e_agent_context.rs`: Agent context schema tests
 - `tests/e2e_rest.rs`: REST passthrough tests (dry-run, body resolution, live calls)
+- `tests/e2e_rti.rs`: RTI nl-to-kql tests (dry-run + live failure)
 - `.github/workflows/ci.yml`: Rust CI (fmt, clippy, test, build) on 6 targets (x64+arm64 x linux/macos/windows)
 - `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
 - `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
