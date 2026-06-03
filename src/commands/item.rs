@@ -303,6 +303,33 @@ pub enum ItemCommand {
         content: Option<String>,
     },
 
+    /// Bulk create items in parallel (client-side concurrency)
+    #[command(display_order = 33)]
+    BulkCreate {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Path to JSON file with item array
+        #[arg(long, group = "input")]
+        file: Option<String>,
+
+        /// Inline JSON array of items: [{"displayName":"...", "type":"..."}, ...]
+        #[arg(long, group = "input")]
+        content: Option<String>,
+    },
+    /// Bulk delete items in parallel (client-side concurrency)
+    #[command(display_order = 34)]
+    BulkDelete {
+        /// Workspace ID
+        #[arg(short, long)]
+        workspace: String,
+
+        /// Comma-separated item IDs to delete
+        #[arg(long, value_delimiter = ',')]
+        ids: Vec<String>,
+    },
+
     // ── External Data Shares ─────────────────────────────────────────────
     /// List external data shares for an item
     #[command(display_order = 40)]
@@ -589,6 +616,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
                 content.as_deref(),
             )
             .await
+        }
+        ItemCommand::BulkCreate {
+            workspace,
+            file,
+            content,
+        } => bulk_create(cli, client, workspace, file.as_deref(), content.as_deref()).await,
+        ItemCommand::BulkDelete { workspace, ids } => {
+            bulk_delete(cli, client, workspace, ids).await
         }
         ItemCommand::ListExternalDataShares { workspace, id } => {
             list_external_data_shares(cli, client, workspace, id).await
@@ -1221,6 +1256,185 @@ async fn bulk_post(
         .await?;
 
     output::render_object(cli, &data, "status");
+    Ok(())
+}
+
+// ─── Bulk Create (client-side parallel) ──────────────────────────────────────
+
+async fn bulk_create(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body = read_json_input(file, content, "bulk-create")?;
+    let items = body.as_array().ok_or_else(|| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Expected a JSON array of items".to_string(),
+            "Example: [{\"displayName\":\"Item1\",\"type\":\"Lakehouse\"}, ...]".to_string(),
+        )
+    })?;
+
+    if items.is_empty() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Item array is empty".to_string(),
+            "Provide at least one item to create.".to_string(),
+        )
+        .into());
+    }
+
+    if output::dry_run_guard(
+        cli,
+        "item bulk-create",
+        &serde_json::json!({
+            "workspace": workspace,
+            "count": items.len(),
+            "items": items
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let workspace_owned = workspace.to_owned();
+    let items_owned: Vec<Value> = items.clone();
+    let items_ref = items_owned.clone(); // Keep a copy for result reporting
+    let client_arc = std::sync::Arc::new(client.clone());
+    let concurrency = crate::parallel::default_concurrency();
+
+    let results = crate::parallel::execute_parallel(items_owned, concurrency, {
+        let ws = workspace_owned.clone();
+        let c = client_arc.clone();
+        move |item| {
+            let ws = ws.clone();
+            let c = c.clone();
+            async move {
+                let resp = c
+                    .post(&format!("/workspaces/{ws}/items"), &item, true)
+                    .await?;
+                Ok(resp)
+            }
+        }
+    })
+    .await;
+
+    // Collect results
+    let mut succeeded = Vec::new();
+    let mut failed = Vec::new();
+
+    for r in &results {
+        let item_name = items_ref
+            .get(r.index)
+            .and_then(|v| v.get("displayName"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        match &r.result {
+            Ok(data) => {
+                succeeded.push(serde_json::json!({
+                    "displayName": item_name,
+                    "id": data.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                    "type": data.get("type").and_then(|v| v.as_str()).unwrap_or(""),
+                }));
+            }
+            Err(e) => {
+                failed.push(serde_json::json!({
+                    "displayName": item_name,
+                    "error": e.message,
+                }));
+            }
+        }
+    }
+
+    let result = serde_json::json!({
+        "succeeded": succeeded.len(),
+        "failed": failed.len(),
+        "items": succeeded,
+        "failures": failed,
+    });
+    output::render_object(cli, &result, "succeeded");
+    Ok(())
+}
+
+// ─── Bulk Delete (client-side parallel) ──────────────────────────────────────
+
+async fn bulk_delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    ids: &[String],
+) -> Result<()> {
+    // Filter out empty strings (e.g., from `--ids ""`)
+    let ids: Vec<&str> = ids
+        .iter()
+        .map(String::as_str)
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if ids.is_empty() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "No item IDs provided".to_string(),
+            "Example: fabio item bulk-delete --workspace <WS> --ids id1,id2,id3".to_string(),
+        )
+        .into());
+    }
+
+    if output::dry_run_guard(
+        cli,
+        "item bulk-delete",
+        &serde_json::json!({
+            "workspace": workspace,
+            "count": ids.len(),
+            "ids": ids
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let workspace_owned = workspace.to_owned();
+    let ids_owned: Vec<String> = ids.iter().map(|s| (*s).to_owned()).collect();
+    let client_arc = std::sync::Arc::new(client.clone());
+    let concurrency = crate::parallel::default_concurrency();
+
+    let results = crate::parallel::execute_parallel(ids_owned.clone(), concurrency, {
+        let ws = workspace_owned.clone();
+        let c = client_arc.clone();
+        move |id| {
+            let ws = ws.clone();
+            let c = c.clone();
+            async move {
+                c.delete(&format!("/workspaces/{ws}/items/{id}")).await?;
+                Ok(id)
+            }
+        }
+    })
+    .await;
+
+    // Collect results
+    let mut succeeded = Vec::new();
+    let mut failed = Vec::new();
+
+    for r in &results {
+        let id = &ids_owned[r.index];
+        match &r.result {
+            Ok(_) => {
+                succeeded.push(serde_json::json!({"id": id, "status": "deleted"}));
+            }
+            Err(e) => {
+                failed.push(serde_json::json!({"id": id, "error": e.message}));
+            }
+        }
+    }
+
+    let result = serde_json::json!({
+        "succeeded": succeeded.len(),
+        "failed": failed.len(),
+        "items": succeeded,
+        "failures": failed,
+    });
+    output::render_object(cli, &result, "succeeded");
     Ok(())
 }
 

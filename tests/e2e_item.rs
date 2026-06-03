@@ -1239,3 +1239,164 @@ fn item_list_folder_combined_with_type() {
         "expected no items for nonexistent folder + type combo"
     );
 }
+
+// ─── Bulk Create ─────────────────────────────────────────────────────────────
+
+#[test]
+fn item_bulk_create_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "item",
+            "bulk-create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--content",
+            r#"[{"displayName":"BulkItem1","type":"Lakehouse"},{"displayName":"BulkItem2","type":"Lakehouse"}]"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["count"], 2);
+}
+
+#[test]
+fn item_bulk_create_empty_array_fails() {
+    let assert = fabio()
+        .args([
+            "item",
+            "bulk-create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--content",
+            "[]",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+    assert!(err["error"]["message"].as_str().unwrap().contains("empty"));
+}
+
+#[test]
+fn item_bulk_create_non_array_fails() {
+    let assert = fabio()
+        .args([
+            "item",
+            "bulk-create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--content",
+            r#"{"displayName":"Single","type":"Lakehouse"}"#,
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+    assert!(err["error"]["message"].as_str().unwrap().contains("array"));
+}
+
+// ─── Bulk Delete ─────────────────────────────────────────────────────────────
+
+#[test]
+fn item_bulk_delete_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "item",
+            "bulk-delete",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--ids",
+            "id1,id2,id3",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["count"], 3);
+}
+
+#[test]
+fn item_bulk_delete_no_ids_fails() {
+    let assert = fabio()
+        .args([
+            "item",
+            "bulk-delete",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--ids",
+            "",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_bulk_create_and_delete_live() {
+    let cfg = TestConfig::from_env();
+
+    // Bulk-create 2 lakehouses
+    let items_json = serde_json::json!([
+        {"displayName": "BulkTest1E2e", "type": "Lakehouse"},
+        {"displayName": "BulkTest2E2e", "type": "Lakehouse"},
+    ])
+    .to_string();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "bulk-create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--content",
+            &items_json,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["succeeded"], 2);
+    assert_eq!(data["failed"], 0);
+    let items = data["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+
+    // Extract IDs for cleanup
+    let id1 = items[0]["id"].as_str().unwrap();
+    let id2 = items[1]["id"].as_str().unwrap();
+    let ids = format!("{id1},{id2}");
+
+    // Bulk-delete both
+    let assert = fabio()
+        .args([
+            "item",
+            "bulk-delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--ids",
+            &ids,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["succeeded"], 2);
+    assert_eq!(data["failed"], 0);
+}
