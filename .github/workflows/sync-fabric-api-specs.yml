@@ -128,6 +128,41 @@ jobs:
 
       - name: Verify build
         if: steps.code-changes.outputs.has_code_changes == 'true'
+        id: verify-build
+        run: |
+          if cargo check 2>/tmp/build-errors.txt && cargo clippy -- -D warnings 2>>/tmp/build-errors.txt; then
+            echo "build_ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Build failed — will ask Copilot to fix"
+            echo "build_ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fix build errors with Copilot
+        if: steps.verify-build.outputs.build_ok == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+        run: |
+          BUILD_ERRORS=$(cat /tmp/build-errors.txt)
+          copilot -p "The code you generated has build errors. Fix them. Here are the errors:
+
+          $BUILD_ERRORS
+
+          Run 'cargo check' and 'cargo clippy -- -D warnings' after fixing to confirm the build passes." \
+            --allow-tool='shell(git:*)' \
+            --allow-tool='shell(cargo:*)' \
+            --allow-tool='shell(cat:*)' \
+            --allow-tool='shell(ls:*)' \
+            --allow-tool='shell(find:*)' \
+            --allow-tool='shell(head:*)' \
+            --allow-tool='shell(tail:*)' \
+            --allow-tool='shell(grep:*)' \
+            --allow-tool=read \
+            --allow-tool=write \
+            --allow-tool=edit \
+            --no-ask-user
+
+      - name: Final build verification
+        if: steps.code-changes.outputs.has_code_changes == 'true'
         run: |
           cargo check
           cargo clippy -- -D warnings
