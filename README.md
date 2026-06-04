@@ -1514,6 +1514,100 @@ fabio item list --workspace $WS -o plain --query displayName | sort | uniq -c | 
 fabio agent-context | jq '.commands[] | select(.group == "lakehouse")'
 ```
 
+### GitHub Actions
+
+Use fabio in CI/CD workflows to deploy Fabric artifacts automatically. No `fabio auth login` is needed — fabio picks up credentials from the environment via `DefaultAzureCredential`.
+
+#### Option 1: OIDC federated credentials (secretless, recommended)
+
+Uses GitHub's OIDC token exchange — no long-lived secrets stored in your repo. Requires the `azure/login` action to broker the token exchange.
+
+```yaml
+name: Fabric Deploy
+on: [push]
+
+permissions:
+  id-token: write   # Required for OIDC token exchange
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install fabio
+        run: |
+          ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
+          curl -fsSL "https://github.com/iemejia/fabio/releases/latest/download/fabio-linux-${ARCH}.tar.gz" \
+            | tar -xz -C /usr/local/bin
+
+      - name: Deploy to Fabric
+        run: |
+          fabio deploy plan --source ./fabric-items/ --workspace "Production"
+          fabio deploy apply --source ./fabric-items/ --workspace "Production"
+```
+
+**Setup:**
+
+1. Create an Entra ID app registration (no client secret needed)
+2. Add a federated credential for your GitHub repo (`repo:org/repo:ref:refs/heads/main`)
+3. Grant the service principal Fabric workspace permissions (Contributor or Admin)
+4. Store `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` as GitHub repo secrets
+
+#### Option 2: Service principal with client secret (simplest)
+
+No extra GitHub Actions required — just set environment variables. Fabio authenticates directly.
+
+```yaml
+name: Fabric Deploy
+on: [push]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install fabio
+        run: |
+          ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
+          curl -fsSL "https://github.com/iemejia/fabio/releases/latest/download/fabio-linux-${ARCH}.tar.gz" \
+            | tar -xz -C /usr/local/bin
+
+      - name: Deploy to Fabric
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          fabio deploy plan --source ./fabric-items/ --workspace "Production"
+          fabio deploy apply --source ./fabric-items/ --workspace "Production"
+```
+
+**Setup:**
+
+1. Create an Entra ID app registration with a client secret
+2. Grant the service principal Fabric workspace permissions (Contributor or Admin)
+3. Store `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET` as GitHub repo secrets
+
+#### Which option to choose?
+
+| | OIDC (federated) | Client secret |
+|---|---|---|
+| Security | No long-lived secrets | Secret stored in GitHub |
+| Setup complexity | Higher (federated credential config) | Lower |
+| Dependencies | `azure/login` action | None (env vars only) |
+| Secret rotation | Automatic (token-based) | Manual (expiry management) |
+| Recommended for | Production workloads | Quick setup, dev/test |
+
 ## Development
 
 ```bash
