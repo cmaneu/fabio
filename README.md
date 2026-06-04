@@ -1541,7 +1541,7 @@ jobs:
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: true
 
       - name: Install fabio
         run: |
@@ -1560,7 +1560,7 @@ jobs:
 1. Create an Entra ID app registration (no client secret needed)
 2. Add a federated credential for your GitHub repo (`repo:org/repo:ref:refs/heads/main`)
 3. Grant the service principal Fabric workspace permissions (Contributor or Admin)
-4. Store `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` as GitHub repo secrets
+4. Store `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` as GitHub repo secrets
 
 #### Option 2: Service principal with client secret (simplest)
 
