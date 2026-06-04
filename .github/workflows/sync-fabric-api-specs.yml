@@ -94,7 +94,7 @@ jobs:
       - name: Generate improvements with Copilot
         if: steps.check-changes.outputs.has_changes == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
         run: |
           export SPEC_CHANGES_SUMMARY="$(cat /tmp/spec-changes-summary.txt)"
           export SPEC_COMMITS="$(cat /tmp/spec-commits.txt)"
