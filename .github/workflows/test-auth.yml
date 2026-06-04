@@ -19,12 +19,22 @@ permissions:
 jobs:
   oidc:
     if: inputs.method == 'both' || inputs.method == 'oidc'
-    name: "OIDC (federated)"
+    name: "OIDC / ${{ matrix.artifact }}"
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
+        include:
+          - os: ubuntu-latest
+            artifact: fabio-linux-x64
+          - os: ubuntu-24.04-arm
+            artifact: fabio-linux-arm64
+          - os: macos-latest
+            artifact: fabio-macos-arm64
+          - os: windows-latest
+            artifact: fabio-windows-x64
+          - os: windows-11-arm
+            artifact: fabio-windows-arm64
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Azure Login (OIDC)
         uses: azure/login@v3
@@ -33,12 +43,21 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           allow-no-subscriptions: true
 
-      - name: Install fabio
+      - name: Install fabio (Unix)
+        if: runner.os != 'Windows'
         run: |
-          ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
-          curl -fsSL "https://github.com/iemejia/fabio/releases/latest/download/fabio-linux-${ARCH}.tar.gz" \
+          curl -fsSL "https://github.com/iemejia/fabio/releases/latest/download/${{ matrix.artifact }}.tar.gz" \
             | tar -xz -C /usr/local/bin
           fabio --version
+
+      - name: Install fabio (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://github.com/iemejia/fabio/releases/latest/download/${{ matrix.artifact }}.zip" -OutFile fabio.zip
+          Expand-Archive fabio.zip -DestinationPath "$env:USERPROFILE\.local\bin"
+          echo "$env:USERPROFILE\.local\bin" | Out-File -Append $env:GITHUB_PATH
+          & "$env:USERPROFILE\.local\bin\fabio.exe" --version
 
       - name: Test auth status
         run: fabio auth status
@@ -48,19 +67,38 @@ jobs:
 
   client-secret:
     if: inputs.method == 'both' || inputs.method == 'client-secret'
-    name: "Client secret (env vars)"
+    name: "Secret / ${{ matrix.artifact }}"
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
+        include:
+          - os: ubuntu-latest
+            artifact: fabio-linux-x64
+          - os: ubuntu-24.04-arm
+            artifact: fabio-linux-arm64
+          - os: macos-latest
+            artifact: fabio-macos-arm64
+          - os: windows-latest
+            artifact: fabio-windows-x64
+          - os: windows-11-arm
+            artifact: fabio-windows-arm64
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Install fabio
+      - name: Install fabio (Unix)
+        if: runner.os != 'Windows'
         run: |
-          ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
-          curl -fsSL "https://github.com/iemejia/fabio/releases/latest/download/fabio-linux-${ARCH}.tar.gz" \
+          curl -fsSL "https://github.com/iemejia/fabio/releases/latest/download/${{ matrix.artifact }}.tar.gz" \
             | tar -xz -C /usr/local/bin
           fabio --version
+
+      - name: Install fabio (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://github.com/iemejia/fabio/releases/latest/download/${{ matrix.artifact }}.zip" -OutFile fabio.zip
+          Expand-Archive fabio.zip -DestinationPath "$env:USERPROFILE\.local\bin"
+          echo "$env:USERPROFILE\.local\bin" | Out-File -Append $env:GITHUB_PATH
+          & "$env:USERPROFILE\.local\bin\fabio.exe" --version
 
       - name: Test auth status
         env:
