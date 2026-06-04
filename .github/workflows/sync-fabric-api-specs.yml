@@ -26,24 +26,62 @@ jobs:
           path: fabric-rest-api-specs
           fetch-depth: 0
 
-      - name: Check for recent spec changes
+      - name: Check for spec changes since last cursor
         id: check-changes
         run: |
-          cd fabric-rest-api-specs
-          # Get commits from the last 24 hours
-          SINCE=$(date -u -d '24 hours ago' '+%Y-%m-%dT%H:%M:%SZ')
-          CHANGES=$(git log --since="$SINCE" --oneline)
-          if [ -z "$CHANGES" ]; then
-            echo "No changes in the last 24 hours"
+          CURSOR_FILE=".github/fabric-api-specs-cursor"
+          if [ ! -f "$CURSOR_FILE" ]; then
+            echo "No cursor file found — skipping"
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Found recent changes:"
-            echo "$CHANGES"
-            echo "has_changes=true" >> "$GITHUB_OUTPUT"
-            # Save detailed diff for Copilot to analyze
-            git log --since="$SINCE" -p > /tmp/spec-changes.diff
-            git log --since="$SINCE" --stat > /tmp/spec-changes-summary.txt
+            exit 0
           fi
+
+          LAST_SHA=$(cat "$CURSOR_FILE" | tr -d '[:space:]')
+          cd fabric-rest-api-specs
+          HEAD_SHA=$(git rev-parse HEAD)
+
+          if [ "$LAST_SHA" = "$HEAD_SHA" ]; then
+            echo "Already up to date (cursor=$LAST_SHA)"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Verify the cursor commit exists in the repo
+          if ! git cat-file -e "$LAST_SHA" 2>/dev/null; then
+            echo "::warning::Cursor SHA $LAST_SHA not found in specs repo — using parent of oldest available"
+            LAST_SHA=$(git rev-list --max-parents=0 HEAD)
+          fi
+
+          echo "Changes detected: $LAST_SHA..$HEAD_SHA"
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          echo "last_sha=$LAST_SHA" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+          # Generate diff and summary for Copilot
+          git log "$LAST_SHA..$HEAD_SHA" --oneline > /tmp/spec-commits.txt
+          git log "$LAST_SHA..$HEAD_SHA" --stat > /tmp/spec-changes-summary.txt
+          git diff "$LAST_SHA..$HEAD_SHA" > /tmp/spec-changes.diff
+
+          echo ""
+          echo "=== Commits to process ==="
+          cat /tmp/spec-commits.txt
+          echo ""
+          echo "=== Files changed ==="
+          git diff --stat "$LAST_SHA..$HEAD_SHA"
+
+      - name: Install Rust toolchain
+        if: steps.check-changes.outputs.has_changes == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        if: steps.check-changes.outputs.has_changes == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: sync-specs-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Set up Node.js
         if: steps.check-changes.outputs.has_changes == 'true'
@@ -59,7 +97,8 @@ jobs:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
         run: |
           export SPEC_CHANGES_SUMMARY="$(cat /tmp/spec-changes-summary.txt)"
-          PROMPT=$(envsubst '${SPEC_CHANGES_SUMMARY}' < .github/prompts/sync-fabric-api-specs.md)
+          export SPEC_COMMITS="$(cat /tmp/spec-commits.txt)"
+          PROMPT=$(envsubst '${SPEC_CHANGES_SUMMARY} ${SPEC_COMMITS}' < .github/prompts/sync-fabric-api-specs.md)
           copilot -p "$PROMPT" \
             --allow-tool='shell(git:*)' \
             --allow-tool='shell(cargo:*)' \
@@ -82,7 +121,8 @@ jobs:
             echo "No code changes were made"
             echo "has_code_changes=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Code changes detected"
+            echo "Code changes detected:"
+            git diff --stat
             echo "has_code_changes=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -96,6 +136,7 @@ jobs:
         if: steps.code-changes.outputs.has_code_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ steps.check-changes.outputs.head_sha }}
         run: |
           BRANCH="sync/fabric-api-specs-$(date +%Y%m%d)"
           git config user.name "github-actions[bot]"
@@ -109,9 +150,25 @@ jobs:
           PR_BODY="/tmp/pr-body.md"
           if [ ! -f "$PR_BODY" ]; then
             echo "Automated sync with microsoft/fabric-rest-api-specs changes." > "$PR_BODY"
+            echo "" >> "$PR_BODY"
+            echo "**Spec commits processed:**" >> "$PR_BODY"
+            cat /tmp/spec-commits.txt >> "$PR_BODY"
           fi
 
           gh pr create \
             --title "feat: sync with Fabric REST API spec $(date +%Y-%m-%d)" \
             --body-file "$PR_BODY" \
             --label "automated,api-sync"
+
+      - name: Advance cursor (no code changes)
+        if: steps.check-changes.outputs.has_changes == 'true' && steps.code-changes.outputs.has_code_changes == 'false'
+        env:
+          HEAD_SHA: ${{ steps.check-changes.outputs.head_sha }}
+        run: |
+          echo "No code changes needed — advancing cursor to $HEAD_SHA"
+          echo "$HEAD_SHA" > .github/fabric-api-specs-cursor
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/fabric-api-specs-cursor
+          git commit -m "chore: advance fabric-api-specs cursor to ${HEAD_SHA:0:8} (no code changes needed)"
+          git push origin main

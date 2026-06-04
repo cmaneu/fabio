@@ -1,7 +1,12 @@
 You are working on fabio, a Rust CLI for Microsoft Fabric.
 
 The Microsoft Fabric REST API specs (github.com/microsoft/fabric-rest-api-specs) have been updated.
-Here is a summary of recent changes:
+
+Here are the commits since our last sync:
+
+${SPEC_COMMITS}
+
+Here is a detailed summary of file changes:
 
 ${SPEC_CHANGES_SUMMARY}
 
