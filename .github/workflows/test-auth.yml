@@ -26,29 +26,19 @@ jobs:
         runner: [ubuntu-latest, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Build fabio
-        run: cargo build --release && cp target/release/fabio /usr/local/bin/
-
       - name: Azure Login (OIDC)
         uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           allow-no-subscriptions: true
+
+      - name: Install fabio
+        run: |
+          ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
+          curl -fsSL "https://github.com/iemejia/fabio/releases/latest/download/fabio-linux-${ARCH}.tar.gz" \
+            | tar -xz -C /usr/local/bin
+          fabio --version
 
       - name: Test auth status
         run: fabio auth status
@@ -65,22 +55,12 @@ jobs:
         runner: [ubuntu-latest, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Build fabio
-        run: cargo build --release && cp target/release/fabio /usr/local/bin/
+      - name: Install fabio
+        run: |
+          ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
+          curl -fsSL "https://github.com/iemejia/fabio/releases/latest/download/fabio-linux-${ARCH}.tar.gz" \
+            | tar -xz -C /usr/local/bin
+          fabio --version
 
       - name: Test auth status
         env:
