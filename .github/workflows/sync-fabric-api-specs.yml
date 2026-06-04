@@ -135,7 +135,7 @@ jobs:
       - name: Create pull request
         if: steps.code-changes.outputs.has_code_changes == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.COPILOT_PAT }}
           HEAD_SHA: ${{ steps.check-changes.outputs.head_sha }}
         run: |
           BRANCH="sync/fabric-api-specs-$(date +%Y%m%d)"
@@ -160,9 +160,24 @@ jobs:
             --body-file "$PR_BODY" \
             --label "automated,api-sync"
 
+      - name: Advance cursor on PR
+        if: steps.code-changes.outputs.has_code_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_PAT }}
+          HEAD_SHA: ${{ steps.check-changes.outputs.head_sha }}
+        run: |
+          echo "Advancing cursor to $HEAD_SHA after PR creation"
+          git checkout main
+          git pull origin main
+          echo "$HEAD_SHA" > .github/fabric-api-specs-cursor
+          git add .github/fabric-api-specs-cursor
+          git commit -m "chore: advance fabric-api-specs cursor to ${HEAD_SHA:0:8}"
+          git push origin main
+
       - name: Advance cursor (no code changes)
         if: steps.check-changes.outputs.has_changes == 'true' && steps.code-changes.outputs.has_code_changes == 'false'
         env:
+          GH_TOKEN: ${{ secrets.COPILOT_PAT }}
           HEAD_SHA: ${{ steps.check-changes.outputs.head_sha }}
         run: |
           echo "No code changes needed — advancing cursor to $HEAD_SHA"
