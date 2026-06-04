@@ -68,6 +68,7 @@ pub mod warehouse_snapshot;
 pub mod workspace;
 
 mod agent_context;
+mod completions;
 
 use anyhow::Result;
 
@@ -208,6 +209,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Rest { command } => rest::execute(&cli, &client, command).await,
         Command::Rti { command } => rti::execute(&cli, &client, command).await,
         Command::AgentContext => agent_context::execute(&cli),
+        Command::Completions { shell } => completions::execute(*shell),
     }
 }
 

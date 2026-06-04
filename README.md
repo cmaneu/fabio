@@ -900,6 +900,8 @@ fabio operation get-state    Get state of a long-running operation
 fabio operation get-result   Get result of a completed operation
 
 fabio agent-context          Machine-readable command schema for AI agents
+
+fabio completions <shell>    Generate shell completion scripts (bash/zsh/fish/powershell/elvish)
 ```
 
 ## Authentication
@@ -919,6 +921,68 @@ Supported credential sources (via `DefaultAzureCredential` fallback):
 - Azure CLI (`az login`)
 - Environment variables (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`)
 - Managed Identity (when running on Azure)
+
+## Shell Completions
+
+Generate tab-completion scripts for your shell. Completions cover all 69 command groups, 766 subcommands, and their flags.
+
+### Bash
+
+```bash
+# Add to ~/.bashrc
+eval "$(fabio completions bash)"
+```
+
+### Zsh
+
+```bash
+# Add to ~/.zshrc
+eval "$(fabio completions zsh)"
+```
+
+Or, for faster shell startup (generates a static file):
+
+```bash
+fabio completions zsh > ~/.zfunc/_fabio
+# Ensure ~/.zfunc is in your fpath (add to ~/.zshrc before compinit):
+# fpath=(~/.zfunc $fpath)
+```
+
+### Fish
+
+```bash
+fabio completions fish > ~/.config/fish/completions/fabio.fish
+```
+
+### PowerShell
+
+```powershell
+# Add to your $PROFILE
+fabio completions powershell | Out-String | Invoke-Expression
+```
+
+Or, for persistent completions:
+
+```powershell
+# Generate and save to profile directory
+fabio completions powershell > "$HOME\Documents\PowerShell\Completions\fabio.ps1"
+# Source in $PROFILE:
+# . "$HOME\Documents\PowerShell\Completions\fabio.ps1"
+```
+
+### Elvish
+
+```bash
+fabio completions elvish >> ~/.config/elvish/rc.elv
+```
+
+After setting up completions, restart your shell or source the configuration file. Then use `Tab` to complete commands, subcommands, and flags:
+
+```
+fabio lak<Tab>         → fabio lakehouse
+fabio lakehouse <Tab>  → list  show  create  upload  ...
+fabio lakehouse list --out<Tab> → --output
+```
 
 ## Examples
 

@@ -508,4 +508,11 @@ pub enum Command {
     /// Machine-readable CLI schema for agent introspection
     #[command(name = "agent-context", display_order = 65)]
     AgentContext,
+    /// Generate shell completion scripts
+    #[command(display_order = 66)]
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
 }
