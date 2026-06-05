@@ -353,6 +353,12 @@ fabio dataflow update-definition Update dataflow definition
 fabio dataflow discover-parameters Discover M parameters
 fabio dataflow run           Run a dataflow (--wait, --job-type execute|apply-changes)
 fabio dataflow execute-query Execute a named query (returns Arrow IPC binary)
+
+fabio app-backend list       List app backends in a workspace [preview]
+fabio app-backend show       Show app backend details
+fabio app-backend create     Create an app backend (LRO)
+fabio app-backend update     Update app backend properties (name/description)
+fabio app-backend delete     Delete an app backend (--hard-delete for permanent)
 ```
 
 ### Analytics & Reporting
@@ -924,7 +930,7 @@ Supported credential sources (via `DefaultAzureCredential` fallback):
 
 ## Shell Completions
 
-Generate tab-completion scripts for your shell. Completions cover all 69 command groups, 766 subcommands, and their flags.
+Generate tab-completion scripts for your shell. Completions cover all 70 command groups, 771 subcommands, and their flags.
 
 ### Bash
 
@@ -1616,10 +1622,10 @@ git clone https://github.com/iemejia/fabio.git && cd fabio
 # Build
 cargo build
 
-# Run tests (unit + offline integration -- 624 tests)
+# Run tests (unit + offline integration -- 634 tests)
 cargo test
 
-# Run E2E tests (requires live Fabric tenant -- 662 tests)
+# Run E2E tests (requires live Fabric tenant -- 667 tests)
 cargo test -- --ignored
 
 # Lint (pedantic + nursery, zero warnings required)
@@ -1633,13 +1639,14 @@ cargo fmt
 
 - GitHub Actions CI runs on 6 targets: x64 + arm64 for Linux, macOS, and Windows
 - Release workflow: tag-triggered, builds 5 binaries with SHA256 checksums (Linux x64/arm64, macOS arm64, Windows x64/arm64)
+- `cargo-deny` checks for security advisories and license compliance (permissive-only policy)
 - Dependabot auto-merge for passing dependency updates
 - CodeQL and Secret Scanning enabled
 
 ### Project Stats
 
-- **69 command groups** with **766 subcommands**
-- **1286 tests** (487 unit + 137 offline integration + 662 E2E requiring live tenant)
+- **70 command groups** with **771 subcommands**
+- **1301 tests** (496 unit + 138 offline integration + 667 E2E requiring live tenant)
 - **~16 MB** release binary (stripped, full LTO, panic=abort)
 - Zero clippy warnings, zero unsafe code
 
