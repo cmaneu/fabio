@@ -1,7 +1,10 @@
 [advisories]
-ignore = [
-    # rustls-pemfile is unmaintained but comes from mssql-tds (transitive dep, not directly controllable)
-    { id = "RUSTSEC-2025-0134", reason = "transitive dep via mssql-tds; awaiting upstream update" },
+ignore = []
+
+[bans]
+deny = [
+    # Unmaintained (RUSTSEC-2025-0134). Use rustls-pki-types PemObject trait instead.
+    { crate = "rustls-pemfile", reason = "archived/unmaintained — use rustls-pki-types >= 1.9 (PemObject trait)" },
 ]
 
 [licenses]
