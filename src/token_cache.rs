@@ -925,30 +925,27 @@ pub async fn wam_login(
     scope: Option<&str>,
     client_id: Option<&str>,
 ) -> Result<TokenData> {
-    use windows::Foundation::IAsyncOperation;
     use windows::Security::Authentication::Web::Core::{
         WebAuthenticationCoreManager, WebTokenRequest, WebTokenRequestResult, WebTokenRequestStatus,
     };
     use windows::Security::Credentials::WebAccountProvider;
-
     let tenant = tenant.unwrap_or("organizations");
     let scope = scope.unwrap_or(FABRIC_SCOPE);
     let client_id = client_id.unwrap_or(PUBLIC_CLIENT_ID);
 
     // Step 1: Find the AAD WAM provider
     let authority = format!("https://login.microsoftonline.com/{tenant}");
-    let provider_op: IAsyncOperation<WebAccountProvider> =
-        WebAuthenticationCoreManager::FindAccountProviderWithAuthorityAsync(
-            &windows::core::HSTRING::from("https://login.microsoft.com"),
-            &windows::core::HSTRING::from(&authority),
+    let provider_op = WebAuthenticationCoreManager::FindAccountProviderWithAuthorityAsync(
+        &windows::core::HSTRING::from("https://login.microsoft.com"),
+        &windows::core::HSTRING::from(&authority),
+    )
+    .map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::AuthRequired,
+            format!("WAM: Failed to find account provider: {e}"),
+            "WAM broker requires Windows 10+ with a signed-in Microsoft account.".to_string(),
         )
-        .map_err(|e| {
-            FabioError::with_hint(
-                ErrorCode::AuthRequired,
-                format!("WAM: Failed to find account provider: {e}"),
-                "WAM broker requires Windows 10+ with a signed-in Microsoft account.".to_string(),
-            )
-        })?;
+    })?;
 
     let provider = provider_op.get().map_err(|e| {
         FabioError::with_hint(
@@ -972,13 +969,12 @@ pub async fn wam_login(
     })?;
 
     // Step 3: Try silent token acquisition (SSO, no UI)
-    let silent_op: IAsyncOperation<WebTokenRequestResult> =
-        WebAuthenticationCoreManager::GetTokenSilentlyAsync(&request).map_err(|e| {
-            FabioError::new(
-                ErrorCode::AuthRequired,
-                format!("WAM: Silent token request failed: {e}"),
-            )
-        })?;
+    let silent_op = WebAuthenticationCoreManager::GetTokenSilentlyAsync(&request).map_err(|e| {
+        FabioError::new(
+            ErrorCode::AuthRequired,
+            format!("WAM: Silent token request failed: {e}"),
+        )
+    })?;
 
     let silent_result = silent_op.get().map_err(|e| {
         FabioError::new(
@@ -993,7 +989,7 @@ pub async fn wam_login(
     } else {
         // Step 4: Fall back to interactive UI
         eprintln!("WAM: Silent SSO not available, requesting interactive sign-in...");
-        let interactive_op: IAsyncOperation<WebTokenRequestResult> =
+        let interactive_op =
             WebAuthenticationCoreManager::RequestTokenAsync(&request).map_err(|e| {
                 FabioError::new(
                     ErrorCode::AuthRequired,
