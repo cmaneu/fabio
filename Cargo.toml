@@ -13,6 +13,12 @@ categories = ["command-line-utilities"]
 name = "fabio"
 path = "src/main.rs"
 
+[features]
+# Enable vendored OpenSSL build for cross-compilation from Linux.
+# Usage: cargo build --features vendored-openssl --target <triple>
+# Not needed for native builds (system OpenSSL) or Windows CI (cfg(windows) adds it).
+vendored-openssl = ["openssl/vendored"]
+
 [dependencies]
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
@@ -57,6 +63,10 @@ mssql-tds = { git = "https://github.com/iemejia/mssql-rs.git", rev = "928a1762b8
 
 # URL encoding for query parameters (security: prevent parameter injection)
 urlencoding = "2"
+
+# OpenSSL (transitive via azure_identity/client_certificate; made explicit so
+# the vendored-openssl feature can gate the vendored build for cross-compilation)
+openssl = "0.10"
 
 # File locking for job ledger (security: prevent race conditions)
 fs2 = "0.4"

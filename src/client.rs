@@ -2750,11 +2750,13 @@ async fn handle_response(resp: Response) -> Result<Value> {
                 .or_else(|| v.get("message").and_then(Value::as_str).map(String::from))
         })
         .unwrap_or_else(|| {
-            // Truncate raw response body to prevent leaking unbounded server error details
-            let truncated = if text.len() > MAX_ERROR_BODY_LEN {
-                format!("{}...(truncated)", &text[..MAX_ERROR_BODY_LEN])
+            // Truncate raw response body to prevent leaking unbounded server error details.
+            // Also redact any sensitive fields in case the server echoes back request payloads.
+            let redacted = crate::verbose::redact_body_if_json(&text);
+            let truncated = if redacted.len() > MAX_ERROR_BODY_LEN {
+                format!("{}...(truncated)", &redacted[..MAX_ERROR_BODY_LEN])
             } else {
-                text.clone()
+                redacted
             };
             format!("HTTP {status_code}: {truncated}")
         });

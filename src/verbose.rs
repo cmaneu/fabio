@@ -73,6 +73,12 @@ fn redact_sensitive_body(body: &str) -> String {
     serde_json::to_string(&value).unwrap_or_else(|_| body.to_string())
 }
 
+/// Redact sensitive fields in a string if it's JSON. Public API for use
+/// outside the verbose module (e.g., error message sanitization).
+pub fn redact_body_if_json(body: &str) -> String {
+    redact_sensitive_body(body)
+}
+
 /// Recursively redact sensitive keys in a JSON value.
 fn redact_value(value: &mut serde_json::Value) {
     match value {

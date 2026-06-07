@@ -408,10 +408,17 @@ async fn update(
     }
 
     if cli.dry_run {
+        // Redact credential values from the dry-run preview
+        let mut safe_body = body.clone();
+        if let Some(cred) = safe_body.get_mut("credentialDetails") {
+            if let Some(creds) = cred.get_mut("credentials") {
+                *creds = serde_json::json!("[REDACTED]");
+            }
+        }
         let preview = json!({
             "status": "dry_run",
             "message": format!("Would update connection '{id}'"),
-            "updates": body,
+            "updates": safe_body,
         });
         output::render_object(cli, &preview, "status");
         return Ok(());

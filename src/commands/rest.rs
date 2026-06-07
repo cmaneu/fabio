@@ -135,11 +135,17 @@ async fn call(
             ApiTarget::Fabric => "fabric",
             ApiTarget::Powerbi => "powerbi",
         };
+        // Redact sensitive fields in the body for the dry-run preview
+        let redacted_body = parsed_body.as_ref().map(|b| {
+            let serialized = serde_json::to_string(b).unwrap_or_default();
+            let redacted = crate::verbose::redact_body_if_json(&serialized);
+            serde_json::from_str::<serde_json::Value>(&redacted).unwrap_or_else(|_| b.clone())
+        });
         let dry_run_details = serde_json::json!({
             "method": format!("{method:?}").to_uppercase(),
             "path": full_path,
             "api": api_label,
-            "body": parsed_body,
+            "body": redacted_body,
         });
         if output::dry_run_guard(cli, "rest call", &dry_run_details) {
             return Ok(());
