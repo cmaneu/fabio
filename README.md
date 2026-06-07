@@ -106,20 +106,25 @@ If you are an AI agent, run `fabio agent-context` to get a machine-readable comm
 
 ## Authentication
 
-Fabio authenticates with its own dedicated Entra ID application ("Fabio CLI"). It also supports service principal and the Azure credential chain as a fallback.
+Fabio authenticates with its own dedicated Entra ID application ("Fabio CLI"). It supports multiple authentication methods for both interactive and non-interactive scenarios.
 
 ```bash
-# Login with Fabio CLI identity (device code flow, works on any machine)
+# Device code flow (interactive, any platform)
 fabio auth login
 
-# Service principal with client secret
+# Service principal with client secret (CI/CD, automation)
 fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --client-secret <SECRET>
 
 # Service principal with certificate (PEM or PFX)
 fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --certificate ./cert.pem
+fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --certificate ./cert.pfx --certificate-password <PW>
 
-# Service principal with federated token (OIDC, for CI/CD)
-fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --federated-token-file $ACTIONS_ID_TOKEN_REQUEST_TOKEN
+# Service principal with federated token (OIDC, for GitHub Actions / Azure Pipelines)
+fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --federated-token <JWT>
+fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --federated-token-file <PATH>
+
+# Windows WAM broker SSO (Windows only — uses OS-level sign-in)
+fabio auth login --wam
 
 # Verify authentication
 fabio auth status
@@ -131,6 +136,10 @@ Supported credential sources (in priority order):
 3. Managed Identity (when running on Azure)
 4. Azure CLI (`az login`)
 5. Azure Developer CLI (`azd auth login`)
+
+**Windows-specific features:**
+- Token cache encrypted with DPAPI (`CryptProtectData`, user scope) — matches Azure CLI behavior
+- WAM broker SSO via `--wam` flag — uses Windows OS-level sign-in, no browser needed
 
 ## Shell Completions
 

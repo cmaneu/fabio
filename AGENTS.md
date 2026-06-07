@@ -170,8 +170,9 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Recursive delete**: DFS `DELETE /{ws}/{lh}/Tables/{name}?recursive=true` works for directories.
 - All destructive actions use consistent verb `delete` (not `remove`)
 - Cross-workspace ops use `--source-workspace`/`--dest-workspace` with `visible_alias` short forms
-- Auth relies on `DefaultAzureCredential` chain (az login, environment, managed identity)
-- `azure_identity`/`azure_core` with `default-features = false` (no OpenSSL dependency)
+- Auth relies on a multi-source credential chain: fabio cache (device code or service principal), environment variables, managed identity, Azure CLI, Azure Developer CLI
+- `azure_identity`/`azure_core` with `default-features = false` (no OpenSSL dependency on Linux/macOS; OpenSSL for certificate auth via `client_certificate` feature)
+- **Windows-first compatibility** — Token cache encrypted with DPAPI (`CryptProtectData`, user scope); WAM broker SSO via `--wam` flag
 - `unsafe_code = "forbid"` in lints
 - **KQL Queryset definition format**: Uses `RealTimeQueryset.json` (NOT `RawQueryset.kql`). JSON structure: `{"queryset":{"version":"1.0.0","dataSources":[{"id","clusterUri","type","databaseName"}],"tabs":[{"id","content","title","dataSourceId"}]}}`. The `content` field holds the KQL query text with `\n` for newlines.
 - **KQL Queryset run**: Fetches definition via LRO, decodes `RealTimeQueryset.json`, selects tab by name or index, resolves data source (clusterUri + databaseName), executes via Kusto REST API. Tab selection is case-insensitive by title.
@@ -290,7 +291,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/rest.rs`: Raw REST passthrough (method/path/body/query-params/poll); `resolve_body()` for @file/@- support; `--api powerbi` targets Power BI REST API
 - `src/commands/rti.rs`: nl-to-kql (natural language to KQL translation)
 - `tests/common/mod.rs`: Shared E2E test harness (TestConfig, helpers)
-- `tests/e2e_auth.rs`: Auth integration tests
+- `tests/e2e_auth.rs`: Auth integration tests (device code, service principal secret/certificate/federated, WAM, input validation)
 - `tests/e2e_workspace.rs`: Workspace CRUD + assign-capacity + networking + OneLake settings + folders + storage format + roles filter tests
 - `tests/e2e_global_options.rs`: --query, --quiet, --output format tests
 - `tests/e2e_item.rs`: Item list/show/create/delete/copy/move/bulk-create/bulk-delete tests

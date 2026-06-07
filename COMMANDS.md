@@ -26,9 +26,14 @@ All commands accept these global flags:
 ## Core
 
 ```
-fabio auth login             Log in via device code flow or service principal
-                             (--service-principal --tenant --client-id + one of:
-                              --client-secret, --certificate, --federated-token)
+fabio auth login             Log in to Microsoft Fabric
+                             Device code (default): fabio auth login
+                             Service principal:     --service-principal --tenant <T> --client-id <C>
+                               + --client-secret <S>           (client secret)
+                               + --certificate <path>          (PEM/PFX cert)
+                               + --federated-token <jwt>       (OIDC assertion)
+                               + --federated-token-file <path> (OIDC from file)
+                             WAM broker (Windows only): --wam
 fabio auth logout            Log out and clear cached credentials
 fabio auth status            Show current authentication status and credential source
 
