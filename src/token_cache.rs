@@ -1,6 +1,11 @@
 //! Persistent `OAuth2` token cache for fabio's own authentication.
 //!
 //! Stores access and refresh tokens at `~/.fabio/token_cache.json`.
+//! - **Windows**: Encrypted with DPAPI (`CryptProtectData`, user scope) — only
+//!   the current Windows user can decrypt. Matches Azure CLI behavior.
+//! - **Linux/macOS**: Plaintext JSON with `0600` file permissions (owner-only).
+//!   Matches Azure CLI behavior on these platforms.
+//!
 //! Supports the Microsoft Identity Platform device code flow and token refresh.
 
 use std::path::PathBuf;
@@ -118,13 +123,34 @@ pub fn is_explicitly_logged_out() -> bool {
 }
 
 /// Load cached token from disk.
+/// On Windows, decrypts the DPAPI-encrypted blob before parsing.
 pub fn load_cached_token() -> Option<TokenData> {
     let path = cache_path().ok()?;
-    let content = std::fs::read_to_string(&path).ok()?;
-    serde_json::from_str(&content).ok()
+
+    #[cfg(windows)]
+    {
+        let encrypted = std::fs::read(&path).ok()?;
+        if encrypted.is_empty() {
+            return None;
+        }
+        // Try DPAPI decryption first; fall back to plaintext for migration
+        let json_bytes = dpapi_decrypt(&encrypted).ok().or_else(|| {
+            // Legacy plaintext cache — try parsing directly for seamless upgrade
+            Some(encrypted.clone())
+        })?;
+        let content = String::from_utf8(json_bytes).ok()?;
+        serde_json::from_str(&content).ok()
+    }
+
+    #[cfg(not(windows))]
+    {
+        let content = std::fs::read_to_string(&path).ok()?;
+        serde_json::from_str(&content).ok()
+    }
 }
 
 /// Save token data to disk (creates ~/.fabio/ if needed).
+/// On Windows, the token is encrypted with DPAPI before writing.
 /// Also removes the logout marker if present.
 pub fn save_token(data: &TokenData) -> Result<()> {
     let path = cache_path()?;
@@ -139,9 +165,10 @@ pub fn save_token(data: &TokenData) -> Result<()> {
     }
     let json = serde_json::to_string_pretty(data)?;
 
-    // Write atomically with restricted permissions to avoid TOCTOU window
+    // ── Platform-specific write ──────────────────────────────────────────
     #[cfg(unix)]
     {
+        // Plaintext JSON with restricted permissions (matches az CLI on Linux/macOS)
         use std::io::Write;
         use std::os::unix::fs::OpenOptionsExt;
         let mut file = std::fs::OpenOptions::new()
@@ -152,14 +179,18 @@ pub fn save_token(data: &TokenData) -> Result<()> {
             .open(&path)?;
         file.write_all(json.as_bytes())?;
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        // On Windows: write to a temp file in the same directory, then rename
-        // atomically. This prevents partial-write exposure. Windows inherits
-        // parent directory ACLs — the ~/.fabio directory should be user-only.
+        // Encrypt with DPAPI (user scope) before writing — matches az CLI on Windows
+        let encrypted = dpapi_encrypt(json.as_bytes())?;
         let temp_path = path.with_extension("tmp");
-        std::fs::write(&temp_path, &json)?;
+        std::fs::write(&temp_path, &encrypted)?;
         std::fs::rename(&temp_path, &path)?;
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        // Fallback for other platforms: plaintext
+        std::fs::write(&path, &json)?;
     }
 
     // Remove logout marker on successful login
@@ -657,6 +688,101 @@ impl azure_identity::ClientAssertion for StaticAssertion {
     ) -> azure_core::Result<String> {
         Ok(self.0.clone())
     }
+}
+
+// ── DPAPI encryption for Windows ────────────────────────────────────────────
+
+/// Encrypt data using Windows DPAPI (user scope).
+/// Only the current Windows user can decrypt the result.
+#[cfg(windows)]
+fn dpapi_encrypt(data: &[u8]) -> Result<Vec<u8>> {
+    use windows_sys::Win32::Security::Cryptography::{CRYPT_INTEGER_BLOB, CryptProtectData};
+
+    let mut input = CRYPT_INTEGER_BLOB {
+        cbData: u32::try_from(data.len()).unwrap_or(u32::MAX),
+        pbData: data.as_ptr().cast_mut(),
+    };
+
+    let mut output = CRYPT_INTEGER_BLOB {
+        cbData: 0,
+        pbData: std::ptr::null_mut(),
+    };
+
+    // Flags: 0 = user scope (default, only current user can decrypt)
+    let result = unsafe {
+        CryptProtectData(
+            &input,
+            std::ptr::null(), // description (optional)
+            std::ptr::null(), // entropy (optional)
+            std::ptr::null(), // reserved
+            std::ptr::null(), // prompt struct (optional)
+            0,                // flags: 0 = user scope
+            &mut output,
+        )
+    };
+
+    if result == 0 {
+        return Err(FabioError::new(
+            ErrorCode::Unknown,
+            "DPAPI CryptProtectData failed. Cannot encrypt token cache.",
+        )
+        .into());
+    }
+
+    let encrypted =
+        unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec() };
+
+    // Free the buffer allocated by DPAPI
+    unsafe {
+        windows_sys::Win32::Foundation::LocalFree(output.pbData.cast());
+    }
+
+    Ok(encrypted)
+}
+
+/// Decrypt data using Windows DPAPI (user scope).
+#[cfg(windows)]
+fn dpapi_decrypt(data: &[u8]) -> Result<Vec<u8>> {
+    use windows_sys::Win32::Security::Cryptography::{CRYPT_INTEGER_BLOB, CryptUnprotectData};
+
+    let mut input = CRYPT_INTEGER_BLOB {
+        cbData: u32::try_from(data.len()).unwrap_or(u32::MAX),
+        pbData: data.as_ptr().cast_mut(),
+    };
+
+    let mut output = CRYPT_INTEGER_BLOB {
+        cbData: 0,
+        pbData: std::ptr::null_mut(),
+    };
+
+    let result = unsafe {
+        CryptUnprotectData(
+            &input,
+            std::ptr::null_mut(), // description out (PWSTR)
+            std::ptr::null(),     // entropy
+            std::ptr::null(),     // reserved
+            std::ptr::null(),     // prompt struct
+            0,                    // flags
+            &mut output,
+        )
+    };
+
+    if result == 0 {
+        return Err(FabioError::new(
+            ErrorCode::AuthRequired,
+            "DPAPI CryptUnprotectData failed. Token cache may be corrupted or created by a different user.",
+        )
+        .into());
+    }
+
+    let decrypted =
+        unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec() };
+
+    unsafe {
+        windows_sys::Win32::Foundation::LocalFree(output.pbData.cast());
+    }
+
+    Ok(decrypted)
 }
 
 #[cfg(test)]
