@@ -658,3 +658,144 @@ impl azure_identity::ClientAssertion for StaticAssertion {
         Ok(self.0.clone())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_data_not_expired_when_far_future() {
+        let data = TokenData {
+            access_token: "test".to_string(),
+            refresh_token: None,
+            expires_on: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 3600, // 1 hour from now
+            tenant: "test".to_string(),
+            scope: "test".to_string(),
+        };
+        assert!(!data.is_expired());
+    }
+
+    #[test]
+    fn token_data_expired_when_past() {
+        let data = TokenData {
+            access_token: "test".to_string(),
+            refresh_token: None,
+            expires_on: 0, // epoch = definitely expired
+            tenant: "test".to_string(),
+            scope: "test".to_string(),
+        };
+        assert!(data.is_expired());
+    }
+
+    #[test]
+    fn token_data_expired_within_refresh_margin() {
+        let data = TokenData {
+            access_token: "test".to_string(),
+            refresh_token: None,
+            // Expires in 4 minutes (less than 5-minute REFRESH_MARGIN)
+            expires_on: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 240,
+            tenant: "test".to_string(),
+            scope: "test".to_string(),
+        };
+        assert!(data.is_expired());
+    }
+
+    #[test]
+    fn token_data_not_expired_just_outside_margin() {
+        let data = TokenData {
+            access_token: "test".to_string(),
+            refresh_token: None,
+            // Expires in 6 minutes (more than 5-minute REFRESH_MARGIN)
+            expires_on: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 360,
+            tenant: "test".to_string(),
+            scope: "test".to_string(),
+        };
+        assert!(!data.is_expired());
+    }
+
+    #[test]
+    fn token_data_serializes_to_json() {
+        let data = TokenData {
+            access_token: "abc123".to_string(),
+            refresh_token: Some("refresh456".to_string()),
+            expires_on: 1_700_000_000,
+            tenant: "my-tenant".to_string(),
+            scope: "https://api.fabric.microsoft.com/.default".to_string(),
+        };
+        let json = serde_json::to_value(&data).unwrap();
+        assert_eq!(json["access_token"], "abc123");
+        assert_eq!(json["refresh_token"], "refresh456");
+        assert_eq!(json["expires_on"], 1_700_000_000);
+        assert_eq!(json["tenant"], "my-tenant");
+    }
+
+    #[test]
+    fn token_data_deserializes_from_json() {
+        let json = r#"{
+            "access_token": "xyz",
+            "refresh_token": null,
+            "expires_on": 9999999999,
+            "tenant": "t",
+            "scope": "s"
+        }"#;
+        let data: TokenData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.access_token, "xyz");
+        assert!(data.refresh_token.is_none());
+        assert_eq!(data.expires_on, 9_999_999_999);
+    }
+
+    #[test]
+    fn token_data_sp_has_no_refresh_token() {
+        // SP tokens should never have a refresh token
+        let data = TokenData {
+            access_token: "sp-token".to_string(),
+            refresh_token: None,
+            expires_on: 1_700_000_000,
+            tenant: "sp-tenant".to_string(),
+            scope: "https://api.fabric.microsoft.com/.default".to_string(),
+        };
+        assert!(data.refresh_token.is_none());
+    }
+
+    #[test]
+    fn cache_path_is_under_home_fabio() {
+        let path = cache_path().unwrap();
+        assert!(
+            path.ends_with(".fabio/token_cache.json") || path.ends_with(".fabio\\token_cache.json")
+        );
+    }
+
+    #[test]
+    fn logout_marker_path_is_under_home_fabio() {
+        let path = logout_marker_path().unwrap();
+        assert!(path.ends_with(".fabio/.logged_out") || path.ends_with(".fabio\\.logged_out"));
+    }
+
+    #[tokio::test]
+    async fn static_assertion_returns_token() {
+        use azure_identity::ClientAssertion;
+        let assertion = StaticAssertion("my-oidc-token".to_string());
+        let result = assertion.secret(None).await.unwrap();
+        assert_eq!(result, "my-oidc-token");
+    }
+
+    #[tokio::test]
+    async fn static_assertion_returns_empty_token() {
+        use azure_identity::ClientAssertion;
+        let assertion = StaticAssertion(String::new());
+        let result = assertion.secret(None).await.unwrap();
+        assert_eq!(result, "");
+    }
+}

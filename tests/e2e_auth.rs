@@ -83,18 +83,18 @@ fn auth_login_validates_credentials() {
 }
 
 #[test]
-#[ignore = "requires live Fabric tenant"]
-#[serial]
-fn auth_login_device_code_flag() {
-    // --device-code is accepted but doesn't change behavior (no interactive flow)
+fn sp_login_bare_service_principal_flag_requires_params() {
+    // --service-principal alone should fail with helpful error
     let assert = fabio()
-        .args(["auth", "login", "--device-code"])
+        .args(["auth", "login", "--service-principal"])
         .assert()
-        .success();
+        .failure();
 
-    let json = parse_json(&assert);
-    let data = extract_data(&json);
-    assert_eq!(data["status"], "logged_in");
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("--tenant is required"),
+        "bare --service-principal should require --tenant, got: {stderr}"
+    );
 }
 
 #[test]
@@ -681,4 +681,66 @@ fn sp_login_error_output_is_valid_json() {
     assert_eq!(json["error"]["code"].as_str().unwrap(), "AUTH_REQUIRED");
     assert!(json["error"]["message"].as_str().unwrap().len() > 20);
     assert!(json["error"]["hint"].as_str().is_some());
+}
+
+// ── Additional edge case tests ──────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sp_login_custom_scope_reaches_azure() {
+    // Custom scope still fails on invalid tenant, proving scope is passed through
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "00000000-0000-0000-0000-000000000001",
+            "--client-id",
+            "00000000-0000-0000-0000-000000000002",
+            "--client-secret",
+            "fake",
+            "--scope",
+            "https://storage.azure.com/.default",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("AUTH_REQUIRED"),
+        "custom scope should still reach Azure, got: {stderr}"
+    );
+}
+
+#[test]
+fn sp_login_both_federated_token_and_file_picks_inline() {
+    // If both --federated-token and --federated-token-file are given,
+    // it should count as one credential type (federated), not two
+    // (this tests the has_federated logic: either OR both = 1 credential)
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "00000000-0000-0000-0000-000000000001",
+            "--client-id",
+            "00000000-0000-0000-0000-000000000002",
+            "--federated-token",
+            "my-token",
+            "--federated-token-file",
+            "/some/path",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    // Should NOT say "only one credential type" since both are federated
+    // Should fail at Azure auth (invalid tenant) or credential creation, NOT input validation
+    assert!(
+        !stderr.contains("Only one credential type"),
+        "both federated flags should be treated as one credential type, got: {stderr}"
+    );
 }
