@@ -107,7 +107,7 @@ async fn login(cli: &Cli, tenant: Option<&str>, scope: Option<&str>) -> Result<(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn login_service_principal(
     cli: &Cli,
     tenant: Option<&str>,
@@ -121,23 +121,33 @@ async fn login_service_principal(
 ) -> Result<()> {
     use crate::errors::{ErrorCode, FabioError};
 
-    let tenant = tenant.ok_or_else(|| {
-        FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            "--tenant is required for service principal authentication.",
-            "Example: fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --client-secret <SECRET>".to_string(),
-        )
-    })?;
+    let tenant = tenant
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "--tenant is required for service principal authentication.",
+                "Example: fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --client-secret <SECRET>".to_string(),
+            )
+        })?;
 
-    let client_id = client_id.ok_or_else(|| {
-        FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            "--client-id is required for service principal authentication.",
-            "Example: fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --client-secret <SECRET>".to_string(),
-        )
-    })?;
+    let client_id = client_id
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "--client-id is required for service principal authentication.",
+                "Example: fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --client-secret <SECRET>".to_string(),
+            )
+        })?;
 
     let scope = scope.unwrap_or("https://api.fabric.microsoft.com/.default");
+
+    // Filter empty strings to treat them as "not provided"
+    let client_secret = client_secret.filter(|s| !s.is_empty());
+    let certificate = certificate.filter(|s| !s.is_empty());
+    let federated_token = federated_token.filter(|s| !s.is_empty());
+    let federated_token_file = federated_token_file.filter(|s| !s.is_empty());
 
     // Determine credential type: secret vs certificate vs federated token
     let has_secret = client_secret.is_some();
@@ -171,20 +181,26 @@ async fn login_service_principal(
         )
         .await?
     } else {
-        // Federated token
+        // Federated token: prefer inline token over file
         let token_value = if let Some(token) = federated_token {
             token.to_string()
         } else {
             let path = federated_token_file.unwrap();
-            std::fs::read_to_string(path)
-                .map_err(|e| {
-                    FabioError::new(
-                        ErrorCode::InvalidInput,
-                        format!("Failed to read federated token file '{path}': {e}"),
-                    )
-                })?
-                .trim()
-                .to_string()
+            let content = std::fs::read_to_string(path).map_err(|e| {
+                FabioError::new(
+                    ErrorCode::InvalidInput,
+                    format!("Failed to read federated token file '{path}': {e}"),
+                )
+            })?;
+            let trimmed = content.trim().to_string();
+            if trimmed.is_empty() {
+                return Err(FabioError::new(
+                    ErrorCode::InvalidInput,
+                    format!("Federated token file '{path}' is empty."),
+                )
+                .into());
+            }
+            trimmed
         };
         token_cache::sp_login_federated(tenant, client_id, &token_value, scope).await?
     };

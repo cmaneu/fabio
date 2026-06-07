@@ -540,6 +540,14 @@ pub async fn sp_login_certificate(
         )
     })?;
 
+    if cert_bytes.is_empty() {
+        return Err(FabioError::new(
+            ErrorCode::InvalidInput,
+            format!("Certificate file '{certificate_path}' is empty."),
+        )
+        .into());
+    }
+
     let options =
         certificate_password.map(|pw| azure_identity::ClientCertificateCredentialOptions {
             password: Some(azure_core::credentials::Secret::new(pw.to_string())),
