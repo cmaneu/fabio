@@ -88,6 +88,7 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 | `--json` | Shorthand for `--output json` |
 | `-q`, `--query` | Field projection (dot-notation extraction) |
 | `--quiet` | Suppress all stdout output |
+| `-v`, `--verbose` | Enable HTTP/LRO/auth diagnostic tracing on stderr (for debugging only) |
 | `--force` | Skip confirmation prompts for destructive operations |
 | `--dry-run` | Preview mutations without executing |
 | `--limit` | Limit number of results for list commands |

@@ -11,7 +11,7 @@
 
 mod common;
 
-use common::{fabio, parse_json, TestConfig};
+use common::{TestConfig, fabio, parse_json};
 use serial_test::serial;
 
 // ── Offline tests (no live tenant required) ─────────────────────────────────
@@ -96,7 +96,10 @@ fn verbose_emits_http_request_trace_on_stderr() {
 
     // stdout should still be valid JSON envelope
     let json = parse_json(&assert);
-    assert!(json.get("data").is_some(), "stdout should have data envelope");
+    assert!(
+        json.get("data").is_some(),
+        "stdout should have data envelope"
+    );
 
     // stderr should contain HTTP request trace
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
@@ -303,4 +306,3 @@ fn verbose_on_lakehouse_list_tables() {
         "expected HTTP traces on lakehouse list-tables, got: {stderr}"
     );
 }
-

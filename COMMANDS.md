@@ -2,6 +2,27 @@
 
 > **AI agents**: Instead of parsing this file, run `fabio agent-context` to get a machine-readable command schema with flags, types, mutability, and examples.
 
+## Global Flags
+
+All commands accept these global flags:
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--output` | `-o` | Output format: `json`, `table`, `plain`, `csv`, `tsv` |
+| `--json` | | Shorthand for `--output json` |
+| `--query` | `-q` | Dot-notation field projection |
+| `--quiet` | | Suppress all stdout output |
+| `--verbose` | `-v` | HTTP/LRO/auth diagnostic tracing on stderr (debugging only) |
+| `--dry-run` | | Preview mutations without executing |
+| `--limit` | | Maximum items for list commands |
+| `--all` | | Fetch all pages (auto-paginate) |
+| `--continuation-token` | | Resume from a previous page |
+| `--profile` | | Named profile for default settings |
+| `--lro-timeout` | | LRO polling timeout in seconds (default: 120) |
+| `--force` | | Skip confirmation prompts |
+
+> **Note on `--verbose`**: This flag is for diagnostic and debugging purposes only. Agents must not use `--verbose` in normal operation — it emits high-volume HTTP request/response traces to stderr that are not machine-parseable. Use it only when troubleshooting failures (e.g., unexpected 4xx/5xx errors, auth issues, LRO timeouts).
+
 ## Core
 
 ```

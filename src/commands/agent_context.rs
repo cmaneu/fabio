@@ -153,6 +153,12 @@ fn global_flags() -> Vec<Flag> {
             description: "Maximum seconds to wait for long-running operations (default: 120)",
             default: Some("120"),
         },
+        Flag {
+            name: "--verbose",
+            kind: "bool",
+            description: "Enable HTTP/LRO/auth diagnostic tracing on stderr. For debugging only — do not use in normal operation. Suppressed by --quiet.",
+            default: Some("false"),
+        },
     ]
 }
 
