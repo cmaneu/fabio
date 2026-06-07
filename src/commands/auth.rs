@@ -25,6 +25,10 @@ pub enum AuthCommand {
         #[arg(long)]
         wam: bool,
 
+        /// Use browser-based login with PKCE (opens system browser, supports macOS Enterprise SSO)
+        #[arg(long)]
+        browser: bool,
+
         /// Application (client) ID of the service principal
         #[arg(long)]
         client_id: Option<String>,
@@ -62,6 +66,7 @@ pub async fn execute(cli: &Cli, command: &AuthCommand) -> Result<()> {
             scope,
             service_principal,
             wam,
+            browser,
             client_id,
             client_secret,
             certificate,
@@ -90,6 +95,8 @@ pub async fn execute(cli: &Cli, command: &AuthCommand) -> Result<()> {
                     client_id.as_deref(),
                 )
                 .await
+            } else if *browser {
+                login_browser(cli, tenant.as_deref(), scope.as_deref()).await
             } else {
                 login(cli, tenant.as_deref(), scope.as_deref()).await
             }
@@ -162,6 +169,27 @@ async fn login_wam(
         )
         .into())
     }
+}
+
+async fn login_browser(cli: &Cli, tenant: Option<&str>, scope: Option<&str>) -> Result<()> {
+    let data = token_cache::browser_login(tenant, scope).await?;
+
+    let expires_in = data.expires_on.saturating_sub(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    );
+
+    let obj = serde_json::json!({
+        "status": "logged_in",
+        "credential_source": "browser_pkce",
+        "tenant": data.tenant,
+        "expires_in_seconds": expires_in,
+        "message": "Successfully authenticated via browser (PKCE). Token cached at ~/.fabio/token_cache.json"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]

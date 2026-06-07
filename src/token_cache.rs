@@ -690,6 +690,226 @@ impl azure_identity::ClientAssertion for StaticAssertion {
     }
 }
 
+// ── Browser-based PKCE authentication ───────────────────────────────────────
+
+/// Authenticate via browser-based Authorization Code flow with PKCE.
+///
+/// Opens the system browser to the Azure AD authorize endpoint and listens
+/// on localhost for the redirect with the authorization code. On macOS with
+/// the Microsoft Enterprise SSO Extension installed, this provides transparent
+/// SSO without password entry.
+#[allow(clippy::too_many_lines)]
+pub async fn browser_login(tenant: Option<&str>, scope: Option<&str>) -> Result<TokenData> {
+    use base64::Engine;
+    use sha2::Digest;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
+
+    let tenant = tenant.unwrap_or(DEFAULT_TENANT);
+    let scope = scope.unwrap_or(FABRIC_SCOPE);
+
+    // Step 1: Generate PKCE challenge
+    let mut verifier_bytes = [0u8; 32];
+    getrandom::fill(&mut verifier_bytes).map_err(|e| {
+        FabioError::new(
+            ErrorCode::Unknown,
+            format!("Failed to generate random bytes for PKCE: {e}"),
+        )
+    })?;
+    let code_verifier = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(verifier_bytes);
+    let challenge_hash = sha2::Sha256::digest(code_verifier.as_bytes());
+    let code_challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(challenge_hash);
+
+    // Step 2: Bind a localhost listener on a random port
+    let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| {
+        FabioError::new(
+            ErrorCode::NetworkError,
+            format!("Failed to bind localhost listener for OAuth2 redirect: {e}"),
+        )
+    })?;
+    let port = listener.local_addr()?.port();
+    let redirect_uri = format!("http://localhost:{port}");
+
+    // Step 3: Build the authorize URL
+    let authorize_url = format!(
+        "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize?\
+         client_id={client_id}\
+         &response_type=code\
+         &redirect_uri={redirect_uri}\
+         &scope={scope}+offline_access\
+         &code_challenge={code_challenge}\
+         &code_challenge_method=S256",
+        client_id = urlencoding::encode(PUBLIC_CLIENT_ID),
+        redirect_uri = urlencoding::encode(&redirect_uri),
+        scope = urlencoding::encode(scope),
+        code_challenge = urlencoding::encode(&code_challenge),
+    );
+
+    // Step 4: Open the system browser
+    eprintln!("Opening browser for authentication...");
+    eprintln!("If the browser doesn't open, visit: {authorize_url}");
+    open_browser(&authorize_url);
+
+    // Step 5: Wait for the redirect (with timeout)
+    let code = tokio::time::timeout(Duration::from_secs(300), async {
+        let (mut stream, _addr) = listener.accept().await.map_err(|e| {
+            FabioError::new(ErrorCode::NetworkError, format!("Listener accept failed: {e}"))
+        })?;
+
+        // Read the HTTP request
+        let mut buf = vec![0u8; 4096];
+        let n = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await.map_err(|e| {
+            FabioError::new(ErrorCode::NetworkError, format!("Read from redirect failed: {e}"))
+        })?;
+        let request = String::from_utf8_lossy(&buf[..n]);
+
+        // Extract the authorization code from the query string
+        let code = request
+            .lines()
+            .next()
+            .and_then(|line| line.split_whitespace().nth(1)) // GET /path?code=...&... HTTP/1.1
+            .and_then(|path| path.split('?').nth(1))
+            .and_then(|query| {
+                query.split('&').find_map(|param| {
+                    let (key, value) = param.split_once('=')?;
+                    if key == "code" {
+                        Some(urlencoding::decode(value).unwrap_or_default().into_owned())
+                    } else {
+                        None
+                    }
+                })
+            });
+
+        // Check for error in redirect
+        let error = request
+            .lines()
+            .next()
+            .and_then(|line| line.split_whitespace().nth(1))
+            .and_then(|path| path.split('?').nth(1))
+            .and_then(|query| {
+                query.split('&').find_map(|param| {
+                    let (key, value) = param.split_once('=')?;
+                    if key == "error_description" {
+                        Some(urlencoding::decode(value).unwrap_or_default().into_owned())
+                    } else {
+                        None
+                    }
+                })
+            });
+
+        // Send a response to the browser
+        let body = if code.is_some() {
+            "<html><body><h2>Authentication successful!</h2><p>You can close this window and return to the terminal.</p></body></html>"
+        } else {
+            "<html><body><h2>Authentication failed.</h2><p>Check the terminal for details.</p></body></html>"
+        };
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream.write_all(response.as_bytes()).await.ok();
+        stream.flush().await.ok();
+
+        code.map_or_else(
+            || {
+                let msg = error.unwrap_or_else(|| "No authorization code received".to_string());
+                Err(FabioError::new(ErrorCode::AuthRequired, msg).into())
+            },
+            Ok::<String, anyhow::Error>,
+        )
+    })
+    .await
+    .map_err(|_| {
+        FabioError::new(
+            ErrorCode::Timeout,
+            "Browser login timed out after 5 minutes. No redirect received.",
+        )
+    })??;
+
+    // Step 6: Exchange the code for tokens
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    let token_url = format!("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token");
+    let resp = http
+        .post(&token_url)
+        .form(&[
+            ("client_id", PUBLIC_CLIENT_ID),
+            ("grant_type", "authorization_code"),
+            ("code", &code),
+            ("redirect_uri", &redirect_uri),
+            ("code_verifier", &code_verifier),
+            ("scope", &format!("{scope} offline_access")),
+        ])
+        .send()
+        .await
+        .map_err(|e| {
+            FabioError::new(
+                ErrorCode::NetworkError,
+                format!("Token exchange request failed: {e}"),
+            )
+        })?;
+
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        let sanitized = serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|v| {
+                v.get("error_description")
+                    .or_else(|| v.get("error"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(String::from)
+            })
+            .unwrap_or_else(|| "Token exchange failed".to_string());
+        return Err(FabioError::new(ErrorCode::AuthRequired, sanitized).into());
+    }
+
+    let token_resp: TokenResponse = resp.json().await.map_err(|e| {
+        FabioError::new(
+            ErrorCode::AuthRequired,
+            format!("Invalid token response: {e}"),
+        )
+    })?;
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let data = TokenData {
+        access_token: token_resp.access_token,
+        refresh_token: token_resp.refresh_token,
+        expires_on: now + token_resp.expires_in,
+        tenant: tenant.to_string(),
+        scope: scope.to_string(),
+    };
+
+    save_token(&data)?;
+    Ok(data)
+}
+
+/// Open the system browser to a URL. Best-effort (no error on failure).
+fn open_browser(url: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(url).spawn().ok();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open").arg(url).spawn().ok();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", url])
+            .spawn()
+            .ok();
+    }
+}
+
 // ── WAM broker authentication for Windows SSO ───────────────────────────────
 
 /// Acquire a token via Windows Web Account Manager (WAM) broker.

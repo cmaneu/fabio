@@ -1285,3 +1285,56 @@ fn wam_login_with_tenant_override() {
         serde_json::from_str::<serde_json::Value>(&stderr).expect("stderr should be JSON");
     }
 }
+
+// ── Browser-based PKCE authentication tests ─────────────────────────────────
+
+#[test]
+fn browser_flag_accepted_by_parser() {
+    // --browser should be accepted (the command starts but will timeout waiting for redirect)
+    // We can't complete the flow in tests, but we can verify the flag is recognized
+    fabio()
+        .args(["auth", "login", "--browser", "--help"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn browser_flag_visible_in_help() {
+    let assert = fabio().args(["auth", "login", "--help"]).assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("--browser"),
+        "expected --browser in help output"
+    );
+    assert!(
+        stdout.contains("PKCE") || stdout.contains("browser"),
+        "expected PKCE/browser description in help"
+    );
+}
+
+#[test]
+fn browser_and_service_principal_sp_wins() {
+    // --service-principal takes precedence over --browser
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--browser",
+            "--tenant",
+            "abc",
+            "--client-id",
+            "def",
+            "--client-secret",
+            "xyz",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    // Should fail at SP auth (Azure), not at browser flow
+    assert!(
+        stderr.contains("AUTH_REQUIRED"),
+        "--service-principal should take precedence over --browser, got: {stderr}"
+    );
+}
