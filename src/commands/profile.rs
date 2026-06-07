@@ -98,12 +98,23 @@ impl ProfileStore {
             }
         }
         let json = serde_json::to_string_pretty(self)?;
-        fs::write(&path, json)?;
-        // Restrict file permissions on Unix (profiles may contain workspace/capacity IDs)
+
+        // Write atomically with restricted permissions to avoid TOCTOU window
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&path)?;
+            file.write_all(json.as_bytes())?;
+        }
+        #[cfg(not(unix))]
+        {
+            fs::write(&path, json)?;
         }
         Ok(())
     }

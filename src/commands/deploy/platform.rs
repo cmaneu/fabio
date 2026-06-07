@@ -330,7 +330,28 @@ pub fn write_source_directory(
 
         // Write definition parts
         for part in parts {
+            // Sanitize part path to prevent directory traversal from API responses.
+            // Reject paths containing ".." or starting with "/" which could write
+            // outside the item directory.
+            if part.path.contains("..") || part.path.starts_with('/') || part.path.starts_with('\\')
+            {
+                anyhow::bail!(
+                    "Refusing to write part with unsafe path '{}' in item '{}'. Path contains directory traversal.",
+                    part.path,
+                    metadata.display_name
+                );
+            }
+
             let part_path = item_dir.join(Path::new(&part.path));
+
+            // Defense-in-depth: verify resolved path is inside item directory
+            if !part_path.starts_with(&item_dir) {
+                anyhow::bail!(
+                    "Refusing to write part '{}' — resolved path escapes item directory '{}'.",
+                    part.path,
+                    item_dir.display()
+                );
+            }
 
             // Create parent directories if needed
             if let Some(parent) = part_path.parent() {
