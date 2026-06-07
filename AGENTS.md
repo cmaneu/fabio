@@ -46,8 +46,8 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **LRO polling**: 2s default interval (respects `Retry-After` header, capped at 60s), 120s max, handles 200/202, checks `status` field until Succeeded/Failed
 - **Transport retry**: Automatic retry on 502/503/504 gateway errors (3 attempts, linear backoff 1-3s)
 - **Error code headers**: Extracts `x-ms-public-api-error-code` / `x-ms-error-code` response headers into error messages
-- **Server-side file copy/move**: Blob API `PUT` with `x-ms-copy-source`, move = copy + delete
-- **Server-side table copy/move/delete**: Root listing + prefix filter, per-file Blob copy, recursive DFS delete
+- **Server-side file copy/move**: Blob API `PUT` with `x-ms-copy-source`; atomic rename via DFS `x-ms-rename-source` for same-item moves (O(1) metadata op), fallback to copy + delete for cross-item
+- **Server-side table copy/move/delete**: Root listing + prefix filter, per-file Blob copy, recursive DFS delete; same-item table moves use atomic directory rename
 - **Shortcuts**: Create/get/delete OneLake, ADLS Gen2, S3 shortcuts
 - **Lakehouse table maintenance**: optimize-table (V-Order + Z-Order via Jobs API), vacuum-table (retention period formatting), table-schema (Delta log parsing from OneLake DFS)
 - **Notebook run**: Captures job instance ID from Location header, status/stop via Jobs API
@@ -165,7 +165,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Load-table only supports Csv and Parquet**: The Fabric REST API `formatOptions` discriminated union only has `Csv` (with `header`/`delimiter`) and `Parquet` (format only). JSON is NOT supported — must convert to CSV/Parquet first. Sending CSV-specific fields (header, delimiter) with Parquet format causes API rejection.
 - **SQL Database import**: Uses type inference with `Unknown` initial state → first non-empty observation sets the type, subsequent observations widen (Int→BigInt→Float→NVarChar, never narrows)
 - **Server-side copy**: OneLake Blob API supports `PUT` with `x-ms-copy-source`; returns 202 with pending status. Poll via HEAD.
-- **No native move/rename**: OneLake rejects `x-ms-rename-source`. Move = copy + delete.
+- **Atomic rename for same-item moves**: DFS `x-ms-rename-source` works within the same OneLake item (workspace + lakehouse). Works for both files and directories. Returns 201. Fails with 403 for cross-item/cross-workspace. Fallback: copy + delete.
 - **Table file listing**: Must list from root (no `directory` param) to get real paths prefixed with item ID.
 - **Recursive delete**: DFS `DELETE /{ws}/{lh}/Tables/{name}?recursive=true` works for directories.
 - All destructive actions use consistent verb `delete` (not `remove`)
@@ -392,7 +392,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## OneLake API Behaviors Discovered
 - Blob API copy (`x-ms-copy-source`): works for server-side file copy, async (202 with pending status)
-- DFS rename (`x-ms-rename-source`): NOT supported (returns `UnsupportedHeader`)
+- DFS rename (`x-ms-rename-source`): SUPPORTED within same item (returns 201). Works for files AND directories. Fails with 403 for cross-item/cross-workspace. Requires `x-ms-version: 2021-06-08` header.
 - DFS recursive delete (`?recursive=true`): works for directories
 - DFS listing with `directory` param on a table path shows virtual lakehouse structure (not real files)
 - Root listing (no `directory` param): returns real paths prefixed with item ID

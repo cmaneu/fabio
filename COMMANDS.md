@@ -117,10 +117,10 @@ fabio lakehouse table-schema Read Delta table schema from OneLake (no Spark)
 fabio lakehouse optimize-table Run V-Order + Z-Order optimization
 fabio lakehouse vacuum-table Remove old files (retention period)
 fabio lakehouse copy-file    Copy files between lakehouses (glob, parallel)
-fabio lakehouse move-file    Move files between lakehouses (glob, parallel)
+fabio lakehouse move-file    Move files (atomic rename for same-item, copy+delete for cross-item)
 fabio lakehouse delete-file  Delete a file
 fabio lakehouse copy-table   Copy a table between lakehouses
-fabio lakehouse move-table   Move a table (copy + delete source)
+fabio lakehouse move-table   Move a table (atomic rename for same-item, copy+delete for cross-item)
 fabio lakehouse delete-table Delete a table
 fabio lakehouse sync         Sync files between lakehouses (ETag/MD5 comparison)
 fabio lakehouse create-shortcut      Create a shortcut (OneLake/ADLS/S3, --conflict-policy)
