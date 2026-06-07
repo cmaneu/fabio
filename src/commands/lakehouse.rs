@@ -1854,7 +1854,7 @@ async fn delete_file(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn move_file(
     cli: &Cli,
     client: &FabricClient,
@@ -1897,7 +1897,7 @@ async fn move_file(
         return Ok(());
     }
 
-    // Multiple files: copy in parallel, then delete sources on success
+    // Multiple files: use rename for same-item, copy+delete for cross-item
     let concurrency = parallel::default_concurrency();
     eprintln!(
         "  Moving {} files with concurrency={concurrency}...",
@@ -1914,6 +1914,30 @@ async fn move_file(
         .collect();
     let item_names: Vec<String> = matched_files.clone();
 
+    let is_same_item = src_ws == dst_ws && src_id == dst_id;
+
+    if is_same_item {
+        // Same item: use atomic rename for each file (no copy needed)
+        let src_ws_arc: Arc<str> = Arc::from(src_ws);
+        let src_id_arc: Arc<str> = Arc::from(src_id);
+        let client_clone = client.clone();
+
+        let results = parallel::execute_parallel(copy_tasks, concurrency, move |(src, dest)| {
+            let client = client_clone.clone();
+            let ws = Arc::clone(&src_ws_arc);
+            let id = Arc::clone(&src_id_arc);
+            async move {
+                client.move_onelake_file(&ws, &id, &src, &dest).await?;
+                Ok(())
+            }
+        })
+        .await;
+
+        let summary = BatchSummary::from_results(&results, &item_names);
+        return render_batch_result(cli, &summary, "moved");
+    }
+
+    // Cross-item: copy in parallel, then delete sources on success
     let src_ws_arc: Arc<str> = Arc::from(src_ws);
     let src_id_arc: Arc<str> = Arc::from(src_id);
     let dst_ws_arc: Arc<str> = Arc::from(dst_ws);
@@ -2779,7 +2803,48 @@ async fn move_table(
     if tables.len() > 1 {
         use crate::parallel::{self, BatchSummary};
 
-        // Multiple tables — copy all files in parallel, then delete sources in parallel
+        let is_same_item = src_ws == dst_ws && src_id == dst_id;
+
+        // Multiple tables — if same item, try atomic directory rename per table
+        if is_same_item {
+            let concurrency = parallel::default_concurrency();
+            eprintln!(
+                "  Moving {} tables via rename with concurrency={concurrency}...",
+                tables.len()
+            );
+
+            let item_names = tables.clone();
+            let ws: Arc<str> = Arc::from(src_ws);
+            let id: Arc<str> = Arc::from(src_id);
+            let client_c = client.clone();
+
+            let results = parallel::execute_parallel(tables, concurrency, move |tbl| {
+                let client = client_c.clone();
+                let ws = Arc::clone(&ws);
+                let id = Arc::clone(&id);
+                async move {
+                    let src_dir = format!("Tables/{tbl}");
+                    let dst_dir = format!("Tables/{tbl}");
+                    // rename_onelake_file works for directories too
+                    match client
+                        .rename_onelake_file(&ws, &id, &src_dir, &dst_dir)
+                        .await?
+                    {
+                        Some(_) => Ok(()),
+                        None => {
+                            // Fallback: should not happen for same-item, but handle gracefully
+                            Err(anyhow::anyhow!("rename failed for table {tbl}"))
+                        }
+                    }
+                }
+            })
+            .await;
+
+            let summary = BatchSummary::from_results(&results, &item_names);
+            return render_batch_result(cli, &summary, "moved");
+        }
+
+        // Cross-item: copy all files in parallel, then delete sources in parallel
         let concurrency = parallel::default_concurrency();
         eprintln!(
             "  Moving {} tables with concurrency={concurrency}...",
@@ -2886,6 +2951,28 @@ async fn move_table(
     let table_name = &tables[0];
     let dest_name = dst_table.unwrap_or(table_name);
 
+    let is_same_item = src_ws == dst_ws && src_id == dst_id;
+
+    if is_same_item {
+        // Same item: try atomic directory rename (handles all files at once)
+        let src_dir = format!("Tables/{table_name}");
+        let dst_dir = format!("Tables/{dest_name}");
+        if let Some(_result) = client
+            .rename_onelake_file(src_ws, src_id, &src_dir, &dst_dir)
+            .await?
+        {
+            let obj = serde_json::json!({
+                "sourceTable": table_name,
+                "destTable": dest_name,
+                "status": "moved",
+                "method": "rename"
+            });
+            output::render_object(cli, &obj, "status");
+            return Ok(());
+        }
+        // Fallback: per-file copy + directory delete
+    }
+
     // Copy table (parallel) — errors will propagate if any file fails
     copy_single_table(
         cli, client, src_ws, src_id, table_name, dst_ws, dst_id, dest_name, false,
@@ -2901,7 +2988,8 @@ async fn move_table(
     let obj = serde_json::json!({
         "sourceTable": table_name,
         "destTable": dest_name,
-        "status": "moved"
+        "status": "moved",
+        "method": "copy_delete"
     });
     output::render_object(cli, &obj, "status");
     Ok(())
