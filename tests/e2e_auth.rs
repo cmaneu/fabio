@@ -147,3 +147,178 @@ fn auth_status_reports_credential_source() {
         "Unexpected credential_source: {source}"
     );
 }
+
+// ── Service principal login validation tests (offline) ──────────────────────
+
+#[test]
+fn sp_login_requires_tenant() {
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--client-id",
+            "abc",
+            "--client-secret",
+            "xyz",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("--tenant is required"),
+        "expected tenant required error, got: {stderr}"
+    );
+}
+
+#[test]
+fn sp_login_requires_client_id() {
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "abc",
+            "--client-secret",
+            "xyz",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("--client-id is required"),
+        "expected client-id required error, got: {stderr}"
+    );
+}
+
+#[test]
+fn sp_login_requires_credential_type() {
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "abc",
+            "--client-id",
+            "def",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("--client-secret, --certificate, or --federated-token"),
+        "expected credential type required error, got: {stderr}"
+    );
+}
+
+#[test]
+fn sp_login_rejects_multiple_credential_types() {
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "abc",
+            "--client-id",
+            "def",
+            "--client-secret",
+            "secret",
+            "--certificate",
+            "/tmp/cert.pem",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("Only one credential type allowed"),
+        "expected mutual exclusion error, got: {stderr}"
+    );
+}
+
+#[test]
+fn sp_login_certificate_file_not_found() {
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "abc",
+            "--client-id",
+            "def",
+            "--certificate",
+            "/nonexistent/path/cert.pem",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("Failed to read certificate file"),
+        "expected file not found error, got: {stderr}"
+    );
+}
+
+#[test]
+fn sp_login_federated_token_file_not_found() {
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "abc",
+            "--client-id",
+            "def",
+            "--federated-token-file",
+            "/nonexistent/path/token.txt",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("Failed to read federated token file"),
+        "expected file not found error, got: {stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sp_login_invalid_secret_returns_auth_error() {
+    // Use fake tenant/client to verify the flow reaches Azure and fails gracefully
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "00000000-0000-0000-0000-000000000001",
+            "--client-id",
+            "00000000-0000-0000-0000-000000000002",
+            "--client-secret",
+            "fake-secret-value",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("AUTH_REQUIRED"),
+        "expected AUTH_REQUIRED error code, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("authentication failed")
+            || stderr.contains("AADSTS")
+            || stderr.contains("not found"),
+        "expected Azure error details, got: {stderr}"
+    );
+}

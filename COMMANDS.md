@@ -26,7 +26,9 @@ All commands accept these global flags:
 ## Core
 
 ```
-fabio auth login             Log in to Microsoft Fabric (validates credentials)
+fabio auth login             Log in via device code flow or service principal
+                             (--service-principal --tenant --client-id + one of:
+                              --client-secret, --certificate, --federated-token)
 fabio auth logout            Log out and clear cached credentials
 fabio auth status            Show current authentication status and credential source
 

@@ -106,21 +106,31 @@ If you are an AI agent, run `fabio agent-context` to get a machine-readable comm
 
 ## Authentication
 
-Fabio authenticates with its own dedicated Entra ID application ("Fabio CLI"). It also supports the Azure credential chain as a fallback.
+Fabio authenticates with its own dedicated Entra ID application ("Fabio CLI"). It also supports service principal and the Azure credential chain as a fallback.
 
 ```bash
 # Login with Fabio CLI identity (device code flow, works on any machine)
 fabio auth login
 
+# Service principal with client secret
+fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --client-secret <SECRET>
+
+# Service principal with certificate (PEM or PFX)
+fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --certificate ./cert.pem
+
+# Service principal with federated token (OIDC, for CI/CD)
+fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --federated-token-file $ACTIONS_ID_TOKEN_REQUEST_TOKEN
+
 # Verify authentication
 fabio auth status
 ```
 
-Supported credential sources (via `DefaultAzureCredential` fallback):
-- Fabio CLI identity (`fabio auth login` -- recommended)
-- Azure CLI (`az login`)
-- Environment variables (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`)
-- Managed Identity (when running on Azure)
+Supported credential sources (in priority order):
+1. Fabio CLI identity (`fabio auth login` -- recommended for interactive use)
+2. Environment variables (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`)
+3. Managed Identity (when running on Azure)
+4. Azure CLI (`az login`)
+5. Azure Developer CLI (`azd auth login`)
 
 ## Shell Completions
 
