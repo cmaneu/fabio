@@ -424,20 +424,30 @@ impl FabricClient {
         let base = self.onelake_dfs_url(workspace, &format!("{item}/{encoded_path}"));
 
         // Step 1: Create
+        let create_url = format!("{base}?resource=file");
+        verbose::trace_request("PUT", &create_url, None);
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
-            .put(format!("{base}?resource=file"))
+            .put(&create_url)
             .header(AUTHORIZATION, &token)
             .header("Content-Length", "0")
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
+        verbose::trace_response(
+            resp.status().as_u16(),
+            &create_url,
+            start.elapsed().as_millis(),
+        );
+
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_storage_token().await;
             token = self.require_storage_auth().await?;
             self.http
-                .put(format!("{base}?resource=file"))
+                .put(&create_url)
                 .header(AUTHORIZATION, &token)
                 .header("Content-Length", "0")
                 .send()
@@ -447,8 +457,13 @@ impl FabricClient {
 
         // Step 2: Append
         let data_len = data.len();
-        self.http
-            .patch(format!("{base}?action=append&position=0"))
+        let append_url = format!("{base}?action=append&position=0");
+        verbose::trace_request("PATCH", &append_url, None);
+        let start = std::time::Instant::now();
+
+        let resp = self
+            .http
+            .patch(&append_url)
             .header(AUTHORIZATION, &token)
             .header("Content-Length", data_len.to_string())
             .body(data)
@@ -456,14 +471,31 @@ impl FabricClient {
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
+        verbose::trace_response(
+            resp.status().as_u16(),
+            &append_url,
+            start.elapsed().as_millis(),
+        );
+
         // Step 3: Flush
-        self.http
-            .patch(format!("{base}?action=flush&position={data_len}"))
+        let flush_url = format!("{base}?action=flush&position={data_len}");
+        verbose::trace_request("PATCH", &flush_url, None);
+        let start = std::time::Instant::now();
+
+        let resp = self
+            .http
+            .patch(&flush_url)
             .header(AUTHORIZATION, &token)
             .header("Content-Length", "0")
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(
+            resp.status().as_u16(),
+            &flush_url,
+            start.elapsed().as_millis(),
+        );
 
         Ok(serde_json::json!({
             "path": path,
@@ -485,6 +517,9 @@ impl FabricClient {
         let encoded_path = encode_onelake_path(path);
         let url = self.onelake_dfs_url(workspace, &format!("{item}/{encoded_path}"));
 
+        verbose::trace_request("GET", &url, None);
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .get(&url)
@@ -492,6 +527,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_storage_token().await;
@@ -538,6 +575,9 @@ impl FabricClient {
             let _ = write!(url, "&directory={}", urlencoding::encode(dir));
         }
 
+        verbose::trace_request("GET", &url, None);
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .get(&url)
@@ -545,6 +585,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_storage_token().await;
@@ -597,6 +639,9 @@ impl FabricClient {
             &format!("{dst_item}/{}", encode_onelake_path(dst_path)),
         );
 
+        verbose::trace_request("PUT", &dest_url, None);
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .put(&dest_url)
@@ -606,6 +651,12 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(
+            resp.status().as_u16(),
+            &dest_url,
+            start.elapsed().as_millis(),
+        );
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_storage_token().await;
@@ -657,6 +708,9 @@ impl FabricClient {
         let encoded_path = encode_onelake_path(path);
         let url = self.onelake_dfs_url(workspace, &format!("{item}/{encoded_path}"));
 
+        verbose::trace_request("DELETE", &url, None);
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .delete(&url)
@@ -664,6 +718,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_storage_token().await;
@@ -1944,6 +2000,9 @@ impl FabricClient {
         let encoded_path = encode_onelake_path(path);
         let url = self.onelake_dfs_url(workspace, &format!("{item}/{encoded_path}?recursive=true"));
 
+        verbose::trace_request("DELETE", &url, None);
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .delete(&url)
@@ -1951,6 +2010,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_storage_token().await;
