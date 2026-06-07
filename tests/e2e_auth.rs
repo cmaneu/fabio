@@ -1116,7 +1116,7 @@ fn dpapi_login_creates_encrypted_cache() {
     let cache_path = home.join(".fabio").join("token_cache.json");
     if cache_path.exists() {
         let raw = std::fs::read(&cache_path).unwrap();
-        let as_str = String::from_utf8(raw.clone());
+        let as_str = String::from_utf8(raw);
         // If it's valid UTF-8 that parses as JSON, it's NOT encrypted
         let is_plaintext = as_str
             .as_ref()
