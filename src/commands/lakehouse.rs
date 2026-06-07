@@ -1871,17 +1871,28 @@ async fn move_file(
     let matched_files = expand_remote_glob(client, src_ws, src_id, src_path).await?;
 
     if matched_files.len() == 1 && matched_files[0] == src_path {
-        // Single file: copy then delete
-        client
-            .copy_onelake_file(src_ws, src_id, src_path, dst_ws, dst_id, dst_path)
-            .await?;
-        client.delete_onelake_file(src_ws, src_id, src_path).await?;
+        // Single file move
+        let is_same_item = src_ws == dst_ws && src_id == dst_id;
 
-        let obj = serde_json::json!({
-            "source": src_path,
-            "destination": dst_path,
-            "status": "moved"
-        });
+        let obj = if is_same_item {
+            // Same item: use atomic rename (falls back to copy+delete internally)
+            client
+                .move_onelake_file(src_ws, src_id, src_path, dst_path)
+                .await?
+        } else {
+            // Cross-item: must use copy + delete
+            client
+                .copy_onelake_file(src_ws, src_id, src_path, dst_ws, dst_id, dst_path)
+                .await?;
+            client.delete_onelake_file(src_ws, src_id, src_path).await?;
+            serde_json::json!({
+                "source": src_path,
+                "destination": dst_path,
+                "status": "moved",
+                "method": "copy_delete"
+            })
+        };
+
         output::render_object(cli, &obj, "status");
         return Ok(());
     }

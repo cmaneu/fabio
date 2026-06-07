@@ -695,6 +695,114 @@ impl FabricClient {
         }))
     }
 
+    /// Atomic server-side rename/move via `OneLake` DFS `x-ms-rename-source` header.
+    ///
+    /// Only works when source and destination are within the **same `OneLake` item**
+    /// (same workspace + same lakehouse/item). Returns `Ok(Some(json))` on success,
+    /// `Ok(None)` if the server rejects the rename (unsupported path or cross-item),
+    /// and `Err` only on network/auth errors.
+    pub async fn rename_onelake_file(
+        &self,
+        workspace: &str,
+        item: &str,
+        src_path: &str,
+        dst_path: &str,
+    ) -> Result<Option<Value>> {
+        validate_uuid(workspace, "workspace")?;
+        validate_uuid(item, "item")?;
+        let token = self.require_storage_auth().await?;
+        let dst_encoded = encode_onelake_path(dst_path);
+        let src_encoded = encode_onelake_path(src_path);
+        let url = self.onelake_dfs_url(workspace, &format!("{item}/{dst_encoded}"));
+        let rename_source = format!("/{workspace}/{item}/{src_encoded}");
+
+        verbose::trace_request("PUT", &url, None);
+        verbose::trace_category("http", &format!("x-ms-rename-source: {rename_source}"));
+        let start = std::time::Instant::now();
+
+        let resp = self
+            .http
+            .put(&url)
+            .header(AUTHORIZATION, &token)
+            .header("x-ms-rename-source", &rename_source)
+            .header("Content-Length", "0")
+            .header("x-ms-version", "2021-06-08")
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        let status = resp.status();
+        verbose::trace_response(status.as_u16(), &url, start.elapsed().as_millis());
+
+        if status == StatusCode::CREATED || status.is_success() {
+            return Ok(Some(serde_json::json!({
+                "source": src_path,
+                "destination": dst_path,
+                "status": "moved",
+                "method": "rename"
+            })));
+        }
+
+        // 401: retry with fresh token
+        if status == StatusCode::UNAUTHORIZED {
+            self.invalidate_storage_token().await;
+            let token = self.require_storage_auth().await?;
+            let resp = self
+                .http
+                .put(&url)
+                .header(AUTHORIZATION, &token)
+                .header("x-ms-rename-source", &rename_source)
+                .header("Content-Length", "0")
+                .header("x-ms-version", "2021-06-08")
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+            if resp.status() == StatusCode::CREATED || resp.status().is_success() {
+                return Ok(Some(serde_json::json!({
+                    "source": src_path,
+                    "destination": dst_path,
+                    "status": "moved",
+                    "method": "rename"
+                })));
+            }
+        }
+
+        // 403/400/UnsupportedHeader: rename not supported for this path — fall back
+        Ok(None)
+    }
+
+    /// Move a file within the same `OneLake` item. Tries atomic rename first,
+    /// falls back to copy + delete if rename is not supported.
+    pub async fn move_onelake_file(
+        &self,
+        workspace: &str,
+        item: &str,
+        src_path: &str,
+        dst_path: &str,
+    ) -> Result<Value> {
+        // Try atomic rename first (same item only)
+        if let Some(result) = self
+            .rename_onelake_file(workspace, item, src_path, dst_path)
+            .await?
+        {
+            return Ok(result);
+        }
+
+        // Fallback: copy + delete
+        verbose::trace_category("http", "rename not supported, falling back to copy+delete");
+        self.copy_onelake_file(workspace, item, src_path, workspace, item, dst_path)
+            .await?;
+        self.delete_onelake_file(workspace, item, src_path).await?;
+
+        Ok(serde_json::json!({
+            "source": src_path,
+            "destination": dst_path,
+            "status": "moved",
+            "method": "copy_delete"
+        }))
+    }
+
     /// Delete a file from `OneLake` via DFS. Retries once on 401.
     pub async fn delete_onelake_file(
         &self,
