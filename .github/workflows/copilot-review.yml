@@ -11,8 +11,11 @@ jobs:
       pull-requests: write
     steps:
       - name: Request Copilot review
+        # Requires Copilot code review to be enabled in repo settings:
+        # Settings > Copilot > Code review
+        continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.COPILOT_PAT }}
         run: |
           gh pr edit "${{ github.event.pull_request.number }}" \
             --repo "${{ github.repository }}" \
