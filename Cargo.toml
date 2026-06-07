@@ -29,7 +29,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Azure auth
-azure_identity = { version = "1", default-features = false, features = ["tokio"] }
+azure_identity = { version = "1", default-features = false, features = ["tokio", "client_certificate"] }
 azure_core = { version = "1", default-features = false, features = ["reqwest", "reqwest_rustls", "tokio"] }
 
 # Error handling
@@ -64,6 +64,7 @@ sha2 = "0.11.0"
 regex = "1"
 jsonpath-rust = "1"
 jmespath = "0.5.0"
+async-trait = "0.1.89"
 
 [dev-dependencies]
 assert_cmd = "2"

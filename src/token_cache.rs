@@ -473,3 +473,180 @@ async fn refresh_access_token(refresh_token: &str, tenant: &str, scope: &str) ->
         scope: scope.to_string(),
     })
 }
+
+// ── Service Principal Login Methods ─────────────────────────────────────────
+
+/// Authenticate a service principal using a client secret.
+pub async fn sp_login_secret(
+    tenant: &str,
+    client_id: &str,
+    client_secret: &str,
+    scope: &str,
+) -> Result<TokenData> {
+    use azure_core::credentials::TokenCredential;
+
+    let credential = azure_identity::ClientSecretCredential::new(
+        tenant,
+        client_id.to_string(),
+        azure_core::credentials::Secret::new(client_secret.to_string()),
+        None,
+    )
+    .map_err(|e| {
+        FabioError::new(
+            ErrorCode::AuthRequired,
+            format!("Failed to create client secret credential: {e}"),
+        )
+    })?;
+
+    let token = credential.get_token(&[scope], None).await.map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::AuthRequired,
+            format!("Service principal authentication failed: {e}"),
+            "Check --tenant, --client-id, and --client-secret values.".to_string(),
+        )
+    })?;
+
+    let expires_on = std::time::SystemTime::from(token.expires_on)
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let data = TokenData {
+        access_token: token.token.secret().to_string(),
+        refresh_token: None, // SP tokens don't have refresh tokens
+        expires_on,
+        tenant: tenant.to_string(),
+        scope: scope.to_string(),
+    };
+
+    save_token(&data)?;
+    Ok(data)
+}
+
+/// Authenticate a service principal using a PEM or PFX certificate.
+pub async fn sp_login_certificate(
+    tenant: &str,
+    client_id: &str,
+    certificate_path: &str,
+    certificate_password: Option<&str>,
+    scope: &str,
+) -> Result<TokenData> {
+    use azure_core::credentials::TokenCredential;
+
+    let cert_bytes = std::fs::read(certificate_path).map_err(|e| {
+        FabioError::new(
+            ErrorCode::InvalidInput,
+            format!("Failed to read certificate file '{certificate_path}': {e}"),
+        )
+    })?;
+
+    let options =
+        certificate_password.map(|pw| azure_identity::ClientCertificateCredentialOptions {
+            password: Some(azure_core::credentials::Secret::new(pw.to_string())),
+            ..Default::default()
+        });
+
+    let credential = azure_identity::ClientCertificateCredential::new(
+        tenant.to_string(),
+        client_id.to_string(),
+        azure_core::credentials::SecretBytes::from(cert_bytes),
+        options,
+    )
+    .map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::AuthRequired,
+            format!("Failed to create certificate credential: {e}"),
+            "Ensure the certificate file is valid PEM or PFX format. For PFX, provide --certificate-password.".to_string(),
+        )
+    })?;
+
+    let token = credential.get_token(&[scope], None).await.map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::AuthRequired,
+            format!("Certificate authentication failed: {e}"),
+            "Check the certificate is valid and not expired. Ensure it matches the app registration.".to_string(),
+        )
+    })?;
+
+    let expires_on = std::time::SystemTime::from(token.expires_on)
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let data = TokenData {
+        access_token: token.token.secret().to_string(),
+        refresh_token: None,
+        expires_on,
+        tenant: tenant.to_string(),
+        scope: scope.to_string(),
+    };
+
+    save_token(&data)?;
+    Ok(data)
+}
+
+/// Authenticate a service principal using a federated token (OIDC assertion).
+/// Used for workload identity in CI/CD (GitHub Actions, Azure DevOps Pipelines).
+pub async fn sp_login_federated(
+    tenant: &str,
+    client_id: &str,
+    federated_token: &str,
+    scope: &str,
+) -> Result<TokenData> {
+    use azure_core::credentials::TokenCredential;
+
+    // Create a static assertion provider that returns the federated token
+    let assertion = StaticAssertion(federated_token.to_string());
+
+    let credential = azure_identity::ClientAssertionCredential::new(
+        tenant.to_string(),
+        client_id.to_string(),
+        assertion,
+        None,
+    )
+    .map_err(|e| {
+        FabioError::new(
+            ErrorCode::AuthRequired,
+            format!("Failed to create federated token credential: {e}"),
+        )
+    })?;
+
+    let token = credential.get_token(&[scope], None).await.map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::AuthRequired,
+            format!("Federated token authentication failed: {e}"),
+            "Check the federated token is valid and not expired. Ensure the app registration has the correct federated credential configured.".to_string(),
+        )
+    })?;
+
+    let expires_on = std::time::SystemTime::from(token.expires_on)
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let data = TokenData {
+        access_token: token.token.secret().to_string(),
+        refresh_token: None,
+        expires_on,
+        tenant: tenant.to_string(),
+        scope: scope.to_string(),
+    };
+
+    save_token(&data)?;
+    Ok(data)
+}
+
+/// A static OIDC assertion that always returns the same token string.
+/// Used for federated identity login where the token is provided once.
+#[derive(Debug)]
+struct StaticAssertion(String);
+
+#[async_trait::async_trait]
+impl azure_identity::ClientAssertion for StaticAssertion {
+    async fn secret(
+        &self,
+        _options: Option<azure_core::http::ClientMethodOptions<'_>>,
+    ) -> azure_core::Result<String> {
+        Ok(self.0.clone())
+    }
+}
