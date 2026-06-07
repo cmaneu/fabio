@@ -845,6 +845,9 @@ impl FabricClient {
                 },
             );
 
+            verbose::trace_request("GET", &url, None);
+            let start = std::time::Instant::now();
+
             let resp = self
                 .http
                 .get(&url)
@@ -852,6 +855,8 @@ impl FabricClient {
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+            verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
             let mut body = handle_response(resp).await?;
 
@@ -1385,6 +1390,9 @@ impl FabricClient {
         let token = self.require_auth().await?;
         let url = format!("{}{path}", *POWERBI_BASE_URL);
 
+        verbose::trace_request("GET", &url, None);
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .get(&url)
@@ -1392,6 +1400,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_fabric_token().await;
@@ -1413,6 +1423,13 @@ impl FabricClient {
         let token = self.require_auth().await?;
         let url = format!("{}{path}", *POWERBI_BASE_URL);
 
+        verbose::trace_request(
+            "POST",
+            &url,
+            Some(&serde_json::to_string(body).unwrap_or_default()),
+        );
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .post(&url)
@@ -1421,6 +1438,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_fabric_token().await;
@@ -1444,6 +1463,13 @@ impl FabricClient {
         let token = self.require_auth().await?;
         let url = format!("{}{path}", *POWERBI_BASE_URL);
 
+        verbose::trace_request(
+            "PUT",
+            &url,
+            Some(&serde_json::to_string(body).unwrap_or_default()),
+        );
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .put(&url)
@@ -1452,6 +1478,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_fabric_token().await;
@@ -1475,6 +1503,9 @@ impl FabricClient {
         let token = self.require_auth().await?;
         let url = format!("{}{path}", *POWERBI_BASE_URL);
 
+        verbose::trace_request("DELETE", &url, None);
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .delete(&url)
@@ -1482,6 +1513,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_fabric_token().await;
@@ -1579,6 +1612,9 @@ impl FabricClient {
         let token = self.require_arm_auth().await?;
         let url = format!("{}{path}", *ARM_BASE_URL);
 
+        verbose::trace_request("GET", &url, None);
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .get(&url)
@@ -1586,6 +1622,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         handle_response(resp).await
     }
@@ -1595,6 +1633,13 @@ impl FabricClient {
         let token = self.require_arm_auth().await?;
         let url = format!("{}{path}", *ARM_BASE_URL);
 
+        verbose::trace_request(
+            "POST",
+            &url,
+            Some(&serde_json::to_string(body).unwrap_or_default()),
+        );
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .post(&url)
@@ -1603,6 +1648,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         if poll {
             let status = resp.status();
@@ -1622,6 +1669,13 @@ impl FabricClient {
         let token = self.require_arm_auth().await?;
         let url = format!("{}{path}", *ARM_BASE_URL);
 
+        verbose::trace_request(
+            "PUT",
+            &url,
+            Some(&serde_json::to_string(body).unwrap_or_default()),
+        );
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .put(&url)
@@ -1630,6 +1684,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         let status = resp.status();
         if status == StatusCode::OK || status == StatusCode::CREATED {
@@ -1647,6 +1703,13 @@ impl FabricClient {
         let token = self.require_arm_auth().await?;
         let url = format!("{}{path}", *ARM_BASE_URL);
 
+        verbose::trace_request(
+            "PATCH",
+            &url,
+            Some(&serde_json::to_string(body).unwrap_or_default()),
+        );
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .patch(&url)
@@ -1655,6 +1718,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         let status = resp.status();
         if status == StatusCode::OK {
@@ -1672,6 +1737,9 @@ impl FabricClient {
         let token = self.require_arm_auth().await?;
         let url = format!("{}{path}", *ARM_BASE_URL);
 
+        verbose::trace_request("DELETE", &url, None);
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .delete(&url)
@@ -1679,6 +1747,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         let status = resp.status();
         if status == StatusCode::NO_CONTENT {
@@ -1705,8 +1775,11 @@ impl FabricClient {
             return handle_response(resp).await;
         };
 
+        verbose::trace_category("lro", &format!("ARM polling {poll_url}"));
+
         let start = std::time::Instant::now();
         let mut interval = LRO_POLL_INTERVAL;
+        let mut poll_count: u32 = 0;
 
         loop {
             if start.elapsed() > self.lro_max_wait {
@@ -1720,6 +1793,7 @@ impl FabricClient {
 
             sleep(interval).await;
 
+            poll_count += 1;
             let token = self.require_arm_auth().await?;
             let poll_resp = self
                 .http
@@ -1741,8 +1815,15 @@ impl FabricClient {
 
             let op_status = body.get("status").and_then(Value::as_str).unwrap_or("");
 
+            verbose::trace_lro_poll(&poll_url, poll_count, op_status);
+
             match op_status {
                 "Succeeded" => {
+                    verbose::trace_lro_complete(
+                        &poll_url,
+                        "Succeeded",
+                        start.elapsed().as_millis(),
+                    );
                     // If there's a resourceId or result, try to fetch the final resource
                     if let Some(resource_id) = body.get("resourceId").and_then(Value::as_str) {
                         // The resourceId is a full ARM path — fetch it
@@ -1761,6 +1842,7 @@ impl FabricClient {
                     return Ok(body);
                 }
                 "Failed" | "Canceled" => {
+                    verbose::trace_lro_complete(&poll_url, op_status, start.elapsed().as_millis());
                     let err_msg = body
                         .get("error")
                         .and_then(|e| e.get("message"))
