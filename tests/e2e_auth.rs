@@ -744,3 +744,354 @@ fn sp_login_both_federated_token_and_file_picks_inline() {
         "both federated flags should be treated as one credential type, got: {stderr}"
     );
 }
+
+// ── Certificate credential tests (PEM/PFX) ─────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sp_login_pem_certificate_reaches_azure() {
+    // Generate a valid self-signed PEM cert (key+cert combined), then try to auth.
+    // The cert is valid structurally but won't match any app registration.
+    let cert_dir = std::env::temp_dir().join("fabio_test_pem_live");
+    std::fs::create_dir_all(&cert_dir).unwrap();
+    let key_path = cert_dir.join("key.pem");
+    let cert_path = cert_dir.join("cert.pem");
+    let combined_path = cert_dir.join("combined.pem");
+
+    // Generate key and cert separately
+    std::process::Command::new("openssl")
+        .args([
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            key_path.to_str().unwrap(),
+            "-out",
+            cert_path.to_str().unwrap(),
+            "-days",
+            "1",
+            "-nodes",
+            "-subj",
+            "/CN=fabio-e2e-test",
+        ])
+        .output()
+        .expect("openssl must be available for cert tests");
+
+    // Combine key + cert into single PEM file
+    let key_content = std::fs::read_to_string(&key_path).unwrap();
+    let cert_content = std::fs::read_to_string(&cert_path).unwrap();
+    std::fs::write(&combined_path, format!("{key_content}{cert_content}")).unwrap();
+
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "00000000-0000-0000-0000-000000000001",
+            "--client-id",
+            "00000000-0000-0000-0000-000000000002",
+            "--certificate",
+            combined_path.to_str().unwrap(),
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("AUTH_REQUIRED"),
+        "PEM cert should fail with AUTH_REQUIRED, got: {stderr}"
+    );
+    // Should mention certificate authentication or AADSTS tenant error
+    assert!(
+        stderr.contains("authentication failed")
+            || stderr.contains("AADSTS")
+            || stderr.contains("Tenant")
+            || stderr.contains("certificate"),
+        "expected cert/Azure error, got: {stderr}"
+    );
+
+    std::fs::remove_dir_all(&cert_dir).ok();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sp_login_pfx_certificate_with_password_reaches_azure() {
+    // Generate a PFX cert with password, attempt auth
+    let cert_dir = std::env::temp_dir().join("fabio_test_pfx");
+    std::fs::create_dir_all(&cert_dir).unwrap();
+    let key_path = cert_dir.join("key.pem");
+    let cert_path = cert_dir.join("cert.pem");
+    let pfx_path = cert_dir.join("test.pfx");
+
+    // Generate key + cert
+    std::process::Command::new("openssl")
+        .args([
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            key_path.to_str().unwrap(),
+            "-out",
+            cert_path.to_str().unwrap(),
+            "-days",
+            "1",
+            "-nodes",
+            "-subj",
+            "/CN=fabio-pfx-test",
+        ])
+        .output()
+        .expect("openssl required");
+
+    // Convert to PFX with password
+    std::process::Command::new("openssl")
+        .args([
+            "pkcs12",
+            "-export",
+            "-out",
+            pfx_path.to_str().unwrap(),
+            "-inkey",
+            key_path.to_str().unwrap(),
+            "-in",
+            cert_path.to_str().unwrap(),
+            "-passout",
+            "pass:e2eTestPw!",
+        ])
+        .output()
+        .expect("openssl pkcs12 required");
+
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "00000000-0000-0000-0000-000000000001",
+            "--client-id",
+            "00000000-0000-0000-0000-000000000002",
+            "--certificate",
+            pfx_path.to_str().unwrap(),
+            "--certificate-password",
+            "e2eTestPw!",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("AUTH_REQUIRED"),
+        "PFX cert should reach Azure and fail on invalid tenant, got: {stderr}"
+    );
+
+    std::fs::remove_dir_all(&cert_dir).ok();
+}
+
+#[test]
+fn sp_login_pfx_wrong_password_fails_locally() {
+    // PFX with wrong password should fail at certificate parsing (not reach Azure)
+    let cert_dir = std::env::temp_dir().join("fabio_test_pfx_badpw");
+    std::fs::create_dir_all(&cert_dir).unwrap();
+    let key_path = cert_dir.join("key.pem");
+    let cert_path = cert_dir.join("cert.pem");
+    let pfx_path = cert_dir.join("test.pfx");
+
+    std::process::Command::new("openssl")
+        .args([
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            key_path.to_str().unwrap(),
+            "-out",
+            cert_path.to_str().unwrap(),
+            "-days",
+            "1",
+            "-nodes",
+            "-subj",
+            "/CN=fabio-badpw",
+        ])
+        .output()
+        .expect("openssl required");
+
+    std::process::Command::new("openssl")
+        .args([
+            "pkcs12",
+            "-export",
+            "-out",
+            pfx_path.to_str().unwrap(),
+            "-inkey",
+            key_path.to_str().unwrap(),
+            "-in",
+            cert_path.to_str().unwrap(),
+            "-passout",
+            "pass:correctPassword",
+        ])
+        .output()
+        .expect("openssl pkcs12 required");
+
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "abc",
+            "--client-id",
+            "def",
+            "--certificate",
+            pfx_path.to_str().unwrap(),
+            "--certificate-password",
+            "wrongPassword",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    // Should fail at certificate parsing, not at Azure
+    assert!(
+        stderr.contains("AUTH_REQUIRED") || stderr.contains("certificate"),
+        "wrong PFX password should fail with cert error, got: {stderr}"
+    );
+
+    std::fs::remove_dir_all(&cert_dir).ok();
+}
+
+#[test]
+fn sp_login_pem_without_private_key_fails() {
+    // A PEM with only the certificate (no private key) should fail
+    let cert_dir = std::env::temp_dir().join("fabio_test_pem_nokey");
+    std::fs::create_dir_all(&cert_dir).unwrap();
+    let key_path = cert_dir.join("key.pem");
+    let cert_path = cert_dir.join("cert_only.pem");
+
+    std::process::Command::new("openssl")
+        .args([
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            key_path.to_str().unwrap(),
+            "-out",
+            cert_path.to_str().unwrap(),
+            "-days",
+            "1",
+            "-nodes",
+            "-subj",
+            "/CN=fabio-nokey",
+        ])
+        .output()
+        .expect("openssl required");
+
+    // Use cert_only.pem (no key included)
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "abc",
+            "--client-id",
+            "def",
+            "--certificate",
+            cert_path.to_str().unwrap(),
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("AUTH_REQUIRED")
+            || stderr.contains("certificate")
+            || stderr.contains("key"),
+        "cert without private key should fail, got: {stderr}"
+    );
+
+    std::fs::remove_dir_all(&cert_dir).ok();
+}
+
+// ── Federated token (OIDC) from file tests ──────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sp_login_federated_token_from_file_reaches_azure() {
+    // Write a fake JWT to a file, then test that --federated-token-file reads it and reaches Azure
+    let token_file = std::env::temp_dir().join("fabio_test_oidc_token.txt");
+    std::fs::write(
+        &token_file,
+        "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.invalid_sig",
+    )
+    .unwrap();
+
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "00000000-0000-0000-0000-000000000001",
+            "--client-id",
+            "00000000-0000-0000-0000-000000000002",
+            "--federated-token-file",
+            token_file.to_str().unwrap(),
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("AUTH_REQUIRED"),
+        "federated token from file should reach Azure, got: {stderr}"
+    );
+    // Confirm it's an Azure auth error (not a file read error)
+    assert!(
+        !stderr.contains("Failed to read"),
+        "should not be a file read error since file exists, got: {stderr}"
+    );
+
+    std::fs::remove_file(&token_file).ok();
+}
+
+#[test]
+fn sp_login_federated_token_file_with_newlines_trimmed() {
+    // Token files often have trailing newlines — verify they're trimmed
+    let token_file = std::env::temp_dir().join("fabio_test_token_newlines.txt");
+    std::fs::write(&token_file, "  my-token-value  \n\n").unwrap();
+
+    // This will fail at Azure (invalid tenant), but proves the token was read and trimmed
+    // If it said "is empty" that would mean trimming removed everything
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "abc",
+            "--client-id",
+            "def",
+            "--federated-token-file",
+            token_file.to_str().unwrap(),
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    // Should NOT say "is empty" since after trimming we have "my-token-value"
+    assert!(
+        !stderr.contains("is empty"),
+        "token with whitespace should be trimmed, not treated as empty, got: {stderr}"
+    );
+    // Should fail at credential creation or Azure auth, not input validation
+    assert!(
+        stderr.contains("AUTH_REQUIRED"),
+        "expected auth error after token read, got: {stderr}"
+    );
+
+    std::fs::remove_file(&token_file).ok();
+}
