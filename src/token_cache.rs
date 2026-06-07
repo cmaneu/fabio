@@ -928,7 +928,6 @@ pub async fn wam_login(
     use windows::Security::Authentication::Web::Core::{
         WebAuthenticationCoreManager, WebTokenRequest, WebTokenRequestResult, WebTokenRequestStatus,
     };
-    use windows::Security::Credentials::WebAccountProvider;
     let tenant = tenant.unwrap_or("organizations");
     let scope = scope.unwrap_or(FABRIC_SCOPE);
     let client_id = client_id.unwrap_or(PUBLIC_CLIENT_ID);
@@ -947,7 +946,7 @@ pub async fn wam_login(
         )
     })?;
 
-    let provider = provider_op.get().map_err(|e| {
+    let provider = provider_op.GetResults().map_err(|e| {
         FabioError::with_hint(
             ErrorCode::AuthRequired,
             format!("WAM: Account provider not available: {e}"),
@@ -976,7 +975,7 @@ pub async fn wam_login(
         )
     })?;
 
-    let silent_result = silent_op.get().map_err(|e| {
+    let silent_result = silent_op.GetResults().map_err(|e| {
         FabioError::new(
             ErrorCode::AuthRequired,
             format!("WAM: Silent token request error: {e}"),
@@ -997,7 +996,7 @@ pub async fn wam_login(
                 )
             })?;
 
-        let interactive_result = interactive_op.get().map_err(|e| {
+        let interactive_result = interactive_op.GetResults().map_err(|e| {
             FabioError::new(
                 ErrorCode::AuthRequired,
                 format!("WAM: Interactive token error: {e}"),
