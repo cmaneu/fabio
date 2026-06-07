@@ -109,8 +109,11 @@ If you are an AI agent, run `fabio agent-context` to get a machine-readable comm
 Fabio authenticates with its own dedicated Entra ID application ("Fabio CLI"). It supports multiple authentication methods for both interactive and non-interactive scenarios.
 
 ```bash
-# Device code flow (interactive, any platform)
+# Device code flow (interactive, any platform — works in headless/SSH)
 fabio auth login
+
+# Browser-based PKCE (opens system browser; SSO on macOS with Enterprise SSO Extension)
+fabio auth login --browser
 
 # Service principal with client secret (CI/CD, automation)
 fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --client-secret <SECRET>

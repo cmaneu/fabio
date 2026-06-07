@@ -28,6 +28,7 @@ All commands accept these global flags:
 ```
 fabio auth login             Log in to Microsoft Fabric
                              Device code (default): fabio auth login
+                             Browser PKCE:          --browser (opens system browser; SSO on macOS)
                              Service principal:     --service-principal --tenant <T> --client-id <C>
                                + --client-secret <S>           (client secret)
                                + --certificate <path>          (PEM/PFX cert)

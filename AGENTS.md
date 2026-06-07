@@ -170,7 +170,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Recursive delete**: DFS `DELETE /{ws}/{lh}/Tables/{name}?recursive=true` works for directories.
 - All destructive actions use consistent verb `delete` (not `remove`)
 - Cross-workspace ops use `--source-workspace`/`--dest-workspace` with `visible_alias` short forms
-- Auth relies on a multi-source credential chain: fabio cache (device code or service principal), environment variables, managed identity, Azure CLI, Azure Developer CLI
+- Auth relies on a multi-source credential chain: fabio cache (device code, browser PKCE, or service principal), environment variables, managed identity, Azure CLI, Azure Developer CLI
 - `azure_identity`/`azure_core` with `default-features = false` (no OpenSSL dependency on Linux/macOS; OpenSSL for certificate auth via `client_certificate` feature)
 - **Windows-first compatibility** — Token cache encrypted with DPAPI (`CryptProtectData`, user scope); WAM broker SSO via `--wam` flag
 - `unsafe_code = "forbid"` in lints
@@ -215,7 +215,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/verbose.rs`: Lightweight `--verbose` diagnostics module (global AtomicBool flag, HTTP/LRO/auth tracing to stderr)
 - `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, ARM API methods (arm_get/post/put/patch/delete with ARM LRO polling), Power BI API methods (get/post/put/patch/delete/bytes/multipart_powerbi), run_notebook, trigger_item_job
 - `src/commands/mod.rs`: Command dispatch
-- `src/commands/auth.rs`: login (device code + service principal: secret/certificate/federated token), logout, status
+- `src/commands/auth.rs`: login (device code + browser PKCE + service principal: secret/certificate/federated token), logout, status
 - `src/commands/workspace.rs`: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
 - `src/commands/item.rs`: 18 subcommands (CRUD + copy/move + definitions + list-connections + exists/url/inspect + bulk-create/bulk-delete + move-to-folder + create-external-data-share)
 - `src/commands/lakehouse.rs`: 23 subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut, optimize-table, vacuum-table, table-schema, query)
