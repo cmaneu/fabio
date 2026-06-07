@@ -4,10 +4,12 @@
 //! and auth events are traced to stderr. All output uses the `[verbose]`
 //! prefix for easy filtering. Respects `--quiet` (never emits if quiet).
 //!
+//! **Security**: Request bodies are redacted for known sensitive JSON keys
+//! (passwords, secrets, tokens, credentials) before logging. Response bodies
+//! and headers are NOT logged in production (those helpers are `#[cfg(test)]` only).
+//!
 //! Design: No external logging crate. Uses a global `AtomicBool` flag
 //! checked at each trace site. Zero overhead when disabled.
-
-#![allow(dead_code)]
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -25,15 +27,6 @@ pub fn is_enabled() -> bool {
     VERBOSE_ENABLED.load(Ordering::Relaxed)
 }
 
-/// Emit a verbose diagnostic line to stderr.
-/// No-op if verbose is disabled.
-#[inline]
-pub fn trace(msg: &str) {
-    if is_enabled() {
-        eprintln!("[verbose] {msg}");
-    }
-}
-
 /// Emit a verbose diagnostic with a category prefix.
 /// Example: `[verbose][http] GET https://api.fabric.microsoft.com/v1/workspaces`
 #[inline]
@@ -48,7 +41,61 @@ pub fn trace_category(category: &str, msg: &str) {
 /// Maximum body length to include in verbose output (prevents flooding stderr).
 const MAX_BODY_TRACE_LEN: usize = 2048;
 
-/// Trace an outgoing HTTP request.
+/// JSON keys whose values must be redacted in verbose output.
+/// Case-insensitive comparison is used.
+const SENSITIVE_KEYS: &[&str] = &[
+    "password",
+    "secret",
+    "client_secret",
+    "clientSecret",
+    "credentials",
+    "credential",
+    "access_token",
+    "accessToken",
+    "refresh_token",
+    "refreshToken",
+    "token",
+    "key",
+    "connectionString",
+    "sharedAccessSignature",
+    "accountKey",
+];
+
+/// Redact sensitive fields in a JSON body string.
+/// Returns the body with sensitive values replaced by `"[REDACTED]"`.
+/// If the body is not valid JSON, returns it unchanged (non-JSON bodies
+/// like `text/plain` or binary are not redacted — they don't have keys).
+fn redact_sensitive_body(body: &str) -> String {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return body.to_string();
+    };
+    redact_value(&mut value);
+    serde_json::to_string(&value).unwrap_or_else(|_| body.to_string())
+}
+
+/// Recursively redact sensitive keys in a JSON value.
+fn redact_value(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, val) in map.iter_mut() {
+                let key_lower = key.to_lowercase();
+                if SENSITIVE_KEYS.iter().any(|s| key_lower == s.to_lowercase()) {
+                    *val = serde_json::Value::String("[REDACTED]".to_string());
+                } else {
+                    redact_value(val);
+                }
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr.iter_mut() {
+                redact_value(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Trace an outgoing HTTP request. Sensitive JSON fields are redacted.
 pub fn trace_request(method: &str, url: &str, body: Option<&str>) {
     if !is_enabled() {
         return;
@@ -58,14 +105,15 @@ pub fn trace_request(method: &str, url: &str, body: Option<&str>) {
         if b.is_empty() || b == "null" {
             return;
         }
-        let display = if b.len() > MAX_BODY_TRACE_LEN {
+        let redacted = redact_sensitive_body(b);
+        let display = if redacted.len() > MAX_BODY_TRACE_LEN {
             format!(
                 "{}...(truncated, {} bytes total)",
-                &b[..MAX_BODY_TRACE_LEN],
-                b.len()
+                &redacted[..MAX_BODY_TRACE_LEN],
+                redacted.len()
             )
         } else {
-            b.to_string()
+            redacted
         };
         eprintln!("[verbose][http]     body: {display}");
     }
@@ -77,33 +125,6 @@ pub fn trace_response(status: u16, url: &str, duration_ms: u128) {
         return;
     }
     eprintln!("[verbose][http] <-- {status} {url} ({duration_ms}ms)");
-}
-
-/// Trace response headers of interest (for debugging LRO, rate limits, etc.).
-pub fn trace_response_headers(headers: &[(String, String)]) {
-    if !is_enabled() || headers.is_empty() {
-        return;
-    }
-    for (name, value) in headers {
-        eprintln!("[verbose][http]     {name}: {value}");
-    }
-}
-
-/// Trace a response body (truncated).
-pub fn trace_response_body(body: &str) {
-    if !is_enabled() || body.is_empty() {
-        return;
-    }
-    let display = if body.len() > MAX_BODY_TRACE_LEN {
-        format!(
-            "{}...(truncated, {} bytes total)",
-            &body[..MAX_BODY_TRACE_LEN],
-            body.len()
-        )
-    } else {
-        body.to_string()
-    };
-    eprintln!("[verbose][http]     response: {display}");
 }
 
 // ── LRO tracing ─────────────────────────────────────────────────────────────
@@ -206,20 +227,88 @@ mod tests {
     }
 
     #[test]
-    fn trace_response_body_noop_when_disabled() {
-        reset();
-        trace_response_body("{\"status\":\"ok\"}");
-    }
-
-    #[test]
-    fn trace_response_headers_noop_when_disabled() {
-        reset();
-        trace_response_headers(&[("Content-Type".to_string(), "application/json".to_string())]);
-    }
-
-    #[test]
     fn body_truncation_respects_max_length() {
-        // Verify the truncation constant is reasonable
         assert_eq!(MAX_BODY_TRACE_LEN, 2048);
+    }
+
+    // ── Redaction tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn redact_password_field() {
+        let body = r#"{"name":"test","password":"super-secret-123"}"#;
+        let result = redact_sensitive_body(body);
+        assert!(result.contains("[REDACTED]"));
+        assert!(!result.contains("super-secret-123"));
+        assert!(result.contains("test")); // non-sensitive field preserved
+    }
+
+    #[test]
+    fn redact_client_secret() {
+        let body = r#"{"clientSecret":"my-secret","clientId":"app-id"}"#;
+        let result = redact_sensitive_body(body);
+        assert!(!result.contains("my-secret"));
+        assert!(result.contains("app-id")); // clientId is NOT sensitive
+    }
+
+    #[test]
+    fn redact_nested_credentials() {
+        let body = r#"{"credentialDetails":{"credentials":{"password":"pw123"}}}"#;
+        let result = redact_sensitive_body(body);
+        assert!(!result.contains("pw123"));
+        assert!(result.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn redact_access_token() {
+        let body = r#"{"access_token":"eyJ0eXAi...","expires_in":3600}"#;
+        let result = redact_sensitive_body(body);
+        assert!(!result.contains("eyJ0eXAi"));
+        assert!(result.contains("3600")); // non-sensitive field preserved
+    }
+
+    #[test]
+    fn redact_in_array() {
+        let body = r#"[{"password":"a"},{"password":"b"}]"#;
+        let result = redact_sensitive_body(body);
+        assert!(!result.contains("\"a\""));
+        assert!(!result.contains("\"b\""));
+    }
+
+    #[test]
+    fn non_json_body_unchanged() {
+        let body = "password=secret&user=admin";
+        let result = redact_sensitive_body(body);
+        assert_eq!(result, body); // not JSON, returned as-is
+    }
+
+    #[test]
+    fn empty_body_unchanged() {
+        assert_eq!(redact_sensitive_body(""), "");
+        assert_eq!(redact_sensitive_body("null"), "null");
+    }
+
+    #[test]
+    fn non_sensitive_fields_preserved() {
+        let body = r#"{"displayName":"test","description":"hello","id":"123"}"#;
+        let result = redact_sensitive_body(body);
+        assert!(result.contains("test"));
+        assert!(result.contains("hello"));
+        assert!(result.contains("123"));
+        assert!(!result.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn redact_connection_string() {
+        let body = r#"{"connectionString":"Server=tcp:x.database.windows.net;Password=foo"}"#;
+        let result = redact_sensitive_body(body);
+        assert!(!result.contains("Password=foo"));
+        assert!(result.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn redact_shared_access_signature() {
+        let body = r#"{"sharedAccessSignature":"sv=2021&sig=abc123"}"#;
+        let result = redact_sensitive_body(body);
+        assert!(!result.contains("abc123"));
     }
 }
