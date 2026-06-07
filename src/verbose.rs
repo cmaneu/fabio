@@ -141,3 +141,85 @@ pub fn trace_auth_cache_hit(scope: &str) {
     }
     eprintln!("[verbose][auth] using cached token for scope={scope}");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    /// Reset global state for test isolation.
+    fn reset() {
+        VERBOSE_ENABLED.store(false, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn is_disabled_by_default() {
+        reset();
+        assert!(!is_enabled());
+    }
+
+    #[test]
+    fn enable_sets_flag() {
+        reset();
+        enable();
+        assert!(is_enabled());
+        reset(); // clean up for other tests
+    }
+
+    #[test]
+    fn trace_request_noop_when_disabled() {
+        reset();
+        // Should not panic or produce output
+        trace_request("GET", "https://example.com", None);
+        trace_request("POST", "https://example.com", Some("{\"key\":\"value\"}"));
+    }
+
+    #[test]
+    fn trace_response_noop_when_disabled() {
+        reset();
+        trace_response(200, "https://example.com", 42);
+    }
+
+    #[test]
+    fn trace_lro_poll_noop_when_disabled() {
+        reset();
+        trace_lro_poll("https://example.com/operations/123", 1, "Running");
+    }
+
+    #[test]
+    fn trace_lro_complete_noop_when_disabled() {
+        reset();
+        trace_lro_complete("https://example.com/operations/123", "Succeeded", 5000);
+    }
+
+    #[test]
+    fn trace_auth_noop_when_disabled() {
+        reset();
+        trace_auth("https://api.fabric.microsoft.com/.default", "Azure CLI");
+        trace_auth_cache_hit("https://api.fabric.microsoft.com/.default");
+    }
+
+    #[test]
+    fn trace_category_noop_when_disabled() {
+        reset();
+        trace_category("http", "test message");
+    }
+
+    #[test]
+    fn trace_response_body_noop_when_disabled() {
+        reset();
+        trace_response_body("{\"status\":\"ok\"}");
+    }
+
+    #[test]
+    fn trace_response_headers_noop_when_disabled() {
+        reset();
+        trace_response_headers(&[("Content-Type".to_string(), "application/json".to_string())]);
+    }
+
+    #[test]
+    fn body_truncation_respects_max_length() {
+        // Verify the truncation constant is reasonable
+        assert_eq!(MAX_BODY_TRACE_LEN, 2048);
+    }
+}
