@@ -1,0 +1,98 @@
+name: Semantic PR Validation
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - edited
+      - reopened
+      - ready_for_review
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  check_pr_title:
+    name: Check Pull Request Title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate conventional commit format
+        id: validation
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prTitle = context.payload.pull_request.title;
+            const regex = /^(feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert)(\([^)]+\))?(!?): .+/;
+
+            if (!regex.test(prTitle)) {
+              core.setFailed('PR title does not follow Conventional Commits. See comment for details.');
+            }
+
+      - name: Comment on invalid title
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- semantic-pr-comment -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+
+            if (comments.some(c => c.body.includes(marker))) return;
+
+            const message = `${marker}
+
+            Pull request titles must follow [Conventional Commits](https://www.conventionalcommits.org/).
+
+            **Format:** \`type(scope): description\`
+
+            **Valid types:**
+            - \`feat\` — new feature or command
+            - \`fix\` — bug fix
+            - \`docs\` — documentation only
+            - \`style\` — formatting, no logic change
+            - \`refactor\` — code restructuring
+            - \`perf\` — performance improvement
+            - \`test\` — adding or fixing tests
+            - \`chore\` — maintenance, deps, CI
+            - \`build\` — build system changes
+            - \`ci\` — CI/CD configuration
+            - \`revert\` — revert a previous commit
+
+            **Examples:**
+            - \`feat(lakehouse): add table-schema command for Delta log parsing\`
+            - \`fix(client): handle 502 gateway errors with retry\`
+            - \`test(deploy): add rename detection coverage\`
+            - \`chore(deps): bump tokio to 1.38\``;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message,
+            });
+
+      - name: Clean up on valid title
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: labels } = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            if (labels.some(l => l.name === 'invalid-title')) {
+              await github.rest.issues.removeLabel({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'invalid-title',
+              });
+            }
