@@ -1164,3 +1164,124 @@ fn dpapi_logout_removes_encrypted_cache() {
         "cache file should be deleted after logout"
     );
 }
+
+// ── WAM broker authentication tests ─────────────────────────────────────────
+
+#[test]
+fn wam_flag_accepted_by_parser() {
+    // The --wam flag should be accepted (not rejected by clap)
+    // On non-Windows it returns an error but does NOT crash
+    let assert = fabio().args(["auth", "login", "--wam"]).assert();
+    // On Linux/macOS: failure with INVALID_INPUT
+    // On Windows: would attempt WAM (may succeed or fail depending on sign-in state)
+    #[cfg(not(windows))]
+    assert.failure();
+    #[cfg(windows)]
+    let _ = assert; // may succeed or fail
+}
+
+#[test]
+#[cfg(not(windows))]
+fn wam_rejected_on_non_windows() {
+    let assert = fabio().args(["auth", "login", "--wam"]).assert().failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("only supported on Windows"),
+        "expected Windows-only error, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("INVALID_INPUT"),
+        "expected INVALID_INPUT code, got: {stderr}"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn wam_error_suggests_alternatives() {
+    let assert = fabio().args(["auth", "login", "--wam"]).assert().failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("device code") || stderr.contains("--service-principal"),
+        "error hint should suggest alternatives, got: {stderr}"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn wam_with_service_principal_prefers_sp() {
+    // --service-principal takes precedence over --wam (checked first in the if chain)
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--wam",
+            "--tenant",
+            "abc",
+            "--client-id",
+            "def",
+            "--client-secret",
+            "xyz",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    // Should fail at SP auth (reaching Azure), not at --wam platform check
+    assert!(
+        stderr.contains("AUTH_REQUIRED"),
+        "--service-principal should take precedence over --wam, got: {stderr}"
+    );
+}
+
+// ── Windows-only WAM E2E tests ──────────────────────────────────────────────
+
+#[test]
+#[cfg(windows)]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn wam_login_produces_structured_output() {
+    let assert = fabio().args(["auth", "login", "--wam"]).assert();
+
+    // WAM may succeed (if user is signed in) or fail (if not)
+    let output = &assert.get_output();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if output.status.success() {
+        let json: serde_json::Value = serde_json::from_str(&stdout).expect("stdout should be JSON");
+        let data = &json["data"];
+        assert_eq!(data["status"], "logged_in");
+        assert_eq!(data["credential_source"], "wam_broker");
+        assert!(data["expires_in_seconds"].is_number());
+    } else {
+        // Failure should still be structured JSON on stderr
+        let json: serde_json::Value =
+            serde_json::from_str(&stderr).expect("stderr should be JSON on failure");
+        assert_eq!(json["error"]["code"], "AUTH_REQUIRED");
+    }
+}
+
+#[test]
+#[cfg(windows)]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn wam_login_with_tenant_override() {
+    let assert = fabio()
+        .args(["auth", "login", "--wam", "--tenant", "organizations"])
+        .assert();
+
+    // Just verify it doesn't crash — result depends on Windows sign-in state
+    let output = &assert.get_output();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Output should be parseable JSON (either success or error)
+    if output.status.success() {
+        serde_json::from_str::<serde_json::Value>(&stdout).expect("stdout should be JSON");
+    } else {
+        serde_json::from_str::<serde_json::Value>(&stderr).expect("stderr should be JSON");
+    }
+}

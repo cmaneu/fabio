@@ -66,9 +66,14 @@ jsonpath-rust = "1"
 jmespath = "0.5.0"
 async-trait = "0.1.89"
 
-# DPAPI encryption for Windows token cache (user-scope, matches az CLI behavior)
+# DPAPI encryption + WAM broker auth for Windows
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Security_Cryptography", "Win32_Foundation"] }
+windows = { version = "0.58", features = [
+    "Foundation",
+    "Security_Authentication_Web_Core",
+    "Security_Credentials",
+] }
 
 [dev-dependencies]
 assert_cmd = "2"

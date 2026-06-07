@@ -690,6 +690,181 @@ impl azure_identity::ClientAssertion for StaticAssertion {
     }
 }
 
+// ── WAM broker authentication for Windows SSO ───────────────────────────────
+
+/// Acquire a token via Windows Web Account Manager (WAM) broker.
+///
+/// WAM provides SSO with the Windows account — no browser or device code flow needed.
+/// Tries silent token acquisition first (cached SSO), falls back to interactive UI.
+///
+/// The `client_id` should be the Fabio CLI app registration (public client).
+/// The `authority` is the AAD tenant (e.g., `"organizations"` for multi-tenant).
+#[cfg(windows)]
+pub async fn wam_login(
+    tenant: Option<&str>,
+    scope: Option<&str>,
+    client_id: Option<&str>,
+) -> Result<TokenData> {
+    use windows::Foundation::IAsyncOperation;
+    use windows::Security::Authentication::Web::Core::{
+        WebAuthenticationCoreManager, WebTokenRequest, WebTokenRequestResult, WebTokenRequestStatus,
+    };
+    use windows::Security::Credentials::WebAccountProvider;
+
+    let tenant = tenant.unwrap_or("organizations");
+    let scope = scope.unwrap_or(FABRIC_SCOPE);
+    let client_id = client_id.unwrap_or(PUBLIC_CLIENT_ID);
+
+    // Step 1: Find the AAD WAM provider
+    let authority = format!("https://login.microsoftonline.com/{tenant}");
+    let provider_op: IAsyncOperation<WebAccountProvider> =
+        WebAuthenticationCoreManager::FindAccountProviderWithAuthorityAsync(
+            &windows::core::HSTRING::from("https://login.microsoft.com"),
+            &windows::core::HSTRING::from(&authority),
+        )
+        .map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::AuthRequired,
+                format!("WAM: Failed to find account provider: {e}"),
+                "WAM broker requires Windows 10+ with a signed-in Microsoft account.".to_string(),
+            )
+        })?;
+
+    let provider = provider_op.get().map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::AuthRequired,
+            format!("WAM: Account provider not available: {e}"),
+            "Ensure you are signed in to Windows with a Microsoft (Entra ID) account.".to_string(),
+        )
+    })?;
+
+    // Step 2: Build token request
+    let request = WebTokenRequest::Create(
+        &provider,
+        &windows::core::HSTRING::from(scope),
+        &windows::core::HSTRING::from(client_id),
+    )
+    .map_err(|e| {
+        FabioError::new(
+            ErrorCode::AuthRequired,
+            format!("WAM: Failed to create token request: {e}"),
+        )
+    })?;
+
+    // Step 3: Try silent token acquisition (SSO, no UI)
+    let silent_op: IAsyncOperation<WebTokenRequestResult> =
+        WebAuthenticationCoreManager::GetTokenSilentlyAsync(&request).map_err(|e| {
+            FabioError::new(
+                ErrorCode::AuthRequired,
+                format!("WAM: Silent token request failed: {e}"),
+            )
+        })?;
+
+    let silent_result = silent_op.get().map_err(|e| {
+        FabioError::new(
+            ErrorCode::AuthRequired,
+            format!("WAM: Silent token request error: {e}"),
+        )
+    })?;
+
+    // Check if silent succeeded
+    let result = if silent_result.ResponseStatus()? == WebTokenRequestStatus::Success {
+        silent_result
+    } else {
+        // Step 4: Fall back to interactive UI
+        eprintln!("WAM: Silent SSO not available, requesting interactive sign-in...");
+        let interactive_op: IAsyncOperation<WebTokenRequestResult> =
+            WebAuthenticationCoreManager::RequestTokenAsync(&request).map_err(|e| {
+                FabioError::new(
+                    ErrorCode::AuthRequired,
+                    format!("WAM: Interactive token request failed: {e}"),
+                )
+            })?;
+
+        let interactive_result = interactive_op.get().map_err(|e| {
+            FabioError::new(
+                ErrorCode::AuthRequired,
+                format!("WAM: Interactive token error: {e}"),
+            )
+        })?;
+
+        if interactive_result.ResponseStatus()? != WebTokenRequestStatus::Success {
+            let error_status = interactive_result.ResponseStatus()?;
+            let error_msg = interactive_result
+                .ResponseError()
+                .ok()
+                .and_then(|e| e.ErrorMessage().ok())
+                .map_or_else(
+                    || format!("WAM authentication failed with status: {error_status:?}"),
+                    |msg| msg.to_string_lossy(),
+                );
+            return Err(FabioError::with_hint(
+                ErrorCode::AuthRequired,
+                error_msg,
+                "Ensure your Windows account is linked to an Entra ID tenant with Fabric access."
+                    .to_string(),
+            )
+            .into());
+        }
+
+        interactive_result
+    };
+
+    // Step 5: Extract the token from the response
+    let responses = result.ResponseData().map_err(|e| {
+        FabioError::new(
+            ErrorCode::AuthRequired,
+            format!("WAM: Failed to read response data: {e}"),
+        )
+    })?;
+
+    if responses.Size()? == 0 {
+        return Err(FabioError::new(
+            ErrorCode::AuthRequired,
+            "WAM: No token returned in response.",
+        )
+        .into());
+    }
+
+    let response = responses.GetAt(0).map_err(|e| {
+        FabioError::new(
+            ErrorCode::AuthRequired,
+            format!("WAM: Failed to get token response: {e}"),
+        )
+    })?;
+
+    let access_token = response
+        .Token()
+        .map_err(|e| {
+            FabioError::new(
+                ErrorCode::AuthRequired,
+                format!("WAM: Failed to extract token: {e}"),
+            )
+        })?
+        .to_string_lossy();
+
+    if access_token.is_empty() {
+        return Err(FabioError::new(ErrorCode::AuthRequired, "WAM: Received empty token.").into());
+    }
+
+    // WAM doesn't give us a precise expiry — assume 1 hour (standard AAD default)
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let data = TokenData {
+        access_token,
+        refresh_token: None, // WAM manages its own refresh
+        expires_on: now + 3600,
+        tenant: tenant.to_string(),
+        scope: scope.to_string(),
+    };
+
+    save_token(&data)?;
+    Ok(data)
+}
+
 // ── DPAPI encryption for Windows ────────────────────────────────────────────
 
 /// Encrypt data using Windows DPAPI (user scope).

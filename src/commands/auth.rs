@@ -7,7 +7,7 @@ use crate::token_cache;
 
 #[derive(Debug, Subcommand)]
 pub enum AuthCommand {
-    /// Log in to Microsoft Fabric via device code flow or service principal
+    /// Log in to Microsoft Fabric via device code flow, service principal, or WAM broker
     Login {
         /// Azure AD tenant ID (defaults to "common" for multi-tenant; required for --service-principal)
         #[arg(long)]
@@ -20,6 +20,10 @@ pub enum AuthCommand {
         /// Authenticate as a service principal (requires --tenant and --client-id)
         #[arg(long)]
         service_principal: bool,
+
+        /// Use Windows Web Account Manager (WAM) broker for SSO (Windows only)
+        #[arg(long)]
+        wam: bool,
 
         /// Application (client) ID of the service principal
         #[arg(long)]
@@ -57,6 +61,7 @@ pub async fn execute(cli: &Cli, command: &AuthCommand) -> Result<()> {
             tenant,
             scope,
             service_principal,
+            wam,
             client_id,
             client_secret,
             certificate,
@@ -75,6 +80,14 @@ pub async fn execute(cli: &Cli, command: &AuthCommand) -> Result<()> {
                     certificate_password.as_deref(),
                     federated_token.as_deref(),
                     federated_token_file.as_deref(),
+                )
+                .await
+            } else if *wam {
+                login_wam(
+                    cli,
+                    tenant.as_deref(),
+                    scope.as_deref(),
+                    client_id.as_deref(),
                 )
                 .await
             } else {
@@ -105,6 +118,50 @@ async fn login(cli: &Cli, tenant: Option<&str>, scope: Option<&str>) -> Result<(
     });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+#[allow(unused_variables, clippy::unused_async)]
+async fn login_wam(
+    cli: &Cli,
+    tenant: Option<&str>,
+    scope: Option<&str>,
+    client_id: Option<&str>,
+) -> Result<()> {
+    #[cfg(windows)]
+    {
+        let data = token_cache::wam_login(tenant, scope, client_id).await?;
+
+        let expires_in = data.expires_on.saturating_sub(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        );
+
+        let obj = serde_json::json!({
+            "status": "logged_in",
+            "credential_source": "wam_broker",
+            "tenant": data.tenant,
+            "expires_in_seconds": expires_in,
+            "message": "Successfully authenticated via Windows WAM broker (SSO). Token cached at ~/.fabio/token_cache.json"
+        });
+        output::render_object(cli, &obj, "status");
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    {
+        use crate::errors::{ErrorCode, FabioError};
+        // Suppress unused variable warnings
+        let _ = (cli, tenant, scope, client_id);
+        Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--wam is only supported on Windows.",
+            "Use 'fabio auth login' (device code) or --service-principal on this platform."
+                .to_string(),
+        )
+        .into())
+    }
 }
 
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
