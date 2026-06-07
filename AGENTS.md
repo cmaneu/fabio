@@ -38,7 +38,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, rti, rest, profile, jobs, feedback, operation, agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain, CSV, TSV formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
-- Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--verbose/-v` (HTTP/LRO/auth diagnostics on stderr), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`, `--lro-timeout`
+- Global options fully wired: `--output/-o`, `--query/-q` (JMESPath expression — see jmespath.org), `--quiet` (suppresses stdout), `--verbose/-v` (HTTP/LRO/auth diagnostics on stderr), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`, `--lro-timeout`
 - HTTP client: async get/post/put/patch/delete with LRO polling (`Location` + `x-ms-operation-id` + resource follow)
 - OneLake operations: DFS upload (create+append+flush), download, file listing; Blob API copy (server-side async)
 - **Parallel file/table operations**: Upload, copy, move support glob patterns with concurrent execution and rate-limit retry
@@ -154,7 +154,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 ## Key Decisions
 - JSON envelope always wraps output: lists get `{"data":[...],"count":N}`, objects get `{"data":{...}}`
 - Errors on stderr as `{"error":{"code":"...","message":"..."}}` with non-zero exit
-- `--query` supports simple dot-notation field projection (not full JMESPath; users can pipe to `jq`)
+- `--query` supports full JMESPath expressions (see jmespath.org) — filter, project, slice, multiselect, pipe, functions (length, sort_by, etc.)
 - `--quiet` suppresses all stdout; errors still go to stderr
 - OneLake upload uses DFS create+append+flush 3-step pattern
 - Notebook creation builds minimal .ipynb JSON, base64-encodes for Fabric API; `source` must be list of strings

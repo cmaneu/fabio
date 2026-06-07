@@ -102,7 +102,7 @@ fn global_flags() -> Vec<Flag> {
         Flag {
             name: "--query",
             kind: "string",
-            description: "Dot-notation field projection (e.g., 'id' or 'data.name')",
+            description: "JMESPath query expression (e.g., 'id', '[*].name', '[?size>`10`].id'). See https://jmespath.org/",
             default: None,
         },
         Flag {

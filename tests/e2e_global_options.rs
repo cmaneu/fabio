@@ -38,9 +38,9 @@ fn query_extracts_single_field_from_object() {
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn query_extracts_field_from_list() {
-    // Use --query to extract "displayName" from workspace list
+    // Use --query with JMESPath to extract "displayName" from workspace list
     let assert = fabio()
-        .args(["--query", "displayName", "workspace", "list"])
+        .args(["--query", "[*].displayName", "workspace", "list"])
         .assert()
         .success();
 
@@ -118,7 +118,7 @@ fn query_with_table_output() {
     fabio()
         .args([
             "--query",
-            "displayName",
+            "[*].displayName",
             "--output",
             "table",
             "workspace",

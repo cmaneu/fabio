@@ -10,7 +10,7 @@ All commands accept these global flags:
 |------|-------|-------------|
 | `--output` | `-o` | Output format: `json`, `table`, `plain`, `csv`, `tsv` |
 | `--json` | | Shorthand for `--output json` |
-| `--query` | `-q` | Dot-notation field projection |
+| `--query` | `-q` | JMESPath expression (see [jmespath.org](https://jmespath.org/)) |
 | `--quiet` | | Suppress all stdout output |
 | `--verbose` | `-v` | HTTP/LRO/auth diagnostic tracing on stderr (debugging only) |
 | `--dry-run` | | Preview mutations without executing |

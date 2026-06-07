@@ -323,26 +323,27 @@ fn format_csv_value(val: &Value, sep: char) -> String {
     }
 }
 
-/// Apply a simple dot-notation query to extract a field.
+/// Apply a `JMESPath` query expression to extract/transform data.
+///
+/// Uses full `JMESPath` specification (see <https://jmespath.org/>).
+/// Returns `Value::Null` if the expression is invalid or the result is null.
 pub fn apply_query(value: &Value, query: &str) -> Value {
-    let parts: Vec<&str> = query.split('.').collect();
-    let mut current = value;
-    for part in parts {
-        match current {
-            Value::Object(map) => {
-                current = map.get(part).unwrap_or(&Value::Null);
-            }
-            Value::Array(arr) => {
-                let extracted: Vec<Value> = arr
-                    .iter()
-                    .filter_map(|item| item.get(part).cloned())
-                    .collect();
-                return Value::Array(extracted);
-            }
-            _ => return Value::Null,
-        }
-    }
-    current.clone()
+    use std::convert::TryFrom;
+
+    let Ok(var) = jmespath::Variable::try_from(value) else {
+        return Value::Null;
+    };
+
+    let Ok(expr) = jmespath::compile(query) else {
+        return Value::Null;
+    };
+
+    let Ok(result) = expr.search(&var) else {
+        return Value::Null;
+    };
+
+    // Convert the JMESPath Variable back to serde_json::Value
+    serde_json::to_value(result.as_ref()).unwrap_or(Value::Null)
 }
 
 /// Decode base64-encoded definition parts inline.
@@ -393,11 +394,11 @@ mod tests {
 
     #[test]
     fn apply_query_extracts_array_field() {
-        let arr = serde_json::json!([
+        let obj = serde_json::json!({"items": [
             {"name": "alpha", "id": "1"},
             {"name": "beta", "id": "2"},
-        ]);
-        let result = apply_query(&arr, "name");
+        ]});
+        let result = apply_query(&obj, "items[*].name");
         assert_eq!(result, serde_json::json!(["alpha", "beta"]));
     }
 
@@ -410,6 +411,69 @@ mod tests {
     #[test]
     fn apply_query_on_null_returns_null() {
         assert_eq!(apply_query(&Value::Null, "anything"), Value::Null);
+    }
+
+    #[test]
+    fn apply_query_array_index() {
+        let obj = serde_json::json!({"items": ["a", "b", "c"]});
+        assert_eq!(apply_query(&obj, "items[0]"), serde_json::json!("a"));
+        assert_eq!(apply_query(&obj, "items[2]"), serde_json::json!("c"));
+    }
+
+    #[test]
+    fn apply_query_array_slice() {
+        let obj = serde_json::json!({"items": [0, 1, 2, 3, 4]});
+        assert_eq!(apply_query(&obj, "items[1:3]"), serde_json::json!([1, 2]));
+    }
+
+    #[test]
+    fn apply_query_multiselect_list() {
+        let obj = serde_json::json!({"a": 1, "b": 2, "c": 3});
+        assert_eq!(apply_query(&obj, "[a, c]"), serde_json::json!([1, 3]));
+    }
+
+    #[test]
+    fn apply_query_multiselect_hash() {
+        let obj = serde_json::json!({"name": "fabio", "version": "1.0"});
+        assert_eq!(
+            apply_query(&obj, "{tool: name, ver: version}"),
+            serde_json::json!({"tool": "fabio", "ver": "1.0"})
+        );
+    }
+
+    #[test]
+    fn apply_query_filter_expression() {
+        let obj = serde_json::json!({"items": [
+            {"name": "a", "size": 10},
+            {"name": "b", "size": 50},
+            {"name": "c", "size": 30},
+        ]});
+        let result = apply_query(&obj, "items[?size > `20`].name");
+        assert_eq!(result, serde_json::json!(["b", "c"]));
+    }
+
+    #[test]
+    fn apply_query_pipe_expression() {
+        let obj = serde_json::json!({"items": [
+            {"name": "alpha"},
+            {"name": "beta"},
+            {"name": "gamma"},
+        ]});
+        let result = apply_query(&obj, "items[*].name | [0]");
+        assert_eq!(result, serde_json::json!("alpha"));
+    }
+
+    #[test]
+    fn apply_query_length_function() {
+        let obj = serde_json::json!({"items": [1, 2, 3, 4, 5]});
+        assert_eq!(apply_query(&obj, "length(items)"), serde_json::json!(5));
+    }
+
+    #[test]
+    fn apply_query_invalid_expression_returns_null() {
+        let obj = serde_json::json!({"name": "test"});
+        // Invalid JMESPath syntax
+        assert_eq!(apply_query(&obj, "[[[invalid"), Value::Null);
     }
 
     #[test]

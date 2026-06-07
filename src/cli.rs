@@ -30,7 +30,7 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub json: bool,
 
-    /// Query projection (dot-notation field extraction)
+    /// `JMESPath` query expression (see <https://jmespath.org/>)
     #[arg(short, long, global = true)]
     pub query: Option<String>,
 
