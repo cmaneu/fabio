@@ -518,6 +518,7 @@ mod tests {
             quiet: false,
             force: false,
             dry_run: false,
+            verbose: false,
             limit: None,
             all: false,
             continuation_token: None,

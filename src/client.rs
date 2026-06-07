@@ -11,6 +11,7 @@ use tokio::time::sleep;
 use azure_core::credentials::TokenCredential;
 
 use crate::errors::{ErrorCode, FabioError};
+use crate::verbose;
 
 /// Maximum length of raw response body to include in error messages.
 /// Prevents leaking unbounded server-side error details.
@@ -184,6 +185,8 @@ pub struct FabricClient {
     private_link_workspace: Option<String>,
     /// Maximum time to wait for LRO polling (default: 120s).
     lro_max_wait: Duration,
+    /// When true, emit HTTP request/response diagnostics to stderr.
+    verbose: bool,
 }
 
 impl FabricClient {
@@ -207,6 +210,7 @@ impl FabricClient {
             credential_source: Arc::new(tokio::sync::RwLock::new(None)),
             private_link_workspace: None,
             lro_max_wait: LRO_MAX_WAIT,
+            verbose: false,
         }
     }
 
@@ -220,6 +224,12 @@ impl FabricClient {
     /// Set a custom LRO polling timeout (default: 120s).
     pub const fn with_lro_timeout(mut self, timeout: Duration) -> Self {
         self.lro_max_wait = timeout;
+        self
+    }
+
+    /// Enable verbose HTTP diagnostics (request/response tracing to stderr).
+    pub const fn with_verbose(mut self, verbose: bool) -> Self {
+        self.verbose = verbose;
         self
     }
 
@@ -288,12 +298,14 @@ impl FabricClient {
             let guard = self.fabric_token.read().await;
             if let Some(ref cached) = *guard {
                 if !cached.is_expired() {
+                    verbose::trace_auth_cache_hit(&FABRIC_SCOPE);
                     return Ok(cached.bearer_header.clone());
                 }
             }
         }
 
         let (token, source) = acquire_token(&FABRIC_SCOPE).await?;
+        verbose::trace_auth(&FABRIC_SCOPE, &source.to_string());
         let bearer = token.bearer_header.clone();
         let mut guard = self.fabric_token.write().await;
         *guard = Some(token);
@@ -686,6 +698,9 @@ impl FabricClient {
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
+        verbose::trace_request("GET", &url, None);
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .get(&url)
@@ -694,7 +709,10 @@ impl FabricClient {
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
+
         if resp.status() == StatusCode::UNAUTHORIZED {
+            verbose::trace_category("auth", "401 received, refreshing token and retrying");
             // Token may have expired server-side; refresh and retry once
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
@@ -705,6 +723,7 @@ impl FabricClient {
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
             return handle_response(resp).await;
         }
 
@@ -877,8 +896,18 @@ impl FabricClient {
         let mut attempt: u32 = 0;
         let mut transient_attempt: u32 = 0;
 
+        // Trace the body once (avoid re-tracing on retries)
+        let body_str = if verbose::is_enabled() {
+            Some(serde_json::to_string(body).unwrap_or_default())
+        } else {
+            None
+        };
+
         loop {
             let token = self.require_auth().await?;
+
+            verbose::trace_request("POST", &url, body_str.as_deref());
+            let start = std::time::Instant::now();
 
             let resp = self
                 .http
@@ -888,6 +917,8 @@ impl FabricClient {
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+            verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
             if resp.status() == StatusCode::UNAUTHORIZED {
                 self.invalidate_fabric_token().await;
@@ -1175,6 +1206,13 @@ impl FabricClient {
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
+        verbose::trace_request(
+            "PATCH",
+            &url,
+            Some(&serde_json::to_string(body).unwrap_or_default()),
+        );
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .patch(&url)
@@ -1183,6 +1221,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_fabric_token().await;
@@ -1206,6 +1246,13 @@ impl FabricClient {
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
+        verbose::trace_request(
+            "PUT",
+            &url,
+            Some(&serde_json::to_string(body).unwrap_or_default()),
+        );
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .put(&url)
@@ -1214,6 +1261,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_fabric_token().await;
@@ -1270,6 +1319,9 @@ impl FabricClient {
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
+        verbose::trace_request("DELETE", &url, None);
+        let start = std::time::Instant::now();
+
         let resp = self
             .http
             .delete(&url)
@@ -1277,6 +1329,8 @@ impl FabricClient {
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_fabric_token().await;
@@ -2051,8 +2105,18 @@ impl FabricClient {
         // a malicious Location header.
         validate_trusted_url(&poll_url, "LRO poll URL")?;
 
+        verbose::trace_category(
+            "lro",
+            &format!(
+                "polling {poll_url} (interval={}s, max={}s)",
+                poll_interval.as_secs(),
+                max_wait.as_secs()
+            ),
+        );
+
         let mut token = self.require_auth().await?;
         let start = std::time::Instant::now();
+        let mut poll_count: u32 = 0;
 
         loop {
             if start.elapsed() > max_wait {
@@ -2078,6 +2142,8 @@ impl FabricClient {
             if start.elapsed() > Duration::from_secs(240) {
                 token = self.require_auth().await?;
             }
+
+            poll_count += 1;
 
             let resp = self
                 .http
@@ -2116,8 +2182,20 @@ impl FabricClient {
                 let body: Value = resp.json().await.unwrap_or(Value::Null);
                 let op_status = body.get("status").and_then(Value::as_str).unwrap_or("");
 
+                let status_display = if op_status.is_empty() {
+                    format!("HTTP {}", status.as_u16())
+                } else {
+                    op_status.to_string()
+                };
+                verbose::trace_lro_poll(&poll_url, poll_count, &status_display);
+
                 match op_status {
                     "Succeeded" | "succeeded" => {
+                        verbose::trace_lro_complete(
+                            &poll_url,
+                            "Succeeded",
+                            start.elapsed().as_millis(),
+                        );
                         // Check if there's a resource location for the final result
                         if let Some(ref loc) = resource_location {
                             // Validate resource location to prevent token exfiltration
@@ -2144,6 +2222,11 @@ impl FabricClient {
                         return Ok(body);
                     }
                     "Failed" | "failed" => {
+                        verbose::trace_lro_complete(
+                            &poll_url,
+                            "Failed",
+                            start.elapsed().as_millis(),
+                        );
                         let msg = body
                             .get("error")
                             .and_then(|e| e.get("message"))

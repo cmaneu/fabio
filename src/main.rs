@@ -7,6 +7,7 @@ mod errors;
 mod output;
 mod parallel;
 mod token_cache;
+mod verbose;
 
 use std::io::Write;
 

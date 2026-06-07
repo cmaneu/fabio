@@ -62,6 +62,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub profile: Option<String>,
 
+    /// Enable verbose HTTP diagnostics on stderr (request/response tracing)
+    #[arg(long, short = 'v', global = true)]
+    pub verbose: bool,
+
     /// Maximum seconds to wait for long-running operations (default: 120)
     #[arg(long, global = true)]
     pub lro_timeout: Option<u64>,

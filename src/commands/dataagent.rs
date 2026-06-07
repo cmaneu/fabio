@@ -101,7 +101,7 @@ pub enum DataAgentCommand {
 
         /// Include execution details (SQL queries, tool calls, run steps)
         #[arg(long)]
-        verbose: bool,
+        show_steps: bool,
     },
 
     // ── Definitions ──────────────────────────────────────────────────────
@@ -194,7 +194,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             id,
             prompt,
             published_url,
-            verbose,
+            show_steps,
         } => query(
             cli,
             client,
@@ -202,7 +202,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             id,
             prompt.as_deref(),
             published_url.as_deref(),
-            *verbose,
+            *show_steps,
         )
         .await
         .map_err(|e| enrich_forbidden(e, "data-agent query", "Viewer")),

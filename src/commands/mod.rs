@@ -85,6 +85,12 @@ use crate::client::FabricClient;
 pub async fn execute(cli: Cli) -> Result<()> {
     let mut client = FabricClient::new();
 
+    // Enable verbose tracing if --verbose flag is set (and not --quiet)
+    if cli.verbose && !cli.quiet {
+        crate::verbose::enable();
+        client = client.with_verbose(true);
+    }
+
     // Apply LRO timeout from --lro-timeout flag if specified
     if let Some(timeout_secs) = cli.lro_timeout {
         client = client.with_lro_timeout(std::time::Duration::from_secs(timeout_secs));
