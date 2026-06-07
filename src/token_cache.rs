@@ -924,4 +924,97 @@ mod tests {
         let result = assertion.secret(None).await.unwrap();
         assert_eq!(result, "");
     }
+
+    // ── DPAPI unit tests (Windows only) ─────────────────────────────────
+
+    #[test]
+    #[cfg(windows)]
+    fn dpapi_encrypt_decrypt_roundtrip() {
+        let plaintext = b"hello fabio token cache";
+        let encrypted = dpapi_encrypt(plaintext).expect("encrypt should succeed");
+        assert_ne!(encrypted, plaintext, "encrypted must differ from plaintext");
+        let decrypted = dpapi_decrypt(&encrypted).expect("decrypt should succeed");
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn dpapi_encrypt_decrypt_json_roundtrip() {
+        let data = TokenData {
+            access_token: "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.test".to_string(),
+            refresh_token: Some("0.ARwA6L_K.AgABAAEAAAA".to_string()),
+            expires_on: 1_700_000_000,
+            tenant: "f32b018c-68ee-40d8-9e1a-d7ab42193a10".to_string(),
+            scope: "https://api.fabric.microsoft.com/.default".to_string(),
+        };
+        let json = serde_json::to_string_pretty(&data).unwrap();
+        let encrypted = dpapi_encrypt(json.as_bytes()).expect("encrypt should succeed");
+        let decrypted = dpapi_decrypt(&encrypted).expect("decrypt should succeed");
+        let restored: TokenData =
+            serde_json::from_slice(&decrypted).expect("should parse back to TokenData");
+        assert_eq!(restored.access_token, data.access_token);
+        assert_eq!(restored.refresh_token, data.refresh_token);
+        assert_eq!(restored.expires_on, data.expires_on);
+        assert_eq!(restored.tenant, data.tenant);
+        assert_eq!(restored.scope, data.scope);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn dpapi_encrypt_empty_data() {
+        let encrypted = dpapi_encrypt(b"").expect("encrypt empty should succeed");
+        let decrypted = dpapi_decrypt(&encrypted).expect("decrypt should succeed");
+        assert!(decrypted.is_empty());
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn dpapi_decrypt_garbage_fails() {
+        let result = dpapi_decrypt(b"this is not encrypted data");
+        assert!(result.is_err(), "decrypting garbage should fail");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn dpapi_encrypt_large_payload() {
+        // Tokens can be large (multi-KB JWTs)
+        let large = "x".repeat(16_384);
+        let encrypted = dpapi_encrypt(large.as_bytes()).expect("encrypt should succeed");
+        let decrypted = dpapi_decrypt(&encrypted).expect("decrypt should succeed");
+        assert_eq!(decrypted, large.as_bytes());
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn save_and_load_token_roundtrip_encrypted() {
+        // Full integration: save_token encrypts, load_cached_token decrypts
+        let data = TokenData {
+            access_token: "dpapi-roundtrip-test-token".to_string(),
+            refresh_token: None,
+            expires_on: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 7200,
+            tenant: "test-tenant".to_string(),
+            scope: "https://api.fabric.microsoft.com/.default".to_string(),
+        };
+        save_token(&data).expect("save should succeed");
+        let loaded = load_cached_token().expect("load should return saved token");
+        assert_eq!(loaded.access_token, "dpapi-roundtrip-test-token");
+        assert!(loaded.refresh_token.is_none());
+        assert_eq!(loaded.tenant, "test-tenant");
+
+        // Verify the file on disk is NOT plaintext
+        let path = cache_path().unwrap();
+        let raw_bytes = std::fs::read(&path).unwrap();
+        let raw_str = String::from_utf8(raw_bytes.clone());
+        assert!(
+            raw_str.is_err() || !raw_str.unwrap().contains("dpapi-roundtrip-test-token"),
+            "token should be encrypted on disk, not plaintext"
+        );
+
+        // Clean up
+        std::fs::remove_file(&path).ok();
+    }
 }

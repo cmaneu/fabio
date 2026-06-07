@@ -1095,3 +1095,72 @@ fn sp_login_federated_token_file_with_newlines_trimmed() {
 
     std::fs::remove_file(&token_file).ok();
 }
+
+// ── DPAPI token cache encryption tests (Windows only) ───────────────────────
+
+#[test]
+#[cfg(windows)]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dpapi_login_creates_encrypted_cache() {
+    // After a successful auth status (which caches a token), the cache file
+    // should contain encrypted (non-JSON) content on Windows
+    let assert = fabio().args(["auth", "status"]).assert().success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "authenticated");
+
+    // Check the cache file is NOT plaintext JSON
+    let home = home::home_dir().expect("home dir");
+    let cache_path = home.join(".fabio").join("token_cache.json");
+    if cache_path.exists() {
+        let raw = std::fs::read(&cache_path).unwrap();
+        let as_str = String::from_utf8(raw.clone());
+        // If it's valid UTF-8 that parses as JSON, it's NOT encrypted
+        let is_plaintext = as_str
+            .as_ref()
+            .ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+            .is_some();
+        assert!(
+            !is_plaintext,
+            "token cache should be DPAPI-encrypted on Windows, not plaintext JSON"
+        );
+    }
+}
+
+#[test]
+#[cfg(windows)]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dpapi_encrypted_cache_is_readable_after_write() {
+    // Auth status writes to cache, subsequent auth status reads it back
+    fabio().args(["auth", "status"]).assert().success();
+
+    // Second call should also succeed (reads the DPAPI-encrypted cache)
+    let assert = fabio().args(["auth", "status"]).assert().success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "authenticated");
+}
+
+#[test]
+#[cfg(windows)]
+fn dpapi_logout_removes_encrypted_cache() {
+    // After logout, the cache file should be deleted
+    let home = home::home_dir().expect("home dir");
+    let cache_path = home.join(".fabio").join("token_cache.json");
+
+    // Create a dummy cache file
+    std::fs::create_dir_all(cache_path.parent().unwrap()).ok();
+    std::fs::write(&cache_path, b"dummy").ok();
+
+    fabio().args(["auth", "logout"]).assert().success();
+
+    assert!(
+        !cache_path.exists(),
+        "cache file should be deleted after logout"
+    );
+}
