@@ -1090,10 +1090,11 @@ pub async fn wam_login(
 /// Encrypt data using Windows DPAPI (user scope).
 /// Only the current Windows user can decrypt the result.
 #[cfg(windows)]
+#[allow(unsafe_code)]
 fn dpapi_encrypt(data: &[u8]) -> Result<Vec<u8>> {
     use windows_sys::Win32::Security::Cryptography::{CRYPT_INTEGER_BLOB, CryptProtectData};
 
-    let mut input = CRYPT_INTEGER_BLOB {
+    let input = CRYPT_INTEGER_BLOB {
         cbData: u32::try_from(data.len()).unwrap_or(u32::MAX),
         pbData: data.as_ptr().cast_mut(),
     };
@@ -1103,7 +1104,9 @@ fn dpapi_encrypt(data: &[u8]) -> Result<Vec<u8>> {
         pbData: std::ptr::null_mut(),
     };
 
-    // Flags: 0 = user scope (default, only current user can decrypt)
+    // SAFETY: CryptProtectData is a Windows API that encrypts data using the
+    // current user's credentials. Input is a valid byte slice, output is zeroed.
+    // We free the output buffer with LocalFree after copying.
     let result = unsafe {
         CryptProtectData(
             &input,
@@ -1124,10 +1127,11 @@ fn dpapi_encrypt(data: &[u8]) -> Result<Vec<u8>> {
         .into());
     }
 
+    // SAFETY: output.pbData was allocated by CryptProtectData and is valid for cbData bytes.
     let encrypted =
         unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec() };
 
-    // Free the buffer allocated by DPAPI
+    // SAFETY: LocalFree releases the buffer allocated by CryptProtectData.
     unsafe {
         windows_sys::Win32::Foundation::LocalFree(output.pbData.cast());
     }
@@ -1137,10 +1141,11 @@ fn dpapi_encrypt(data: &[u8]) -> Result<Vec<u8>> {
 
 /// Decrypt data using Windows DPAPI (user scope).
 #[cfg(windows)]
+#[allow(unsafe_code)]
 fn dpapi_decrypt(data: &[u8]) -> Result<Vec<u8>> {
     use windows_sys::Win32::Security::Cryptography::{CRYPT_INTEGER_BLOB, CryptUnprotectData};
 
-    let mut input = CRYPT_INTEGER_BLOB {
+    let input = CRYPT_INTEGER_BLOB {
         cbData: u32::try_from(data.len()).unwrap_or(u32::MAX),
         pbData: data.as_ptr().cast_mut(),
     };
@@ -1150,6 +1155,8 @@ fn dpapi_decrypt(data: &[u8]) -> Result<Vec<u8>> {
         pbData: std::ptr::null_mut(),
     };
 
+    // SAFETY: CryptUnprotectData decrypts data previously encrypted with CryptProtectData.
+    // Input is a valid byte slice, output is zeroed. We free the output buffer with LocalFree.
     let result = unsafe {
         CryptUnprotectData(
             &input,
@@ -1170,9 +1177,11 @@ fn dpapi_decrypt(data: &[u8]) -> Result<Vec<u8>> {
         .into());
     }
 
+    // SAFETY: output.pbData was allocated by CryptUnprotectData and is valid for cbData bytes.
     let decrypted =
         unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec() };
 
+    // SAFETY: LocalFree releases the buffer allocated by CryptUnprotectData.
     unsafe {
         windows_sys::Win32::Foundation::LocalFree(output.pbData.cast());
     }
