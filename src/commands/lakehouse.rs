@@ -17,14 +17,14 @@ pub enum LakehouseCommand {
     #[command(display_order = 0)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Show details of a lakehouse
     #[command(display_order = 0)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -35,7 +35,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 0)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse display name
@@ -54,7 +54,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 0)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -73,7 +73,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 0)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -90,7 +90,7 @@ pub enum LakehouseCommand {
     #[command(visible_alias = "tables", display_order = 1)]
     ListTables {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -101,7 +101,7 @@ pub enum LakehouseCommand {
     #[command(visible_alias = "files", display_order = 2)]
     ListFiles {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -118,7 +118,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 3)]
     Query {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -135,7 +135,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 10)]
     Upload {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -154,7 +154,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 11)]
     Download {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -173,7 +173,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 12)]
     UploadTable {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -200,7 +200,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 13)]
     LoadTable {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -390,7 +390,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 30)]
     DeleteFile {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -405,7 +405,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 31)]
     DeleteTable {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -422,7 +422,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 40)]
     CreateShortcut {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -453,7 +453,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 41)]
     GetShortcut {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -472,7 +472,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 42)]
     DeleteShortcut {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -492,7 +492,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 43)]
     BulkCreateShortcuts {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -517,7 +517,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 50)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -532,7 +532,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 51)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -553,7 +553,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 60)]
     RefreshMaterializedViews {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -564,7 +564,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 61)]
     CreateMaterializedViewsSchedule {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -583,7 +583,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 62)]
     UpdateMaterializedViewsSchedule {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -606,7 +606,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 63)]
     DeleteMaterializedViewsSchedule {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -623,7 +623,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 70)]
     RunTableMaintenance {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -643,7 +643,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 71)]
     OptimizeTable {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -671,7 +671,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 72)]
     VacuumTable {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -695,7 +695,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 73)]
     TableSchema {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -712,7 +712,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 80)]
     ListLivySessions {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID
@@ -723,7 +723,7 @@ pub enum LakehouseCommand {
     #[command(display_order = 81)]
     GetLivySession {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Lakehouse ID

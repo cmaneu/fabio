@@ -13,14 +13,14 @@ pub enum PaginatedReportCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Update paginated report properties (name and/or description)
     #[command(display_order = 2)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Paginated report ID

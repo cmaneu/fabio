@@ -129,3 +129,193 @@ fn profile_show_nonexistent_fails() {
     let json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
     assert_eq!(json["error"]["code"], "NOT_FOUND");
 }
+
+#[test]
+#[serial]
+fn profile_workspace_default_used_when_flag_omitted() {
+    // Save and activate a profile with a workspace
+    fabio()
+        .args([
+            "profile",
+            "save",
+            "--name",
+            "test-ws-default",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+    fabio()
+        .args(["profile", "use", "--name", "test-ws-default"])
+        .assert()
+        .success();
+
+    // Run a dry-run command WITHOUT --workspace; it should pick up from profile
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "item",
+            "create",
+            "--name",
+            "test-item",
+            "--type",
+            "Notebook",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let data = &json["data"];
+    assert_eq!(data["dry_run"], true);
+    // The workspace in the dry-run details should match the profile value
+    assert_eq!(
+        data["details"]["workspace"],
+        "aaaaaaaa-1111-2222-3333-444444444444"
+    );
+
+    // Cleanup
+    fabio()
+        .args(["profile", "delete", "--name", "test-ws-default"])
+        .assert()
+        .success();
+}
+
+#[test]
+#[serial]
+fn profile_output_default_applied() {
+    // Save and activate a profile with output=table
+    fabio()
+        .args([
+            "profile",
+            "save",
+            "--name",
+            "test-output-default",
+            "--workspace",
+            "ws-out-test",
+            "--default-output",
+            "table",
+        ])
+        .assert()
+        .success();
+    fabio()
+        .args(["profile", "use", "--name", "test-output-default"])
+        .assert()
+        .success();
+
+    // Run profile list WITHOUT --output; should produce table format (not JSON)
+    let assert = fabio().args(["profile", "list"]).assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    // Table format uses +---+ separators and column headers
+    assert!(
+        stdout.contains("+--"),
+        "Expected table format from profile output default, got: {stdout}"
+    );
+
+    // Cleanup
+    fabio()
+        .args([
+            "--output",
+            "json",
+            "profile",
+            "delete",
+            "--name",
+            "test-output-default",
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[serial]
+fn profile_explicit_flag_overrides_profile_default() {
+    // Save and activate a profile with output=table
+    fabio()
+        .args([
+            "profile",
+            "save",
+            "--name",
+            "test-override",
+            "--workspace",
+            "ws-override",
+            "--default-output",
+            "table",
+        ])
+        .assert()
+        .success();
+    fabio()
+        .args(["profile", "use", "--name", "test-override"])
+        .assert()
+        .success();
+
+    // Explicit --output json should override the profile's table default
+    let assert = fabio()
+        .args(["--output", "json", "profile", "list"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    // Should be valid JSON (not table format)
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(json["data"].is_array());
+
+    // Cleanup
+    fabio()
+        .args([
+            "--output",
+            "json",
+            "profile",
+            "delete",
+            "--name",
+            "test-override",
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[serial]
+fn profile_env_var_overrides_profile_default() {
+    // Save and activate a profile with output=table
+    fabio()
+        .args([
+            "profile",
+            "save",
+            "--name",
+            "test-env-override",
+            "--workspace",
+            "ws-env",
+            "--default-output",
+            "table",
+        ])
+        .assert()
+        .success();
+    fabio()
+        .args(["profile", "use", "--name", "test-env-override"])
+        .assert()
+        .success();
+
+    // External env var should override profile default
+    let assert = fabio()
+        .env("FABIO_OUTPUT", "csv")
+        .args(["profile", "list"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    // CSV format has comma-separated values
+    assert!(
+        stdout.contains(','),
+        "Expected CSV format from env var override, got: {stdout}"
+    );
+
+    // Cleanup
+    fabio()
+        .args([
+            "--output",
+            "json",
+            "profile",
+            "delete",
+            "--name",
+            "test-env-override",
+        ])
+        .assert()
+        .success();
+}

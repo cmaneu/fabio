@@ -18,14 +18,14 @@ pub enum NotebookCommand {
     #[command(display_order = 0)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Show details of a notebook
     #[command(display_order = 0)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Notebook item ID
@@ -36,7 +36,7 @@ pub enum NotebookCommand {
     #[command(display_order = 1)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Notebook display name
@@ -55,7 +55,7 @@ pub enum NotebookCommand {
     #[command(display_order = 2)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Notebook item ID
@@ -74,7 +74,7 @@ pub enum NotebookCommand {
     #[command(display_order = 3)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Notebook item ID
@@ -89,7 +89,7 @@ pub enum NotebookCommand {
     #[command(display_order = 4)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Notebook item ID
@@ -108,7 +108,7 @@ pub enum NotebookCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Notebook item ID
@@ -125,7 +125,7 @@ pub enum NotebookCommand {
     #[command(display_order = 10)]
     Run {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Notebook item ID
@@ -140,7 +140,7 @@ pub enum NotebookCommand {
         #[arg(long)]
         compute_type: Option<String>,
 
-        /// Full execution data as JSON (advanced; overrides --compute-type)
+        /// Full execution data as JSON (advanced; overrides --compute-type). Supports @file.json or @- for stdin.
         #[arg(long)]
         execution_data: Option<String>,
 
@@ -156,7 +156,7 @@ pub enum NotebookCommand {
     #[command(display_order = 11)]
     Status {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Notebook item ID
@@ -171,7 +171,7 @@ pub enum NotebookCommand {
     #[command(name = "get-job-instance", display_order = 12)]
     GetJobInstance {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Notebook item ID
@@ -186,7 +186,7 @@ pub enum NotebookCommand {
     #[command(display_order = 13)]
     Stop {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Notebook item ID
@@ -203,7 +203,7 @@ pub enum NotebookCommand {
     #[command(name = "list-livy-sessions", display_order = 15)]
     ListLivySessions {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Notebook item ID
@@ -214,7 +214,7 @@ pub enum NotebookCommand {
     #[command(name = "get-livy-session", display_order = 16)]
     GetLivySession {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Notebook item ID
@@ -901,6 +901,27 @@ fn strip_notebook_outputs(data: &mut Value) {
     }
 }
 
+/// Resolve a CLI value that may be inline JSON, `@file.json`, or `@-` (stdin).
+fn resolve_json_input(input: &str, flag_name: &str) -> Result<String> {
+    if input == "@-" {
+        use std::io::Read;
+        let mut buf = String::new();
+        std::io::stdin().read_to_string(&mut buf)?;
+        Ok(buf)
+    } else if let Some(file_path) = input.strip_prefix('@') {
+        std::fs::read_to_string(file_path).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Failed to read file '{file_path}': {e}"),
+                format!("Provide a valid file path after @, e.g.: {flag_name} @path/to/file.json"),
+            )
+            .into()
+        })
+    } else {
+        Ok(input.to_string())
+    }
+}
+
 /// Build the request body for notebook run from CLI flags.
 fn build_run_body(
     parameters: Option<&str>,
@@ -916,11 +937,12 @@ fn build_run_body(
 
     // Parse parameters
     if let Some(params_str) = parameters {
-        let params: Value = serde_json::from_str(params_str).map_err(|e| {
+        let resolved = resolve_json_input(params_str, "--parameters")?;
+        let params: Value = serde_json::from_str(resolved.trim()).map_err(|e| {
             FabioError::with_hint(
                 ErrorCode::InvalidInput,
                 format!("Invalid --parameters JSON: {e}"),
-                r#"Expected JSON array, e.g.: [{"name":"p1","value":"v1","type":"Text"}]"#
+                r#"Expected JSON array, e.g.: [{"name":"p1","value":"v1","type":"Text"}]. Supports @file.json or @- for stdin."#
                     .to_string(),
             )
         })?;
@@ -929,12 +951,13 @@ fn build_run_body(
 
     // Build executionData
     if let Some(ed_str) = execution_data {
+        let resolved = resolve_json_input(ed_str, "--execution-data")?;
         // Full execution data overrides --compute-type
-        let ed: Value = serde_json::from_str(ed_str).map_err(|e| {
+        let ed: Value = serde_json::from_str(resolved.trim()).map_err(|e| {
             FabioError::with_hint(
                 ErrorCode::InvalidInput,
                 format!("Invalid --execution-data JSON: {e}"),
-                r#"Expected JSON object, e.g.: {"compute":"Spark","computeConfiguration":{...}}"#
+                r#"Expected JSON object, e.g.: {"compute":"Spark","computeConfiguration":{...}}. Supports @file.json or @- for stdin."#
                     .to_string(),
             )
         })?;
@@ -1048,5 +1071,82 @@ mod tests {
         strip_notebook_outputs(&mut data);
         // Should not panic
         assert_eq!(data, json!({"id": "test"}));
+    }
+
+    #[test]
+    fn resolve_json_input_inline_passthrough() {
+        let input = r#"{"compute":"Spark"}"#;
+        let result = resolve_json_input(input, "--execution-data").unwrap();
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn resolve_json_input_from_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("exec.json");
+        std::fs::write(&file_path, r#"{"compute":"Jupyter"}"#).unwrap();
+
+        let input = format!("@{}", file_path.display());
+        let result = resolve_json_input(&input, "--execution-data").unwrap();
+        assert_eq!(result, r#"{"compute":"Jupyter"}"#);
+    }
+
+    #[test]
+    fn resolve_json_input_file_not_found() {
+        let result = resolve_json_input("@/nonexistent/path.json", "--execution-data");
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to read file"));
+    }
+
+    #[test]
+    fn build_run_body_execution_data_from_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("exec_data.json");
+        std::fs::write(
+            &file_path,
+            r#"{"compute":"Spark","computeConfiguration":{"x":1}}"#,
+        )
+        .unwrap();
+
+        let input = format!("@{}", file_path.display());
+        let body = build_run_body(None, None, Some(&input)).unwrap();
+        assert_eq!(
+            body["executionData"],
+            json!({"compute":"Spark","computeConfiguration":{"x":1}})
+        );
+    }
+
+    #[test]
+    fn build_run_body_parameters_from_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("params.json");
+        std::fs::write(&file_path, r#"[{"name":"p1","value":"v1","type":"Text"}]"#).unwrap();
+
+        let input = format!("@{}", file_path.display());
+        let body = build_run_body(Some(&input), None, None).unwrap();
+        assert_eq!(
+            body["parameters"],
+            json!([{"name":"p1","value":"v1","type":"Text"}])
+        );
+    }
+
+    #[test]
+    fn build_run_body_execution_data_invalid_file_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("bad.json");
+        std::fs::write(&file_path, "not valid json").unwrap();
+
+        let input = format!("@{}", file_path.display());
+        let result = build_run_body(None, None, Some(&input));
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Invalid --execution-data JSON"));
+    }
+
+    #[test]
+    fn build_run_body_inline_still_works() {
+        let body = build_run_body(None, None, Some(r#"{"compute":"Spark"}"#)).unwrap();
+        assert_eq!(body["executionData"], json!({"compute":"Spark"}));
     }
 }

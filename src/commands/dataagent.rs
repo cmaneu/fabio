@@ -22,13 +22,13 @@ pub enum DataAgentCommand {
     /// List data agents in a workspace
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Show details of a data agent
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Data agent ID
@@ -38,7 +38,7 @@ pub enum DataAgentCommand {
     /// Create a new data agent
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Data agent display name
@@ -52,7 +52,7 @@ pub enum DataAgentCommand {
     /// Update a data agent (name and/or description)
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Data agent ID
@@ -70,7 +70,7 @@ pub enum DataAgentCommand {
     /// Delete a data agent
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Data agent ID
@@ -84,7 +84,7 @@ pub enum DataAgentCommand {
     /// Query (chat with) a published data agent using natural language
     Query {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Data agent ID
@@ -109,7 +109,7 @@ pub enum DataAgentCommand {
     #[command(display_order = 10)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Data agent ID
@@ -120,7 +120,7 @@ pub enum DataAgentCommand {
     #[command(display_order = 11)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Data agent ID
@@ -143,7 +143,7 @@ pub enum DataAgentCommand {
     #[command(display_order = 12)]
     Publish {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Data agent ID

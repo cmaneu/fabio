@@ -16,14 +16,14 @@ pub enum SemanticModelCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Show details of a semantic model
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -34,7 +34,7 @@ pub enum SemanticModelCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model display name
@@ -57,7 +57,7 @@ pub enum SemanticModelCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -76,7 +76,7 @@ pub enum SemanticModelCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -91,7 +91,7 @@ pub enum SemanticModelCommand {
     #[command(name = "get-definition", display_order = 6)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -102,7 +102,7 @@ pub enum SemanticModelCommand {
     #[command(name = "update-definition", display_order = 7)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -117,7 +117,7 @@ pub enum SemanticModelCommand {
     #[command(display_order = 8)]
     Query {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -136,7 +136,7 @@ pub enum SemanticModelCommand {
     #[command(name = "bind-connection", display_order = 10)]
     BindConnection {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -151,7 +151,7 @@ pub enum SemanticModelCommand {
     #[command(name = "unbind-connection", display_order = 10)]
     UnbindConnection {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -162,7 +162,7 @@ pub enum SemanticModelCommand {
     #[command(display_order = 11)]
     Refresh {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -177,7 +177,7 @@ pub enum SemanticModelCommand {
     #[command(display_order = 12)]
     Takeover {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -188,7 +188,7 @@ pub enum SemanticModelCommand {
     #[command(name = "list-parameters", display_order = 13)]
     ListParameters {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -199,7 +199,7 @@ pub enum SemanticModelCommand {
     #[command(name = "update-parameters", display_order = 14)]
     UpdateParameters {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -214,7 +214,7 @@ pub enum SemanticModelCommand {
     #[command(name = "list-datasources", display_order = 15)]
     ListDatasources {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -225,7 +225,7 @@ pub enum SemanticModelCommand {
     #[command(name = "update-datasources", display_order = 16)]
     UpdateDatasources {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -240,7 +240,7 @@ pub enum SemanticModelCommand {
     #[command(name = "list-users", display_order = 17)]
     ListUsers {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -251,7 +251,7 @@ pub enum SemanticModelCommand {
     #[command(name = "add-user", display_order = 18)]
     AddUser {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -274,7 +274,7 @@ pub enum SemanticModelCommand {
     #[command(name = "delete-user", display_order = 19)]
     DeleteUser {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -289,7 +289,7 @@ pub enum SemanticModelCommand {
     #[command(name = "refresh-status", display_order = 20)]
     RefreshStatus {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -304,7 +304,7 @@ pub enum SemanticModelCommand {
     #[command(name = "list-upstream", display_order = 21)]
     ListUpstream {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -315,7 +315,7 @@ pub enum SemanticModelCommand {
     #[command(display_order = 22)]
     Clone {
         /// Source workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID to clone
@@ -334,7 +334,7 @@ pub enum SemanticModelCommand {
     #[command(name = "export-pbix", display_order = 23)]
     ExportPbix {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Semantic model ID
@@ -349,7 +349,7 @@ pub enum SemanticModelCommand {
     #[command(name = "import-pbix", display_order = 24)]
     ImportPbix {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Display name for the imported model

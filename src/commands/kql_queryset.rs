@@ -16,14 +16,14 @@ pub enum KqlQuerysetCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Show details of a KQL queryset
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// KQL queryset ID
@@ -34,7 +34,7 @@ pub enum KqlQuerysetCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Queryset display name
@@ -49,7 +49,7 @@ pub enum KqlQuerysetCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// KQL queryset ID
@@ -68,7 +68,7 @@ pub enum KqlQuerysetCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// KQL queryset ID
@@ -85,7 +85,7 @@ pub enum KqlQuerysetCommand {
     #[command(display_order = 6)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// KQL queryset ID
@@ -96,7 +96,7 @@ pub enum KqlQuerysetCommand {
     #[command(display_order = 7)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// KQL queryset ID
@@ -117,7 +117,7 @@ pub enum KqlQuerysetCommand {
     #[command(display_order = 8)]
     Run {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// KQL queryset ID

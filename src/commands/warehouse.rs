@@ -16,14 +16,14 @@ pub enum WarehouseCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Show details of a warehouse
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse item ID
@@ -34,7 +34,7 @@ pub enum WarehouseCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse display name
@@ -49,7 +49,7 @@ pub enum WarehouseCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse item ID
@@ -68,7 +68,7 @@ pub enum WarehouseCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse item ID
@@ -83,7 +83,7 @@ pub enum WarehouseCommand {
     #[command(display_order = 10)]
     Query {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse or Lakehouse item ID
@@ -98,7 +98,7 @@ pub enum WarehouseCommand {
     #[command(display_order = 15)]
     ConnectionString {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse item ID
@@ -117,14 +117,14 @@ pub enum WarehouseCommand {
     #[command(display_order = 20)]
     GetSqlPoolsConfig {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Update SQL pools configuration for a workspace
     #[command(display_order = 21)]
     UpdateSqlPoolsConfig {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with configuration (prefix with @)
@@ -139,7 +139,7 @@ pub enum WarehouseCommand {
     #[command(display_order = 25)]
     GetAuditSettings {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse item ID
@@ -150,7 +150,7 @@ pub enum WarehouseCommand {
     #[command(display_order = 26)]
     UpdateAuditSettings {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse item ID
@@ -173,7 +173,7 @@ pub enum WarehouseCommand {
     #[command(display_order = 27)]
     SetAuditActions {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse item ID
@@ -188,7 +188,7 @@ pub enum WarehouseCommand {
     #[command(display_order = 30)]
     ListRestorePoints {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse item ID
@@ -199,7 +199,7 @@ pub enum WarehouseCommand {
     #[command(display_order = 31)]
     CreateRestorePoint {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse item ID
@@ -214,7 +214,7 @@ pub enum WarehouseCommand {
     #[command(display_order = 32)]
     ShowRestorePoint {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse item ID
@@ -229,7 +229,7 @@ pub enum WarehouseCommand {
     #[command(display_order = 33)]
     UpdateRestorePoint {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse item ID
@@ -248,7 +248,7 @@ pub enum WarehouseCommand {
     #[command(display_order = 34)]
     DeleteRestorePoint {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse item ID
@@ -263,7 +263,7 @@ pub enum WarehouseCommand {
     #[command(display_order = 36)]
     RestoreToPoint {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Warehouse item ID

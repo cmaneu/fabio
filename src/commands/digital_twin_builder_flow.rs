@@ -14,14 +14,14 @@ pub enum DigitalTwinBuilderFlowCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Show details of a Digital Twin Builder flow
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
         /// Digital Twin Builder flow ID
         #[arg(long)]
@@ -31,7 +31,7 @@ pub enum DigitalTwinBuilderFlowCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
         /// Display name (letters, numbers, underscores only — no hyphens)
         #[arg(long)]
@@ -47,7 +47,7 @@ pub enum DigitalTwinBuilderFlowCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
         /// Digital Twin Builder flow ID
         #[arg(long)]
@@ -63,7 +63,7 @@ pub enum DigitalTwinBuilderFlowCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
         /// Digital Twin Builder flow ID
         #[arg(long)]
@@ -77,7 +77,7 @@ pub enum DigitalTwinBuilderFlowCommand {
     #[command(display_order = 6)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
         /// Digital Twin Builder flow ID
         #[arg(long)]
@@ -90,7 +90,7 @@ pub enum DigitalTwinBuilderFlowCommand {
     #[command(display_order = 7)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
         /// Digital Twin Builder flow ID
         #[arg(long)]

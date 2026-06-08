@@ -28,7 +28,7 @@ pub enum JobSchedulerCommand {
     #[command(display_order = 1)]
     ListInstances {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -39,7 +39,7 @@ pub enum JobSchedulerCommand {
     #[command(display_order = 2)]
     GetInstance {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -54,7 +54,7 @@ pub enum JobSchedulerCommand {
     #[command(display_order = 3)]
     RunOnDemand {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -85,7 +85,7 @@ pub enum JobSchedulerCommand {
     #[command(display_order = 4)]
     CancelInstance {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -102,7 +102,7 @@ pub enum JobSchedulerCommand {
     #[command(display_order = 10)]
     ListSchedules {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -117,7 +117,7 @@ pub enum JobSchedulerCommand {
     #[command(display_order = 11)]
     GetSchedule {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -136,7 +136,7 @@ pub enum JobSchedulerCommand {
     #[command(display_order = 12)]
     CreateSchedule {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -160,7 +160,7 @@ pub enum JobSchedulerCommand {
     #[command(display_order = 13)]
     UpdateSchedule {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -187,7 +187,7 @@ pub enum JobSchedulerCommand {
     #[command(display_order = 14)]
     DeleteSchedule {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID

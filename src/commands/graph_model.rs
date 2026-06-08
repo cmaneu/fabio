@@ -16,14 +16,14 @@ pub enum GraphModelCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Show details of a graph model
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Graph model ID
@@ -34,7 +34,7 @@ pub enum GraphModelCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Display name
@@ -53,7 +53,7 @@ pub enum GraphModelCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Graph model ID
@@ -72,7 +72,7 @@ pub enum GraphModelCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Graph model ID
@@ -87,7 +87,7 @@ pub enum GraphModelCommand {
     #[command(display_order = 6)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Graph model ID
@@ -102,7 +102,7 @@ pub enum GraphModelCommand {
     #[command(display_order = 7)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Graph model ID
@@ -121,7 +121,7 @@ pub enum GraphModelCommand {
     #[command(display_order = 10)]
     RefreshGraph {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Graph model ID
@@ -140,7 +140,7 @@ pub enum GraphModelCommand {
     #[command(display_order = 11)]
     ExecuteQuery {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Graph model ID
@@ -155,7 +155,7 @@ pub enum GraphModelCommand {
     #[command(display_order = 12)]
     GetQueryableGraphType {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Graph model ID
@@ -166,7 +166,7 @@ pub enum GraphModelCommand {
     #[command(display_order = 20)]
     Initialize {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Graph model ID

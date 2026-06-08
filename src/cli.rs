@@ -23,7 +23,13 @@ use crate::commands::{
 #[allow(clippy::struct_excessive_bools)]
 pub struct Cli {
     /// Output format
-    #[arg(short, long, global = true, default_value = "json")]
+    #[arg(
+        short,
+        long,
+        global = true,
+        default_value = "json",
+        env = "FABIO_OUTPUT"
+    )]
     pub output: OutputFormat,
 
     /// Shorthand for --output json (agent-native convention)

@@ -14,14 +14,14 @@ pub enum MirroredDatabricksCatalogCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Show details of a mirrored Azure Databricks catalog
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Mirrored Databricks catalog ID
@@ -32,7 +32,7 @@ pub enum MirroredDatabricksCatalogCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Display name
@@ -47,7 +47,7 @@ pub enum MirroredDatabricksCatalogCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Mirrored Databricks catalog ID
@@ -66,7 +66,7 @@ pub enum MirroredDatabricksCatalogCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Mirrored Databricks catalog ID
@@ -81,7 +81,7 @@ pub enum MirroredDatabricksCatalogCommand {
     #[command(display_order = 6)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Mirrored Databricks catalog ID
@@ -96,7 +96,7 @@ pub enum MirroredDatabricksCatalogCommand {
     #[command(display_order = 7)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Mirrored Databricks catalog ID
@@ -115,7 +115,7 @@ pub enum MirroredDatabricksCatalogCommand {
     #[command(display_order = 10)]
     RefreshMetadata {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Mirrored Databricks catalog ID
@@ -126,14 +126,14 @@ pub enum MirroredDatabricksCatalogCommand {
     #[command(display_order = 11)]
     DiscoverCatalogs {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Discover schemas in a Databricks catalog
     #[command(display_order = 12)]
     DiscoverSchemas {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Catalog name
@@ -144,7 +144,7 @@ pub enum MirroredDatabricksCatalogCommand {
     #[command(display_order = 13)]
     DiscoverTables {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Catalog name

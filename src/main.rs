@@ -33,6 +33,11 @@ fn main() {
 }
 
 fn run() -> std::result::Result<(), i32> {
+    // Inject profile defaults as env vars BEFORE clap parses, so that
+    // clap `env = "FABIO_..."` attributes pick them up as fallback values.
+    // Precedence: explicit CLI flag > env var (external) > profile > clap default.
+    inject_profile_env_vars();
+
     // Use try_parse so we can handle missing subcommand gracefully:
     // print help to stdout (composable) instead of stderr (clap default).
     let cli = match Cli::try_parse() {
@@ -73,6 +78,50 @@ fn run() -> std::result::Result<(), i32> {
             let fabio_err = errors::FabioError::new(errors::ErrorCode::Unknown, e.to_string());
             output::render_error(&fabio_err);
             Err(1)
+        }
+    }
+}
+
+/// Load the active profile and inject its values as environment variables,
+/// only if those env vars are not already set externally. This allows
+/// clap `env = "FABIO_..."` attributes to pick them up as fallback values.
+///
+/// Precedence: explicit CLI flag > external env var > profile value > clap default.
+///
+/// # Safety
+/// `set_var` is unsafe in edition 2024 because it is not thread-safe. This
+/// function is called at program startup before any threads exist (before
+/// tokio runtime and before `std::thread::spawn` in `main()`), so no data
+/// race can occur.
+#[allow(unsafe_code)]
+fn inject_profile_env_vars() {
+    use commands::profile::ProfileStore;
+
+    let store = ProfileStore::load();
+
+    // Determine which profile is active. We cannot read --profile from clap yet
+    // (haven't parsed), so we check the FABIO_PROFILE env var and fall back to
+    // the stored active profile.
+    let profile_name = std::env::var("FABIO_PROFILE")
+        .ok()
+        .or_else(|| store.active.clone());
+
+    let Some(name) = profile_name else {
+        return;
+    };
+    let Some(profile) = store.profiles.get(&name) else {
+        return;
+    };
+
+    // SAFETY: single-threaded at this point — called before tokio runtime is built.
+    if let Some(ref ws) = profile.workspace {
+        if std::env::var("FABIO_WORKSPACE").is_err() {
+            unsafe { std::env::set_var("FABIO_WORKSPACE", ws) };
+        }
+    }
+    if let Some(ref fmt) = profile.output {
+        if std::env::var("FABIO_OUTPUT").is_err() {
+            unsafe { std::env::set_var("FABIO_OUTPUT", fmt) };
         }
     }
 }

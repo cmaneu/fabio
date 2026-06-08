@@ -17,13 +17,13 @@ pub enum OntologyCommand {
     /// List ontologies in a workspace
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Show details of an ontology
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Ontology ID
@@ -33,7 +33,7 @@ pub enum OntologyCommand {
     /// Create an ontology
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Display name (must start with letter, alphanumeric/underscore, <100 chars)
@@ -61,7 +61,7 @@ pub enum OntologyCommand {
     /// Update ontology properties (name and/or description)
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Ontology ID
@@ -79,7 +79,7 @@ pub enum OntologyCommand {
     /// Delete an ontology
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Ontology ID
@@ -93,7 +93,7 @@ pub enum OntologyCommand {
     /// Get the ontology definition (entity types, bindings)
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Ontology ID
@@ -111,7 +111,7 @@ pub enum OntologyCommand {
     /// Update the ontology definition (replaces current definition)
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Ontology ID

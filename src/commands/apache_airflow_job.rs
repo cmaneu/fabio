@@ -16,14 +16,14 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Show details of an Apache Airflow job
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -34,7 +34,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Display name
@@ -49,7 +49,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -68,7 +68,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -83,7 +83,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 6)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -98,7 +98,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 7)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -118,7 +118,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 10)]
     StartEnvironment {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -129,7 +129,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 11)]
     StopEnvironment {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -140,7 +140,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 12)]
     GetEnvironment {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -151,7 +151,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 13)]
     ListLibraries {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -162,7 +162,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 14)]
     DeployRequirements {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -182,7 +182,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 20)]
     GetSettings {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -193,7 +193,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 21)]
     UpdateSettings {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -213,7 +213,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 25)]
     GetCompute {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -225,7 +225,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 30)]
     ListFiles {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -236,7 +236,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 31)]
     GetFile {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -251,7 +251,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 32)]
     UploadFile {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -270,7 +270,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 33)]
     DeleteFile {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Apache Airflow job ID
@@ -286,14 +286,14 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 40)]
     GetWorkspaceSettings {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Update workspace-level Airflow settings
     #[command(display_order = 41)]
     UpdateWorkspaceSettings {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to settings JSON file
@@ -309,14 +309,14 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 50)]
     ListPoolTemplates {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Create a pool template
     #[command(display_order = 51)]
     CreatePoolTemplate {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Pool template name
@@ -335,7 +335,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 52)]
     GetPoolTemplate {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Pool template ID
@@ -346,7 +346,7 @@ pub enum ApacheAirflowJobCommand {
     #[command(display_order = 53)]
     DeletePoolTemplate {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Pool template ID

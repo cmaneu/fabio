@@ -12,7 +12,7 @@ pub enum RtiCommand {
     #[command(display_order = 1)]
     NlToKql {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID used for billing (`KQLQueryset`, `KQLDashboard`, or `Eventhouse`)

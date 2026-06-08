@@ -13,14 +13,14 @@ pub enum MlModelCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Show details of an ML model
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// ML model ID
@@ -31,7 +31,7 @@ pub enum MlModelCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// ML model display name
@@ -46,7 +46,7 @@ pub enum MlModelCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// ML model ID
@@ -65,7 +65,7 @@ pub enum MlModelCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// ML model ID
@@ -80,7 +80,7 @@ pub enum MlModelCommand {
     #[command(display_order = 10)]
     GetEndpoint {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// ML model ID
@@ -91,7 +91,7 @@ pub enum MlModelCommand {
     #[command(display_order = 11)]
     UpdateEndpoint {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// ML model ID
@@ -110,7 +110,7 @@ pub enum MlModelCommand {
     #[command(display_order = 12)]
     Score {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// ML model ID
@@ -129,7 +129,7 @@ pub enum MlModelCommand {
     #[command(display_order = 20)]
     ListVersions {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// ML model ID
@@ -140,7 +140,7 @@ pub enum MlModelCommand {
     #[command(display_order = 21)]
     GetVersion {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// ML model ID
@@ -155,7 +155,7 @@ pub enum MlModelCommand {
     #[command(display_order = 22)]
     UpdateVersion {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// ML model ID
@@ -178,7 +178,7 @@ pub enum MlModelCommand {
     #[command(display_order = 23)]
     ActivateVersion {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// ML model ID
@@ -193,7 +193,7 @@ pub enum MlModelCommand {
     #[command(display_order = 24)]
     DeactivateVersion {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// ML model ID
@@ -208,7 +208,7 @@ pub enum MlModelCommand {
     #[command(display_order = 25)]
     ScoreVersion {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// ML model ID
@@ -231,7 +231,7 @@ pub enum MlModelCommand {
     #[command(display_order = 26)]
     DeactivateAllVersions {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// ML model ID

@@ -189,14 +189,14 @@ pub enum WorkspaceCommand {
     #[command(display_order = 30)]
     ListFolders {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Create a folder in a workspace
     #[command(display_order = 31)]
     CreateFolder {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Folder display name
@@ -215,7 +215,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 32)]
     ShowFolder {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Folder ID
@@ -226,7 +226,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 33)]
     UpdateFolder {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Folder ID
@@ -245,7 +245,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 34)]
     DeleteFolder {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Folder ID
@@ -256,7 +256,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 35)]
     MoveFolder {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Folder ID to move
@@ -273,7 +273,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 40)]
     ApplyTags {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Comma-separated tag IDs
@@ -284,7 +284,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 41)]
     UnapplyTags {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Comma-separated tag IDs
@@ -297,7 +297,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 45)]
     AssignToDomain {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Domain ID
@@ -308,7 +308,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 46)]
     UnassignFromDomain {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
 
@@ -317,14 +317,14 @@ pub enum WorkspaceCommand {
     #[command(display_order = 55)]
     GetOnelakeSettings {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Modify `OneLake` default tier (Hot, Cool, or Cold)
     #[command(display_order = 56)]
     ModifyDefaultTier {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Tier: "Hot", "Cool", or "Cold"
@@ -335,7 +335,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 57)]
     ModifyDiagnostics {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with diagnostics config
@@ -350,7 +350,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 58)]
     ModifyImmutabilityPolicy {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with policy config
@@ -365,14 +365,14 @@ pub enum WorkspaceCommand {
     #[command(display_order = 59)]
     ExportLifecyclePolicy {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Import `OneLake` lifecycle policy
     #[command(display_order = 60)]
     ImportLifecyclePolicy {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with lifecycle policy
@@ -387,7 +387,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 61)]
     ResetShortcutCache {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
 
@@ -396,14 +396,14 @@ pub enum WorkspaceCommand {
     #[command(display_order = 50)]
     GetNetworkPolicy {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Set workspace network communication policy
     #[command(display_order = 51)]
     SetNetworkPolicy {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with policy configuration
@@ -418,14 +418,14 @@ pub enum WorkspaceCommand {
     #[command(display_order = 52)]
     GetFirewallRules {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Set workspace IP firewall rules (replaces all existing rules)
     #[command(display_order = 53)]
     SetFirewallRules {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with firewall rules
@@ -440,14 +440,14 @@ pub enum WorkspaceCommand {
     #[command(display_order = 54)]
     GetGitOutboundPolicy {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Set workspace git outbound policy (requires Outbound Access Protection enabled)
     #[command(display_order = 54)]
     SetGitOutboundPolicy {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with git outbound policy
@@ -462,14 +462,14 @@ pub enum WorkspaceCommand {
     #[command(display_order = 54)]
     GetInboundAzureResourceRules {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Set workspace inbound Azure resource instance rules
     #[command(display_order = 54)]
     SetInboundAzureResourceRules {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with resource rules
@@ -484,14 +484,14 @@ pub enum WorkspaceCommand {
     #[command(display_order = 54)]
     GetOutboundCloudConnectionRules {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Set workspace outbound cloud connection rules (requires OAP enabled)
     #[command(display_order = 54)]
     SetOutboundCloudConnectionRules {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with cloud connection rules
@@ -506,14 +506,14 @@ pub enum WorkspaceCommand {
     #[command(display_order = 54)]
     GetOutboundGatewayRules {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Set workspace outbound gateway rules (requires OAP enabled)
     #[command(display_order = 54)]
     SetOutboundGatewayRules {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with gateway rules
@@ -530,7 +530,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 62)]
     GetSettings {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Update workspace settings (e.g. enable automatic metadata sync)
@@ -540,7 +540,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 63)]
     UpdateSettings {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with settings
@@ -555,7 +555,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 64)]
     SetDatasetStorageFormat {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Storage format: "Small" or "Large"
@@ -566,7 +566,7 @@ pub enum WorkspaceCommand {
     #[command(display_order = 65)]
     GetDatasetStorageFormat {
         /// Workspace ID
-        #[arg(short = 'w', long)]
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
 }

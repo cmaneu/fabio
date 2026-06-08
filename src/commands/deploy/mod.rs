@@ -31,7 +31,7 @@ pub enum DeployCommand {
         source: PathBuf,
 
         /// Target workspace ID or name
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Only deploy specific item types (comma-separated)
@@ -123,7 +123,7 @@ pub enum DeployCommand {
     #[command(display_order = 3)]
     Export {
         /// Source workspace ID or name
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Output directory to write .platform items

@@ -20,7 +20,7 @@ pub enum ItemCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Filter by item type (e.g., Notebook, Lakehouse, Warehouse)
@@ -43,7 +43,7 @@ pub enum ItemCommand {
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -54,7 +54,7 @@ pub enum ItemCommand {
     #[command(display_order = 3)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -73,7 +73,7 @@ pub enum ItemCommand {
     #[command(display_order = 4)]
     ListConnections {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -84,7 +84,7 @@ pub enum ItemCommand {
     #[command(display_order = 5)]
     Exists {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -95,7 +95,7 @@ pub enum ItemCommand {
     #[command(display_order = 6)]
     Url {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -110,7 +110,7 @@ pub enum ItemCommand {
     #[command(display_order = 7)]
     Inspect {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -123,7 +123,7 @@ pub enum ItemCommand {
     #[command(display_order = 10)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item display name
@@ -142,7 +142,7 @@ pub enum ItemCommand {
     #[command(display_order = 11)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -161,7 +161,7 @@ pub enum ItemCommand {
     #[command(display_order = 12)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -184,7 +184,7 @@ pub enum ItemCommand {
     #[command(display_order = 13)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -239,7 +239,7 @@ pub enum ItemCommand {
     #[command(name = "move-to-folder", display_order = 16)]
     MoveToFolder {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -256,7 +256,7 @@ pub enum ItemCommand {
     #[command(display_order = 20)]
     ApplyTags {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -271,7 +271,7 @@ pub enum ItemCommand {
     #[command(display_order = 21)]
     UnapplyTags {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -288,7 +288,7 @@ pub enum ItemCommand {
     #[command(display_order = 30)]
     BulkExportDefinitions {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with request body
@@ -303,7 +303,7 @@ pub enum ItemCommand {
     #[command(display_order = 31)]
     BulkImportDefinitions {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with request body
@@ -318,7 +318,7 @@ pub enum ItemCommand {
     #[command(display_order = 32)]
     BulkMove {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with request body
@@ -334,7 +334,7 @@ pub enum ItemCommand {
     #[command(display_order = 33)]
     BulkCreate {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Path to JSON file with item array
@@ -349,7 +349,7 @@ pub enum ItemCommand {
     #[command(display_order = 34)]
     BulkDelete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Comma-separated item IDs to delete
@@ -362,7 +362,7 @@ pub enum ItemCommand {
     #[command(display_order = 40)]
     ListExternalDataShares {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -373,7 +373,7 @@ pub enum ItemCommand {
     #[command(display_order = 41)]
     CreateExternalDataShare {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -400,7 +400,7 @@ pub enum ItemCommand {
     #[command(display_order = 42)]
     ShowExternalDataShare {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -415,7 +415,7 @@ pub enum ItemCommand {
     #[command(display_order = 43)]
     RevokeExternalDataShare {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -430,7 +430,7 @@ pub enum ItemCommand {
     #[command(display_order = 44)]
     DeleteExternalDataShare {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -447,7 +447,7 @@ pub enum ItemCommand {
     #[command(display_order = 50)]
     AssignIdentity {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -471,7 +471,7 @@ pub enum ItemCommand {
         invitation_id: String,
 
         /// Target workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Display name for the created item

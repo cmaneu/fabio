@@ -147,14 +147,14 @@ pub enum AdminCommand {
     #[command(display_order = 31)]
     ShowWorkspace {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// List users in a workspace (admin view)
     #[command(display_order = 32)]
     ListWorkspaceUsers {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// List git connections across workspaces
@@ -164,21 +164,21 @@ pub enum AdminCommand {
     #[command(display_order = 34)]
     GrantAdminAccess {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Remove temporary admin access from a workspace
     #[command(display_order = 35)]
     RemoveAdminAccess {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Restore a deleted workspace
     #[command(display_order = 36)]
     RestoreWorkspace {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Restored workspace name
@@ -201,7 +201,7 @@ pub enum AdminCommand {
     #[command(display_order = 41)]
     ShowItem {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -212,7 +212,7 @@ pub enum AdminCommand {
     #[command(display_order = 42)]
     ListItemUsers {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -248,7 +248,7 @@ pub enum AdminCommand {
     #[command(display_order = 46)]
     RevokeExternalDataShare {
         /// Workspace ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID

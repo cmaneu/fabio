@@ -13,7 +13,7 @@ pub enum OnelakeSecurityCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID (e.g., lakehouse ID)
@@ -24,7 +24,7 @@ pub enum OnelakeSecurityCommand {
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -39,7 +39,7 @@ pub enum OnelakeSecurityCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -58,7 +58,7 @@ pub enum OnelakeSecurityCommand {
     #[command(display_order = 4)]
     Upsert {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID
@@ -74,7 +74,7 @@ pub enum OnelakeSecurityCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Item ID

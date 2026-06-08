@@ -14,14 +14,14 @@ pub enum GitCommand {
     #[command(display_order = 1)]
     Status {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Commit workspace changes to the connected remote branch
     #[command(display_order = 2)]
     Commit {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Commit message (max 300 characters)
@@ -52,7 +52,7 @@ pub enum GitCommand {
     #[command(display_order = 3)]
     Pull {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Conflict resolution policy
@@ -84,7 +84,7 @@ pub enum GitCommand {
     #[command(display_order = 10)]
     Connect {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Git provider type
@@ -127,14 +127,14 @@ pub enum GitCommand {
     #[command(display_order = 11)]
     Disconnect {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Initialize a workspace Git connection (required after connect)
     #[command(visible_alias = "initialize", display_order = 12)]
     Init {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Initialization strategy when both sides have content
@@ -153,7 +153,7 @@ pub enum GitCommand {
     #[command(visible_alias = "switch", display_order = 13)]
     Checkout {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Target branch name
@@ -184,7 +184,7 @@ pub enum GitCommand {
     #[command(display_order = 30)]
     ShowTracked {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
 }
@@ -194,7 +194,7 @@ pub enum ConnectionCommand {
     /// Show Git connection details for the workspace
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
 }
@@ -204,13 +204,13 @@ pub enum CredentialsCommand {
     /// Show your Git credentials configuration
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Update your Git credentials configuration
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Credentials source

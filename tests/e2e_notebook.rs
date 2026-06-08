@@ -856,3 +856,121 @@ fn notebook_run_dry_run_with_execution_data() {
         "mySession"
     );
 }
+
+#[test]
+fn notebook_run_dry_run_execution_data_from_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("exec_data.json");
+    std::fs::write(
+        &file_path,
+        r#"{"compute":"Jupyter","computeConfiguration":{"timeout":300}}"#,
+    )
+    .unwrap();
+
+    let at_file = format!("@{}", file_path.display());
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "notebook",
+            "run",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--execution-data",
+            &at_file,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    let body = &data["details"]["body"];
+    assert_eq!(body["executionData"]["compute"], "Jupyter");
+    assert_eq!(
+        body["executionData"]["computeConfiguration"]["timeout"],
+        300
+    );
+}
+
+#[test]
+fn notebook_run_dry_run_parameters_from_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("params.json");
+    std::fs::write(
+        &file_path,
+        r#"[{"name":"env","value":"production","type":"Text"}]"#,
+    )
+    .unwrap();
+
+    let at_file = format!("@{}", file_path.display());
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "notebook",
+            "run",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--parameters",
+            &at_file,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    let body = &data["details"]["body"];
+    assert_eq!(body["parameters"][0]["name"], "env");
+    assert_eq!(body["parameters"][0]["value"], "production");
+}
+
+#[test]
+fn notebook_run_execution_data_file_not_found() {
+    let assert = fabio()
+        .args([
+            "notebook",
+            "run",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--execution-data",
+            "@/nonexistent/path/exec.json",
+        ])
+        .assert()
+        .failure();
+
+    let json: serde_json::Value = serde_json::from_slice(&assert.get_output().stderr).unwrap();
+    let msg = json["error"]["message"].as_str().unwrap();
+    assert!(msg.contains("Failed to read file"));
+}
+
+#[test]
+fn notebook_run_execution_data_file_invalid_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("bad.json");
+    std::fs::write(&file_path, "this is not json").unwrap();
+
+    let at_file = format!("@{}", file_path.display());
+    let assert = fabio()
+        .args([
+            "notebook",
+            "run",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--execution-data",
+            &at_file,
+        ])
+        .assert()
+        .failure();
+
+    let json: serde_json::Value = serde_json::from_slice(&assert.get_output().stderr).unwrap();
+    let msg = json["error"]["message"].as_str().unwrap();
+    assert!(msg.contains("Invalid --execution-data JSON"));
+}

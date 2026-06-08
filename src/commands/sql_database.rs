@@ -21,14 +21,14 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 1)]
     List {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Show details of a SQL database
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// SQL database ID
@@ -39,7 +39,7 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// Display name
@@ -82,7 +82,7 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// SQL database ID
@@ -97,7 +97,7 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// SQL database ID
@@ -114,7 +114,7 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 10)]
     GetDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// SQL database ID
@@ -129,7 +129,7 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 11)]
     UpdateDefinition {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// SQL database ID
@@ -158,7 +158,7 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 20)]
     StartMirroring {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// SQL database ID
@@ -169,7 +169,7 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 21)]
     StopMirroring {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// SQL database ID
@@ -182,7 +182,7 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 30)]
     RevalidateCmk {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// SQL database ID
@@ -195,7 +195,7 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 40)]
     GetAuditSettings {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// SQL database ID
@@ -206,7 +206,7 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 41)]
     UpdateAuditSettings {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// SQL database ID
@@ -235,7 +235,7 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 50)]
     ListDeleted {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
 
@@ -244,7 +244,7 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 60)]
     Query {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// SQL database item ID
@@ -259,7 +259,7 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 61)]
     ConnectionString {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// SQL database item ID
@@ -274,7 +274,7 @@ pub enum SqlDatabaseCommand {
     #[command(display_order = 62)]
     Import {
         /// Workspace ID
-        #[arg(short, long)]
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
         /// SQL database item ID
