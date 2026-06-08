@@ -777,3 +777,284 @@ fn dataagent_update_definition_dry_run() {
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["would_execute"], "data-agent update-definition");
 }
+
+/// Full lifecycle test: create → configure → publish → query → delete.
+///
+/// This validates that publishing via the definition API (without the portal)
+/// activates the chat endpoint and allows querying the data agent.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_full_lifecycle_create_publish_query_delete() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("da_e2e");
+
+    // ─── Step 1: Create a data agent ─────────────────────────────────────────
+    eprintln!("[1/5] Creating data agent '{name}'...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+            "--description",
+            "E2E lifecycle test agent",
+        ])
+        .timeout(std::time::Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["displayName"], name);
+    assert_eq!(data["type"], "DataAgent");
+    let agent_id = data["id"].as_str().unwrap().to_string();
+    eprintln!("  Created agent: {agent_id}");
+
+    // ─── Step 2: Configure with lakehouse data source ────────────────────────
+    eprintln!("[2/5] Configuring data source...");
+    let data_agent_json = serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/dataAgent/2.1.0/schema.json"
+    });
+    let stage_config_json = serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/stageConfiguration/1.0.0/schema.json",
+        "aiInstructions": "You are a helpful data assistant. Answer questions about the data in the connected lakehouse. Be concise."
+    });
+    let datasource_json = serde_json::json!({
+        "$schema": "1.0.0",
+        "artifactId": &cfg.source_lakehouse,
+        "workspaceId": &cfg.source_workspace,
+        "displayName": "SalesLakehouse",
+        "type": "lakehouse_tables",
+        "userDescription": "Product catalog and order management data",
+        "dataSourceInstructions": "This lakehouse contains product and order data. Use SQL to query tables.",
+        "elements": [
+            {
+                "id": "dbo",
+                "display_name": "dbo",
+                "type": "lakehouse_tables.schema",
+                "is_selected": true,
+                "children": [
+                    {
+                        "id": "dbo.products",
+                        "display_name": "products",
+                        "type": "lakehouse_tables.table",
+                        "is_selected": true,
+                        "description": "Product catalog with prices and stock",
+                        "children": [
+                            {"id": "dbo.products.product_id", "display_name": "product_id", "type": "lakehouse_tables.column", "data_type": "int", "is_selected": true},
+                            {"id": "dbo.products.product_name", "display_name": "product_name", "type": "lakehouse_tables.column", "data_type": "string", "is_selected": true},
+                            {"id": "dbo.products.category", "display_name": "category", "type": "lakehouse_tables.column", "data_type": "string", "is_selected": true},
+                            {"id": "dbo.products.price", "display_name": "price", "type": "lakehouse_tables.column", "data_type": "double", "is_selected": true},
+                            {"id": "dbo.products.stock_quantity", "display_name": "stock_quantity", "type": "lakehouse_tables.column", "data_type": "int", "is_selected": true}
+                        ]
+                    },
+                    {
+                        "id": "dbo.orders",
+                        "display_name": "orders",
+                        "type": "lakehouse_tables.table",
+                        "is_selected": true,
+                        "description": "Customer orders with amounts and dates",
+                        "children": [
+                            {"id": "dbo.orders.order_id", "display_name": "order_id", "type": "lakehouse_tables.column", "data_type": "int", "is_selected": true},
+                            {"id": "dbo.orders.product_id", "display_name": "product_id", "type": "lakehouse_tables.column", "data_type": "int", "is_selected": true},
+                            {"id": "dbo.orders.customer_name", "display_name": "customer_name", "type": "lakehouse_tables.column", "data_type": "string", "is_selected": true},
+                            {"id": "dbo.orders.quantity", "display_name": "quantity", "type": "lakehouse_tables.column", "data_type": "int", "is_selected": true},
+                            {"id": "dbo.orders.order_date", "display_name": "order_date", "type": "lakehouse_tables.column", "data_type": "string", "is_selected": true},
+                            {"id": "dbo.orders.total_amount", "display_name": "total_amount", "type": "lakehouse_tables.column", "data_type": "double", "is_selected": true}
+                        ]
+                    }
+                ]
+            }
+        ]
+    });
+    let fewshots_json = serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/fewShots/1.0.0/schema.json",
+        "fewShots": [
+            {
+                "id": "a0000001-0001-0001-0001-000000000001",
+                "question": "What is the most expensive product?",
+                "query": "SELECT TOP 1 product_name, price FROM products ORDER BY price DESC"
+            },
+            {
+                "id": "a0000001-0001-0001-0001-000000000002",
+                "question": "How many orders are there?",
+                "query": "SELECT COUNT(*) as total_orders FROM orders"
+            }
+        ]
+    });
+
+    let encode = |v: &serde_json::Value| {
+        base64::engine::general_purpose::STANDARD.encode(v.to_string().as_bytes())
+    };
+
+    let definition = serde_json::json!({
+        "definition": {
+            "parts": [
+                {
+                    "path": "Files/Config/data_agent.json",
+                    "payload": encode(&data_agent_json),
+                    "payloadType": "InlineBase64"
+                },
+                {
+                    "path": "Files/Config/draft/stage_config.json",
+                    "payload": encode(&stage_config_json),
+                    "payloadType": "InlineBase64"
+                },
+                {
+                    "path": "Files/Config/draft/lakehouse-SalesLakehouse/datasource.json",
+                    "payload": encode(&datasource_json),
+                    "payloadType": "InlineBase64"
+                },
+                {
+                    "path": "Files/Config/draft/lakehouse-SalesLakehouse/fewshots.json",
+                    "payload": encode(&fewshots_json),
+                    "payloadType": "InlineBase64"
+                }
+            ]
+        }
+    });
+
+    let def_content = definition.to_string();
+
+    fabio()
+        .args([
+            "data-agent",
+            "update-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--content",
+            &def_content,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+    eprintln!("  Definition updated with lakehouse data source + fewshots");
+
+    // ─── Step 3: Publish the data agent ──────────────────────────────────────
+    eprintln!("[3/5] Publishing data agent...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "publish",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--description",
+            "E2E lifecycle publish",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "published");
+    eprintln!(
+        "  Published successfully. publishedUrl: {:?}",
+        data.get("publishedUrl")
+    );
+
+    // Verify definition has published parts
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "get-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    let paths: Vec<&str> = parts.iter().filter_map(|p| p["path"].as_str()).collect();
+    assert!(
+        paths
+            .iter()
+            .any(|p| p.starts_with("Files/Config/published/")),
+        "expected published parts, got: {paths:?}"
+    );
+    assert!(
+        paths.iter().any(|p| p.contains("fewshots.json")),
+        "expected fewshots.json in parts, got: {paths:?}"
+    );
+    eprintln!(
+        "  Definition verified: {} parts including published + fewshots",
+        paths.len()
+    );
+
+    // ─── Step 4: Query the data agent ────────────────────────────────────────
+    eprintln!("[4/5] Querying data agent...");
+
+    // Construct the published URL (since V3 settings may not be enabled)
+    let published_url = format!(
+        "https://api.fabric.microsoft.com/v1/workspaces/{}/dataagents/{}/aiassistant/openai",
+        cfg.source_workspace, agent_id
+    );
+
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--published-url",
+            &published_url,
+            "--prompt",
+            "What is the most expensive product and how much does it cost?",
+        ])
+        .timeout(std::time::Duration::from_secs(300))
+        .assert();
+
+    let output = assert.get_output();
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        let data = &json["data"];
+        assert!(
+            data.get("answer").is_some(),
+            "expected answer field in query response"
+        );
+        assert!(
+            data.get("question").is_some(),
+            "expected question field in query response"
+        );
+        let answer = data["answer"].as_str().unwrap_or("");
+        eprintln!("  Query succeeded! Answer: {answer}");
+        // The agent should mention "Laptop Pro 15" and "$1,299.99" if it has data access
+        assert!(
+            answer.contains("Laptop") || answer.contains("1299") || answer.contains("1,299"),
+            "expected answer to mention Laptop Pro 15 or its price, got: {answer}"
+        );
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        panic!("Query failed — chat endpoint not activated after publish: {stderr}");
+    }
+
+    // ─── Step 5: Delete the data agent ───────────────────────────────────────
+    eprintln!("[5/5] Cleaning up (deleting agent)...");
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .assert()
+        .success();
+    eprintln!("  Agent deleted. Full lifecycle complete.");
+}

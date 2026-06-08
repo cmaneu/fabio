@@ -448,11 +448,10 @@ async fn get_published_url(client: &FabricClient, workspace: &str, id: &str) -> 
     // No published URL found — the agent may not be published or V3 isn't enabled.
     Err(FabioError::with_hint(
         ErrorCode::ApiError,
-        "Published URL not found. The data agent must be published from the Fabric portal first.",
+        "Published URL not found. The data agent may not be published yet, or the V3 settings API is not enabled on this tenant.",
         format!(
-            "After publishing in the portal, provide the URL with --published-url. \
-             The URL pattern is: https://api.fabric.microsoft.com/v1/workspaces/{workspace}/dataagents/{id}/aiassistant/openai \
-             (found in the agent's Settings page in the portal)."
+            "Publish the agent with 'fabio data-agent publish', then provide the URL with --published-url. \
+             The URL pattern is: https://api.fabric.microsoft.com/v1/workspaces/{workspace}/dataagents/{id}/aiassistant/openai"
         ),
     )
     .into())
