@@ -463,6 +463,74 @@ fn sql_database_query_table_output() {
 #[test]
 #[ignore = "requires live Fabric tenant with SQL database"]
 #[serial]
+fn sql_database_query_csv_output() {
+    let cfg = TestConfig::from_env();
+    let db_id = ensure_sql_database(&cfg);
+
+    let assert = fabio()
+        .args([
+            "--output",
+            "csv",
+            "sql-database",
+            "query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &db_id,
+            "--sql",
+            "SELECT 1 AS num, 'hello' AS txt, CAST(NULL AS VARCHAR) AS empty",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(
+        lines.len() >= 2,
+        "CSV should have header + data row, got: {stdout}"
+    );
+    assert_eq!(lines[0], "num,txt,empty");
+    assert_eq!(lines[1], "1,hello,");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with SQL database"]
+#[serial]
+fn sql_database_query_tsv_output() {
+    let cfg = TestConfig::from_env();
+    let db_id = ensure_sql_database(&cfg);
+
+    let assert = fabio()
+        .args([
+            "--output",
+            "tsv",
+            "sql-database",
+            "query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &db_id,
+            "--sql",
+            "SELECT 99 AS val, 'world' AS msg",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(
+        lines.len() >= 2,
+        "TSV should have header + data row, got: {stdout}"
+    );
+    assert_eq!(lines[0], "val\tmsg");
+    assert_eq!(lines[1], "99\tworld");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with SQL database"]
+#[serial]
 fn sql_database_query_ddl_no_resultset() {
     let cfg = TestConfig::from_env();
     let db_id = ensure_sql_database(&cfg);

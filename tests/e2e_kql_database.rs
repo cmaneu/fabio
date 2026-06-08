@@ -382,3 +382,77 @@ fn kql_database_query_table_output_format() {
         .success()
         .stdout(predicates::str::contains("| i |"));
 }
+
+// ---------------------------------------------------------------------------
+// KQL query with --output csv
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+fn kql_database_query_csv_output() {
+    let (cfg, kql_db_id, _) = kql_test_config();
+
+    let assert = fabio()
+        .args([
+            "-o",
+            "csv",
+            "kql-database",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+            "--kql",
+            "print col1=42, col2='hello', col3=true",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(
+        lines.len() >= 2,
+        "CSV should have header + data row, got: {stdout}"
+    );
+    assert_eq!(lines[0], "col1,col2,col3");
+    assert_eq!(lines[1], "42,hello,true");
+}
+
+// ---------------------------------------------------------------------------
+// KQL query with --output tsv
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+fn kql_database_query_tsv_output() {
+    let (cfg, kql_db_id, _) = kql_test_config();
+
+    let assert = fabio()
+        .args([
+            "-o",
+            "tsv",
+            "kql-database",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+            "--kql",
+            "range i from 1 to 3 step 1 | extend label=strcat('item_', tostring(i))",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(
+        lines.len() >= 4,
+        "TSV should have header + 3 data rows, got: {stdout}"
+    );
+    // Header uses tabs
+    assert_eq!(lines[0], "i\tlabel");
+    // First data row
+    assert_eq!(lines[1], "1\titem_1");
+    assert_eq!(lines[2], "2\titem_2");
+    assert_eq!(lines[3], "3\titem_3");
+}

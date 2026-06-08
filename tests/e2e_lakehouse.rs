@@ -832,6 +832,85 @@ fn lakehouse_query_table_output() {
     assert!(stdout.contains("Widget A"));
 }
 
+// ---------------------------------------------------------------------------
+// lakehouse query with --output csv
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_query_csv_output() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "-o",
+            "csv",
+            "lakehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--sql",
+            "SELECT TOP 1 product_id, product_name FROM sales ORDER BY product_id",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(
+        lines.len() >= 2,
+        "CSV should have header + data row, got: {stdout}"
+    );
+    // Header contains column names
+    assert!(lines[0].contains("product_id"));
+    assert!(lines[0].contains("product_name"));
+    assert!(lines[0].contains(','));
+    // Data row has values
+    assert!(lines[1].contains("Widget A") || lines[1].contains(','));
+}
+
+// ---------------------------------------------------------------------------
+// lakehouse query with --output tsv
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_query_tsv_output() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "-o",
+            "tsv",
+            "lakehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--sql",
+            "SELECT TOP 1 product_id, product_name FROM sales ORDER BY product_id",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(
+        lines.len() >= 2,
+        "TSV should have header + data row, got: {stdout}"
+    );
+    // Header uses tabs
+    assert!(lines[0].contains('\t'));
+    assert!(lines[0].contains("product_id"));
+    // Data row uses tabs
+    assert!(lines[1].contains('\t'));
+}
+
 // ─── Hard Delete ─────────────────────────────────────────────────────────────
 
 #[test]

@@ -733,6 +733,87 @@ fn semantic_model_query_not_found() {
         .failure();
 }
 
+// ---------------------------------------------------------------------------
+// semantic-model query with --output csv
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_query_csv_output() {
+    let cfg = TestConfig::from_env();
+
+    // Create a model for querying
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(minimal_model_bim().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+    let name = unique_name("sm_qcsv");
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let sm_id = data["id"].as_str().unwrap().to_string();
+
+    // Query with --output csv
+    let assert = fabio()
+        .args([
+            "-o",
+            "csv",
+            "semantic-model",
+            "query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--dax",
+            "EVALUATE ROW(\"ColA\", 42, \"ColB\", \"test\")",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(
+        lines.len() >= 2,
+        "CSV should have header + data row, got: {stdout}"
+    );
+    // Header contains column names (DAX wraps in brackets)
+    assert!(lines[0].contains("[ColA]"));
+    assert!(lines[0].contains("[ColB]"));
+    assert!(lines[0].contains(','));
+    // Data row contains values
+    assert!(lines[1].contains("42"));
+    assert!(lines[1].contains("test"));
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
 // ─── Power BI API Commands (list-parameters, list-datasources, etc.) ─────────
 
 #[test]

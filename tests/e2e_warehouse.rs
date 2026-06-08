@@ -215,6 +215,85 @@ fn warehouse_query_from_file() {
     assert_eq!(rows[0]["answer"], 42);
 }
 
+// ---------------------------------------------------------------------------
+// warehouse query with --output csv
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_query_csv_output() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--output",
+            "csv",
+            "warehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--sql",
+            "SELECT 1 AS col1, 'hello' AS col2",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    // Header + at least 1 data row
+    assert!(
+        lines.len() >= 2,
+        "CSV should have header + data, got: {stdout}"
+    );
+    // Header should contain column names
+    assert_eq!(lines[0], "col1,col2");
+    // Data row should be comma-separated values
+    assert_eq!(lines[1], "1,hello");
+}
+
+// ---------------------------------------------------------------------------
+// warehouse query with --output tsv
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_query_tsv_output() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--output",
+            "tsv",
+            "warehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--sql",
+            "SELECT 42 AS num, 'world' AS txt, NULL AS empty",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(
+        lines.len() >= 2,
+        "TSV should have header + data, got: {stdout}"
+    );
+    // Header separated by tabs
+    assert_eq!(lines[0], "num\ttxt\tempty");
+    // Data row: 42, world, empty (null renders as empty)
+    assert_eq!(lines[1], "42\tworld\t");
+}
+
 // ===========================================================================
 // warehouse create / update / delete
 // ===========================================================================

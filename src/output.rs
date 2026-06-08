@@ -147,19 +147,7 @@ pub fn render_list_with_token(
             } else {
                 ','
             };
-            // Header row
-            println!("{}", columns.join(&sep.to_string()));
-            // Data rows
-            for item in limited_items {
-                let row: Vec<String> = columns
-                    .iter()
-                    .map(|col| {
-                        let val = resolve_nested(item, col);
-                        format_csv_value(val, sep)
-                    })
-                    .collect();
-                println!("{}", row.join(&sep.to_string()));
-            }
+            print!("{}", format_delimited_list(limited_items, columns, sep));
         }
     }
 }
@@ -221,15 +209,7 @@ pub fn render_object(cli: &Cli, obj: &Value, plain_key: &str) {
             } else {
                 ','
             };
-            // For single objects, emit header row + single data row
-            if let Value::Object(map) = output_data.as_ref() {
-                let keys: Vec<&str> = map.keys().map(String::as_str).collect();
-                println!("{}", keys.join(&sep.to_string()));
-                let vals: Vec<String> = map.values().map(|v| format_csv_value(v, sep)).collect();
-                println!("{}", vals.join(&sep.to_string()));
-            } else {
-                println!("{}", format_value(output_data.as_ref()));
-            }
+            print!("{}", format_delimited_object(output_data.as_ref(), sep));
         }
     }
 }
@@ -320,6 +300,47 @@ fn format_csv_value(val: &Value, sep: char) -> String {
         format!("\"{}\"", raw.replace('"', "\"\""))
     } else {
         raw
+    }
+}
+
+/// Render a list of items as delimited text (CSV or TSV).
+/// Returns the formatted string with header row + data rows.
+/// Each row is terminated with a newline.
+fn format_delimited_list(items: &[Value], columns: &[&str], separator: char) -> String {
+    let sep_str = separator.to_string();
+    let mut output = String::new();
+    // Header row
+    output.push_str(&columns.join(&sep_str));
+    output.push('\n');
+    // Data rows
+    for item in items {
+        let row: Vec<String> = columns
+            .iter()
+            .map(|col| {
+                let val = resolve_nested(item, col);
+                format_csv_value(val, separator)
+            })
+            .collect();
+        output.push_str(&row.join(&sep_str));
+        output.push('\n');
+    }
+    output
+}
+
+/// Render a single object as delimited text (CSV or TSV).
+/// Returns header row (keys) + single data row (values).
+/// Falls back to plain `format_value` for non-object values.
+fn format_delimited_object(obj: &Value, separator: char) -> String {
+    let sep_str = separator.to_string();
+    if let Value::Object(map) = obj {
+        let keys: Vec<&str> = map.keys().map(String::as_str).collect();
+        let vals: Vec<String> = map
+            .values()
+            .map(|v| format_csv_value(v, separator))
+            .collect();
+        format!("{}\n{}\n", keys.join(&sep_str), vals.join(&sep_str))
+    } else {
+        format!("{}\n", format_value(obj))
     }
 }
 
@@ -651,5 +672,337 @@ mod tests {
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(!json.contains("retriable"));
+    }
+
+    // ─── resolve_nested tests ────────────────────────────────────────────────
+
+    #[test]
+    fn resolve_nested_simple_key() {
+        let obj = serde_json::json!({"name": "Alice", "id": "123"});
+        assert_eq!(resolve_nested(&obj, "name"), &Value::String("Alice".into()));
+    }
+
+    #[test]
+    fn resolve_nested_dot_path() {
+        let obj = serde_json::json!({"properties": {"queryServiceUri": "https://example.com"}});
+        assert_eq!(
+            resolve_nested(&obj, "properties.queryServiceUri"),
+            &Value::String("https://example.com".into())
+        );
+    }
+
+    #[test]
+    fn resolve_nested_deep_path() {
+        let obj = serde_json::json!({"a": {"b": {"c": {"d": 42}}}});
+        assert_eq!(resolve_nested(&obj, "a.b.c.d"), &serde_json::json!(42));
+    }
+
+    #[test]
+    fn resolve_nested_missing_key_returns_null() {
+        let obj = serde_json::json!({"name": "test"});
+        assert_eq!(resolve_nested(&obj, "missing"), &Value::Null);
+    }
+
+    #[test]
+    fn resolve_nested_partial_path_returns_null() {
+        let obj = serde_json::json!({"a": {"b": 1}});
+        assert_eq!(resolve_nested(&obj, "a.x.y"), &Value::Null);
+    }
+
+    #[test]
+    fn resolve_nested_on_non_object_returns_null() {
+        let obj = serde_json::json!("just a string");
+        assert_eq!(resolve_nested(&obj, "key"), &Value::Null);
+    }
+
+    // ─── format_csv_value edge cases for query results ───────────────────────
+
+    #[test]
+    fn format_csv_value_float() {
+        let val = serde_json::json!(99.95);
+        assert_eq!(format_csv_value(&val, ','), "99.95");
+    }
+
+    #[test]
+    fn format_csv_value_large_integer() {
+        let val = serde_json::json!(9_007_199_254_740_991_i64);
+        assert_eq!(format_csv_value(&val, ','), "9007199254740991");
+    }
+
+    #[test]
+    fn format_csv_value_boolean_true() {
+        let val = serde_json::json!(true);
+        assert_eq!(format_csv_value(&val, ','), "true");
+    }
+
+    #[test]
+    fn format_csv_value_boolean_false() {
+        let val = serde_json::json!(false);
+        assert_eq!(format_csv_value(&val, ','), "false");
+    }
+
+    #[test]
+    fn format_csv_value_date_string() {
+        let val = Value::String("2024-01-15T10:30:00Z".into());
+        assert_eq!(format_csv_value(&val, ','), "2024-01-15T10:30:00Z");
+    }
+
+    #[test]
+    fn format_csv_value_empty_string() {
+        let val = Value::String(String::new());
+        assert_eq!(format_csv_value(&val, ','), "");
+    }
+
+    #[test]
+    fn format_csv_value_nested_object() {
+        let val = serde_json::json!({"key": "value", "num": 42});
+        let result = format_csv_value(&val, ',');
+        // Contains comma from JSON serialization, so must be quoted
+        assert!(result.starts_with('"'));
+        assert!(result.ends_with('"'));
+        assert!(result.contains("key"));
+    }
+
+    #[test]
+    fn format_csv_value_array_value() {
+        let val = serde_json::json!([1, 2, 3]);
+        let result = format_csv_value(&val, ',');
+        // Array serialization contains commas, so must be quoted
+        assert!(result.starts_with('"'));
+        assert!(result.ends_with('"'));
+        assert!(result.contains("[1"));
+    }
+
+    #[test]
+    fn format_csv_value_carriage_return_quotes() {
+        let val = Value::String("line1\r\nline2".into());
+        assert_eq!(format_csv_value(&val, ','), "\"line1\r\nline2\"");
+    }
+
+    #[test]
+    fn format_csv_value_tsv_no_quote_for_comma() {
+        // In TSV mode, commas should NOT trigger quoting
+        let val = Value::String("foo,bar".into());
+        assert_eq!(format_csv_value(&val, '\t'), "foo,bar");
+    }
+
+    #[test]
+    fn format_csv_value_tsv_quotes_tab() {
+        let val = Value::String("has\ttab".into());
+        assert_eq!(format_csv_value(&val, '\t'), "\"has\ttab\"");
+    }
+
+    // ─── format_delimited_list tests ─────────────────────────────────────────
+
+    #[test]
+    fn delimited_list_basic_tabular_csv() {
+        let items = vec![
+            serde_json::json!({"name": "Alice", "age": 30, "city": "Paris"}),
+            serde_json::json!({"name": "Bob", "age": 25, "city": "London"}),
+            serde_json::json!({"name": "Carol", "age": 35, "city": "Berlin"}),
+        ];
+        let columns = &["name", "age", "city"];
+        let result = format_delimited_list(&items, columns, ',');
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines.len(), 4); // header + 3 rows
+        assert_eq!(lines[0], "name,age,city");
+        assert_eq!(lines[1], "Alice,30,Paris");
+        assert_eq!(lines[2], "Bob,25,London");
+        assert_eq!(lines[3], "Carol,35,Berlin");
+    }
+
+    #[test]
+    fn delimited_list_basic_tabular_tsv() {
+        let items = vec![
+            serde_json::json!({"col1": 1, "col2": "hello"}),
+            serde_json::json!({"col1": 2, "col2": "world"}),
+        ];
+        let columns = &["col1", "col2"];
+        let result = format_delimited_list(&items, columns, '\t');
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "col1\tcol2");
+        assert_eq!(lines[1], "1\thello");
+        assert_eq!(lines[2], "2\tworld");
+    }
+
+    #[test]
+    fn delimited_list_null_values_empty_cells() {
+        let items = vec![
+            serde_json::json!({"id": 1, "name": "test", "value": null}),
+            serde_json::json!({"id": 2, "name": null, "value": 42}),
+        ];
+        let columns = &["id", "name", "value"];
+        let result = format_delimited_list(&items, columns, ',');
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines[1], "1,test,");
+        assert_eq!(lines[2], "2,,42");
+    }
+
+    #[test]
+    fn delimited_list_nested_json_in_cells() {
+        let items = vec![serde_json::json!({
+            "id": 1,
+            "metadata": {"key": "val"}
+        })];
+        let columns = &["id", "metadata"];
+        let result = format_delimited_list(&items, columns, ',');
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines[0], "id,metadata");
+        // metadata is a JSON object, should be quoted since it contains commas
+        assert!(lines[1].starts_with("1,\""));
+        assert!(lines[1].contains("key"));
+    }
+
+    #[test]
+    fn delimited_list_comma_in_string_value() {
+        let items = vec![serde_json::json!({"name": "Doe, John", "id": 1})];
+        let columns = &["name", "id"];
+        let result = format_delimited_list(&items, columns, ',');
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines[1], "\"Doe, John\",1");
+    }
+
+    #[test]
+    fn delimited_list_newline_in_value() {
+        let items = vec![serde_json::json!({"msg": "line1\nline2", "id": 1})];
+        let columns = &["id", "msg"];
+        let result = format_delimited_list(&items, columns, ',');
+        // Should contain quoted multiline value
+        assert!(result.contains("\"line1\nline2\""));
+    }
+
+    #[test]
+    fn delimited_list_empty_result_set() {
+        let items: Vec<Value> = vec![];
+        let columns = &["col1", "col2", "col3"];
+        let result = format_delimited_list(&items, columns, ',');
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines.len(), 1); // header only
+        assert_eq!(lines[0], "col1,col2,col3");
+    }
+
+    #[test]
+    fn delimited_list_single_column() {
+        let items = vec![
+            serde_json::json!({"count": 42}),
+            serde_json::json!({"count": 99}),
+        ];
+        let columns = &["count"];
+        let result = format_delimited_list(&items, columns, ',');
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "count");
+        assert_eq!(lines[1], "42");
+        assert_eq!(lines[2], "99");
+    }
+
+    #[test]
+    fn delimited_list_dynamic_query_columns() {
+        // Simulates typical SQL query result with mixed column types
+        let items = vec![
+            serde_json::json!({
+                "Name": "Widget A",
+                "Total Revenue": 1234.56,
+                "Created Date": "2024-03-15",
+                "Active": true
+            }),
+            serde_json::json!({
+                "Name": "Widget B",
+                "Total Revenue": 789.01,
+                "Created Date": "2024-06-20",
+                "Active": false
+            }),
+        ];
+        let columns = &["Name", "Total Revenue", "Created Date", "Active"];
+        let result = format_delimited_list(&items, columns, ',');
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "Name,Total Revenue,Created Date,Active");
+        assert_eq!(lines[1], "Widget A,1234.56,2024-03-15,true");
+        assert_eq!(lines[2], "Widget B,789.01,2024-06-20,false");
+    }
+
+    #[test]
+    fn delimited_list_missing_columns_render_empty() {
+        // When a row doesn't have a column, it should render as empty
+        let items = vec![
+            serde_json::json!({"a": 1, "b": 2}),
+            serde_json::json!({"a": 3}), // missing "b"
+        ];
+        let columns = &["a", "b"];
+        let result = format_delimited_list(&items, columns, ',');
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines[1], "1,2");
+        assert_eq!(lines[2], "3,"); // missing column renders empty
+    }
+
+    #[test]
+    fn delimited_list_quotes_in_values() {
+        let items = vec![serde_json::json!({"text": "say \"hello\"", "id": 1})];
+        let columns = &["id", "text"];
+        let result = format_delimited_list(&items, columns, ',');
+        let lines: Vec<&str> = result.lines().collect();
+        // Quotes in value should be doubled per RFC 4180
+        assert_eq!(lines[1], "1,\"say \"\"hello\"\"\"");
+    }
+
+    #[test]
+    fn delimited_list_tsv_comma_not_quoted() {
+        // In TSV mode, commas in values should NOT be quoted
+        let items = vec![serde_json::json!({"name": "Doe, John", "id": 1})];
+        let columns = &["name", "id"];
+        let result = format_delimited_list(&items, columns, '\t');
+        let lines: Vec<&str> = result.lines().collect();
+        // Tab separator, comma in value is fine without quoting
+        assert_eq!(lines[1], "Doe, John\t1");
+    }
+
+    // ─── format_delimited_object tests ───────────────────────────────────────
+
+    #[test]
+    fn delimited_object_basic_csv() {
+        let obj = serde_json::json!({"status": "ok", "rows_affected": 5});
+        let result = format_delimited_object(&obj, ',');
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines.len(), 2);
+        // Keys as header, values as data row
+        assert!(lines[0].contains("status"));
+        assert!(lines[0].contains("rows_affected"));
+        assert!(lines[1].contains("ok"));
+        assert!(lines[1].contains('5'));
+    }
+
+    #[test]
+    fn delimited_object_basic_tsv() {
+        let obj = serde_json::json!({"col1": "value1", "col2": 42});
+        let result = format_delimited_object(&obj, '\t');
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].contains('\t'));
+        assert!(lines[1].contains('\t'));
+    }
+
+    #[test]
+    fn delimited_object_non_object_scalar() {
+        let val = serde_json::json!("just a string");
+        let result = format_delimited_object(&val, ',');
+        assert_eq!(result, "just a string\n");
+    }
+
+    #[test]
+    fn delimited_object_query_empty_result() {
+        // Typical empty-result object from query commands
+        let obj = serde_json::json!({
+            "rows_returned": 0,
+            "message": "Query executed successfully (no results returned)."
+        });
+        let result = format_delimited_object(&obj, ',');
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].contains("rows_returned"));
+        assert!(lines[0].contains("message"));
+        assert!(lines[1].contains('0'));
+        assert!(lines[1].contains("Query executed successfully"));
     }
 }
