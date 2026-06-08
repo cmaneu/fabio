@@ -242,7 +242,7 @@ cargo fmt
 ### Project Stats
 
 - **70 command groups** with **771 subcommands**
-- **1301 tests** (496 unit + 138 offline integration + 667 E2E requiring live tenant)
+- **2162 tests** (583 unit + 879 offline integration + 700 E2E requiring live tenant)
 - **~16 MB** release binary (stripped, full LTO, panic=abort)
 - Zero clippy warnings, zero unsafe code
 
