@@ -99,8 +99,14 @@ fabio lakehouse copy-table --workspace $WS --id $LH --table sales \
   --dest-workspace $WS2 --dest-id $LH2
 
 # Sync files between lakehouses (only copies new/modified based on ETag)
-fabio lakehouse sync --workspace $WS --id $LH \
-  --dest-workspace $WS2 --dest-id $LH2 --delete
+fabio lakehouse sync --source-workspace $WS --source-id $LH --source-path Files/data \
+  --dest-workspace $WS2 --dest-id $LH2 --dest-path Files/data --delete
+
+# Sync with rename detection (detects moved/renamed files via content matching)
+# Uses Content-MD5 or unique file size to match — performs O(1) atomic rename
+# at the destination instead of re-copying large files
+fabio lakehouse sync --source-workspace $WS --source-id $LH --source-path Files/data \
+  --dest-workspace $WS2 --dest-id $LH2 --dest-path Files/data --delete --checksum
 
 # Create a shortcut to an ADLS Gen2 container
 fabio lakehouse create-shortcut --workspace $WS --id $LH \

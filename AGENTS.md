@@ -40,9 +40,9 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (JMESPath expression — see jmespath.org), `--quiet` (suppresses stdout), `--verbose/-v` (HTTP/LRO/auth diagnostics on stderr), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`, `--lro-timeout`
 - HTTP client: async get/post/put/patch/delete with LRO polling (`Location` + `x-ms-operation-id` + resource follow)
-- OneLake operations: DFS upload (create+append+flush), download, file listing; Blob API copy (server-side async)
+- OneLake operations: DFS upload (create+append+flush with Content-MD5), download, file listing; Blob API copy (server-side async)
 - **Parallel file/table operations**: Upload, copy, move support glob patterns with concurrent execution and rate-limit retry
-- **Sync command**: `lakehouse sync` copies new/modified files between lakehouses using ETag/MD5 comparison
+- **Sync command**: `lakehouse sync` copies new/modified files between lakehouses using ETag/MD5 comparison, with rename detection (`--delete` + optional `--checksum`)
 - **LRO polling**: 2s default interval (respects `Retry-After` header, capped at 60s), 120s max, handles 200/202, checks `status` field until Succeeded/Failed
 - **Transport retry**: Automatic retry on 502/503/504 gateway errors (3 attempts, linear backoff 1-3s)
 - **Error code headers**: Extracts `x-ms-public-api-error-code` / `x-ms-error-code` response headers into error messages
@@ -156,7 +156,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - Errors on stderr as `{"error":{"code":"...","message":"..."}}` with non-zero exit
 - `--query` supports full JMESPath expressions (see jmespath.org) — filter, project, slice, multiselect, pipe, functions (length, sort_by, etc.)
 - `--quiet` suppresses all stdout; errors still go to stderr
-- OneLake upload uses DFS create+append+flush 3-step pattern
+- OneLake upload uses DFS create+append+flush 3-step pattern with `x-ms-content-md5` on flush (computes MD5 client-side, stores as file property for content-based matching)
 - Notebook creation builds minimal .ipynb JSON, base64-encodes for Fabric API; `source` must be list of strings
 - Item copy fetches definition from source via LRO, posts to destination workspace via LRO
 - LRO polling: 2s default interval (respects `Retry-After` header, capped at 60s), 120s max wait, handles `Location`/`x-ms-operation-id` headers
@@ -398,6 +398,15 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - Root listing (no `directory` param): returns real paths prefixed with item ID
 - Table files live at `Tables/{name}/_delta_log/` and `Tables/{name}/*.parquet`
 - **DFS directory parameter "virtual lakehouse-in-lakehouse" view**: When `directory=X` is specified, the API returns ALL paths prefixed with `X/`, where top-level lakehouse dirs appear doubled (e.g., `Files/Files/myfile.csv` for a file at `Files/myfile.csv`). With `recursive=false`, only immediate virtual children show. Fix: always use `recursive=true` and strip the doubled prefix client-side.
+- **DFS upload Content-MD5**: Including `x-ms-content-md5` header on the flush call (Step 3) stores the MD5 as a file property. OneLake does NOT compute hashes server-side — the client must provide the hash. Without it, `Content-MD5` is absent from HEAD responses.
+- **Content-MD5 preserved on DFS rename**: When `x-ms-content-md5` was set at upload time, DFS rename preserves both the `Content-MD5` property AND the `ETag`. OneLake treats files with stored MD5 as having "sealed" content — rename is a pure path operation.
+- **Content-MD5 preserved on server-side blob copy**: The `Content-MD5` property (if set) is preserved when a file is copied via Blob API `x-ms-copy-source`, including cross-lakehouse/cross-workspace copies.
+- **ETag format**: ETags in OneLake are .NET DateTime ticks (100-nanosecond intervals since 0001-01-01) encoded in hex (e.g., `"0x8DEC5A604A12DD4"`). They represent the last-modified timestamp, NOT a content hash.
+- **ETag behavior on DFS rename**: Without `x-ms-content-md5` stored, DFS rename generates a new ETag (new modification timestamp). With `x-ms-content-md5` stored, the ETag is preserved (file treated as immutable content).
+- **ETag preserved on server-side blob copy**: Blob API copy preserves the source file's ETag at the destination.
+- **x-ms-content-crc64**: Always returns `AAAAAAAAAAA=` (all zeros) in HEAD responses. The field exists but OneLake does not compute CRC64 checksums.
+- **Fabric-generated files lack content hashes**: Files written by Spark, data pipelines, and load-table operations (via Hadoop ABFS driver) do NOT include `x-ms-content-md5` on flush. These files have no Content-MD5 in HEAD responses and their ETags change on rename.
+- **DFS listing fields**: Returns `name`, `contentLength`, `etag`, `lastModified`, `creationTime` (Windows FILETIME ticks), `owner`, `group`, `permissions`, `expiryTime`. Does NOT include Content-MD5 — requires per-file HEAD requests.
 - **Notebook Jobs API**: `POST /workspaces/{ws}/items/{id}/jobs/instances?jobType=RunNotebook` returns 202 + Location header with job instance URL. Status endpoint returns `NotStarted`, `InProgress`, `Completed`, `Failed`, `Cancelled`. Cancel via `POST .../cancel`.
 - **Spark cold start on small capacity**: First notebook run can take 2-5 minutes to transition from `NotStarted` to `InProgress` due to Spark session allocation.
 
@@ -1201,6 +1210,8 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Shortcut get/delete path**: `GET/DELETE /workspaces/{ws}/items/{id}/shortcuts/{path}/{name}` — path and name are URL path segments.
 - **Enable schemas on create**: `{"displayName": "...", "creationPayload": {"enableSchemas": true}}` enables multi-schema lakehouse.
 - **Sync algorithm**: Lists both source and destination from root (avoiding DFS virtual view doubling), builds file maps keyed by relative path, compares ETags (default) or Content-MD5 (`--checksum`), copies files with different/missing ETags, optionally deletes orphan files at destination (`--delete`).
+- **Sync rename detection**: When `--delete` is active, detects files renamed at source by matching source-only files with dest-only files. Two-pass detection: (1) ETag match (zero-cost, works for files uploaded with MD5 stored), (2) Content-MD5/size match via HEAD requests when `--checksum` is active (works for all files including Fabric-generated). Detected renames use atomic O(1) DFS rename at the destination instead of copy + delete. Output includes `"renamed"` count.
+- **Sync rename detection limitation**: OneLake DFS rename (`x-ms-rename-source`) changes the ETag when the file was NOT uploaded with `x-ms-content-md5`. Files uploaded with fabio (which stores MD5) preserve ETags on rename. Fabric-generated files (Spark, pipelines) do not have Content-MD5, so checksum mode falls back to unique-size matching.
 - **Parallel execution**: All multi-file operations (upload, copy-file, move-file, delete-table, copy-table, move-table, sync) use concurrent execution with rate-limit retry.
 - **Glob patterns**: Local globs via `glob::glob()`, remote globs via listing + pattern match, table globs via table list API + pattern match.
 - **Materialized views**: `POST /workspaces/{ws}/lakehouses/{id}/jobs/refreshMaterializedLakeViews/instances` triggers refresh. Schedule management at `.../jobs/refreshMaterializedLakeViews/schedules`.
