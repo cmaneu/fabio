@@ -409,12 +409,29 @@ fabio apache-airflow-job get-environment --workspace $WS --id $AJ
 # Create a data agent
 fabio data-agent create --workspace $WS --name "SalesAssistant"
 
-# Configure its definition (instructions + data sources)
-fabio data-agent update-definition --workspace $WS --id $DA --file agent_config/
+# Configure with data source, table metadata, and few-shot examples
+fabio data-agent update-definition --workspace $WS --id $DA --content '{
+  "definition": {
+    "parts": [
+      {"path": "Files/Config/data_agent.json", "payload": "<base64>", "payloadType": "InlineBase64"},
+      {"path": "Files/Config/draft/stage_config.json", "payload": "<base64>", "payloadType": "InlineBase64"},
+      {"path": "Files/Config/draft/lakehouse-SalesLH/datasource.json", "payload": "<base64>", "payloadType": "InlineBase64"},
+      {"path": "Files/Config/draft/lakehouse-SalesLH/fewshots.json", "payload": "<base64>", "payloadType": "InlineBase64"}
+    ]
+  }
+}'
+
+# Publish the agent (activates the chat endpoint — no portal needed)
+fabio data-agent publish --workspace $WS --id $DA --description "v1.0 production"
 
 # Query the agent
 fabio data-agent query --workspace $WS --id $DA \
-  --prompt "Show me the top 5 customers by revenue this quarter"
+  --published-url "https://api.fabric.microsoft.com/v1/workspaces/$WS/dataagents/$DA/aiassistant/openai" \
+  --prompt "Who is the top customer by revenue?"
+
+# Pipe questions from stdin
+echo "How many orders were placed last month?" | fabio data-agent query --workspace $WS --id $DA \
+  --published-url "https://api.fabric.microsoft.com/v1/workspaces/$WS/dataagents/$DA/aiassistant/openai"
 ```
 
 ## ML Models
