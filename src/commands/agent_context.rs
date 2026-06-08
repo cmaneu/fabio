@@ -282,17 +282,17 @@ fn portal_only_operations() -> Vec<PortalOnlyOp> {
         PortalOnlyOp {
             operation: "initialize",
             item_type: "GraphModel",
-            reason: "First-time graph loading provisions internal VersionConfig. REST API refresh fails until the graph is opened in the portal.",
+            reason: "New 4-part definition format (graphType/graphDefinition/dataSources/styling) is documented for CI/CD but data loading does not complete via REST API alone (Jun 2026). Refresh triggers without VersionConfig error but stays NotStarted. Portal initialization still needed for the graph to become queryable.",
         },
         PortalOnlyOp {
             operation: "configure-kql-source",
             item_type: "Reflex",
-            reason: "KQL source via REST API always fails with 'importArtifactRequest field is required'. Configure through portal, then manage definitions programmatically.",
+            reason: "kqlSource-v1 is officially documented (Mar 2026) but updateDefinition still returns 'Invalid definition' (previously 'importArtifactRequest field is required'). Configure KQL sources through the portal first.",
         },
         PortalOnlyOp {
             operation: "configure-credentials",
             item_type: "SemanticModel (DirectQuery)",
-            reason: "DirectQuery OAuth2 credentials require interactive portal binding via 'Manage connections and gateways'. Direct Lake avoids this issue.",
+            reason: "OAuth2 credentials cannot be created via REST API (only 1-hour raw access tokens via Gateways API). Fabric Connections API excludes OAuth2Credentials from create/update schemas. Use ServicePrincipal, WorkspaceIdentity, or Direct Lake instead.",
         },
     ]
 }
