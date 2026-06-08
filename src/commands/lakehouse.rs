@@ -2269,12 +2269,59 @@ async fn sync_files(
         Vec::new()
     };
 
+    // Rename detection: if --delete is active, find source_only files whose ETag
+    // matches a dest_only file. These are renames — we can do an atomic O(1) rename
+    // at the destination instead of a full copy + delete.
+    let (to_rename, to_copy, to_delete) = if delete_extra {
+        detect_renames(&to_copy, &to_delete, &src_map, &dst_map)
+    } else {
+        (Vec::new(), to_copy, to_delete)
+    };
+
     let strategy = if checksum { "Content-MD5" } else { "ETag" };
     eprintln!(
-        "  Sync ({strategy}): {} to copy, {} to delete, concurrency={concurrency}",
+        "  Sync ({strategy}): {} to copy, {} to rename, {} to delete, concurrency={concurrency}",
         to_copy.len(),
+        to_rename.len(),
         to_delete.len()
     );
+
+    // Execute renames first (atomic, O(1) per file)
+    let (renamed, rename_failed) = if to_rename.is_empty() {
+        (0, 0)
+    } else {
+        let rename_tasks: Vec<(String, String)> = to_rename
+            .iter()
+            .map(|(old, new)| (format!("{dst_path}/{old}"), format!("{dst_path}/{new}")))
+            .collect();
+        let item_names: Vec<String> = to_rename
+            .iter()
+            .map(|(old, new)| format!("{old} → {new}"))
+            .collect();
+        let dw: Arc<str> = Arc::from(dst_ws);
+        let di: Arc<str> = Arc::from(dst_id);
+        let cc = client.clone();
+
+        let results = parallel::execute_parallel(rename_tasks, concurrency, move |(src, dst)| {
+            let c = cc.clone();
+            let dw = Arc::clone(&dw);
+            let di = Arc::clone(&di);
+            async move {
+                // Atomic rename within the destination item
+                let result = c.rename_onelake_file(&dw, &di, &src, &dst).await?;
+                if result.is_some() {
+                    Ok(())
+                } else {
+                    // Rename not supported (shouldn't happen for same-item) — fall back
+                    // to copy + delete in a future pass
+                    Err(anyhow::anyhow!("atomic rename failed, fallback needed"))
+                }
+            }
+        })
+        .await;
+        let summary = BatchSummary::from_results(&results, &item_names);
+        (summary.succeeded, summary.failed)
+    };
 
     // Copy new/modified files in parallel
     let (copied, copy_failed) = if to_copy.is_empty() {
@@ -2334,7 +2381,7 @@ async fn sync_files(
         (summary.succeeded, summary.failed)
     };
 
-    let total_failed = copy_failed + delete_failed;
+    let total_failed = copy_failed + delete_failed + rename_failed;
     let status = if total_failed == 0 {
         "synced"
     } else {
@@ -2344,8 +2391,9 @@ async fn sync_files(
         "sourceFiles": src_map.len(),
         "destFiles": dst_map.len(),
         "copied": copied,
+        "renamed": renamed,
         "deleted": deleted,
-        "unchanged": src_map.len() - to_copy.len(),
+        "unchanged": src_map.len() - to_copy.len() - to_rename.len(),
         "failed": total_failed,
         "strategy": strategy,
         "status": status
@@ -2412,6 +2460,74 @@ async fn build_file_map(
         }
     }
     Ok(map)
+}
+
+/// Detect renames by matching source-only files with dest-only files that have
+/// the same `ETag`. Returns `(renames, remaining_to_copy, remaining_to_delete)`.
+///
+/// A rename is detected when a file in `to_copy` (source-only or changed) has
+/// an `ETag` matching a file in `to_delete` (dest-only). In this case, the file
+/// was renamed at the source — we can do an atomic O(1) rename at the destination
+/// instead of a full copy + delete.
+fn detect_renames(
+    to_copy: &[String],
+    to_delete: &[String],
+    src_map: &std::collections::HashMap<String, FileInfo>,
+    dst_map: &std::collections::HashMap<String, FileInfo>,
+) -> (Vec<(String, String)>, Vec<String>, Vec<String>) {
+    use std::collections::HashMap;
+
+    // Build an index of dest-only files keyed by ETag → dest relative path
+    // Only include files with non-empty ETags
+    let mut dest_by_etag: HashMap<&str, Vec<&str>> = HashMap::new();
+    for rel in to_delete {
+        if let Some(info) = dst_map.get(rel) {
+            if !info.etag.is_empty() {
+                dest_by_etag.entry(&info.etag).or_default().push(rel);
+            }
+        }
+    }
+
+    let mut renames: Vec<(String, String)> = Vec::new();
+    let mut matched_dest: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut remaining_copy: Vec<String> = Vec::new();
+
+    for rel in to_copy {
+        if let Some(src_info) = src_map.get(rel) {
+            if !src_info.etag.is_empty() {
+                // Look for a dest-only file with the same ETag that hasn't been matched yet
+                if let Some(candidates) = dest_by_etag.get(src_info.etag.as_str()) {
+                    let match_found = candidates
+                        .iter()
+                        .find(|&&c| !matched_dest.contains(c))
+                        .copied();
+
+                    if let Some(old_path) = match_found {
+                        // Also verify size matches as a safety check
+                        let size_match = dst_map
+                            .get(old_path)
+                            .is_some_and(|d| d.size == src_info.size);
+
+                        if size_match {
+                            renames.push((old_path.to_string(), rel.clone()));
+                            matched_dest.insert(old_path);
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        remaining_copy.push(rel.clone());
+    }
+
+    // Remove matched dest paths from the to_delete list
+    let remaining_delete: Vec<String> = to_delete
+        .iter()
+        .filter(|rel| !matched_dest.contains(rel.as_str()))
+        .cloned()
+        .collect();
+
+    (renames, remaining_copy, remaining_delete)
 }
 
 /// Compute diff using `Content-MD5` checksums (parallel HEAD requests).
@@ -3893,5 +4009,185 @@ mod tests {
         assert!(is_glob_pattern("Files/subdir/*.parquet"));
         assert!(is_glob_pattern("Tables/sales_*"));
         assert!(!is_glob_pattern("Tables/sales_2024"));
+    }
+
+    // ─── detect_renames ──────────────────────────────────────────────────
+
+    fn make_file_info(size: u64, etag: &str) -> FileInfo {
+        FileInfo {
+            size,
+            etag: etag.to_string(),
+        }
+    }
+
+    #[test]
+    fn detect_renames_simple_rename() {
+        use std::collections::HashMap;
+
+        let mut src_map = HashMap::new();
+        src_map.insert("new_name.csv".to_string(), make_file_info(100, "etag_abc"));
+
+        let mut dst_map = HashMap::new();
+        dst_map.insert("old_name.csv".to_string(), make_file_info(100, "etag_abc"));
+
+        let to_copy = vec!["new_name.csv".to_string()];
+        let to_delete = vec!["old_name.csv".to_string()];
+
+        let (renames, remaining_copy, remaining_delete) =
+            detect_renames(&to_copy, &to_delete, &src_map, &dst_map);
+
+        assert_eq!(renames.len(), 1);
+        assert_eq!(
+            renames[0],
+            ("old_name.csv".to_string(), "new_name.csv".to_string())
+        );
+        assert!(remaining_copy.is_empty());
+        assert!(remaining_delete.is_empty());
+    }
+
+    #[test]
+    fn detect_renames_no_match_different_etag() {
+        use std::collections::HashMap;
+
+        let mut src_map = HashMap::new();
+        src_map.insert("new.csv".to_string(), make_file_info(100, "etag_1"));
+
+        let mut dst_map = HashMap::new();
+        dst_map.insert("old.csv".to_string(), make_file_info(100, "etag_2"));
+
+        let to_copy = vec!["new.csv".to_string()];
+        let to_delete = vec!["old.csv".to_string()];
+
+        let (renames, remaining_copy, remaining_delete) =
+            detect_renames(&to_copy, &to_delete, &src_map, &dst_map);
+
+        assert!(renames.is_empty());
+        assert_eq!(remaining_copy, vec!["new.csv"]);
+        assert_eq!(remaining_delete, vec!["old.csv"]);
+    }
+
+    #[test]
+    fn detect_renames_no_match_different_size() {
+        use std::collections::HashMap;
+
+        // Same ETag but different size — safety check rejects it
+        let mut src_map = HashMap::new();
+        src_map.insert("new.csv".to_string(), make_file_info(200, "etag_same"));
+
+        let mut dst_map = HashMap::new();
+        dst_map.insert("old.csv".to_string(), make_file_info(100, "etag_same"));
+
+        let to_copy = vec!["new.csv".to_string()];
+        let to_delete = vec!["old.csv".to_string()];
+
+        let (renames, remaining_copy, remaining_delete) =
+            detect_renames(&to_copy, &to_delete, &src_map, &dst_map);
+
+        assert!(renames.is_empty());
+        assert_eq!(remaining_copy, vec!["new.csv"]);
+        assert_eq!(remaining_delete, vec!["old.csv"]);
+    }
+
+    #[test]
+    fn detect_renames_multiple_renames() {
+        use std::collections::HashMap;
+
+        let mut src_map = HashMap::new();
+        src_map.insert("alpha.csv".to_string(), make_file_info(50, "etag_a"));
+        src_map.insert("beta.csv".to_string(), make_file_info(75, "etag_b"));
+
+        let mut dst_map = HashMap::new();
+        dst_map.insert("old_a.csv".to_string(), make_file_info(50, "etag_a"));
+        dst_map.insert("old_b.csv".to_string(), make_file_info(75, "etag_b"));
+
+        let to_copy = vec!["alpha.csv".to_string(), "beta.csv".to_string()];
+        let to_delete = vec!["old_a.csv".to_string(), "old_b.csv".to_string()];
+
+        let (renames, remaining_copy, remaining_delete) =
+            detect_renames(&to_copy, &to_delete, &src_map, &dst_map);
+
+        assert_eq!(renames.len(), 2);
+        assert!(remaining_copy.is_empty());
+        assert!(remaining_delete.is_empty());
+    }
+
+    #[test]
+    fn detect_renames_partial_match() {
+        use std::collections::HashMap;
+
+        // 3 source files: 2 match dest files, 1 is genuinely new
+        let mut src_map = HashMap::new();
+        src_map.insert("renamed.csv".to_string(), make_file_info(100, "etag_x"));
+        src_map.insert("new_file.csv".to_string(), make_file_info(200, "etag_y"));
+        src_map.insert("also_renamed.csv".to_string(), make_file_info(50, "etag_z"));
+
+        let mut dst_map = HashMap::new();
+        dst_map.insert("old_name.csv".to_string(), make_file_info(100, "etag_x"));
+        dst_map.insert("prev_name.csv".to_string(), make_file_info(50, "etag_z"));
+        dst_map.insert("unrelated.csv".to_string(), make_file_info(300, "etag_u"));
+
+        let to_copy = vec![
+            "renamed.csv".to_string(),
+            "new_file.csv".to_string(),
+            "also_renamed.csv".to_string(),
+        ];
+        let to_delete = vec![
+            "old_name.csv".to_string(),
+            "prev_name.csv".to_string(),
+            "unrelated.csv".to_string(),
+        ];
+
+        let (renames, remaining_copy, remaining_delete) =
+            detect_renames(&to_copy, &to_delete, &src_map, &dst_map);
+
+        assert_eq!(renames.len(), 2);
+        assert_eq!(remaining_copy, vec!["new_file.csv"]);
+        assert_eq!(remaining_delete, vec!["unrelated.csv"]);
+    }
+
+    #[test]
+    fn detect_renames_empty_etag_skipped() {
+        use std::collections::HashMap;
+
+        let mut src_map = HashMap::new();
+        src_map.insert("file.csv".to_string(), make_file_info(100, ""));
+
+        let mut dst_map = HashMap::new();
+        dst_map.insert("old.csv".to_string(), make_file_info(100, ""));
+
+        let to_copy = vec!["file.csv".to_string()];
+        let to_delete = vec!["old.csv".to_string()];
+
+        let (renames, remaining_copy, remaining_delete) =
+            detect_renames(&to_copy, &to_delete, &src_map, &dst_map);
+
+        // Empty ETags should not match
+        assert!(renames.is_empty());
+        assert_eq!(remaining_copy, vec!["file.csv"]);
+        assert_eq!(remaining_delete, vec!["old.csv"]);
+    }
+
+    #[test]
+    fn detect_renames_duplicate_etags_first_match_wins() {
+        use std::collections::HashMap;
+
+        // Two dest files with same ETag — only one should match
+        let mut src_map = HashMap::new();
+        src_map.insert("new.csv".to_string(), make_file_info(100, "etag_dup"));
+
+        let mut dst_map = HashMap::new();
+        dst_map.insert("old1.csv".to_string(), make_file_info(100, "etag_dup"));
+        dst_map.insert("old2.csv".to_string(), make_file_info(100, "etag_dup"));
+
+        let to_copy = vec!["new.csv".to_string()];
+        let to_delete = vec!["old1.csv".to_string(), "old2.csv".to_string()];
+
+        let (renames, remaining_copy, remaining_delete) =
+            detect_renames(&to_copy, &to_delete, &src_map, &dst_map);
+
+        assert_eq!(renames.len(), 1);
+        assert!(remaining_copy.is_empty());
+        // One of old1/old2 should remain in delete (the unmatched one)
+        assert_eq!(remaining_delete.len(), 1);
     }
 }
