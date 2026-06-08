@@ -2272,11 +2272,53 @@ async fn sync_files(
     // Rename detection: if --delete is active, find source_only files whose ETag
     // matches a dest_only file. These are renames — we can do an atomic O(1) rename
     // at the destination instead of a full copy + delete.
-    let (to_rename, to_copy, to_delete) = if delete_extra {
+    let (mut to_rename, to_copy, to_delete) = if delete_extra {
         detect_renames(&to_copy, &to_delete, &src_map, &dst_map)
     } else {
         (Vec::new(), to_copy, to_delete)
     };
+
+    // Second pass: Content-MD5 based rename detection (when --checksum + --delete).
+    // This catches renames that ETag-based detection misses (e.g., after DFS rename
+    // which changes ETags). Uses parallel HEAD requests to get MD5 for candidates.
+    let (to_copy, to_delete) =
+        if checksum && delete_extra && !to_copy.is_empty() && !to_delete.is_empty() {
+            let md5_renames = detect_renames_by_checksum(
+                client,
+                &to_copy,
+                &to_delete,
+                &src_map,
+                src_ws,
+                src_id,
+                src_path,
+                dst_ws,
+                dst_id,
+                dst_path,
+                concurrency,
+            )
+            .await?;
+            if md5_renames.is_empty() {
+                (to_copy, to_delete)
+            } else {
+                // Remove matched files from copy/delete lists
+                let matched_src: std::collections::HashSet<&str> =
+                    md5_renames.iter().map(|(_, new)| new.as_str()).collect();
+                let matched_dst: std::collections::HashSet<&str> =
+                    md5_renames.iter().map(|(old, _)| old.as_str()).collect();
+                let remaining_copy = to_copy
+                    .into_iter()
+                    .filter(|r| !matched_src.contains(r.as_str()))
+                    .collect();
+                let remaining_delete = to_delete
+                    .into_iter()
+                    .filter(|r| !matched_dst.contains(r.as_str()))
+                    .collect();
+                to_rename.extend(md5_renames);
+                (remaining_copy, remaining_delete)
+            }
+        } else {
+            (to_copy, to_delete)
+        };
 
     let strategy = if checksum { "Content-MD5" } else { "ETag" };
     eprintln!(
@@ -2528,6 +2570,167 @@ fn detect_renames(
         .collect();
 
     (renames, remaining_copy, remaining_delete)
+}
+
+/// Detect renames using `Content-MD5` comparison via parallel HEAD requests.
+///
+/// Called as a second pass after `ETag`-based detection when `--checksum` is active.
+/// Fetches MD5 for remaining unmatched source-only and dest-only files, then matches
+/// by MD5 + size. Falls back to size-only matching when MD5 is not available
+/// (which is the case for `OneLake` DFS where `Content-MD5` headers are not returned).
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+async fn detect_renames_by_checksum(
+    client: &FabricClient,
+    to_copy: &[String],
+    to_delete: &[String],
+    _src_map: &std::collections::HashMap<String, FileInfo>,
+    src_ws: &str,
+    src_id: &str,
+    src_path: &str,
+    dst_ws: &str,
+    dst_id: &str,
+    dst_path: &str,
+    concurrency: usize,
+) -> Result<Vec<(String, String)>> {
+    use crate::parallel;
+    use std::collections::HashMap;
+
+    eprintln!(
+        "  Checking checksums for rename detection ({} source + {} dest candidates)...",
+        to_copy.len(),
+        to_delete.len()
+    );
+
+    // Fetch properties for source-only files
+    let src_tasks: Vec<String> = to_copy
+        .iter()
+        .map(|rel| format!("{src_path}/{rel}"))
+        .collect();
+    let sw: Arc<str> = Arc::from(src_ws);
+    let si: Arc<str> = Arc::from(src_id);
+    let cc = client.clone();
+    let src_results = parallel::execute_parallel(src_tasks, concurrency, move |path| {
+        let c = cc.clone();
+        let sw = Arc::clone(&sw);
+        let si = Arc::clone(&si);
+        async move {
+            let props = c.get_file_properties(&sw, &si, &path).await?;
+            Ok(props)
+        }
+    })
+    .await;
+
+    // Fetch properties for dest-only files
+    let dst_tasks: Vec<String> = to_delete
+        .iter()
+        .map(|rel| format!("{dst_path}/{rel}"))
+        .collect();
+    let dw: Arc<str> = Arc::from(dst_ws);
+    let di: Arc<str> = Arc::from(dst_id);
+    let cc = client.clone();
+    let dst_results = parallel::execute_parallel(dst_tasks, concurrency, move |path| {
+        let c = cc.clone();
+        let dw = Arc::clone(&dw);
+        let di = Arc::clone(&di);
+        async move {
+            let props = c.get_file_properties(&dw, &di, &path).await?;
+            Ok(props)
+        }
+    })
+    .await;
+
+    // Build dest index: (md5_or_empty, size) → [rel_path]
+    // When MD5 is available, match by MD5+size. When not, match by size alone
+    // (only for unique sizes to avoid false positives).
+    let mut dest_by_md5: HashMap<String, Vec<(&str, u64)>> = HashMap::new();
+    let mut dest_by_size: HashMap<u64, Vec<&str>> = HashMap::new();
+    let mut has_any_md5 = false;
+
+    for (i, rel) in to_delete.iter().enumerate() {
+        let md5 = dst_results
+            .get(i)
+            .and_then(|r| r.result.as_ref().ok())
+            .and_then(|v| v.get("contentMD5"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let dst_size = dst_results
+            .get(i)
+            .and_then(|r| r.result.as_ref().ok())
+            .and_then(|v| v.get("contentLength"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+
+        if !md5.is_empty() {
+            has_any_md5 = true;
+            dest_by_md5.entry(md5).or_default().push((rel, dst_size));
+        }
+        if dst_size > 0 {
+            dest_by_size.entry(dst_size).or_default().push(rel);
+        }
+    }
+
+    let mut renames: Vec<(String, String)> = Vec::new();
+    let mut matched_dest: std::collections::HashSet<&str> = std::collections::HashSet::new();
+
+    for (i, rel) in to_copy.iter().enumerate() {
+        let src_md5 = src_results
+            .get(i)
+            .and_then(|r| r.result.as_ref().ok())
+            .and_then(|v| v.get("contentMD5"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let src_size = src_results
+            .get(i)
+            .and_then(|r| r.result.as_ref().ok())
+            .and_then(|v| v.get("contentLength"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+
+        // Try MD5 match first (strongest signal)
+        if !src_md5.is_empty() && has_any_md5 {
+            if let Some(candidates) = dest_by_md5.get(src_md5) {
+                let match_found = candidates
+                    .iter()
+                    .find(|(path, size)| !matched_dest.contains(*path) && *size == src_size)
+                    .map(|(path, _)| *path);
+
+                if let Some(old_path) = match_found {
+                    renames.push((old_path.to_string(), rel.clone()));
+                    matched_dest.insert(old_path);
+                    continue;
+                }
+            }
+        }
+
+        // Fallback: size-only match (only when the size is unique among dest orphans
+        // to avoid false positives from files that happen to have the same size)
+        if src_size > 0 {
+            if let Some(candidates) = dest_by_size.get(&src_size) {
+                // Only match when there's exactly ONE dest file with this size
+                // (avoids ambiguity)
+                let unmatched: Vec<&str> = candidates
+                    .iter()
+                    .filter(|p| !matched_dest.contains(**p))
+                    .copied()
+                    .collect();
+                if unmatched.len() == 1 {
+                    let old_path = unmatched[0];
+                    renames.push((old_path.to_string(), rel.clone()));
+                    matched_dest.insert(old_path);
+                }
+            }
+        }
+    }
+
+    if !renames.is_empty() {
+        eprintln!(
+            "  Checksum rename detection: {} matches found",
+            renames.len()
+        );
+    }
+
+    Ok(renames)
 }
 
 /// Compute diff using `Content-MD5` checksums (parallel HEAD requests).

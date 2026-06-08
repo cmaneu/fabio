@@ -581,3 +581,120 @@ fn sync_detects_renames_via_etag() {
         &format!("{dst_dir}/original.txt"),
     );
 }
+
+/// Sync with `--checksum --delete` detects renames via size-based matching.
+/// Since `OneLake` DFS rename changes `ETags` and does not provide `Content-MD5`,
+/// the checksum path falls back to size matching for unique-sized files.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_checksum_detects_renames_via_size() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_csrn");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+    let content = "unique content for checksum rename detection - unlikely to match other files\n";
+
+    // Step 1: Upload to source
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/original.txt"),
+        content,
+    );
+
+    // Step 2: Sync to dest (server-side copy)
+    fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.source_workspace,
+            "--dest-id",
+            &cfg.source_lakehouse,
+            "--dest-path",
+            &dst_dir,
+            "--delete",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    // Step 3: Rename at source (DFS rename changes ETag)
+    fabio()
+        .args([
+            "lakehouse",
+            "move-file",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &format!("{src_dir}/original.txt"),
+            "--dest-workspace",
+            &cfg.source_workspace,
+            "--dest-id",
+            &cfg.source_lakehouse,
+            "--dest-path",
+            &format!("{src_dir}/renamed.txt"),
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .success();
+
+    // Step 4: Sync with --checksum --delete — should detect rename via size matching
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.source_workspace,
+            "--dest-id",
+            &cfg.source_lakehouse,
+            "--dest-path",
+            &dst_dir,
+            "--delete",
+            "--checksum",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("Sync result: {data}");
+    assert_eq!(data["status"], "synced");
+    assert_eq!(
+        data["renamed"], 1,
+        "expected rename detection via size matching with --checksum"
+    );
+    assert_eq!(data["copied"], 0, "no copy needed when rename is detected");
+    assert_eq!(
+        data["deleted"], 0,
+        "no delete needed when rename is detected"
+    );
+
+    // Cleanup
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/renamed.txt"),
+    );
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{dst_dir}/renamed.txt"),
+    );
+}
