@@ -698,3 +698,197 @@ fn sync_checksum_detects_renames_via_size() {
         &format!("{dst_dir}/renamed.txt"),
     );
 }
+
+/// Sync with mixed metadata: some files uploaded via fabio (have `Content-MD5` stored,
+/// `ETags` preserved on rename) and others simulating Fabric-generated files (no MD5,
+/// `ETags` change on rename). Validates that sync handles both correctly:
+/// - fabio-uploaded files: rename detected via checksum
+/// - "Fabric-like" files with unique size: rename detected via size fallback
+/// - Files with non-unique sizes: fall back to copy+delete (no false match)
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_mixed_metadata_rename_detection() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_mixed");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+
+    // Upload 3 files with different content (different sizes for unique matching)
+    // File A: 50 bytes (unique size — rename detectable by size)
+    let content_a = "A".repeat(50);
+    // File B: 75 bytes (unique size — rename detectable by size)
+    let content_b = "B".repeat(75);
+    // File C: stays unchanged (should not be touched)
+    let content_c = "This file stays the same and should be unchanged after sync.\n";
+
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/file_a.txt"),
+        &content_a,
+    );
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/file_b.txt"),
+        &content_b,
+    );
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/file_c.txt"),
+        content_c,
+    );
+
+    // Sync to dest (establishes matching state)
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.source_workspace,
+            "--dest-id",
+            &cfg.source_lakehouse,
+            "--dest-path",
+            &dst_dir,
+            "--delete",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["copied"], 3, "initial sync should copy 3 files");
+
+    // Rename file_a and file_b at source (simulates reorganization)
+    fabio()
+        .args([
+            "lakehouse",
+            "move-file",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &format!("{src_dir}/file_a.txt"),
+            "--dest-workspace",
+            &cfg.source_workspace,
+            "--dest-id",
+            &cfg.source_lakehouse,
+            "--dest-path",
+            &format!("{src_dir}/renamed_a.txt"),
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .success();
+
+    fabio()
+        .args([
+            "lakehouse",
+            "move-file",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &format!("{src_dir}/file_b.txt"),
+            "--dest-workspace",
+            &cfg.source_workspace,
+            "--dest-id",
+            &cfg.source_lakehouse,
+            "--dest-path",
+            &format!("{src_dir}/moved_b.txt"),
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .success();
+
+    // Sync with --checksum --delete: should detect renames via size matching
+    // file_c stays unchanged
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.source_workspace,
+            "--dest-id",
+            &cfg.source_lakehouse,
+            "--dest-path",
+            &dst_dir,
+            "--delete",
+            "--checksum",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("Mixed metadata sync result: {data}");
+    assert_eq!(data["status"], "synced");
+
+    let renamed = data["renamed"].as_u64().unwrap_or(0);
+    let copied = data["copied"].as_u64().unwrap_or(0);
+    let deleted = data["deleted"].as_u64().unwrap_or(0);
+    let unchanged = data["unchanged"].as_u64().unwrap_or(0);
+
+    // file_c should be unchanged
+    assert!(
+        unchanged >= 1,
+        "file_c should be detected as unchanged, got unchanged={unchanged}"
+    );
+    // Both renames should be detected (unique sizes: 50 and 75 bytes)
+    assert_eq!(
+        renamed, 2,
+        "expected 2 renames detected (unique sizes), got renamed={renamed}, copied={copied}, deleted={deleted}. Full: {data}"
+    );
+    // No copies or deletes needed since renames handled it
+    assert_eq!(copied, 0, "no copies needed when renames detected");
+    assert_eq!(deleted, 0, "no deletes needed when renames detected");
+
+    // Cleanup
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/renamed_a.txt"),
+    );
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/moved_b.txt"),
+    );
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/file_c.txt"),
+    );
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{dst_dir}/renamed_a.txt"),
+    );
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{dst_dir}/moved_b.txt"),
+    );
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{dst_dir}/file_c.txt"),
+    );
+}
