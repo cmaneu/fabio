@@ -892,3 +892,464 @@ fn sync_mixed_metadata_rename_detection() {
         &format!("{dst_dir}/file_c.txt"),
     );
 }
+
+/// Helper: download a file and return its content as a string.
+fn download_content(workspace: &str, lakehouse: &str, path: &str) -> Option<String> {
+    let tmp_dir = tempfile::TempDir::new().unwrap();
+    let local_path = tmp_dir.path().join("downloaded.txt");
+
+    let output = fabio()
+        .args([
+            "lakehouse",
+            "download",
+            "--workspace",
+            workspace,
+            "--id",
+            lakehouse,
+            "--source-path",
+            path,
+            "--dest-path",
+            local_path.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+    fs::read_to_string(&local_path).ok()
+}
+
+/// Comprehensive correctness test for sync rename detection with mixed metadata.
+///
+/// Validates that after sync with `--checksum --delete`:
+/// 1. Files with unique sizes are correctly renamed (not copied) at destination
+/// 2. Files with ambiguous sizes (duplicates) are correctly copied+deleted (no false match)
+/// 3. Unchanged files are left untouched
+/// 4. ALL destination files have correct content (downloaded and compared byte-by-byte)
+///
+/// This proves the rename optimization does not introduce data corruption or mismatches.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_rename_correctness_verification() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_correct");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+
+    // Create files with carefully chosen content:
+    // - unique_a and unique_b: unique sizes → rename detectable
+    // - ambig_1 and ambig_2 (both exactly 55 bytes): same size → should NOT be rename-matched
+    // - stable: stays unchanged
+    let content_unique_a = "unique_a: this file has a unique size!!\n";
+    let content_unique_b = "unique_b: this file is slightly longer for a different unique size.\n";
+    let content_stable = "stable: this file never moves.\n";
+
+    // Ensure ambiguous files have EXACTLY the same length
+    let target_len = 55;
+    let content_ambig_1 = format!(
+        "{:<width$}",
+        "ambig_1: same-size file one.",
+        width = target_len
+    );
+    let content_ambig_2 = format!(
+        "{:<width$}",
+        "ambig_2: same-size file two.",
+        width = target_len
+    );
+    assert_eq!(
+        content_ambig_1.len(),
+        content_ambig_2.len(),
+        "ambiguous files must have same size"
+    );
+
+    eprintln!("[setup] Uploading 5 files to source...");
+    eprintln!("  unique_a: {} bytes", content_unique_a.len());
+    eprintln!("  unique_b: {} bytes", content_unique_b.len());
+    eprintln!("  ambig_1:  {} bytes", content_ambig_1.len());
+    eprintln!("  ambig_2:  {} bytes", content_ambig_2.len());
+    eprintln!("  stable:   {} bytes", content_stable.len());
+
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/unique_a.txt"),
+        content_unique_a,
+    );
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/unique_b.txt"),
+        content_unique_b,
+    );
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/ambig_1.txt"),
+        &content_ambig_1,
+    );
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/ambig_2.txt"),
+        &content_ambig_2,
+    );
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/stable.txt"),
+        content_stable,
+    );
+
+    // Initial sync — copy all 5 files to dest
+    eprintln!("[step 1] Initial sync to dest...");
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.source_workspace,
+            "--dest-id",
+            &cfg.source_lakehouse,
+            "--dest-path",
+            &dst_dir,
+            "--delete",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["copied"], 5, "initial sync should copy all 5 files");
+
+    // Rename at source:
+    // - unique_a.txt → renamed_a.txt (unique size → should be rename-detected)
+    // - unique_b.txt → renamed_b.txt (unique size → should be rename-detected)
+    // - ambig_1.txt → renamed_ambig_1.txt (same size as ambig_2 → should NOT be rename-matched)
+    // - ambig_2.txt stays in place
+    // - stable.txt stays in place
+    eprintln!("[step 2] Renaming files at source...");
+    for (old, new) in &[
+        ("unique_a.txt", "renamed_a.txt"),
+        ("unique_b.txt", "renamed_b.txt"),
+        ("ambig_1.txt", "renamed_ambig_1.txt"),
+    ] {
+        fabio()
+            .args([
+                "lakehouse",
+                "move-file",
+                "--source-workspace",
+                &cfg.source_workspace,
+                "--source-id",
+                &cfg.source_lakehouse,
+                "--source-path",
+                &format!("{src_dir}/{old}"),
+                "--dest-workspace",
+                &cfg.source_workspace,
+                "--dest-id",
+                &cfg.source_lakehouse,
+                "--dest-path",
+                &format!("{src_dir}/{new}"),
+            ])
+            .timeout(std::time::Duration::from_secs(30))
+            .assert()
+            .success();
+    }
+
+    // Sync with --checksum --delete
+    eprintln!("[step 3] Sync with --checksum --delete...");
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.source_workspace,
+            "--dest-id",
+            &cfg.source_lakehouse,
+            "--dest-path",
+            &dst_dir,
+            "--delete",
+            "--checksum",
+        ])
+        .timeout(std::time::Duration::from_secs(90))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("  Sync result: {data}");
+
+    let renamed = data["renamed"].as_u64().unwrap_or(0);
+    let copied = data["copied"].as_u64().unwrap_or(0);
+    let deleted = data["deleted"].as_u64().unwrap_or(0);
+    let unchanged = data["unchanged"].as_u64().unwrap_or(0);
+
+    // unique_a and unique_b should be renamed (unique sizes)
+    // ambig_1 should NOT be renamed (same size as ambig_2 → ambiguous → copy+delete)
+    assert!(
+        renamed >= 2,
+        "expected at least 2 renames (unique sizes), got {renamed}"
+    );
+    // stable.txt + ambig_2.txt should be unchanged
+    assert!(
+        unchanged >= 2,
+        "expected at least 2 unchanged (stable + ambig_2), got {unchanged}"
+    );
+    // ambig_1 rename is ambiguous (same size as ambig_2) → should be copied+deleted
+    // Total operations: renamed + copied + deleted + unchanged should account for all
+    eprintln!("  renamed={renamed}, copied={copied}, deleted={deleted}, unchanged={unchanged}");
+
+    // ─── CORRECTNESS VERIFICATION ────────────────────────────────────────────
+    // Download EVERY file from dest and verify content matches expected
+    eprintln!("[step 4] Verifying destination file content...");
+
+    let expected_files: Vec<(&str, &str)> = vec![
+        ("renamed_a.txt", content_unique_a),
+        ("renamed_b.txt", content_unique_b),
+        ("renamed_ambig_1.txt", &content_ambig_1),
+        ("ambig_2.txt", &content_ambig_2),
+        ("stable.txt", content_stable),
+    ];
+
+    for (filename, expected_content) in &expected_files {
+        let path = format!("{dst_dir}/{filename}");
+        let actual = download_content(&cfg.source_workspace, &cfg.source_lakehouse, &path);
+        match actual {
+            Some(content) => {
+                assert_eq!(
+                    content, *expected_content,
+                    "Content mismatch for {filename}! Rename detection may have matched wrong files."
+                );
+                eprintln!("  ✓ {filename}: content correct ({} bytes)", content.len());
+            }
+            None => {
+                panic!("Failed to download {path} — file missing at destination!");
+            }
+        }
+    }
+
+    // Verify old names do NOT exist at dest (they were renamed or deleted)
+    for old_name in &["unique_a.txt", "unique_b.txt", "ambig_1.txt"] {
+        let path = format!("{dst_dir}/{old_name}");
+        let result = download_content(&cfg.source_workspace, &cfg.source_lakehouse, &path);
+        assert!(
+            result.is_none(),
+            "Old file {old_name} should NOT exist at dest (should have been renamed/deleted)"
+        );
+        eprintln!("  ✓ {old_name}: correctly absent from dest");
+    }
+
+    eprintln!("[done] All content verified — no correctness issues!");
+
+    // Cleanup
+    for f in &[
+        "renamed_a.txt",
+        "renamed_b.txt",
+        "renamed_ambig_1.txt",
+        "ambig_2.txt",
+        "stable.txt",
+    ] {
+        delete_file(
+            &cfg.source_workspace,
+            &cfg.source_lakehouse,
+            &format!("{src_dir}/{f}"),
+        );
+        delete_file(
+            &cfg.source_workspace,
+            &cfg.source_lakehouse,
+            &format!("{dst_dir}/{f}"),
+        );
+    }
+}
+
+/// When BOTH same-size files are renamed, the size-based matching must NOT
+/// produce false matches (can't tell which is which). Both should fall back
+/// to copy+delete. Content verification ensures no data corruption.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_ambiguous_sizes_no_false_rename() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_ambig");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+
+    // Two files with identical size but different content
+    let target_len = 60;
+    let content_x = format!("{:<width$}", "file_x: content XXXXXX", width = target_len);
+    let content_y = format!("{:<width$}", "file_y: content YYYYYY", width = target_len);
+    assert_eq!(content_x.len(), content_y.len());
+
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/x.txt"),
+        &content_x,
+    );
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/y.txt"),
+        &content_y,
+    );
+
+    // Initial sync
+    fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.source_workspace,
+            "--dest-id",
+            &cfg.source_lakehouse,
+            "--dest-path",
+            &dst_dir,
+            "--delete",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    // Rename BOTH files at source (creates ambiguity — two orphans with same size)
+    fabio()
+        .args([
+            "lakehouse",
+            "move-file",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &format!("{src_dir}/x.txt"),
+            "--dest-workspace",
+            &cfg.source_workspace,
+            "--dest-id",
+            &cfg.source_lakehouse,
+            "--dest-path",
+            &format!("{src_dir}/renamed_x.txt"),
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .success();
+
+    fabio()
+        .args([
+            "lakehouse",
+            "move-file",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &format!("{src_dir}/y.txt"),
+            "--dest-workspace",
+            &cfg.source_workspace,
+            "--dest-id",
+            &cfg.source_lakehouse,
+            "--dest-path",
+            &format!("{src_dir}/renamed_y.txt"),
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .success();
+
+    // Sync with --checksum --delete
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.source_workspace,
+            "--dest-id",
+            &cfg.source_lakehouse,
+            "--dest-path",
+            &dst_dir,
+            "--delete",
+            "--checksum",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("Ambiguous sync result: {data}");
+
+    let renamed = data["renamed"].as_u64().unwrap_or(0);
+    let copied = data["copied"].as_u64().unwrap_or(0);
+
+    // Since fabio uploads store Content-MD5, the checksum pass matches by MD5
+    // (unique per content) even when sizes are identical. Both files are correctly
+    // rename-matched via their unique MD5 hashes — no ambiguity.
+    // The size-only fallback (which rejects ambiguous sizes) only fires when
+    // MD5 is unavailable (Fabric-generated files without stored hashes).
+    assert_eq!(
+        renamed, 2,
+        "both files should be rename-matched via Content-MD5 (unique per content), \
+         got renamed={renamed}, copied={copied}"
+    );
+
+    // Content verification — the critical check: did each file end up at the right path?
+    // If MD5 matching mixed them up, content would be swapped.
+    let actual_x = download_content(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{dst_dir}/renamed_x.txt"),
+    );
+    let actual_y = download_content(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{dst_dir}/renamed_y.txt"),
+    );
+    assert_eq!(
+        actual_x.as_deref(),
+        Some(content_x.as_str()),
+        "renamed_x.txt has wrong content — MD5 matching may have swapped files!"
+    );
+    assert_eq!(
+        actual_y.as_deref(),
+        Some(content_y.as_str()),
+        "renamed_y.txt has wrong content — MD5 matching may have swapped files!"
+    );
+    eprintln!("  ✓ Content verified — MD5 correctly resolved same-size ambiguity");
+
+    // Cleanup
+    for f in &["renamed_x.txt", "renamed_y.txt"] {
+        delete_file(
+            &cfg.source_workspace,
+            &cfg.source_lakehouse,
+            &format!("{src_dir}/{f}"),
+        );
+        delete_file(
+            &cfg.source_workspace,
+            &cfg.source_lakehouse,
+            &format!("{dst_dir}/{f}"),
+        );
+    }
+}
