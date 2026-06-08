@@ -457,6 +457,10 @@ impl FabricClient {
 
         // Step 2: Append
         let data_len = data.len();
+        let content_md5 = {
+            let hash = md5::compute(&data);
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, hash.0)
+        };
         let append_url = format!("{base}?action=append&position=0");
         verbose::trace_request("PATCH", &append_url, None);
         let start = std::time::Instant::now();
@@ -477,7 +481,7 @@ impl FabricClient {
             start.elapsed().as_millis(),
         );
 
-        // Step 3: Flush
+        // Step 3: Flush (with Content-MD5 for content verification)
         let flush_url = format!("{base}?action=flush&position={data_len}");
         verbose::trace_request("PATCH", &flush_url, None);
         let start = std::time::Instant::now();
@@ -487,6 +491,7 @@ impl FabricClient {
             .patch(&flush_url)
             .header(AUTHORIZATION, &token)
             .header("Content-Length", "0")
+            .header("x-ms-content-md5", &content_md5)
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
