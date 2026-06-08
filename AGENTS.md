@@ -408,15 +408,19 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
   - `stageConfiguration/1.0.0/schema.json` — has `$schema`, `aiInstructions`, `experimental`
   - `publishInfo/1.0.0/schema.json` — has `$schema`, `description`
 - **Definition parts structure** (observed):
-  - `Files/Config/data_agent.json` — schema version reference only
+  - `Files/Config/data_agent.json` — schema version reference only (schema `dataAgent/2.1.0/schema.json`)
   - `Files/Config/draft/stage_config.json` — AI instructions (draft stage)
+  - `Files/Config/draft/{type}-{name}/datasource.json` — data source configuration (draft)
+  - `Files/Config/draft/{type}-{name}/fewshots.json` — few-shot Q&A examples (draft)
   - `Files/Config/published/stage_config.json` — AI instructions (published stage)
+  - `Files/Config/published/{type}-{name}/datasource.json` — data source configuration (published)
+  - `Files/Config/published/{type}-{name}/fewshots.json` — few-shot Q&A examples (published)
   - `Files/Config/publish_info.json` — publish metadata
   - `.platform` — git integration metadata (type, displayName, description, logicalId)
-- **V3 Management Plane**: `GET /workspaces/{ws}/dataAgents/{id}/settings` endpoint EXISTS but returns `FeatureNotAvailable` (HTTP 403) with message "Data Agent V3 Public Management Plane is not enabled." This implies a tenant-level feature flag controls access.
-- **Publishing is portal-only**: No REST API endpoint exposes publish functionality. Tried: `POST .../publish`, `POST .../jobs/instances?jobType=Publish`, `POST .../jobs/instances?jobType=PublishDataAgent` — all return 404 or InvalidJobType. The portal "Publish" button activates the server-side chat endpoint.
-- **Published URL**: Only available from the portal Settings page AFTER publishing. Not exposed in `GET /dataAgents/{id}` response (which only returns `id`, `type`, `displayName`, `description`, `workspaceId`). Will be in `/settings` once V3 is enabled.
-- **Published URL pattern**: `https://api.fabric.microsoft.com/v1/workspaces/{wsId}/dataagents/{agentId}/aiassistant/openai` — this is the OpenAI Assistants-compatible endpoint activated by publishing from the portal.
+- **Publishing via definition IS officially supported (June 2026)**: No dedicated `POST .../publish` endpoint exists, but Microsoft officially documents including `Files/Config/published/` parts + `publish_info.json` in `create` or `updateDefinition` as the supported CI/CD publish path. The `fabio data-agent publish` command implements this by copying all `Files/Config/draft/*` parts to `Files/Config/published/*` and adding `publish_info.json`.
+- **V3 Management Plane**: `GET /workspaces/{ws}/dataAgents/{id}/settings` endpoint EXISTS but returns `FeatureNotAvailable` (HTTP 403) with message "Data Agent V3 Public Management Plane is not enabled." This implies a tenant-level feature flag controls access. Not publicly documented.
+- **Published URL**: Only available from the portal Settings page or via V3 `/settings` endpoint (when enabled). Not exposed in `GET /dataAgents/{id}` response (which only returns `id`, `type`, `displayName`, `description`, `workspaceId`).
+- **Published URL pattern**: `https://api.fabric.microsoft.com/v1/workspaces/{wsId}/dataagents/{agentId}/aiassistant/openai` — this is the OpenAI Assistants-compatible endpoint activated by publishing.
 - **Chat protocol**: Data agents expose an OpenAI Assistants-compatible API at the published URL. Flow: `POST /assistants` → `POST /threads` → `POST /threads/{id}/messages` → `POST /threads/{id}/runs` → poll until terminal → `GET /threads/{id}/messages`. Query param: `?api-version=2024-05-01-preview`.
 - **Authentication for chat**: Uses same Fabric bearer token (`https://api.fabric.microsoft.com/.default` scope), sent as `Authorization: Bearer {token}`.
 - **PATCH /dataAgents/{id}**: Only accepts `displayName` and `description` fields. Passing `properties` or other fields returns `InvalidInput: UpdateArtifactRequest should have at least one valid field to update`.
@@ -433,6 +437,14 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Full definition required for datasource persistence**: Single-part `updateDefinition` with only the datasource file is silently dropped (202 accepted but not persisted). Must include ALL parts together: `data_agent.json` + `stage_config.json` + `datasource.json`. This applies to all datasource types (not just graph).
 - **Graph datasource path convention**: `Files/Config/draft/graph-{DisplayName}/datasource.json` — server does NOT normalize the prefix (unlike lakehouse which becomes `lakehouse-tables-`). The `graph-` prefix is kept as-is.
 - **Graph datasource fields**: `artifactId` (Graph Model ID), `workspaceId`, `displayName`, `type` ("graph"), `userDescription`, `dataSourceInstructions`. Server adds: `$schema`, `metadata`, `elements`.
+- **Few-shot examples (`fewshots.json`)**: New definition part at `Files/Config/{stage}/{type}-{name}/fewshots.json`. Schema: `https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/fewShots/1.0.0/schema.json`. Structure: `{"$schema":"...","fewShots":[{"id":"<uuid>","question":"<natural language>","query":"<SQL/KQL>"}]}`. Each data source can have its own fewshots file. The `fabio data-agent publish` command automatically copies draft fewshots to published (via generic `Files/Config/draft/*` → `Files/Config/published/*` copy).
+- **`folderId` support on create**: `POST /workspaces/{ws}/dataAgents` now accepts optional `folderId` (UUID) to place the agent in a workspace folder. If not specified, agent is created at workspace root.
+- **`sensitivityLabelSettings` on create**: Optional field on creation with `labelId` (UUID) and `sensitivityLabelApplyStrategy` (`ApplyOrFail` or `Ignore`).
+- **`defaultIdentity` in response**: Agent GET/create responses now include a `defaultIdentity` field (polymorphic principal: User, ServicePrincipal, Group, etc.).
+- **`tags` in response**: Agent responses include a `tags` array of `{id, displayName}` objects.
+- **Service principal + managed identity support**: Data Agent create/update/delete now supports service principals and managed identities (not just delegated user tokens).
+- **Schema version 2.1.0**: Current `data_agent.json` uses `$schema: "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/dataAgent/2.1.0/schema.json"`. Simplified form `"2.1.0"` also accepted in the `$schema` field.
+- **`publish_info.json` format**: `{"$schema":"https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/publishInfo/1.0.0/schema.json","description":"<publish description>"}`. The description is optional text captured at publish time.
 
 ## Semantic Model API Behaviors Discovered
 - **TMDL vs model.bim**: Direct Lake semantic models REQUIRE TMDL format (v4.0 pbism). The older model.bim JSON format (compat level 1550) does NOT support DirectLake mode partitions.

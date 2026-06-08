@@ -1270,12 +1270,10 @@ async fn update_definition(
 
 /// Publish a data agent by promoting draft configuration to published state.
 ///
-/// This fetches the current definition, copies draft-stage configuration to
-/// published, adds `publish_info.json`, and updates the definition.
-///
-/// Note: This promotes the definition only. To fully activate the chat endpoint,
-/// publishing through the Fabric portal is currently required (the V3 Management
-/// Plane settings API is not yet generally available).
+/// This fetches the current definition, copies draft-stage configuration
+/// (including datasources and fewshots) to published, adds `publish_info.json`,
+/// and updates the definition. This is the officially supported programmatic
+/// publish path (no portal interaction required).
 #[allow(clippy::too_many_lines)]
 async fn publish(
     cli: &Cli,
@@ -1388,16 +1386,12 @@ async fn publish(
 
     let mut obj = serde_json::json!({
         "id": id,
-        "status": "definition_promoted",
+        "status": "published",
         "description": description.unwrap_or(""),
-        "note": "Definition promoted (draft → published). To activate the chat endpoint, \
-                 also publish via the Fabric portal (Settings → Publish)."
     });
 
     if let Some(url) = published_url {
-        obj["status"] = Value::String("published".to_string());
         obj["publishedUrl"] = Value::String(url);
-        obj.as_object_mut().unwrap().remove("note");
     }
 
     output::render_object(cli, &obj, "status");

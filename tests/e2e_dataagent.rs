@@ -668,10 +668,10 @@ fn dataagent_publish_lifecycle() {
 
     let json = parse_json(&assert);
     let data = extract_data(&json);
-    // Status is "definition_promoted" (V3 not enabled) or "published" (V3 enabled)
-    assert!(
-        data["status"] == "definition_promoted" || data["status"] == "published",
-        "expected definition_promoted or published, got: {}",
+    // Status is always "published" since definition-based publish is the official path
+    assert_eq!(
+        data["status"], "published",
+        "expected published, got: {}",
         data["status"]
     );
     assert_eq!(data["id"], agent_id);
