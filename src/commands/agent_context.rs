@@ -280,11 +280,6 @@ fn definition_paths() -> serde_json::Value {
 fn portal_only_operations() -> Vec<PortalOnlyOp> {
     vec![
         PortalOnlyOp {
-            operation: "publish",
-            item_type: "DataAgent",
-            reason: "Publishing activates the chat endpoint. No REST API endpoint exists. Use the portal Publish button.",
-        },
-        PortalOnlyOp {
             operation: "initialize",
             item_type: "GraphModel",
             reason: "First-time graph loading provisions internal VersionConfig. REST API refresh fails until the graph is opened in the portal.",
