@@ -20,10 +20,24 @@ irm https://raw.githubusercontent.com/iemejia/fabio/main/install.ps1 | iex
 
 Or download pre-built binaries from the [releases page](https://github.com/iemejia/fabio/releases) (Linux, macOS, Windows — x64 and arm64).
 
-You can override the install directory with `INSTALL_DIR`:
+**Via agent skill** (for AI agents using [GitHub Copilot CLI](https://docs.github.com/en/copilot/github-copilot-in-the-cli) or compatible platforms):
+
+Install the [`iemejia/fabio-skills`](https://github.com/iemejia/fabio-skills) agent skill, which will automatically bootstrap fabio and provide Fabric-aware workflows out of the box. Using GitHub CLI:
 
 ```bash
-INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/iemejia/fabio/main/install.sh | bash
+gh skill install iemejia/fabio-skills
+```
+
+Or for other agents, clone into your skills directory:
+
+```bash
+git clone https://github.com/iemejia/fabio-skills ~/.agents/skills/fabio-skills
+```
+
+On Windows (PowerShell):
+
+```powershell
+git clone https://github.com/iemejia/fabio-skills "$env:USERPROFILE\.agents\skills\fabio-skills"
 ```
 
 ## Design Principles
