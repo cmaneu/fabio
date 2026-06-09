@@ -407,6 +407,30 @@ pub enum LakehouseCommand {
         /// Sync only top-level files (do not recurse into subdirectories)
         #[arg(long)]
         no_recursive: bool,
+
+        /// Safety limit: abort deletions if more than NUM files would be deleted
+        #[arg(long)]
+        max_delete: Option<usize>,
+
+        /// Only update files that already exist at destination (don't create new)
+        #[arg(long)]
+        existing: bool,
+
+        /// Delete source files after successful transfer (move semantics)
+        #[arg(long)]
+        remove_source_files: bool,
+
+        /// Skip files smaller than SIZE bytes (supports K, M, G suffixes)
+        #[arg(long)]
+        min_size: Option<String>,
+
+        /// Skip files larger than SIZE bytes (supports K, M, G suffixes)
+        #[arg(long)]
+        max_size: Option<String>,
+
+        /// Show per-file actions on stderr (copy, skip, rename, delete)
+        #[arg(long)]
+        itemize: bool,
     },
 
     // ── Delete ───────────────────────────────────────────────────────────
@@ -977,6 +1001,12 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             no_overwrite,
             force,
             no_recursive,
+            max_delete,
+            existing,
+            remove_source_files,
+            min_size,
+            max_size,
+            itemize,
         } => sync_files(
             cli,
             client,
@@ -994,6 +1024,12 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             *no_overwrite,
             *force,
             *no_recursive,
+            *max_delete,
+            *existing,
+            *remove_source_files,
+            min_size.as_deref(),
+            max_size.as_deref(),
+            *itemize,
         )
         .await
         .map_err(|e| enrich_forbidden(e, "lakehouse sync", "Contributor")),
@@ -2035,6 +2071,32 @@ fn is_glob_pattern(path: &str) -> bool {
 }
 
 /// Parse a semicolon-separated filter string into glob `Pattern` objects.
+/// Parse a human-readable size value (e.g., "100", "10K", "5M", "1G") into bytes.
+fn parse_size_value(s: &str) -> Result<u64> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err(crate::errors::FabioError::invalid_input("Size value cannot be empty").into());
+    }
+
+    let (num_str, multiplier) = if s.ends_with('K') || s.ends_with('k') {
+        (&s[..s.len() - 1], 1024u64)
+    } else if s.ends_with('M') || s.ends_with('m') {
+        (&s[..s.len() - 1], 1024 * 1024)
+    } else if s.ends_with('G') || s.ends_with('g') {
+        (&s[..s.len() - 1], 1024 * 1024 * 1024)
+    } else {
+        (s, 1u64)
+    };
+
+    let num: u64 = num_str.parse().map_err(|_| {
+        crate::errors::FabioError::invalid_input(format!(
+            "Invalid size value '{s}'. Use a number with optional K, M, or G suffix (e.g., 1024, 10K, 5M, 1G)"
+        ))
+    })?;
+
+    Ok(num * multiplier)
+}
+
 fn parse_filter_patterns(filter: &str) -> Vec<glob::Pattern> {
     filter
         .split(';')
@@ -2310,10 +2372,20 @@ async fn sync_files(
     no_overwrite: bool,
     force: bool,
     no_recursive: bool,
+    max_delete: Option<usize>,
+    existing: bool,
+    remove_source_files: bool,
+    min_size: Option<&str>,
+    max_size: Option<&str>,
+    itemize: bool,
 ) -> Result<()> {
     use crate::parallel::{self, BatchSummary};
 
     let concurrency = parallel::default_concurrency();
+
+    // Parse size limits
+    let min_bytes = min_size.map(parse_size_value).transpose()?;
+    let max_bytes = max_size.map(parse_size_value).transpose()?;
 
     // Build file maps for source and destination
     let mut src_map = build_file_map(client, src_ws, src_id, src_path).await?;
@@ -2323,6 +2395,23 @@ async fn sync_files(
     if no_recursive {
         src_map.retain(|rel, _| !rel.contains('/'));
         dst_map.retain(|rel, _| !rel.contains('/'));
+    }
+
+    // Apply --min-size / --max-size filters
+    if min_bytes.is_some() || max_bytes.is_some() {
+        src_map.retain(|_, info| {
+            if let Some(min) = min_bytes {
+                if info.size < min {
+                    return false;
+                }
+            }
+            if let Some(max) = max_bytes {
+                if info.size > max {
+                    return false;
+                }
+            }
+            true
+        });
     }
 
     // Apply --include/--exclude filters to the source map
@@ -2339,6 +2428,11 @@ async fn sync_files(
                 matches_filters(rel, include_patterns.as_ref(), exclude_patterns.as_ref())
             });
         }
+    }
+
+    // Apply --existing: limit source to files that already exist at destination
+    if existing {
+        src_map.retain(|rel, _| dst_map.contains_key(rel));
     }
 
     let total_source = src_map.len();
@@ -2407,10 +2501,26 @@ async fn sync_files(
         Vec::new()
     };
 
+    // --max-delete safety: if more files would be deleted than allowed, skip deletions
+    let (to_delete, deletions_skipped) = if let Some(max) = max_delete {
+        if to_delete.len() > max {
+            eprintln!(
+                "  WARNING: {} files would be deleted (exceeds --max-delete={}), skipping all deletions",
+                to_delete.len(),
+                max
+            );
+            (Vec::new(), true)
+        } else {
+            (to_delete, false)
+        }
+    } else {
+        (to_delete, false)
+    };
+
     // Rename detection: if --delete is active, find source_only files whose ETag
     // matches a dest_only file. These are renames — we can do an atomic O(1) rename
     // at the destination instead of a full copy + delete.
-    let (mut to_rename, to_copy, to_delete) = if delete_extra {
+    let (mut to_rename, to_copy, to_delete) = if delete_extra && !deletions_skipped {
         detect_renames(&to_copy, &to_delete, &src_map, &dst_map)
     } else {
         (Vec::new(), to_copy, to_delete)
@@ -2637,12 +2747,62 @@ async fn sync_files(
     };
 
     let total_failed = copy_failed + delete_failed + rename_failed;
+
+    // --itemize: output per-file actions to stderr
+    if itemize {
+        for (old, new) in &to_rename {
+            eprintln!("  [rename] {old} -> {new}");
+        }
+        for rel in &to_copy {
+            let mode = if dedup_copies.iter().any(|(_, t)| t == rel) {
+                "dedup"
+            } else {
+                "remote"
+            };
+            eprintln!("  [copy]   {rel} ({mode})");
+        }
+        for rel in &to_delete {
+            eprintln!("  [delete] {rel}");
+        }
+        let unchanged_count = total_source - to_copy.len() - to_rename.len();
+        if unchanged_count > 0 {
+            eprintln!("  [skip]   {unchanged_count} unchanged file(s)");
+        }
+    }
+
+    // --remove-source-files: delete source files that were successfully copied
+    let source_removed = if remove_source_files && copied > 0 {
+        let remove_tasks: Vec<String> = to_copy
+            .iter()
+            .map(|rel| format!("{src_path}/{rel}"))
+            .collect();
+        let item_names: Vec<String> = to_copy.clone();
+        let sw: Arc<str> = Arc::from(src_ws);
+        let si: Arc<str> = Arc::from(src_id);
+        let cc = client.clone();
+
+        let results = parallel::execute_parallel(remove_tasks, concurrency, move |path| {
+            let c = cc.clone();
+            let sw = Arc::clone(&sw);
+            let si = Arc::clone(&si);
+            async move {
+                c.delete_onelake_file(&sw, &si, &path).await?;
+                Ok(())
+            }
+        })
+        .await;
+        let summary = BatchSummary::from_results(&results, &item_names);
+        summary.succeeded
+    } else {
+        0
+    };
+
     let status = if total_failed == 0 {
         "synced"
     } else {
         "partial_failure"
     };
-    let obj = serde_json::json!({
+    let mut obj = serde_json::json!({
         "sourceFiles": src_map.len(),
         "destFiles": dst_map.len(),
         "copied": copied,
@@ -2654,6 +2814,12 @@ async fn sync_files(
         "strategy": strategy,
         "status": status
     });
+    if source_removed > 0 {
+        obj["sourceRemoved"] = serde_json::json!(source_removed);
+    }
+    if deletions_skipped {
+        obj["deletionsSkipped"] = serde_json::json!(true);
+    }
     output::render_object(cli, &obj, "status");
 
     if total_failed > 0 {
@@ -5190,5 +5356,45 @@ mod tests {
     fn parse_filters_empty_string() {
         let patterns = parse_filter_patterns("");
         assert!(patterns.is_empty());
+    }
+
+    // ─── parse_size_value ────────────────────────────────────────────────
+
+    #[test]
+    fn parse_size_plain_bytes() {
+        assert_eq!(parse_size_value("1024").unwrap(), 1024);
+        assert_eq!(parse_size_value("0").unwrap(), 0);
+        assert_eq!(parse_size_value("500").unwrap(), 500);
+    }
+
+    #[test]
+    fn parse_size_kilobytes() {
+        assert_eq!(parse_size_value("1K").unwrap(), 1024);
+        assert_eq!(parse_size_value("10k").unwrap(), 10 * 1024);
+    }
+
+    #[test]
+    fn parse_size_megabytes() {
+        assert_eq!(parse_size_value("1M").unwrap(), 1024 * 1024);
+        assert_eq!(parse_size_value("5m").unwrap(), 5 * 1024 * 1024);
+    }
+
+    #[test]
+    fn parse_size_gigabytes() {
+        assert_eq!(parse_size_value("1G").unwrap(), 1024 * 1024 * 1024);
+        assert_eq!(parse_size_value("2g").unwrap(), 2 * 1024 * 1024 * 1024);
+    }
+
+    #[test]
+    fn parse_size_invalid() {
+        assert!(parse_size_value("abc").is_err());
+        assert!(parse_size_value("").is_err());
+        assert!(parse_size_value("10X").is_err());
+    }
+
+    #[test]
+    fn parse_size_with_whitespace() {
+        assert_eq!(parse_size_value(" 100 ").unwrap(), 100);
+        assert_eq!(parse_size_value(" 5M ").unwrap(), 5 * 1024 * 1024);
     }
 }

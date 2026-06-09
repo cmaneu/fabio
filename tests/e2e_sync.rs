@@ -2043,3 +2043,233 @@ fn sync_size_only_compares_by_size() {
         &format!("{dst_dir}/same_size.txt"),
     );
 }
+
+/// Test --max-delete: when more files would be deleted than the limit, skip all deletions.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_max_delete_prevents_mass_deletion() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_maxd");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+
+    // Source is empty (no files)
+    // Dest has 3 files — all would be deleted with --delete
+    for i in 1..=3 {
+        upload_file(
+            &cfg.dest_workspace,
+            &cfg.dest_lakehouse,
+            &format!("{dst_dir}/file{i}.txt"),
+            &format!("content {i}"),
+        );
+    }
+
+    // Sync with --delete --max-delete 2 → 3 files exceed limit, skip deletions
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "-s",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "-d",
+            &dst_dir,
+            "--delete",
+            "--max-delete",
+            "2",
+            "-o",
+            "json",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("Max-delete result: {data}");
+
+    assert_eq!(data["status"], "synced");
+    assert_eq!(data["deleted"], 0); // deletions skipped
+    assert_eq!(data["deletionsSkipped"], true);
+
+    // Cleanup
+    for i in 1..=3 {
+        delete_file(
+            &cfg.dest_workspace,
+            &cfg.dest_lakehouse,
+            &format!("{dst_dir}/file{i}.txt"),
+        );
+    }
+}
+
+/// Test --existing: only update files that already exist at destination.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_existing_only_updates_present_files() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_exst");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+
+    // Source has two files
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/update_me.txt"),
+        "new content for update",
+    );
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/new_file.txt"),
+        "brand new file",
+    );
+
+    // Dest only has update_me.txt (with old content)
+    upload_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/update_me.txt"),
+        "old content",
+    );
+
+    // Sync with --existing --force → only update_me.txt should be copied (it exists
+    // at dest), new_file.txt is skipped (doesn't exist at dest). --force ensures
+    // the copy happens regardless of ETag comparison.
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "-s",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "-d",
+            &dst_dir,
+            "--existing",
+            "--force",
+            "-o",
+            "json",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("Existing-only result: {data}");
+
+    assert_eq!(data["status"], "synced");
+    assert_eq!(data["sourceFiles"], 1); // --existing filtered to only update_me.txt
+    assert_eq!(data["copied"], 1); // force-copied update_me.txt
+    assert_eq!(data["strategy"], "force");
+
+    // Cleanup
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/update_me.txt"),
+    );
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/new_file.txt"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/update_me.txt"),
+    );
+}
+
+/// Test --remove-source-files: source files are deleted after successful transfer.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_remove_source_files_deletes_after_copy() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_rmsrc");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/move_me.txt"),
+        "file to be moved",
+    );
+
+    // Sync with --remove-source-files
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "-s",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "-d",
+            &dst_dir,
+            "--remove-source-files",
+            "-o",
+            "json",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("Remove-source result: {data}");
+
+    assert_eq!(data["status"], "synced");
+    assert_eq!(data["copied"], 1);
+    assert_eq!(data["sourceRemoved"], 1);
+
+    // Verify file exists at dest
+    let actual = download_content(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/move_me.txt"),
+    );
+    assert_eq!(actual.as_deref(), Some("file to be moved"));
+
+    // Verify source file is gone (download should fail)
+    let source_check = download_content(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/move_me.txt"),
+    );
+    assert!(
+        source_check.is_none(),
+        "Source file should have been deleted"
+    );
+
+    // Cleanup dest
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/move_me.txt"),
+    );
+}
