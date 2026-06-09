@@ -1806,6 +1806,7 @@ const KNOWN_ITEM_TYPES: &[&str] = &[
     "CopyJob",
     "Dashboard",
     "DataAgent",
+    "DataBuildToolJob",
     "DataPipeline",
     "Dataflow",
     "Datamart",

@@ -2633,3 +2633,260 @@ fn deploy_validate_params_missing_env_warns() {
             .any(|w| w.as_str().unwrap().contains("no value for env"))
     );
 }
+
+// ── DataBuildToolJob + Shortcut tests ────────────────────────────────────────
+
+#[test]
+fn deploy_validate_data_build_tool_job_source() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let dbt_dir = dir.path().join("SampleDbt.DataBuildToolJob");
+    std::fs::create_dir_all(&dbt_dir).unwrap();
+    std::fs::write(
+        dbt_dir.join(".platform"),
+        r#"{
+            "metadata": {"type": "DataBuildToolJob", "displayName": "SampleDbt"},
+            "config": {"version": "2.0", "logicalId": "dbt-test-lid-001"}
+        }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dbt_dir.join("dbt-content.json"),
+        r#"{
+            "project": {"projectType": "OneLake", "folderPath": "dbt"},
+            "profile": {
+                "profileType": "DataWarehouse",
+                "schema": "analytics",
+                "connectionSettings": {"name": "test_warehouse"}
+            },
+            "command": {"operation": "build", "arguments": {"threads": 4}}
+        }"#,
+    )
+    .unwrap();
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "validate",
+            "--source",
+            dir.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "valid");
+    assert_eq!(data["items"], 1);
+    assert_eq!(data["summary"]["errors"], 0);
+    assert_eq!(data["summary"]["warnings"], 0);
+}
+
+#[test]
+fn deploy_validate_lakehouse_with_shortcuts() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let lh_dir = dir.path().join("SalesLH.Lakehouse");
+    std::fs::create_dir_all(&lh_dir).unwrap();
+    std::fs::write(
+        lh_dir.join(".platform"),
+        r#"{
+            "metadata": {"type": "Lakehouse", "displayName": "SalesLH"},
+            "config": {"version": "2.0", "logicalId": "lh-test-lid-001"}
+        }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        lh_dir.join("shortcuts.metadata.json"),
+        r#"[
+            {
+                "name": "products",
+                "path": "Tables",
+                "target": {
+                    "oneLake": {
+                        "workspaceId": "00000000-0000-0000-0000-000000000000",
+                        "itemId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                        "path": "Tables/products"
+                    }
+                }
+            }
+        ]"#,
+    )
+    .unwrap();
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "validate",
+            "--source",
+            dir.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "valid");
+    assert_eq!(data["items"], 1);
+    assert_eq!(data["summary"]["errors"], 0);
+    // shortcuts.metadata.json should not generate any warnings
+    assert_eq!(data["summary"]["warnings"], 0);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_export_lakehouse_includes_shortcuts() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let output_dir = dir.path().join("export_sc");
+
+    // Setup: create a test shortcut in the dest lakehouse
+    let sc_name = unique_name("sc_export");
+    let target_json = format!(
+        r#"{{"workspaceId":"{}","itemId":"{}","path":"Files"}}"#,
+        cfg.source_workspace, cfg.source_lakehouse
+    );
+
+    let create_assert = fabio()
+        .args([
+            "lakehouse",
+            "create-shortcut",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &cfg.dest_lakehouse,
+            "--name",
+            &sc_name,
+            "--path",
+            "Files",
+            "--target-type",
+            "oneLake",
+            "--target",
+            &target_json,
+        ])
+        .timeout(Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let create_json = parse_json(&create_assert);
+    let create_data = extract_data(&create_json);
+    assert_eq!(create_data["name"], sc_name);
+
+    // Export the workspace (filter to Lakehouse only)
+    let export_assert = fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--dir",
+            output_dir.to_str().unwrap(),
+            "--item-types",
+            "Lakehouse",
+        ])
+        .timeout(Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let export_json = parse_json(&export_assert);
+    let export_data = extract_data(&export_json);
+    assert_eq!(export_data["status"], "exported");
+
+    // Find the exported lakehouse directory that has shortcuts.metadata.json
+    let mut found_shortcuts = false;
+    for entry in std::fs::read_dir(&output_dir).unwrap().flatten() {
+        let shortcuts_path = entry.path().join("shortcuts.metadata.json");
+        if shortcuts_path.exists() {
+            let content = std::fs::read_to_string(&shortcuts_path).unwrap();
+            let shortcuts: serde_json::Value = serde_json::from_str(&content).unwrap();
+            let arr = shortcuts.as_array().expect("shortcuts should be an array");
+            // Check if our test shortcut is in the exported list
+            if arr.iter().any(|s| s["name"] == sc_name) {
+                found_shortcuts = true;
+                break;
+            }
+        }
+    }
+    assert!(
+        found_shortcuts,
+        "Expected shortcuts.metadata.json with test shortcut '{sc_name}' in exported Lakehouse directory"
+    );
+
+    // Cleanup: delete the test shortcut
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-shortcut",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &cfg.dest_lakehouse,
+            "--name",
+            &sc_name,
+            "--path",
+            "Files",
+        ])
+        .timeout(Duration::from_secs(60))
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_data_build_tool_job() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let source_dir = dir.path().join("source");
+
+    let dbt_name = unique_name("dbt_plan");
+    let dbt_dir = source_dir.join(format!("{dbt_name}.DataBuildToolJob"));
+    std::fs::create_dir_all(&dbt_dir).unwrap();
+    std::fs::write(
+        dbt_dir.join(".platform"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "metadata": {"type": "DataBuildToolJob", "displayName": dbt_name},
+            "config": {"version": "2.0", "logicalId": "dbt-e2e-plan-001"}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        dbt_dir.join("dbt-content.json"),
+        r#"{"project":{"projectType":"OneLake","folderPath":"dbt"},"command":{"operation":"build"}}"#,
+    )
+    .unwrap();
+
+    // Plan should show a "create" action for the DataBuildToolJob
+    let assert = fabio()
+        .args([
+            "deploy",
+            "plan",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+        ])
+        .timeout(Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    // Verify plan shows create action
+    assert_eq!(
+        data["summary"]["create"].as_u64().unwrap(),
+        1,
+        "Expected 1 create action for DataBuildToolJob"
+    );
+
+    let changes = data["changes"].as_array().unwrap();
+    let dbt_change = changes
+        .iter()
+        .find(|c| c["item_type"] == "DataBuildToolJob")
+        .expect("Expected a DataBuildToolJob change in plan");
+    assert_eq!(dbt_change["action"], "create");
+    assert_eq!(dbt_change["name"], dbt_name);
+}

@@ -577,11 +577,24 @@ async fn execute_apply(
     .await?;
 
     // Execute post-deploy hooks (unless --no-post-hooks)
-    let hook_results: Vec<serde_json::Value> = if !no_post_hooks && !cli.dry_run {
+    let mut hook_results: Vec<serde_json::Value> = if !no_post_hooks && !cli.dry_run {
         apply::execute_post_hooks(cli, client, &workspace_id, &result.succeeded).await
     } else {
         Vec::new()
     };
+
+    // Execute shortcut reconciliation for Lakehouse items (unless --no-post-hooks)
+    if !no_post_hooks && !cli.dry_run {
+        let shortcut_results = apply::execute_shortcut_hooks(
+            cli,
+            client,
+            &workspace_id,
+            &result.succeeded,
+            &source_workspace,
+        )
+        .await;
+        hook_results.extend(shortcut_results);
+    }
 
     // Render result
     let mut output_data = json!({

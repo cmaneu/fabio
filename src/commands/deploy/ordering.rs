@@ -35,6 +35,7 @@ pub const DEPLOY_ORDER: &[&str] = &[
     "PaginatedReport",
     "Dashboard",
     "CopyJob",
+    "DataBuildToolJob",
     "KQLQueryset",
     "KQLDashboard",
     // --- Reactive & streaming (depends on storage + compute) ---
@@ -226,8 +227,8 @@ mod tests {
         // Guard against accidental additions/removals — update this if DEPLOY_ORDER changes
         assert_eq!(
             DEPLOY_ORDER.len(),
-            42,
-            "DEPLOY_ORDER should have 42 entries; update this test if intentionally changed"
+            43,
+            "DEPLOY_ORDER should have 43 entries; update this test if intentionally changed"
         );
     }
 

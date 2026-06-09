@@ -42,6 +42,9 @@ pub struct SourceItem {
     /// Optional creation payload (from `creationPayload.json`).
     /// Included in the creation request body as the `creationPayload` field.
     pub creation_payload: Option<serde_json::Value>,
+    /// Optional shortcut definitions (from `shortcuts.metadata.json`).
+    /// Only relevant for Lakehouse items. Contains the JSON array of shortcuts.
+    pub shortcuts: Option<Vec<serde_json::Value>>,
     /// Path to the item directory on disk.
     #[allow(dead_code)]
     pub source_path: PathBuf,
@@ -207,6 +210,29 @@ pub fn parse_source_directory(source_dir: &Path) -> Result<SourceWorkspace> {
             None
         };
 
+        // Read optional shortcuts.metadata.json (for Lakehouse items)
+        let shortcuts_path = path.join("shortcuts.metadata.json");
+        let shortcuts = if shortcuts_path.exists() {
+            let content = std::fs::read_to_string(&shortcuts_path).with_context(|| {
+                format!(
+                    "Failed to read shortcuts.metadata.json: {}",
+                    shortcuts_path.display()
+                )
+            })?;
+            let parsed: serde_json::Value = serde_json::from_str(&content).with_context(|| {
+                format!(
+                    "Invalid JSON in shortcuts.metadata.json: {}",
+                    shortcuts_path.display()
+                )
+            })?;
+            match parsed {
+                serde_json::Value::Array(arr) if !arr.is_empty() => Some(arr),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
         let idx = items.len();
 
         if let Some(ref lid) = metadata.logical_id {
@@ -223,6 +249,7 @@ pub fn parse_source_directory(source_dir: &Path) -> Result<SourceWorkspace> {
             parts,
             content_hash,
             creation_payload,
+            shortcuts,
             source_path: path,
         });
     }
@@ -262,8 +289,12 @@ fn read_parts_recursive(
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            // Skip .platform file and creationPayload.json (not definition parts)
-            if file_name == ".platform" || file_name == "creationPayload.json" {
+            // Skip .platform file, creationPayload.json, and shortcuts.metadata.json
+            // (not definition parts — handled separately)
+            if file_name == ".platform"
+                || file_name == "creationPayload.json"
+                || file_name == "shortcuts.metadata.json"
+            {
                 continue;
             }
 
@@ -629,5 +660,75 @@ mod tests {
 
         let content = fs::read_to_string(nb_dir.join("notebook-content.py")).unwrap();
         assert_eq!(content, "# code");
+    }
+
+    #[test]
+    fn test_parse_source_directory_with_shortcuts() {
+        let dir = TempDir::new().unwrap();
+
+        // Create a lakehouse item with shortcuts.metadata.json
+        let lh_dir = dir.path().join("SalesLH.Lakehouse");
+        fs::create_dir_all(&lh_dir).unwrap();
+        fs::write(
+            lh_dir.join(".platform"),
+            r#"{"metadata":{"type":"Lakehouse","displayName":"SalesLH"},"config":{"version":"2.0"}}"#,
+        )
+        .unwrap();
+        fs::write(
+            lh_dir.join("shortcuts.metadata.json"),
+            r#"[
+                {
+                    "name": "products",
+                    "path": "Tables",
+                    "target": {
+                        "oneLake": {
+                            "workspaceId": "00000000-0000-0000-0000-000000000000",
+                            "itemId": "aaa-bbb-ccc",
+                            "path": "Tables/products"
+                        }
+                    }
+                }
+            ]"#,
+        )
+        .unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        assert_eq!(workspace.items.len(), 1);
+
+        let item = &workspace.items[0];
+        assert_eq!(item.metadata.item_type, "Lakehouse");
+
+        // Shortcuts should be parsed
+        assert!(item.shortcuts.is_some());
+        let shortcuts = item.shortcuts.as_ref().unwrap();
+        assert_eq!(shortcuts.len(), 1);
+        assert_eq!(shortcuts[0]["name"], "products");
+        assert_eq!(shortcuts[0]["path"], "Tables");
+
+        // shortcuts.metadata.json should NOT be in definition parts
+        assert!(
+            item.parts.is_empty(),
+            "shortcuts.metadata.json should not appear in definition parts"
+        );
+    }
+
+    #[test]
+    fn test_parse_source_directory_empty_shortcuts_array() {
+        let dir = TempDir::new().unwrap();
+
+        let lh_dir = dir.path().join("EmptyLH.Lakehouse");
+        fs::create_dir_all(&lh_dir).unwrap();
+        fs::write(
+            lh_dir.join(".platform"),
+            r#"{"metadata":{"type":"Lakehouse","displayName":"EmptyLH"},"config":{"version":"2.0"}}"#,
+        )
+        .unwrap();
+        fs::write(lh_dir.join("shortcuts.metadata.json"), "[]").unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        let item = &workspace.items[0];
+
+        // Empty array should result in None (no shortcuts to deploy)
+        assert!(item.shortcuts.is_none());
     }
 }

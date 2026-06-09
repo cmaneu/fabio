@@ -114,6 +114,11 @@ pub async fn export_workspace(
         write_source_directory(output_dir, &exported, overwrite)?
     };
 
+    // Export shortcuts for Lakehouse items
+    if !cli.dry_run {
+        export_lakehouse_shortcuts(client, workspace_id, output_dir, &items_to_export).await;
+    }
+
     Ok(ExportResult {
         total_items: total,
         exported: count,
@@ -188,4 +193,46 @@ fn extract_logical_id(data: &Value) -> Option<String> {
     }
 
     None
+}
+
+/// Export shortcuts for all Lakehouse items in the workspace.
+///
+/// For each Lakehouse item, fetches deployed shortcuts via `GET /items/{id}/shortcuts`
+/// and writes `shortcuts.metadata.json` to the item's export directory.
+/// Failures are silently ignored (shortcuts are optional).
+async fn export_lakehouse_shortcuts(
+    client: &FabricClient,
+    workspace_id: &str,
+    output_dir: &std::path::Path,
+    items: &[(String, String, String, Option<String>)], // (id, type, name, description)
+) {
+    for (id, item_type, name, _) in items {
+        if !item_type.eq_ignore_ascii_case("Lakehouse") {
+            continue;
+        }
+
+        let url = format!("/workspaces/{workspace_id}/items/{id}/shortcuts");
+        let Ok(data) = client.get(&url).await else {
+            continue;
+        };
+
+        let Some(shortcuts) = data.get("value").and_then(|v| v.as_array()) else {
+            continue;
+        };
+
+        if shortcuts.is_empty() {
+            continue;
+        }
+
+        let dir_name = format!("{name}.{item_type}");
+        let item_dir = output_dir.join(&dir_name);
+
+        // Only write if the item directory already exists (was exported successfully)
+        if !item_dir.exists() {
+            continue;
+        }
+
+        let content = serde_json::to_string_pretty(shortcuts).unwrap_or_default();
+        let _ = std::fs::write(item_dir.join("shortcuts.metadata.json"), content);
+    }
 }

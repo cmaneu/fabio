@@ -445,7 +445,175 @@ pub async fn execute_post_hooks(
     results
 }
 
-/// Execute a single create or update operation.
+/// Reconcile lakehouse shortcuts after deployment.
+///
+/// For each Lakehouse item that was deployed (Create/Update/Rename) and has
+/// a `shortcuts.metadata.json` in the source, this function:
+/// 1. Lists currently deployed shortcuts from the live workspace
+/// 2. Deletes orphan shortcuts (deployed but not in source)
+/// 3. Creates/overwrites shortcuts from the source definition
+///
+/// Shortcut failures are non-fatal (same as other post-hooks).
+pub async fn execute_shortcut_hooks(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace_id: &str,
+    succeeded: &[Change],
+    source: &SourceWorkspace,
+) -> Vec<Value> {
+    let mut results: Vec<Value> = Vec::new();
+
+    for change in succeeded {
+        // Only process Lakehouse items that were successfully deployed
+        if !change.item_type.eq_ignore_ascii_case("Lakehouse") {
+            continue;
+        }
+
+        match change.action {
+            ChangeAction::Create | ChangeAction::Update | ChangeAction::Rename => {}
+            _ => continue,
+        }
+
+        let Some(ref item_id) = change.deployed_id else {
+            continue;
+        };
+
+        // Find the source item to get its shortcuts definition
+        let source_item = source
+            .type_name_index
+            .get(&(change.item_type.clone(), change.name.clone()))
+            .and_then(|&idx| source.items.get(idx));
+
+        let Some(source_item) = source_item else {
+            continue;
+        };
+
+        let Some(ref shortcuts) = source_item.shortcuts else {
+            continue;
+        };
+
+        emit_progress(
+            cli.quiet,
+            &format!(
+                "post-hook: reconciling shortcuts for lakehouse \"{}\"",
+                change.name
+            ),
+        );
+
+        match reconcile_shortcuts(client, workspace_id, item_id, shortcuts).await {
+            Ok(summary) => {
+                results.push(json!({
+                    "hook": "shortcuts",
+                    "item_type": "Lakehouse",
+                    "item_name": change.name,
+                    "status": "completed",
+                    "created": summary.created,
+                    "deleted": summary.deleted,
+                    "total": summary.total
+                }));
+            }
+            Err(e) => {
+                emit_progress(
+                    cli.quiet,
+                    &format!(
+                        "  post-hook FAILED: reconcile shortcuts for \"{}\": {}",
+                        change.name,
+                        e.root_cause()
+                    ),
+                );
+                results.push(json!({
+                    "hook": "shortcuts",
+                    "item_type": "Lakehouse",
+                    "item_name": change.name,
+                    "status": "failed",
+                    "error": e.to_string()
+                }));
+            }
+        }
+    }
+
+    results
+}
+
+struct ShortcutSummary {
+    created: usize,
+    deleted: usize,
+    total: usize,
+}
+
+/// Reconcile shortcuts for a single lakehouse item.
+///
+/// Lists deployed shortcuts, computes diff against source, deletes orphans,
+/// and creates/overwrites all source shortcuts.
+async fn reconcile_shortcuts(
+    client: &FabricClient,
+    workspace_id: &str,
+    item_id: &str,
+    source_shortcuts: &[Value],
+) -> Result<ShortcutSummary> {
+    // 1. List currently deployed shortcuts
+    let list_url = format!("/workspaces/{workspace_id}/items/{item_id}/shortcuts");
+    let deployed = client.get(&list_url).await.map_or_else(
+        |_| Vec::new(),
+        |data| {
+            data.get("value")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default()
+        },
+    );
+
+    // Build a set of deployed shortcut keys: "path/name"
+    let deployed_keys: std::collections::HashSet<String> = deployed
+        .iter()
+        .filter_map(|sc| {
+            let path = sc.get("path")?.as_str()?;
+            let name = sc.get("name")?.as_str()?;
+            // Normalize: trim leading slash from path for consistent matching
+            let normalized_path = path.trim_start_matches('/');
+            Some(format!("{normalized_path}/{name}"))
+        })
+        .collect();
+
+    // Build a map of source shortcuts keyed by "path/name"
+    let source_keys: std::collections::HashSet<String> = source_shortcuts
+        .iter()
+        .filter_map(|sc| {
+            let path = sc.get("path")?.as_str()?;
+            let name = sc.get("name")?.as_str()?;
+            let normalized_path = path.trim_start_matches('/');
+            Some(format!("{normalized_path}/{name}"))
+        })
+        .collect();
+
+    // 2. Delete orphans (deployed but not in source)
+    let mut deleted = 0;
+    for key in &deployed_keys {
+        if !source_keys.contains(key) {
+            let delete_url = format!("/workspaces/{workspace_id}/items/{item_id}/shortcuts/{key}");
+            if client.delete(&delete_url).await.is_ok() {
+                deleted += 1;
+            }
+        }
+    }
+
+    // 3. Create/overwrite all source shortcuts
+    let mut created = 0;
+    let create_url = format!(
+        "/workspaces/{workspace_id}/items/{item_id}/shortcuts?shortcutConflictPolicy=CreateOrOverwrite"
+    );
+    for shortcut in source_shortcuts {
+        if client.post(&create_url, shortcut, false).await.is_ok() {
+            created += 1;
+        }
+    }
+
+    Ok(ShortcutSummary {
+        created,
+        deleted,
+        total: source_shortcuts.len(),
+    })
+}
 ///
 /// Returns the deployed item GUID on success.
 async fn execute_single_change(
@@ -876,6 +1044,7 @@ mod tests {
             content_hash: "sha256:abc".to_owned(),
             source_path: std::path::PathBuf::from("/tmp"),
             creation_payload: None,
+            shortcuts: None,
         };
 
         let refs = extract_pipeline_references(&item);
@@ -922,6 +1091,7 @@ mod tests {
             content_hash: "sha256:abc".to_owned(),
             source_path: std::path::PathBuf::from("/tmp"),
             creation_payload: None,
+            shortcuts: None,
         };
 
         let refs = extract_pipeline_references(&item);
@@ -968,6 +1138,7 @@ mod tests {
             content_hash: "sha256:abc".to_owned(),
             source_path: std::path::PathBuf::from("/tmp"),
             creation_payload: None,
+            shortcuts: None,
         };
 
         let refs = extract_pipeline_references(&item);
@@ -1132,6 +1303,7 @@ mod tests {
                 content_hash: "sha256:abc".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
+                shortcuts: None,
             }],
             logical_id_index: HashMap::from([(
                 "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_owned(),
@@ -1169,6 +1341,7 @@ mod tests {
                 content_hash: "sha256:abc".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
+                shortcuts: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::from([(("Notebook".to_owned(), "MyNB".to_owned()), 0)]),
@@ -1202,6 +1375,7 @@ mod tests {
                     content_hash: "sha256:abc".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
+                    shortcuts: None,
                 },
                 SourceItem {
                     metadata: PlatformMetadata {
@@ -1215,6 +1389,7 @@ mod tests {
                     content_hash: "sha256:def".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
+                    shortcuts: None,
                 },
                 SourceItem {
                     metadata: PlatformMetadata {
@@ -1228,6 +1403,7 @@ mod tests {
                     content_hash: "sha256:ghi".to_owned(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
+                    shortcuts: None,
                 },
             ],
             logical_id_index: HashMap::from([
@@ -1321,6 +1497,7 @@ mod tests {
                 content_hash: "sha256:abc".to_owned(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
+                shortcuts: None,
             }],
             logical_id_index: HashMap::from([("lid-lh1".to_owned(), 0)]),
             type_name_index: HashMap::from([(("Lakehouse".to_owned(), "LH1".to_owned()), 0)]),
