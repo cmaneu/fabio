@@ -132,7 +132,10 @@ pub enum LakehouseCommand {
 
     // ── Read/Write ───────────────────────────────────────────────────────
     /// Upload files to a lakehouse (supports glob patterns for parallel upload)
-    #[command(display_order = 10)]
+    #[command(
+        display_order = 10,
+        after_help = "TIP: For incremental sync (only upload new/changed files), use: fabio lakehouse sync --local <dir> --dest-workspace <ws> --dest-id <id> --dest-path <path>"
+    )]
     Upload {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
