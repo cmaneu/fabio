@@ -1353,3 +1353,308 @@ fn sync_ambiguous_sizes_no_false_rename() {
         );
     }
 }
+
+/// Test server-side dedup: when a file to be synced has the same content as
+/// a file already at the destination (different path), the sync should use
+/// a same-lakehouse copy instead of a cross-lakehouse transfer.
+///
+/// Uses `--checksum` mode so Content-MD5 is used for matching (works for
+/// independently uploaded files with the same content).
+///
+/// Setup:
+/// - Source has file A (unique content "dedup_content_xyz")
+/// - Destination already has file B at a different path with the same content
+/// - Syncing should result in `dedupCopied: 1` because the dest can provide
+///   the content locally.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_dedup_uses_existing_dest_file() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_dedup");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+
+    let content = "dedup_content_xyz_unique_12345";
+
+    // Upload file to source at path "new.txt"
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/new.txt"),
+        content,
+    );
+
+    // Upload the SAME content to dest at a DIFFERENT path ("existing.txt")
+    // This simulates a file already present at the destination with identical content.
+    upload_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/existing.txt"),
+        content,
+    );
+
+    // Run sync with --checksum so Content-MD5 is used for dedup matching
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "-s",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "-d",
+            &dst_dir,
+            "--checksum",
+            "-o",
+            "json",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("Dedup sync result: {data}");
+
+    assert_eq!(data["status"], "synced");
+    assert_eq!(data["copied"], 1);
+
+    // The key assertion: the copy was a dedup copy (same-lakehouse)
+    let dedup = data["dedupCopied"].as_u64().unwrap_or(0);
+    assert_eq!(dedup, 1, "Expected dedup copy but got dedupCopied={dedup}");
+
+    // Verify content at destination
+    let actual = download_content(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/new.txt"),
+    );
+    assert_eq!(
+        actual.as_deref(),
+        Some(content),
+        "Dedup-copied file should have correct content"
+    );
+
+    // Cleanup
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/new.txt"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/new.txt"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/existing.txt"),
+    );
+}
+
+/// Test that dedup does NOT trigger when no dest file matches the source content.
+/// All copies should be regular cross-lakehouse copies (dedupCopied: 0).
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_dedup_no_match_uses_remote_copy() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_nodedup");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+
+    // Upload a file to source with unique content
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/unique.txt"),
+        "completely_unique_content_no_match_possible",
+    );
+
+    // Destination has a file with DIFFERENT content
+    upload_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/other.txt"),
+        "different_content_no_match",
+    );
+
+    // Sync with --checksum — no dedup should occur (MD5s differ)
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "-s",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "-d",
+            &dst_dir,
+            "--checksum",
+            "-o",
+            "json",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("No-dedup sync result: {data}");
+
+    assert_eq!(data["status"], "synced");
+    assert_eq!(data["copied"], 1);
+    let dedup = data["dedupCopied"].as_u64().unwrap_or(0);
+    assert_eq!(
+        dedup, 0,
+        "Expected no dedup copy but got dedupCopied={dedup}"
+    );
+
+    // Cleanup
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/unique.txt"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/unique.txt"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/other.txt"),
+    );
+}
+
+/// Test dedup with multiple files: some should dedup, some should remote-copy.
+/// Verifies that the split between dedup and remote copies is correct.
+/// Uses `--checksum` to match by Content-MD5.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_dedup_mixed_dedup_and_remote() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_dmix");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+
+    let shared_content = "shared_content_for_dedup_test_abc";
+    let unique_content = "unique_content_no_match_xyz_789";
+
+    // Source: two files
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/can_dedup.txt"),
+        shared_content,
+    );
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/no_dedup.txt"),
+        unique_content,
+    );
+
+    // Dest: one file with same content as can_dedup.txt (at different path)
+    upload_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/preexisting.txt"),
+        shared_content,
+    );
+
+    // Sync with --checksum
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "-s",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "-d",
+            &dst_dir,
+            "--checksum",
+            "-o",
+            "json",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("Mixed dedup sync result: {data}");
+
+    assert_eq!(data["status"], "synced");
+    assert_eq!(data["copied"], 2); // total copies (dedup + remote)
+    let dedup = data["dedupCopied"].as_u64().unwrap_or(0);
+    assert_eq!(
+        dedup, 1,
+        "Expected 1 dedup copy but got dedupCopied={dedup}"
+    );
+
+    // Verify both files have correct content
+    let actual_dedup = download_content(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/can_dedup.txt"),
+    );
+    assert_eq!(actual_dedup.as_deref(), Some(shared_content));
+
+    let actual_remote = download_content(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/no_dedup.txt"),
+    );
+    assert_eq!(actual_remote.as_deref(), Some(unique_content));
+
+    // Cleanup
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/can_dedup.txt"),
+    );
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/no_dedup.txt"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/can_dedup.txt"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/no_dedup.txt"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/preexisting.txt"),
+    );
+}

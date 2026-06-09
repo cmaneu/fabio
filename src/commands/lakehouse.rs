@@ -2320,10 +2320,35 @@ async fn sync_files(
             (to_copy, to_delete)
         };
 
+    // Server-side deduplication: for files that need to be copied, check if any
+    // existing destination file has the same content hash. In ETag mode, matches by
+    // ETag (works for files previously copied via blob copy). In checksum mode,
+    // uses Content-MD5 via HEAD requests (works for any files with same content).
+    let (dedup_copies, remote_copies) = if checksum {
+        find_dedup_copies_by_checksum(
+            client,
+            &to_copy,
+            &src_map,
+            &dst_map,
+            src_ws,
+            src_id,
+            src_path,
+            dst_ws,
+            dst_id,
+            dst_path,
+            concurrency,
+        )
+        .await?
+    } else {
+        find_dedup_copies(&to_copy, &src_map, &dst_map)
+    };
+
     let strategy = if checksum { "Content-MD5" } else { "ETag" };
     eprintln!(
-        "  Sync ({strategy}): {} to copy, {} to rename, {} to delete, concurrency={concurrency}",
+        "  Sync ({strategy}): {} to copy ({} dedup, {} remote), {} to rename, {} to delete, concurrency={concurrency}",
         to_copy.len(),
+        dedup_copies.len(),
+        remote_copies.len(),
         to_rename.len(),
         to_delete.len()
     );
@@ -2365,15 +2390,52 @@ async fn sync_files(
         (summary.succeeded, summary.failed)
     };
 
-    // Copy new/modified files in parallel
-    let (copied, copy_failed) = if to_copy.is_empty() {
+    // Dedup copies: same-lakehouse copy (existing dest file → new dest path)
+    let (n_dedup, dedup_fail) = if dedup_copies.is_empty() {
         (0, 0)
     } else {
-        let copy_tasks: Vec<(String, String)> = to_copy
+        // dedup_copies: Vec<(source_rel_at_dest, target_rel)>
+        let dedup_tasks: Vec<(String, String)> = dedup_copies
+            .iter()
+            .map(|(src_rel, dst_rel)| {
+                (
+                    format!("{dst_path}/{src_rel}"),
+                    format!("{dst_path}/{dst_rel}"),
+                )
+            })
+            .collect();
+        let item_names: Vec<String> = dedup_copies
+            .iter()
+            .map(|(src_rel, dst_rel)| format!("{src_rel} → {dst_rel} (dedup)"))
+            .collect();
+        let dw: Arc<str> = Arc::from(dst_ws);
+        let di: Arc<str> = Arc::from(dst_id);
+        let cc = client.clone();
+
+        let results = parallel::execute_parallel(dedup_tasks, concurrency, move |(src, dst)| {
+            let c = cc.clone();
+            let dw = Arc::clone(&dw);
+            let di = Arc::clone(&di);
+            async move {
+                // Same-lakehouse copy: source and dest are both in the dest lakehouse
+                c.copy_onelake_file(&dw, &di, &src, &dw, &di, &dst).await?;
+                Ok(())
+            }
+        })
+        .await;
+        let summary = BatchSummary::from_results(&results, &item_names);
+        (summary.succeeded, summary.failed)
+    };
+
+    // Remote copies: cross-lakehouse copy (source lakehouse → dest lakehouse)
+    let (n_remote, remote_fail) = if remote_copies.is_empty() {
+        (0, 0)
+    } else {
+        let copy_tasks: Vec<(String, String)> = remote_copies
             .iter()
             .map(|rel| (format!("{src_path}/{rel}"), format!("{dst_path}/{rel}")))
             .collect();
-        let item_names: Vec<String> = to_copy.clone();
+        let item_names: Vec<String> = remote_copies.clone();
         let sw: Arc<str> = Arc::from(src_ws);
         let si: Arc<str> = Arc::from(src_id);
         let dw: Arc<str> = Arc::from(dst_ws);
@@ -2395,6 +2457,9 @@ async fn sync_files(
         let summary = BatchSummary::from_results(&results, &item_names);
         (summary.succeeded, summary.failed)
     };
+
+    let copied = n_dedup + n_remote;
+    let copy_failed = dedup_fail + remote_fail;
 
     // Delete extra files in parallel
     let (deleted, delete_failed) = if to_delete.is_empty() {
@@ -2433,6 +2498,7 @@ async fn sync_files(
         "sourceFiles": src_map.len(),
         "destFiles": dst_map.len(),
         "copied": copied,
+        "dedupCopied": n_dedup,
         "renamed": renamed,
         "deleted": deleted,
         "unchanged": src_map.len() - to_copy.len() - to_rename.len(),
@@ -2502,6 +2568,194 @@ async fn build_file_map(
         }
     }
     Ok(map)
+}
+
+/// Server-side deduplication: find files that need copying but already have a
+/// content-identical twin at the destination (same `ETag` + size). For these files,
+/// we can perform a same-lakehouse copy instead of a cross-lakehouse transfer.
+///
+/// Returns `(dedup_copies, remote_copies)` where:
+/// - `dedup_copies`: `Vec<(existing_dest_rel_path, target_rel_path)>` — copy within dest
+/// - `remote_copies`: `Vec<target_rel_path>` — normal cross-lakehouse copy
+fn find_dedup_copies(
+    to_copy: &[String],
+    src_map: &std::collections::HashMap<String, FileInfo>,
+    dst_map: &std::collections::HashMap<String, FileInfo>,
+) -> (Vec<(String, String)>, Vec<String>) {
+    use std::collections::HashMap;
+
+    if to_copy.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+
+    // Build index of ALL destination files by ETag (includes files not being deleted).
+    // These are potential dedup sources — files already at the destination with known content.
+    let mut dest_by_etag: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (rel, info) in dst_map {
+        if !info.etag.is_empty() {
+            dest_by_etag.entry(&info.etag).or_default().push(rel);
+        }
+    }
+
+    let mut dedup_copies: Vec<(String, String)> = Vec::new();
+    let mut remote_copies: Vec<String> = Vec::new();
+
+    for rel in to_copy {
+        let Some(src_info) = src_map.get(rel) else {
+            remote_copies.push(rel.clone());
+            continue;
+        };
+
+        if src_info.etag.is_empty() {
+            remote_copies.push(rel.clone());
+            continue;
+        }
+
+        // Look for a destination file with the same ETag and size
+        let found = dest_by_etag
+            .get(src_info.etag.as_str())
+            .and_then(|candidates| {
+                candidates.iter().find(|&&c| {
+                    // Don't use the target path itself as source (it may be stale/overwritten)
+                    c != rel && dst_map.get(c).is_some_and(|d| d.size == src_info.size)
+                })
+            })
+            .copied();
+
+        if let Some(existing_path) = found {
+            dedup_copies.push((existing_path.to_string(), rel.clone()));
+        } else {
+            remote_copies.push(rel.clone());
+        }
+    }
+
+    (dedup_copies, remote_copies)
+}
+
+/// Server-side deduplication using `Content-MD5` checksums (parallel HEAD requests).
+///
+/// Fetches MD5 for source files that need copying and for ALL destination files,
+/// then matches by MD5 + size. Files whose content already exists at the destination
+/// are copied locally (same-lakehouse) instead of cross-lakehouse.
+#[allow(clippy::too_many_arguments)]
+async fn find_dedup_copies_by_checksum(
+    client: &FabricClient,
+    to_copy: &[String],
+    src_map: &std::collections::HashMap<String, FileInfo>,
+    dst_map: &std::collections::HashMap<String, FileInfo>,
+    src_ws: &str,
+    src_id: &str,
+    src_path: &str,
+    dst_ws: &str,
+    dst_id: &str,
+    dst_path: &str,
+    concurrency: usize,
+) -> Result<(Vec<(String, String)>, Vec<String>)> {
+    use crate::parallel;
+    use std::collections::HashMap;
+
+    if to_copy.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+
+    // Fetch MD5 for source files that need copying
+    let src_tasks: Vec<String> = to_copy
+        .iter()
+        .map(|rel| format!("{src_path}/{rel}"))
+        .collect();
+    let sw: Arc<str> = Arc::from(src_ws);
+    let si: Arc<str> = Arc::from(src_id);
+    let cc = client.clone();
+    let src_results = parallel::execute_parallel(src_tasks, concurrency, move |path| {
+        let c = cc.clone();
+        let sw = Arc::clone(&sw);
+        let si = Arc::clone(&si);
+        async move {
+            let props = c.get_file_properties(&sw, &si, &path).await?;
+            Ok(props)
+        }
+    })
+    .await;
+
+    // Fetch MD5 for ALL destination files (potential dedup sources)
+    let dst_rels: Vec<&String> = dst_map.keys().collect();
+    let dst_tasks: Vec<String> = dst_rels
+        .iter()
+        .map(|rel| format!("{dst_path}/{rel}"))
+        .collect();
+    let dw: Arc<str> = Arc::from(dst_ws);
+    let di: Arc<str> = Arc::from(dst_id);
+    let cc = client.clone();
+    let dst_results = parallel::execute_parallel(dst_tasks, concurrency, move |path| {
+        let c = cc.clone();
+        let dw = Arc::clone(&dw);
+        let di = Arc::clone(&di);
+        async move {
+            let props = c.get_file_properties(&dw, &di, &path).await?;
+            Ok(props)
+        }
+    })
+    .await;
+
+    // Build dest index: MD5 → [(rel_path, size)]
+    let mut dest_by_md5: HashMap<String, Vec<(&str, u64)>> = HashMap::new();
+    for (i, rel) in dst_rels.iter().enumerate() {
+        let md5 = dst_results
+            .get(i)
+            .and_then(|r| r.result.as_ref().ok())
+            .and_then(|v| v.get("contentMD5"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let size = dst_results
+            .get(i)
+            .and_then(|r| r.result.as_ref().ok())
+            .and_then(|v| v.get("contentLength"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+
+        if !md5.is_empty() {
+            dest_by_md5.entry(md5).or_default().push((rel, size));
+        }
+    }
+
+    let mut dedup_copies: Vec<(String, String)> = Vec::new();
+    let mut remote_copies: Vec<String> = Vec::new();
+
+    for (i, rel) in to_copy.iter().enumerate() {
+        let src_md5 = src_results
+            .get(i)
+            .and_then(|r| r.result.as_ref().ok())
+            .and_then(|v| v.get("contentMD5"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let src_size = src_map.get(rel).map_or(0, |info| info.size);
+
+        if !src_md5.is_empty() {
+            if let Some(candidates) = dest_by_md5.get(src_md5) {
+                let match_found = candidates
+                    .iter()
+                    .find(|(path, size)| *path != rel && *size == src_size)
+                    .map(|(path, _)| *path);
+
+                if let Some(existing_path) = match_found {
+                    dedup_copies.push((existing_path.to_string(), rel.clone()));
+                    continue;
+                }
+            }
+        }
+
+        remote_copies.push(rel.clone());
+    }
+
+    if !dedup_copies.is_empty() {
+        eprintln!(
+            "  Dedup: {} files can use existing dest content (same MD5)",
+            dedup_copies.len()
+        );
+    }
+
+    Ok((dedup_copies, remote_copies))
 }
 
 /// Detect renames by matching source-only files with dest-only files that have
@@ -4494,5 +4748,186 @@ mod tests {
         assert!(renames.is_empty());
         assert_eq!(remaining_copy.len(), 2);
         assert_eq!(remaining_delete.len(), 2);
+    }
+
+    // ─── find_dedup_copies ───────────────────────────────────────────────
+
+    #[test]
+    fn dedup_copies_finds_matching_dest_file() {
+        use std::collections::HashMap;
+
+        // Source has a file whose ETag matches an existing dest file
+        let mut src_map = HashMap::new();
+        src_map.insert("new_file.csv".to_string(), make_file_info(100, "etag_abc"));
+
+        let mut dst_map = HashMap::new();
+        dst_map.insert("existing.csv".to_string(), make_file_info(100, "etag_abc"));
+
+        let to_copy = vec!["new_file.csv".to_string()];
+        let (dedup, remote) = find_dedup_copies(&to_copy, &src_map, &dst_map);
+
+        assert_eq!(dedup.len(), 1);
+        assert_eq!(
+            dedup[0],
+            ("existing.csv".to_string(), "new_file.csv".to_string())
+        );
+        assert!(remote.is_empty());
+    }
+
+    #[test]
+    fn dedup_copies_no_match_different_etag() {
+        use std::collections::HashMap;
+
+        let mut src_map = HashMap::new();
+        src_map.insert("file.csv".to_string(), make_file_info(100, "etag_1"));
+
+        let mut dst_map = HashMap::new();
+        dst_map.insert("other.csv".to_string(), make_file_info(100, "etag_2"));
+
+        let to_copy = vec!["file.csv".to_string()];
+        let (dedup, remote) = find_dedup_copies(&to_copy, &src_map, &dst_map);
+
+        assert!(dedup.is_empty());
+        assert_eq!(remote, vec!["file.csv"]);
+    }
+
+    #[test]
+    fn dedup_copies_no_match_different_size() {
+        use std::collections::HashMap;
+
+        // Same ETag but different size — safety check rejects it
+        let mut src_map = HashMap::new();
+        src_map.insert("file.csv".to_string(), make_file_info(200, "etag_same"));
+
+        let mut dst_map = HashMap::new();
+        dst_map.insert("other.csv".to_string(), make_file_info(100, "etag_same"));
+
+        let to_copy = vec!["file.csv".to_string()];
+        let (dedup, remote) = find_dedup_copies(&to_copy, &src_map, &dst_map);
+
+        assert!(dedup.is_empty());
+        assert_eq!(remote, vec!["file.csv"]);
+    }
+
+    #[test]
+    fn dedup_copies_empty_etag_skipped() {
+        use std::collections::HashMap;
+
+        let mut src_map = HashMap::new();
+        src_map.insert("file.csv".to_string(), make_file_info(100, ""));
+
+        let mut dst_map = HashMap::new();
+        dst_map.insert("other.csv".to_string(), make_file_info(100, ""));
+
+        let to_copy = vec!["file.csv".to_string()];
+        let (dedup, remote) = find_dedup_copies(&to_copy, &src_map, &dst_map);
+
+        // Empty ETags should not match for dedup
+        assert!(dedup.is_empty());
+        assert_eq!(remote, vec!["file.csv"]);
+    }
+
+    #[test]
+    fn dedup_copies_does_not_use_same_target_path() {
+        use std::collections::HashMap;
+
+        // File exists at dest with same path and same ETag (an update scenario).
+        // It should NOT use itself as a dedup source.
+        let mut src_map = HashMap::new();
+        src_map.insert("data.csv".to_string(), make_file_info(100, "etag_xyz"));
+
+        let mut dst_map = HashMap::new();
+        dst_map.insert("data.csv".to_string(), make_file_info(100, "etag_xyz"));
+
+        let to_copy = vec!["data.csv".to_string()];
+        let (dedup, remote) = find_dedup_copies(&to_copy, &src_map, &dst_map);
+
+        // The dest file has the same path as the target — should not self-reference
+        assert!(dedup.is_empty());
+        assert_eq!(remote, vec!["data.csv"]);
+    }
+
+    #[test]
+    fn dedup_copies_multiple_candidates_picks_first() {
+        use std::collections::HashMap;
+
+        let mut src_map = HashMap::new();
+        src_map.insert("target.csv".to_string(), make_file_info(100, "etag_dup"));
+
+        let mut dst_map = HashMap::new();
+        dst_map.insert("copy_a.csv".to_string(), make_file_info(100, "etag_dup"));
+        dst_map.insert("copy_b.csv".to_string(), make_file_info(100, "etag_dup"));
+
+        let to_copy = vec!["target.csv".to_string()];
+        let (dedup, remote) = find_dedup_copies(&to_copy, &src_map, &dst_map);
+
+        // Should pick one of the candidates (any is valid)
+        assert_eq!(dedup.len(), 1);
+        assert_eq!(dedup[0].1, "target.csv");
+        assert!(dedup[0].0 == "copy_a.csv" || dedup[0].0 == "copy_b.csv");
+        assert!(remote.is_empty());
+    }
+
+    #[test]
+    fn dedup_copies_mixed_dedup_and_remote() {
+        use std::collections::HashMap;
+
+        // Two files to copy: one has a dedup match, one doesn't
+        let mut src_map = HashMap::new();
+        src_map.insert(
+            "dedup_me.csv".to_string(),
+            make_file_info(100, "etag_match"),
+        );
+        src_map.insert(
+            "no_match.csv".to_string(),
+            make_file_info(200, "etag_unique"),
+        );
+
+        let mut dst_map = HashMap::new();
+        dst_map.insert(
+            "existing.csv".to_string(),
+            make_file_info(100, "etag_match"),
+        );
+
+        let to_copy = vec!["dedup_me.csv".to_string(), "no_match.csv".to_string()];
+        let (dedup, remote) = find_dedup_copies(&to_copy, &src_map, &dst_map);
+
+        assert_eq!(dedup.len(), 1);
+        assert_eq!(
+            dedup[0],
+            ("existing.csv".to_string(), "dedup_me.csv".to_string())
+        );
+        assert_eq!(remote, vec!["no_match.csv"]);
+    }
+
+    #[test]
+    fn dedup_copies_empty_to_copy() {
+        use std::collections::HashMap;
+
+        let src_map = HashMap::new();
+        let dst_map = HashMap::new();
+
+        let to_copy: Vec<String> = Vec::new();
+        let (dedup, remote) = find_dedup_copies(&to_copy, &src_map, &dst_map);
+
+        assert!(dedup.is_empty());
+        assert!(remote.is_empty());
+    }
+
+    #[test]
+    fn dedup_copies_empty_dest_map() {
+        use std::collections::HashMap;
+
+        let mut src_map = HashMap::new();
+        src_map.insert("file.csv".to_string(), make_file_info(100, "etag_1"));
+
+        let dst_map = HashMap::new();
+
+        let to_copy = vec!["file.csv".to_string()];
+        let (dedup, remote) = find_dedup_copies(&to_copy, &src_map, &dst_map);
+
+        // No dest files → all go to remote
+        assert!(dedup.is_empty());
+        assert_eq!(remote, vec!["file.csv"]);
     }
 }
