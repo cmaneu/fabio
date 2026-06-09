@@ -6,13 +6,25 @@ Designed for composability: structured JSON output by default, consistent error 
 
 ## Installation
 
-From source (requires Rust 1.85+):
+**Linux / macOS** (installs to `~/.local/bin`):
 
 ```bash
-cargo install --git https://github.com/iemejia/fabio.git
+curl -fsSL https://raw.githubusercontent.com/iemejia/fabio/main/install.sh | bash
+```
+
+**Windows** (PowerShell, installs to `%LOCALAPPDATA%\fabio`):
+
+```powershell
+irm https://raw.githubusercontent.com/iemejia/fabio/main/install.ps1 | iex
 ```
 
 Or download pre-built binaries from the [releases page](https://github.com/iemejia/fabio/releases) (Linux, macOS, Windows — x64 and arm64).
+
+You can override the install directory with `INSTALL_DIR`:
+
+```bash
+INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/iemejia/fabio/main/install.sh | bash
+```
 
 ## Design Principles
 
@@ -214,6 +226,9 @@ See [EXAMPLES.md](EXAMPLES.md) for usage examples covering all major workflows (
 
 ```bash
 git clone https://github.com/iemejia/fabio.git && cd fabio
+
+# Install from source (requires Rust 1.85+)
+cargo install --path .
 
 # Build
 cargo build
