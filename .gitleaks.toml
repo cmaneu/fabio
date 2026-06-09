@@ -1,0 +1,26 @@
+# Gitleaks configuration for fabio CLI
+# Extends the default ruleset — all 100+ built-in detection rules remain active.
+# Only adds allowlist entries to suppress known false positives in test fixtures.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known false positives in test fixtures"
+
+# Compiled Rust build artifacts (only relevant for local --no-git scans)
+paths = [
+    '''target/''',
+]
+
+# Fake JWT in DPAPI unit test — payload is literally ".test" (not a real token)
+# File: src/token_cache.rs
+# Introduced in: 262a661 (test(auth): add Windows-only DPAPI unit and E2E tests)
+#
+# Intentionally invalid JWT in federated token test — signature is "invalid_sig"
+# File: tests/e2e_auth.rs
+# Introduced in: 6bbc709 (test(auth): add live certificate and federated token file tests)
+regexes = [
+    '''eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9\.test''',
+    '''eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0\.invalid_sig''',
+]
