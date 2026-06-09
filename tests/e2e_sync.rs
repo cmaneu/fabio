@@ -2273,3 +2273,140 @@ fn sync_remove_source_files_deletes_after_copy() {
         &format!("{dst_dir}/move_me.txt"),
     );
 }
+
+/// Test --local: sync a local directory to a remote lakehouse.
+/// Should upload only files that don't exist or differ in size at the destination.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_local_uploads_new_files() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_lcl");
+    let dst_dir = format!("Files/{name}_dst");
+
+    // Create a local temp directory with test files
+    let tmp_dir = TempDir::new().unwrap();
+    let local_dir = tmp_dir.path();
+    fs::write(local_dir.join("hello.txt"), "hello from local").unwrap();
+    fs::write(local_dir.join("world.txt"), "world from local").unwrap();
+
+    // Sync local → remote
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--local",
+            local_dir.to_str().unwrap(),
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "-d",
+            &dst_dir,
+            "-o",
+            "json",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("Local sync result: {data}");
+
+    assert_eq!(data["status"], "synced");
+    assert_eq!(data["sourceFiles"], 2);
+    assert_eq!(data["copied"], 2);
+    assert_eq!(data["strategy"], "size"); // default for local mode
+
+    // Verify content at destination
+    let actual = download_content(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/hello.txt"),
+    );
+    assert_eq!(actual.as_deref(), Some("hello from local"));
+
+    // Cleanup
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/hello.txt"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/world.txt"),
+    );
+}
+
+/// Test --local with --checksum: uses Content-MD5 comparison.
+/// Second sync should skip unchanged files (same MD5).
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_local_checksum_skips_unchanged() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_lmd5");
+    let dst_dir = format!("Files/{name}_dst");
+
+    // Create local files
+    let tmp_dir = TempDir::new().unwrap();
+    let local_dir = tmp_dir.path();
+    fs::write(local_dir.join("stable.txt"), "unchanged content").unwrap();
+
+    // First sync: upload
+    fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--local",
+            local_dir.to_str().unwrap(),
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "-d",
+            &dst_dir,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    // Second sync with --checksum: should skip (same MD5)
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--local",
+            local_dir.to_str().unwrap(),
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "-d",
+            &dst_dir,
+            "--checksum",
+            "-o",
+            "json",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("Local checksum re-sync result: {data}");
+
+    assert_eq!(data["status"], "synced");
+    assert_eq!(data["copied"], 0); // nothing changed
+    assert_eq!(data["unchanged"], 1);
+    assert_eq!(data["strategy"], "Content-MD5");
+
+    // Cleanup
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/stable.txt"),
+    );
+}

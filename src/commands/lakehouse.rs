@@ -352,17 +352,21 @@ pub enum LakehouseCommand {
     /// Sync files between lakehouses (parallel, copies new/modified files)
     #[command(display_order = 24)]
     Sync {
-        /// Source workspace ID
-        #[arg(long, alias = "source-workspace")]
-        source_workspace: String,
+        /// Source workspace ID (omit when using --local)
+        #[arg(long, alias = "source-workspace", required_unless_present = "local")]
+        source_workspace: Option<String>,
 
-        /// Source lakehouse ID
-        #[arg(long, alias = "source-id")]
-        source_id: String,
+        /// Source lakehouse ID (omit when using --local)
+        #[arg(long, alias = "source-id", required_unless_present = "local")]
+        source_id: Option<String>,
 
-        /// Source path (e.g. Files/data or Tables/mytable)
-        #[arg(short = 's', long = "source-path")]
-        source_path: String,
+        /// Source path (e.g. Files/data or Tables/mytable; omit when using --local)
+        #[arg(short = 's', long = "source-path", required_unless_present = "local")]
+        source_path: Option<String>,
+
+        /// Local directory to sync from (alternative to --source-workspace/--source-id)
+        #[arg(long, conflicts_with_all = ["source_workspace", "source_id", "source_path"])]
+        local: Option<String>,
 
         /// Destination workspace ID
         #[arg(long, alias = "dest-workspace")]
@@ -990,6 +994,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             source_workspace,
             source_id,
             source_path,
+            local,
             dest_workspace,
             dest_id,
             dest_path,
@@ -1010,9 +1015,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
         } => sync_files(
             cli,
             client,
-            source_workspace,
-            source_id,
-            source_path,
+            source_workspace.as_deref(),
+            source_id.as_deref(),
+            source_path.as_deref(),
+            local.as_deref(),
             dest_workspace,
             dest_id,
             dest_path,
@@ -2347,7 +2353,8 @@ fn render_batch_result(
 }
 
 /// Sync files between source and destination paths in `OneLake`.
-/// By default, compares files using `ETag` (from listing, zero extra API calls).
+/// Source can be another `OneLake` lakehouse or a local directory (`--local`).
+/// By default, compares files using `ETag` (remote-to-remote) or size (local-to-remote).
 /// With `--checksum`, uses `Content-MD5` via HEAD requests for content-level verification.
 /// Optionally deletes files at dest that don't exist in source (`--delete`).
 #[allow(
@@ -2358,9 +2365,10 @@ fn render_batch_result(
 async fn sync_files(
     cli: &Cli,
     client: &FabricClient,
-    src_ws: &str,
-    src_id: &str,
-    src_path: &str,
+    src_ws: Option<&str>,
+    src_id: Option<&str>,
+    src_path: Option<&str>,
+    local_path: Option<&str>,
     dst_ws: &str,
     dst_id: &str,
     dst_path: &str,
@@ -2382,13 +2390,23 @@ async fn sync_files(
     use crate::parallel::{self, BatchSummary};
 
     let concurrency = parallel::default_concurrency();
+    let is_local = local_path.is_some();
 
     // Parse size limits
     let min_bytes = min_size.map(parse_size_value).transpose()?;
     let max_bytes = max_size.map(parse_size_value).transpose()?;
 
-    // Build file maps for source and destination
-    let mut src_map = build_file_map(client, src_ws, src_id, src_path).await?;
+    // Build source file map (local directory or remote OneLake listing)
+    let mut src_map = if let Some(local_dir) = local_path {
+        build_local_file_map(local_dir, !no_recursive)?
+    } else {
+        let sw = src_ws.unwrap();
+        let si = src_id.unwrap();
+        let sp = src_path.unwrap();
+        build_file_map(client, sw, si, sp).await?
+    };
+
+    // Build destination file map (always remote)
     let mut dst_map = build_file_map(client, dst_ws, dst_id, dst_path).await?;
 
     // Apply --no-recursive: filter out files in subdirectories
@@ -2463,19 +2481,46 @@ async fn sync_files(
     } else if checksum {
         // MD5-based: need HEAD requests for files that exist in both
         eprintln!("  Using Content-MD5 checksums (HEAD per file)...");
-        compute_checksum_diff(
-            client,
-            &src_map,
-            &dst_map,
-            src_ws,
-            src_id,
-            src_path,
-            dst_ws,
-            dst_id,
-            dst_path,
-            concurrency,
-        )
-        .await?
+        if is_local {
+            // Local mode: compute local MD5 and compare with remote Content-MD5
+            compute_local_checksum_diff(
+                client,
+                &src_map,
+                &dst_map,
+                local_path.unwrap(),
+                dst_ws,
+                dst_id,
+                dst_path,
+                concurrency,
+            )
+            .await?
+        } else {
+            compute_checksum_diff(
+                client,
+                &src_map,
+                &dst_map,
+                src_ws.unwrap(),
+                src_id.unwrap(),
+                src_path.unwrap(),
+                dst_ws,
+                dst_id,
+                dst_path,
+                concurrency,
+            )
+            .await?
+        }
+    } else if is_local {
+        // Local mode default: compare by size (local files have no ETags)
+        src_map
+            .keys()
+            .filter(|rel| {
+                dst_map.get(*rel).is_none_or(|dst_info| {
+                    let src_info = &src_map[*rel];
+                    src_info.size != dst_info.size
+                })
+            })
+            .cloned()
+            .collect()
     } else {
         // ETag-based (default): compare ETags from listing (free)
         src_map
@@ -2517,28 +2562,26 @@ async fn sync_files(
         (to_delete, false)
     };
 
-    // Rename detection: if --delete is active, find source_only files whose ETag
-    // matches a dest_only file. These are renames — we can do an atomic O(1) rename
-    // at the destination instead of a full copy + delete.
-    let (mut to_rename, to_copy, to_delete) = if delete_extra && !deletions_skipped {
+    // Rename detection: if --delete is active and source is remote, find source_only
+    // files whose ETag matches a dest_only file. Skipped for local sources.
+    let (mut to_rename, to_copy, to_delete) = if delete_extra && !deletions_skipped && !is_local {
         detect_renames(&to_copy, &to_delete, &src_map, &dst_map)
     } else {
         (Vec::new(), to_copy, to_delete)
     };
 
     // Second pass: Content-MD5 based rename detection (when --checksum + --delete).
-    // This catches renames that ETag-based detection misses (e.g., after DFS rename
-    // which changes ETags). Uses parallel HEAD requests to get MD5 for candidates.
+    // Skipped for local sources (no concept of server-side rename from local).
     let (to_copy, to_delete) =
-        if checksum && delete_extra && !to_copy.is_empty() && !to_delete.is_empty() {
+        if checksum && delete_extra && !is_local && !to_copy.is_empty() && !to_delete.is_empty() {
             let md5_renames = detect_renames_by_checksum(
                 client,
                 &to_copy,
                 &to_delete,
                 &src_map,
-                src_ws,
-                src_id,
-                src_path,
+                src_ws.unwrap(),
+                src_id.unwrap(),
+                src_path.unwrap(),
                 dst_ws,
                 dst_id,
                 dst_path,
@@ -2568,19 +2611,19 @@ async fn sync_files(
             (to_copy, to_delete)
         };
 
-    // Server-side deduplication: for files that need to be copied, check if any
-    // existing destination file has the same content hash. In ETag mode, matches by
-    // ETag (works for files previously copied via blob copy). In checksum mode,
-    // uses Content-MD5 via HEAD requests (works for any files with same content).
-    let (dedup_copies, remote_copies) = if checksum {
+    // Server-side deduplication: skipped for local sources (must upload from local).
+    // For remote sources, check if existing dest files have same content hash.
+    let (dedup_copies, remote_copies) = if is_local {
+        (Vec::new(), to_copy.clone())
+    } else if checksum {
         find_dedup_copies_by_checksum(
             client,
             &to_copy,
             &src_map,
             &dst_map,
-            src_ws,
-            src_id,
-            src_path,
+            src_ws.unwrap(),
+            src_id.unwrap(),
+            src_path.unwrap(),
             dst_ws,
             dst_id,
             dst_path,
@@ -2599,6 +2642,8 @@ async fn sync_files(
         "size-only"
     } else if checksum {
         "Content-MD5"
+    } else if is_local {
+        "size"
     } else {
         "ETag"
     };
@@ -2685,17 +2730,51 @@ async fn sync_files(
         (summary.succeeded, summary.failed)
     };
 
-    // Remote copies: cross-lakehouse copy (source lakehouse → dest lakehouse)
+    // Remote copies: either upload from local or cross-lakehouse server-side copy
     let (n_remote, remote_fail) = if remote_copies.is_empty() {
         (0, 0)
-    } else {
-        let copy_tasks: Vec<(String, String)> = remote_copies
+    } else if is_local {
+        // Local mode: read files from disk and upload via DFS
+        let local_dir = local_path.unwrap().to_string();
+        let upload_tasks: Vec<(String, String)> = remote_copies
             .iter()
-            .map(|rel| (format!("{src_path}/{rel}"), format!("{dst_path}/{rel}")))
+            .map(|rel| (rel.clone(), format!("{dst_path}/{rel}")))
             .collect();
         let item_names: Vec<String> = remote_copies.clone();
-        let sw: Arc<str> = Arc::from(src_ws);
-        let si: Arc<str> = Arc::from(src_id);
+        let dw: Arc<str> = Arc::from(dst_ws);
+        let di: Arc<str> = Arc::from(dst_id);
+        let local_base: Arc<str> = Arc::from(local_dir.as_str());
+        let cc = client.clone();
+
+        let results =
+            parallel::execute_parallel(upload_tasks, concurrency, move |(rel, dst_remote)| {
+                let c = cc.clone();
+                let dw = Arc::clone(&dw);
+                let di = Arc::clone(&di);
+                let local_base = Arc::clone(&local_base);
+                async move {
+                    let local_file = Path::new(local_base.as_ref())
+                        .join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
+                    let data = tokio::fs::read(&local_file).await.map_err(|e| {
+                        anyhow::anyhow!("Failed to read {}: {e}", local_file.display())
+                    })?;
+                    c.upload_onelake_file(&dw, &di, &dst_remote, data).await?;
+                    Ok(())
+                }
+            })
+            .await;
+        let summary = BatchSummary::from_results(&results, &item_names);
+        (summary.succeeded, summary.failed)
+    } else {
+        // Remote mode: cross-lakehouse server-side copy
+        let sp = src_path.unwrap();
+        let copy_tasks: Vec<(String, String)> = remote_copies
+            .iter()
+            .map(|rel| (format!("{sp}/{rel}"), format!("{dst_path}/{rel}")))
+            .collect();
+        let item_names: Vec<String> = remote_copies.clone();
+        let sw: Arc<str> = Arc::from(src_ws.unwrap());
+        let si: Arc<str> = Arc::from(src_id.unwrap());
         let dw: Arc<str> = Arc::from(dst_ws);
         let di: Arc<str> = Arc::from(dst_id);
         let cc = client.clone();
@@ -2772,27 +2851,41 @@ async fn sync_files(
 
     // --remove-source-files: delete source files that were successfully copied
     let source_removed = if remove_source_files && copied > 0 {
-        let remove_tasks: Vec<String> = to_copy
-            .iter()
-            .map(|rel| format!("{src_path}/{rel}"))
-            .collect();
-        let item_names: Vec<String> = to_copy.clone();
-        let sw: Arc<str> = Arc::from(src_ws);
-        let si: Arc<str> = Arc::from(src_id);
-        let cc = client.clone();
-
-        let results = parallel::execute_parallel(remove_tasks, concurrency, move |path| {
-            let c = cc.clone();
-            let sw = Arc::clone(&sw);
-            let si = Arc::clone(&si);
-            async move {
-                c.delete_onelake_file(&sw, &si, &path).await?;
-                Ok(())
+        if is_local {
+            // Local mode: delete local files
+            let local_dir = local_path.unwrap();
+            let mut removed = 0usize;
+            for rel in &to_copy {
+                let local_file =
+                    Path::new(local_dir).join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
+                if std::fs::remove_file(&local_file).is_ok() {
+                    removed += 1;
+                }
             }
-        })
-        .await;
-        let summary = BatchSummary::from_results(&results, &item_names);
-        summary.succeeded
+            removed
+        } else {
+            // Remote mode: delete via DFS
+            let sp = src_path.unwrap();
+            let remove_tasks: Vec<String> =
+                to_copy.iter().map(|rel| format!("{sp}/{rel}")).collect();
+            let item_names: Vec<String> = to_copy.clone();
+            let sw: Arc<str> = Arc::from(src_ws.unwrap());
+            let si: Arc<str> = Arc::from(src_id.unwrap());
+            let cc = client.clone();
+
+            let results = parallel::execute_parallel(remove_tasks, concurrency, move |path| {
+                let c = cc.clone();
+                let sw = Arc::clone(&sw);
+                let si = Arc::clone(&si);
+                async move {
+                    c.delete_onelake_file(&sw, &si, &path).await?;
+                    Ok(())
+                }
+            })
+            .await;
+            let summary = BatchSummary::from_results(&results, &item_names);
+            summary.succeeded
+        }
     } else {
         0
     };
@@ -2837,6 +2930,167 @@ async fn sync_files(
 struct FileInfo {
     size: u64,
     etag: String,
+}
+
+/// Build a file map from a local directory (recursive walk).
+/// Returns relative paths using forward slashes (cross-platform).
+fn build_local_file_map(
+    dir: &str,
+    recursive: bool,
+) -> Result<std::collections::HashMap<String, FileInfo>> {
+    let base = Path::new(dir);
+    if !base.is_dir() {
+        return Err(crate::errors::FabioError::invalid_input(format!(
+            "Local path '{dir}' is not a directory",
+        ))
+        .into());
+    }
+
+    let mut map = std::collections::HashMap::new();
+    collect_local_files(base, base, recursive, &mut map)?;
+    Ok(map)
+}
+
+/// Recursively collect files from a local directory.
+fn collect_local_files(
+    base: &Path,
+    current: &Path,
+    recursive: bool,
+    map: &mut std::collections::HashMap<String, FileInfo>,
+) -> Result<()> {
+    let entries = std::fs::read_dir(current).map_err(|e| {
+        crate::errors::FabioError::invalid_input(format!(
+            "Cannot read directory {}: {e}",
+            current.display()
+        ))
+    })?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            crate::errors::FabioError::invalid_input(format!("Directory entry error: {e}"))
+        })?;
+        let path = entry.path();
+        if path.is_dir() {
+            if recursive {
+                collect_local_files(base, &path, recursive, map)?;
+            }
+        } else if path.is_file() {
+            let metadata = std::fs::metadata(&path).map_err(|e| {
+                crate::errors::FabioError::invalid_input(format!(
+                    "Cannot read metadata for {}: {e}",
+                    path.display()
+                ))
+            })?;
+            // Compute relative path with forward slashes
+            let rel = path
+                .strip_prefix(base)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            map.insert(
+                rel,
+                FileInfo {
+                    size: metadata.len(),
+                    etag: String::new(), // local files have no ETag
+                },
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Compute diff using local MD5 checksums vs remote `Content-MD5`.
+/// Returns list of relative paths that need uploading.
+#[allow(clippy::too_many_arguments)]
+async fn compute_local_checksum_diff(
+    client: &FabricClient,
+    src_map: &std::collections::HashMap<String, FileInfo>,
+    dst_map: &std::collections::HashMap<String, FileInfo>,
+    local_dir: &str,
+    dst_ws: &str,
+    dst_id: &str,
+    dst_path: &str,
+    concurrency: usize,
+) -> Result<Vec<String>> {
+    use crate::parallel;
+
+    // Files only in source — always upload
+    let mut to_copy: Vec<String> = src_map
+        .keys()
+        .filter(|rel| !dst_map.contains_key(*rel))
+        .cloned()
+        .collect();
+
+    // Files in both — compare MD5
+    let common: Vec<String> = src_map
+        .keys()
+        .filter(|rel| dst_map.contains_key(*rel))
+        .cloned()
+        .collect();
+
+    if common.is_empty() {
+        return Ok(to_copy);
+    }
+
+    eprintln!("  Checking MD5 for {} files...", common.len());
+
+    // Compute local MD5 for common files
+    let local_md5s: Vec<String> = common
+        .iter()
+        .map(|rel| {
+            let path = Path::new(local_dir).join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
+            std::fs::read(&path).map_or_else(
+                |_| String::new(),
+                |data| {
+                    let hash = md5::compute(&data);
+                    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, hash.0)
+                },
+            )
+        })
+        .collect();
+
+    // Get remote MD5 via HEAD requests
+    let dst_tasks: Vec<String> = common
+        .iter()
+        .map(|rel| format!("{dst_path}/{rel}"))
+        .collect();
+    let dw: Arc<str> = Arc::from(dst_ws);
+    let di: Arc<str> = Arc::from(dst_id);
+    let cc = client.clone();
+    let dst_results = parallel::execute_parallel(dst_tasks, concurrency, move |path| {
+        let c = cc.clone();
+        let dw = Arc::clone(&dw);
+        let di = Arc::clone(&di);
+        async move {
+            let props = c.get_file_properties(&dw, &di, &path).await?;
+            Ok(props)
+        }
+    })
+    .await;
+
+    // Compare
+    for (i, rel) in common.iter().enumerate() {
+        let src_md5 = &local_md5s[i];
+        let dst_md5 = dst_results
+            .get(i)
+            .and_then(|r| r.result.as_ref().ok())
+            .and_then(|v| v.get("contentMD5"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+
+        if src_md5.is_empty() || dst_md5.is_empty() {
+            // Fallback to size comparison
+            let src_info = &src_map[rel];
+            let dst_info = &dst_map[rel];
+            if src_info.size != dst_info.size {
+                to_copy.push(rel.clone());
+            }
+        } else if src_md5 != dst_md5 {
+            to_copy.push(rel.clone());
+        }
+    }
+
+    Ok(to_copy)
 }
 
 /// Build a file map (`relative_path` -> `FileInfo`) from a remote listing.
