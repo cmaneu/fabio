@@ -42,7 +42,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - HTTP client: async get/post/put/patch/delete with LRO polling (`Location` + `x-ms-operation-id` + resource follow)
 - OneLake operations: DFS upload (create+append+flush with Content-MD5), download, file listing; Blob API copy (server-side async)
 - **Parallel file/table operations**: Upload, copy, move support glob patterns with concurrent execution and rate-limit retry
-- **Sync command**: `lakehouse sync` copies new/modified files between lakehouses using ETag/MD5 comparison, with rename detection (`--delete` + optional `--checksum`), server-side dedup (copies from existing dest content), and rsync-inspired flags (`--include`, `--exclude`, `--size-only`, `--no-overwrite`, `--force`, `--no-recursive`, `--max-delete`, `--existing`, `--remove-source-files`, `--min-size`, `--max-size`, `--itemize`)
+- **Sync command**: `lakehouse sync` copies new/modified files between lakehouses using ETag/MD5 comparison, with rename detection (`--delete` + optional `--checksum`), server-side dedup (copies from existing dest content), rsync-inspired flags (`--include`, `--exclude`, `--size-only`, `--no-overwrite`, `--force`, `--no-recursive`, `--max-delete`, `--existing`, `--remove-source-files`, `--min-size`, `--max-size`, `--itemize`), and `--local` for local-to-remote sync (parallel upload of only new/changed files from a local directory)
 - **LRO polling**: 2s default interval (respects `Retry-After` header, capped at 60s), 120s max, handles 200/202, checks `status` field until Succeeded/Failed
 - **Transport retry**: Automatic retry on 502/503/504 gateway errors (3 attempts, linear backoff 1-3s)
 - **Error code headers**: Extracts `x-ms-public-api-error-code` / `x-ms-error-code` response headers into error messages
@@ -307,7 +307,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_ontology.rs`: Ontology CRUD + definition tests
 - `tests/e2e_agent_native.rs`: Agent-native compliance tests (principles 1-10)
 - `tests/e2e_verbose.rs`: Verbose flag tests (16 tests: offline flag acceptance, HTTP/auth/LRO tracing, --quiet suppression, --dry-run interaction)
-- `tests/e2e_sync.rs`: Lakehouse sync tests (22 tests: basic copy, skip unchanged, delete, checksum, parallel, rename detection, dedup, include/exclude, size-only, no-overwrite, force, max-delete, existing, remove-source-files)
+- `tests/e2e_sync.rs`: Lakehouse sync tests (24 tests: basic copy, skip unchanged, delete, checksum, parallel, rename detection, dedup, include/exclude, size-only, no-overwrite, force, max-delete, existing, remove-source-files, local-to-remote sync)
 - `tests/e2e_connection.rs`: Connection CRUD + list-supported-types tests
 - `tests/e2e_environment.rs`: Environment CRUD tests
 - `tests/e2e_data_pipeline.rs`: Data pipeline CRUD + run tests
@@ -1218,6 +1218,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Sync safety**: `--max-delete=NUM` skips ALL deletions if count exceeds NUM (prevents catastrophic mistakes). Output includes `"deletionsSkipped": true`.
 - **Sync move semantics**: `--remove-source-files` deletes source files after successful transfer. Output includes `"sourceRemoved": N`.
 - **Sync observability**: `--itemize` outputs per-file actions on stderr (`[copy]`, `[rename]`, `[delete]`, `[skip]`).
+- **Sync local-to-remote** (`--local`): Syncs a local directory to a remote lakehouse path. Builds file map from local filesystem, compares by size (default) or Content-MD5 (`--checksum`), uploads only new/changed files via parallel DFS upload (which stores Content-MD5). All filtering flags work (`--include`, `--exclude`, `--min-size`, `--max-size`, `--no-recursive`). Rename detection and server-side dedup are skipped (not applicable for local sources). `--remove-source-files` deletes local files after successful upload (move semantics). Mutually exclusive with `--source-workspace`/`--source-id`/`--source-path`.
 - **Parallel execution**: All multi-file operations (upload, copy-file, move-file, delete-table, copy-table, move-table, sync) use concurrent execution with rate-limit retry.
 - **Glob patterns**: Local globs via `glob::glob()`, remote globs via listing + pattern match, table globs via table list API + pattern match.
 - **Materialized views**: `POST /workspaces/{ws}/lakehouses/{id}/jobs/refreshMaterializedLakeViews/instances` triggers refresh. Schedule management at `.../jobs/refreshMaterializedLakeViews/schedules`.

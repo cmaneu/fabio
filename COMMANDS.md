@@ -123,7 +123,7 @@ fabio lakehouse delete-file  Delete a file
 fabio lakehouse copy-table   Copy a table between lakehouses
 fabio lakehouse move-table   Move a table (atomic rename for same-item, copy+delete for cross-item)
 fabio lakehouse delete-table Delete a table
-fabio lakehouse sync         Sync files between lakehouses (ETag/MD5, dedup, rename detection, include/exclude, rsync-inspired flags)
+fabio lakehouse sync         Sync files between lakehouses or from local (--local) with ETag/MD5, dedup, rename detection, include/exclude, rsync-inspired flags
 fabio lakehouse create-shortcut      Create a shortcut (OneLake/ADLS/S3, --conflict-policy)
 fabio lakehouse get-shortcut         Get shortcut details
 fabio lakehouse delete-shortcut      Delete a shortcut

@@ -128,6 +128,19 @@ fabio lakehouse sync --source-workspace $WS --source-id $LH --source-path Files/
   --dest-workspace $WS2 --dest-id $LH2 --dest-path Files/data \
   --existing --force
 
+# Sync local directory to lakehouse (incremental upload of new/changed files)
+fabio lakehouse sync --local ./data/ \
+  --dest-workspace $WS --dest-id $LH --dest-path Files/data
+
+# Local sync with checksum (only upload if local MD5 differs from remote)
+fabio lakehouse sync --local ./exports/ \
+  --dest-workspace $WS --dest-id $LH --dest-path Files/exports --checksum
+
+# Local sync with include filter and move semantics (delete local after upload)
+fabio lakehouse sync --local ./inbox/ \
+  --dest-workspace $WS --dest-id $LH --dest-path Files/archive \
+  --include "*.csv;*.parquet" --remove-source-files
+
 # Create a shortcut to an ADLS Gen2 container
 fabio lakehouse create-shortcut --workspace $WS --id $LH \
   --name "external-data" --path Files/ \
