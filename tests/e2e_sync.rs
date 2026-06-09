@@ -1658,3 +1658,388 @@ fn sync_dedup_mixed_dedup_and_remote() {
         &format!("{dst_dir}/preexisting.txt"),
     );
 }
+
+/// Test --include: only files matching the pattern should be synced.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_include_filter_copies_only_matching() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_inc");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+
+    // Upload a CSV and a TXT to source
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/data.csv"),
+        "csv content",
+    );
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/notes.txt"),
+        "txt content",
+    );
+
+    // Sync with --include "*.csv" → only CSV should be copied
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "-s",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "-d",
+            &dst_dir,
+            "--include",
+            "*.csv",
+            "-o",
+            "json",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("Include filter result: {data}");
+
+    assert_eq!(data["status"], "synced");
+    assert_eq!(data["sourceFiles"], 1); // only CSV in scope
+    assert_eq!(data["copied"], 1);
+
+    // Cleanup
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/data.csv"),
+    );
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/notes.txt"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/data.csv"),
+    );
+}
+
+/// Test --exclude: files matching the pattern should be skipped.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_exclude_filter_skips_matching() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_exc");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/keep.csv"),
+        "keep me",
+    );
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/skip.tmp"),
+        "skip me",
+    );
+
+    // Sync with --exclude "*.tmp"
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "-s",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "-d",
+            &dst_dir,
+            "--exclude",
+            "*.tmp",
+            "-o",
+            "json",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("Exclude filter result: {data}");
+
+    assert_eq!(data["status"], "synced");
+    assert_eq!(data["sourceFiles"], 1); // only CSV in scope
+    assert_eq!(data["copied"], 1);
+
+    // Cleanup
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/keep.csv"),
+    );
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/skip.tmp"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/keep.csv"),
+    );
+}
+
+/// Test --no-overwrite: existing files at destination should not be re-copied.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_no_overwrite_skips_existing() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_noow");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+
+    // Upload file to source
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/existing.txt"),
+        "source version",
+    );
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/new_only.txt"),
+        "new file",
+    );
+
+    // Upload same-named file to dest (different content)
+    upload_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/existing.txt"),
+        "dest version should stay",
+    );
+
+    // Sync with --no-overwrite → only new_only.txt should be copied
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "-s",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "-d",
+            &dst_dir,
+            "--no-overwrite",
+            "-o",
+            "json",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("No-overwrite result: {data}");
+
+    assert_eq!(data["status"], "synced");
+    assert_eq!(data["copied"], 1);
+    assert_eq!(data["strategy"], "no-overwrite");
+
+    // Cleanup
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/existing.txt"),
+    );
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/new_only.txt"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/existing.txt"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/new_only.txt"),
+    );
+}
+
+/// Test --force: all source files are copied regardless of comparison.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_force_copies_all_files() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_frc");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+
+    let content = "same content for both";
+
+    // Upload identical file to both source and dest
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/file.txt"),
+        content,
+    );
+    upload_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/file.txt"),
+        content,
+    );
+
+    // Normal sync would skip (same content). --force should copy anyway.
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "-s",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "-d",
+            &dst_dir,
+            "--force",
+            "-o",
+            "json",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("Force sync result: {data}");
+
+    assert_eq!(data["status"], "synced");
+    assert_eq!(data["copied"], 1);
+    assert_eq!(data["strategy"], "force");
+    assert_eq!(data["unchanged"], 0);
+
+    // Cleanup
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/file.txt"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/file.txt"),
+    );
+}
+
+/// Test --size-only: files with same size but different content should be skipped.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sync_size_only_compares_by_size() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sync_szo");
+    let src_dir = format!("Files/{name}_src");
+    let dst_dir = format!("Files/{name}_dst");
+
+    // Same-length content but different bytes
+    let src_content = "AAAA"; // 4 bytes
+    let dst_content = "BBBB"; // 4 bytes
+
+    upload_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/same_size.txt"),
+        src_content,
+    );
+    upload_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/same_size.txt"),
+        dst_content,
+    );
+
+    // --size-only: same size → skip (even though content differs)
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "sync",
+            "--source-workspace",
+            &cfg.source_workspace,
+            "--source-id",
+            &cfg.source_lakehouse,
+            "-s",
+            &src_dir,
+            "--dest-workspace",
+            &cfg.dest_workspace,
+            "--dest-id",
+            &cfg.dest_lakehouse,
+            "-d",
+            &dst_dir,
+            "--size-only",
+            "-o",
+            "json",
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    eprintln!("Size-only result: {data}");
+
+    assert_eq!(data["status"], "synced");
+    assert_eq!(data["copied"], 0); // same size → skipped
+    assert_eq!(data["strategy"], "size-only");
+
+    // Cleanup
+    delete_file(
+        &cfg.source_workspace,
+        &cfg.source_lakehouse,
+        &format!("{src_dir}/same_size.txt"),
+    );
+    delete_file(
+        &cfg.dest_workspace,
+        &cfg.dest_lakehouse,
+        &format!("{dst_dir}/same_size.txt"),
+    );
+}

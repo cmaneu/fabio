@@ -383,6 +383,30 @@ pub enum LakehouseCommand {
         /// Use Content-MD5 checksums for comparison (slower, requires HEAD per file)
         #[arg(long)]
         checksum: bool,
+
+        /// Include only files matching these glob patterns (semicolon-separated)
+        #[arg(long)]
+        include: Option<String>,
+
+        /// Exclude files matching these glob patterns (semicolon-separated)
+        #[arg(long)]
+        exclude: Option<String>,
+
+        /// Compare only by file size (skip ETag/checksum comparison)
+        #[arg(long)]
+        size_only: bool,
+
+        /// Only copy files that don't exist at destination (skip existing)
+        #[arg(long)]
+        no_overwrite: bool,
+
+        /// Force overwrite all files regardless of comparison result
+        #[arg(long)]
+        force: bool,
+
+        /// Sync only top-level files (do not recurse into subdirectories)
+        #[arg(long)]
+        no_recursive: bool,
     },
 
     // ── Delete ───────────────────────────────────────────────────────────
@@ -947,6 +971,12 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             dest_path,
             delete,
             checksum,
+            include,
+            exclude,
+            size_only,
+            no_overwrite,
+            force,
+            no_recursive,
         } => sync_files(
             cli,
             client,
@@ -958,6 +988,12 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             dest_path,
             *delete,
             *checksum,
+            include.as_deref(),
+            exclude.as_deref(),
+            *size_only,
+            *no_overwrite,
+            *force,
+            *no_recursive,
         )
         .await
         .map_err(|e| enrich_forbidden(e, "lakehouse sync", "Contributor")),
@@ -1998,6 +2034,52 @@ fn is_glob_pattern(path: &str) -> bool {
     path.contains('*') || path.contains('?') || path.contains('[')
 }
 
+/// Parse a semicolon-separated filter string into glob `Pattern` objects.
+fn parse_filter_patterns(filter: &str) -> Vec<glob::Pattern> {
+    filter
+        .split(';')
+        .filter(|s| !s.is_empty())
+        .filter_map(|p| glob::Pattern::new(p).ok())
+        .collect()
+}
+
+/// Check whether a relative path matches include/exclude filters.
+///
+/// Rules (same semantics as `aws s3 sync` / `azcopy sync`):
+/// - If `--include` is specified, file must match at least one include pattern
+/// - If `--exclude` is specified, file must NOT match any exclude pattern
+/// - Patterns are matched against the filename AND the full relative path
+fn matches_filters(
+    rel_path: &str,
+    include: Option<&Vec<glob::Pattern>>,
+    exclude: Option<&Vec<glob::Pattern>>,
+) -> bool {
+    // Extract filename for pattern matching against just the name
+    let filename = rel_path.rsplit('/').next().unwrap_or(rel_path);
+
+    // Check include: if specified, at least one pattern must match
+    if let Some(patterns) = include {
+        let included = patterns
+            .iter()
+            .any(|p| p.matches(filename) || p.matches(rel_path));
+        if !included {
+            return false;
+        }
+    }
+
+    // Check exclude: if any pattern matches, file is excluded
+    if let Some(patterns) = exclude {
+        let excluded = patterns
+            .iter()
+            .any(|p| p.matches(filename) || p.matches(rel_path));
+        if excluded {
+            return false;
+        }
+    }
+
+    true
+}
+
 /// Expand a local file glob pattern into a list of matching file paths.
 fn expand_local_glob(pattern: &str) -> Result<Vec<String>> {
     if !is_glob_pattern(pattern) {
@@ -2206,7 +2288,11 @@ fn render_batch_result(
 /// By default, compares files using `ETag` (from listing, zero extra API calls).
 /// With `--checksum`, uses `Content-MD5` via HEAD requests for content-level verification.
 /// Optionally deletes files at dest that don't exist in source (`--delete`).
-#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    clippy::fn_params_excessive_bools
+)]
 async fn sync_files(
     cli: &Cli,
     client: &FabricClient,
@@ -2218,17 +2304,69 @@ async fn sync_files(
     dst_path: &str,
     delete_extra: bool,
     checksum: bool,
+    include: Option<&str>,
+    exclude: Option<&str>,
+    size_only: bool,
+    no_overwrite: bool,
+    force: bool,
+    no_recursive: bool,
 ) -> Result<()> {
     use crate::parallel::{self, BatchSummary};
 
     let concurrency = parallel::default_concurrency();
 
     // Build file maps for source and destination
-    let src_map = build_file_map(client, src_ws, src_id, src_path).await?;
-    let dst_map = build_file_map(client, dst_ws, dst_id, dst_path).await?;
+    let mut src_map = build_file_map(client, src_ws, src_id, src_path).await?;
+    let mut dst_map = build_file_map(client, dst_ws, dst_id, dst_path).await?;
+
+    // Apply --no-recursive: filter out files in subdirectories
+    if no_recursive {
+        src_map.retain(|rel, _| !rel.contains('/'));
+        dst_map.retain(|rel, _| !rel.contains('/'));
+    }
+
+    // Apply --include/--exclude filters to the source map
+    if include.is_some() || exclude.is_some() {
+        let include_patterns = include.map(parse_filter_patterns);
+        let exclude_patterns = exclude.map(parse_filter_patterns);
+        src_map.retain(|rel, _| {
+            matches_filters(rel, include_patterns.as_ref(), exclude_patterns.as_ref())
+        });
+        // Also filter dst_map for consistent --delete behavior (only delete files
+        // that would have been considered in scope)
+        if delete_extra {
+            dst_map.retain(|rel, _| {
+                matches_filters(rel, include_patterns.as_ref(), exclude_patterns.as_ref())
+            });
+        }
+    }
+
+    let total_source = src_map.len();
 
     // Determine files to copy based on comparison strategy
-    let to_copy = if checksum {
+    let to_copy: Vec<String> = if force {
+        // --force: copy ALL source files regardless of comparison
+        src_map.keys().cloned().collect()
+    } else if no_overwrite {
+        // --no-overwrite: only copy files that don't exist at destination
+        src_map
+            .keys()
+            .filter(|rel| !dst_map.contains_key(*rel))
+            .cloned()
+            .collect()
+    } else if size_only {
+        // --size-only: copy if file doesn't exist or has different size
+        src_map
+            .keys()
+            .filter(|rel| {
+                dst_map.get(*rel).is_none_or(|dst_info| {
+                    let src_info = &src_map[*rel];
+                    src_info.size != dst_info.size
+                })
+            })
+            .cloned()
+            .collect()
+    } else if checksum {
         // MD5-based: need HEAD requests for files that exist in both
         eprintln!("  Using Content-MD5 checksums (HEAD per file)...");
         compute_checksum_diff(
@@ -2343,7 +2481,17 @@ async fn sync_files(
         find_dedup_copies(&to_copy, &src_map, &dst_map)
     };
 
-    let strategy = if checksum { "Content-MD5" } else { "ETag" };
+    let strategy = if force {
+        "force"
+    } else if no_overwrite {
+        "no-overwrite"
+    } else if size_only {
+        "size-only"
+    } else if checksum {
+        "Content-MD5"
+    } else {
+        "ETag"
+    };
     eprintln!(
         "  Sync ({strategy}): {} to copy ({} dedup, {} remote), {} to rename, {} to delete, concurrency={concurrency}",
         to_copy.len(),
@@ -2501,7 +2649,7 @@ async fn sync_files(
         "dedupCopied": n_dedup,
         "renamed": renamed,
         "deleted": deleted,
-        "unchanged": src_map.len() - to_copy.len() - to_rename.len(),
+        "unchanged": total_source - to_copy.len() - to_rename.len(),
         "failed": total_failed,
         "strategy": strategy,
         "status": status
@@ -4929,5 +5077,118 @@ mod tests {
         // No dest files → all go to remote
         assert!(dedup.is_empty());
         assert_eq!(remote, vec!["file.csv"]);
+    }
+
+    // ─── matches_filters ─────────────────────────────────────────────────
+
+    #[test]
+    fn filters_include_matches_filename() {
+        let include = Some(parse_filter_patterns("*.csv"));
+        let result = matches_filters("data/report.csv", include.as_ref(), None);
+        assert!(result);
+    }
+
+    #[test]
+    fn filters_include_rejects_non_match() {
+        let include = Some(parse_filter_patterns("*.csv"));
+        let result = matches_filters("data/report.parquet", include.as_ref(), None);
+        assert!(!result);
+    }
+
+    #[test]
+    fn filters_exclude_rejects_match() {
+        let exclude = Some(parse_filter_patterns("*.tmp"));
+        let result = matches_filters("cache/data.tmp", None, exclude.as_ref());
+        assert!(!result);
+    }
+
+    #[test]
+    fn filters_exclude_allows_non_match() {
+        let exclude = Some(parse_filter_patterns("*.tmp"));
+        let result = matches_filters("data/report.csv", None, exclude.as_ref());
+        assert!(result);
+    }
+
+    #[test]
+    fn filters_include_and_exclude_combined() {
+        let include = Some(parse_filter_patterns("*.csv;*.parquet"));
+        let exclude = Some(parse_filter_patterns("temp_*"));
+        // CSV, not excluded → pass
+        assert!(matches_filters(
+            "report.csv",
+            include.as_ref(),
+            exclude.as_ref()
+        ));
+        // Parquet, not excluded → pass
+        assert!(matches_filters(
+            "data.parquet",
+            include.as_ref(),
+            exclude.as_ref()
+        ));
+        // CSV, but excluded by prefix → fail
+        assert!(!matches_filters(
+            "temp_data.csv",
+            include.as_ref(),
+            exclude.as_ref()
+        ));
+        // JSON, not included → fail
+        assert!(!matches_filters(
+            "config.json",
+            include.as_ref(),
+            exclude.as_ref()
+        ));
+    }
+
+    #[test]
+    fn filters_no_filters_allows_all() {
+        assert!(matches_filters("anything.txt", None, None));
+        assert!(matches_filters("deep/nested/path.csv", None, None));
+    }
+
+    #[test]
+    fn filters_multiple_include_patterns() {
+        let include = Some(parse_filter_patterns("*.csv;*.parquet;exact.txt"));
+        assert!(matches_filters("data.csv", include.as_ref(), None));
+        assert!(matches_filters("data.parquet", include.as_ref(), None));
+        assert!(matches_filters("exact.txt", include.as_ref(), None));
+        assert!(!matches_filters("data.json", include.as_ref(), None));
+    }
+
+    #[test]
+    fn filters_match_against_full_path() {
+        let include = Some(parse_filter_patterns("subdir/*"));
+        assert!(matches_filters("subdir/file.txt", include.as_ref(), None));
+        assert!(!matches_filters("other/file.txt", include.as_ref(), None));
+    }
+
+    #[test]
+    fn filters_exclude_directory_pattern() {
+        let exclude = Some(parse_filter_patterns("_delta_log/*"));
+        assert!(!matches_filters(
+            "_delta_log/00000.json",
+            None,
+            exclude.as_ref()
+        ));
+        assert!(matches_filters("data/file.parquet", None, exclude.as_ref()));
+    }
+
+    // ─── parse_filter_patterns ───────────────────────────────────────────
+
+    #[test]
+    fn parse_filters_semicolon_separated() {
+        let patterns = parse_filter_patterns("*.csv;*.parquet;*.json");
+        assert_eq!(patterns.len(), 3);
+    }
+
+    #[test]
+    fn parse_filters_empty_segments_skipped() {
+        let patterns = parse_filter_patterns("*.csv;;*.parquet;");
+        assert_eq!(patterns.len(), 2);
+    }
+
+    #[test]
+    fn parse_filters_empty_string() {
+        let patterns = parse_filter_patterns("");
+        assert!(patterns.is_empty());
     }
 }
