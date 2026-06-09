@@ -108,6 +108,26 @@ fabio lakehouse sync --source-workspace $WS --source-id $LH --source-path Files/
 fabio lakehouse sync --source-workspace $WS --source-id $LH --source-path Files/data \
   --dest-workspace $WS2 --dest-id $LH2 --dest-path Files/data --delete --checksum
 
+# Sync only CSV and Parquet files, skip temp files
+fabio lakehouse sync --source-workspace $WS --source-id $LH --source-path Files/data \
+  --dest-workspace $WS2 --dest-id $LH2 --dest-path Files/data \
+  --include "*.csv;*.parquet" --exclude "*.tmp;_delta_log/*"
+
+# Sync with safety limit (abort deletions if more than 10 files would be deleted)
+fabio lakehouse sync --source-workspace $WS --source-id $LH --source-path Files/data \
+  --dest-workspace $WS2 --dest-id $LH2 --dest-path Files/data \
+  --delete --max-delete 10
+
+# Move files: sync and delete source files after successful transfer
+fabio lakehouse sync --source-workspace $WS --source-id $LH --source-path Files/inbox \
+  --dest-workspace $WS2 --dest-id $LH2 --dest-path Files/archive \
+  --remove-source-files
+
+# Sync only files that already exist at dest (refresh without creating new)
+fabio lakehouse sync --source-workspace $WS --source-id $LH --source-path Files/data \
+  --dest-workspace $WS2 --dest-id $LH2 --dest-path Files/data \
+  --existing --force
+
 # Create a shortcut to an ADLS Gen2 container
 fabio lakehouse create-shortcut --workspace $WS --id $LH \
   --name "external-data" --path Files/ \
