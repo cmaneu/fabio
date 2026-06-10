@@ -630,6 +630,9 @@ async fn get_connection_string(
                 .into(),
         ),
         retriable: None,
+        request_id: None,
+        more_details: None,
+        related_resource: None,
     }.into())
 }
 

@@ -10,7 +10,7 @@ use tokio::time::sleep;
 
 use azure_core::credentials::TokenCredential;
 
-use crate::errors::{ErrorCode, FabioError};
+use crate::errors::{ErrorCode, ErrorDetail, FabioError, RelatedResource};
 use crate::verbose;
 
 /// Maximum length of raw response body to include in error messages.
@@ -969,7 +969,9 @@ impl FabricClient {
 
     /// GET a paginated list from Fabric REST API.
     ///
-    /// When `paginate` is true, follows `continuationToken` until all pages are fetched.
+    /// When `paginate` is true, follows `continuationToken`/`continuationUri` until all pages are
+    /// fetched. Prefers `continuationUri` (server-provided full URL) over token-based URL
+    /// construction for resilience against future API changes.
     /// When `start_token` is provided, begins pagination from that token.
     /// Returns a `PaginatedResponse` with all collected items and optional continuation token.
     pub async fn get_list(
@@ -986,6 +988,8 @@ impl FabricClient {
         let token = self.require_auth().await?;
         let mut all_items: Vec<Value> = Vec::new();
         let mut continuation_token: Option<String> = start_token.map(String::from);
+        // Server-provided full URL for next page (preferred over token-based construction).
+        let mut continuation_uri: Option<String> = None;
         let mut page_count: usize = 0;
 
         loop {
@@ -1002,16 +1006,13 @@ impl FabricClient {
                 });
             }
 
-            let url = continuation_token.as_ref().map_or_else(
-                || self.fabric_url(path),
-                |ct| {
-                    let separator = if path.contains('?') { '&' } else { '?' };
-                    format!(
-                        "{}{separator}continuationToken={}",
-                        self.fabric_url(path),
-                        urlencoding::encode(ct)
-                    )
-                },
+            // Prefer continuationUri (full server-provided URL) over token-based construction.
+            // This matches the official Python SDK behavior and is more resilient to API changes.
+            let url = build_pagination_url(
+                continuation_uri.as_deref(),
+                continuation_token.as_deref(),
+                &self.fabric_url(path),
+                path.contains('?'),
             );
 
             verbose::trace_request("GET", &url, None);
@@ -1042,13 +1043,13 @@ impl FabricClient {
                 all_items.extend(arr);
             }
 
-            // Check for continuation token
-            let next_token = body
-                .get("continuationToken")
-                .and_then(Value::as_str)
-                .map(String::from);
+            // Extract next-page pointers: prefer continuationUri, fall back to continuationToken.
+            let (next_uri, next_token) = extract_pagination_pointers(&body);
 
-            if !paginate || next_token.is_none() {
+            // Determine whether there's a next page: either URI or token present.
+            let has_next = next_uri.is_some() || next_token.is_some();
+
+            if !paginate || !has_next {
                 // Return with the token if we're not paginating (so caller can expose it)
                 return Ok(PaginatedResponse {
                     items: all_items,
@@ -1056,6 +1057,7 @@ impl FabricClient {
                 });
             }
 
+            continuation_uri = next_uri;
             continuation_token = next_token;
         }
     }
@@ -2766,12 +2768,9 @@ async fn handle_response(resp: Response) -> Result<Value> {
             format!("HTTP {status_code}: {truncated}")
         });
 
-    // Extract isRetriable flag from response body (Fabric API surfaces this on errors)
-    let retriable = parsed
-        .as_ref()
-        .and_then(|v| v.get("error"))
-        .and_then(|e| e.get("isRetriable"))
-        .and_then(Value::as_bool);
+    // Extract enriched error metadata from parsed response body
+    let (retriable, request_id, more_details, related_resource) =
+        extract_error_metadata(parsed.as_ref());
 
     // Prepend the server error code from headers for machine-readable context.
     // e.g., "ItemNotFound: The requested item does not exist."
@@ -2784,8 +2783,112 @@ async fn handle_response(resp: Response) -> Result<Value> {
     Err(
         FabioError::from_status_with_body(status_code, enriched_message, &text)
             .set_retriable(retriable)
+            .set_request_id(request_id)
+            .set_more_details(more_details)
+            .set_related_resource(related_resource)
             .into(),
     )
+}
+
+/// Extract enriched error metadata from a parsed Fabric API error response.
+///
+/// Returns `(isRetriable, requestId, moreDetails, relatedResource)` fields
+/// from the `error` object in the response body. These match the official
+/// Microsoft Fabric API error schema.
+fn extract_error_metadata(
+    parsed: Option<&Value>,
+) -> (
+    Option<bool>,
+    Option<String>,
+    Option<Vec<ErrorDetail>>,
+    Option<RelatedResource>,
+) {
+    let error_obj = parsed.and_then(|v| v.get("error"));
+
+    // isRetriable: indicates whether the client can retry
+    let retriable = error_obj
+        .and_then(|e| e.get("isRetriable"))
+        .and_then(Value::as_bool);
+
+    // requestId: server-assigned ID for support correlation
+    let request_id = error_obj
+        .and_then(|e| e.get("requestId"))
+        .and_then(Value::as_str)
+        .map(String::from);
+
+    // moreDetails: array of nested sub-errors
+    let more_details = error_obj
+        .and_then(|e| e.get("moreDetails"))
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|d| {
+                    let code = d.get("errorCode").and_then(Value::as_str)?.to_string();
+                    let msg = d.get("message").and_then(Value::as_str)?.to_string();
+                    Some(ErrorDetail {
+                        error_code: code,
+                        message: msg,
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .filter(|v| !v.is_empty());
+
+    // relatedResource: which resource caused the error
+    let related_resource = error_obj
+        .and_then(|e| e.get("relatedResource"))
+        .and_then(|r| {
+            let id = r.get("resourceId").and_then(Value::as_str)?.to_string();
+            let rtype = r.get("resourceType").and_then(Value::as_str)?.to_string();
+            Some(RelatedResource {
+                resource_id: id,
+                resource_type: rtype,
+            })
+        });
+
+    (retriable, request_id, more_details, related_resource)
+}
+
+/// Build the URL for the next page of paginated results.
+///
+/// Priority: `continuation_uri` (full server-provided URL) > `continuation_token`
+/// (appended to base URL) > base URL alone (first page).
+///
+/// This matches the pagination strategy used by the official Microsoft Fabric Python SDK,
+/// which follows `continuationUri` directly when available.
+fn build_pagination_url(
+    continuation_uri: Option<&str>,
+    continuation_token: Option<&str>,
+    base_url: &str,
+    path_has_query: bool,
+) -> String {
+    if let Some(uri) = continuation_uri {
+        return uri.to_string();
+    }
+    if let Some(ct) = continuation_token {
+        let separator = if path_has_query { '&' } else { '?' };
+        return format!(
+            "{base_url}{separator}continuationToken={}",
+            urlencoding::encode(ct)
+        );
+    }
+    base_url.to_string()
+}
+
+/// Extract pagination pointers from a response body.
+///
+/// Returns `(continuationUri, continuationToken)` — both optional.
+/// The caller should prefer `continuationUri` when both are present.
+fn extract_pagination_pointers(body: &Value) -> (Option<String>, Option<String>) {
+    let uri = body
+        .get("continuationUri")
+        .and_then(Value::as_str)
+        .map(String::from);
+    let token = body
+        .get("continuationToken")
+        .and_then(Value::as_str)
+        .map(String::from);
+    (uri, token)
 }
 
 /// Validate that a user-provided URL targets a trusted Microsoft domain.
@@ -3859,5 +3962,147 @@ mod tests {
     #[test]
     fn default_powerbi_base_url_is_correct() {
         assert_eq!(*POWERBI_BASE_URL, "https://api.powerbi.com/v1.0/myorg");
+    }
+
+    // ── Pagination URL building ──────────────────────────────────────────
+
+    #[test]
+    fn pagination_url_prefers_continuation_uri_over_token() {
+        let url = build_pagination_url(
+            Some("https://api.fabric.microsoft.com/v1/workspaces?continuationToken=abc123"),
+            Some("abc123"),
+            "https://api.fabric.microsoft.com/v1/workspaces",
+            false,
+        );
+        // Should use the full URI directly, not construct from token
+        assert_eq!(
+            url,
+            "https://api.fabric.microsoft.com/v1/workspaces?continuationToken=abc123"
+        );
+    }
+
+    #[test]
+    fn pagination_url_uses_continuation_uri_when_token_absent() {
+        let url = build_pagination_url(
+            Some("https://api.fabric.microsoft.com/v1/items?continuationToken=xyz&extra=param"),
+            None,
+            "https://api.fabric.microsoft.com/v1/items",
+            false,
+        );
+        assert_eq!(
+            url,
+            "https://api.fabric.microsoft.com/v1/items?continuationToken=xyz&extra=param"
+        );
+    }
+
+    #[test]
+    fn pagination_url_falls_back_to_token_when_uri_absent() {
+        let url = build_pagination_url(
+            None,
+            Some("page2token"),
+            "https://api.fabric.microsoft.com/v1/workspaces",
+            false,
+        );
+        assert_eq!(
+            url,
+            "https://api.fabric.microsoft.com/v1/workspaces?continuationToken=page2token"
+        );
+    }
+
+    #[test]
+    fn pagination_url_uses_ampersand_when_path_has_query() {
+        let url = build_pagination_url(
+            None,
+            Some("tok"),
+            "https://api.fabric.microsoft.com/v1/items?type=Notebook",
+            true,
+        );
+        assert_eq!(
+            url,
+            "https://api.fabric.microsoft.com/v1/items?type=Notebook&continuationToken=tok"
+        );
+    }
+
+    #[test]
+    fn pagination_url_returns_base_when_neither_uri_nor_token() {
+        let url = build_pagination_url(
+            None,
+            None,
+            "https://api.fabric.microsoft.com/v1/workspaces",
+            false,
+        );
+        assert_eq!(url, "https://api.fabric.microsoft.com/v1/workspaces");
+    }
+
+    #[test]
+    fn pagination_url_encodes_token_with_special_chars() {
+        let url = build_pagination_url(
+            None,
+            Some("token with spaces&special=chars"),
+            "https://api.fabric.microsoft.com/v1/items",
+            false,
+        );
+        assert!(url.contains("continuationToken=token%20with%20spaces%26special%3Dchars"));
+    }
+
+    // ── Pagination pointer extraction ────────────────────────────────────
+
+    #[test]
+    fn extract_pagination_both_uri_and_token() {
+        let body = serde_json::json!({
+            "value": [],
+            "continuationUri": "https://api.fabric.microsoft.com/v1/workspaces?continuationToken=abc",
+            "continuationToken": "abc"
+        });
+        let (uri, token) = extract_pagination_pointers(&body);
+        assert_eq!(
+            uri.as_deref(),
+            Some("https://api.fabric.microsoft.com/v1/workspaces?continuationToken=abc")
+        );
+        assert_eq!(token.as_deref(), Some("abc"));
+    }
+
+    #[test]
+    fn extract_pagination_only_token() {
+        let body = serde_json::json!({
+            "value": [],
+            "continuationToken": "page2"
+        });
+        let (uri, token) = extract_pagination_pointers(&body);
+        assert!(uri.is_none());
+        assert_eq!(token.as_deref(), Some("page2"));
+    }
+
+    #[test]
+    fn extract_pagination_only_uri() {
+        let body = serde_json::json!({
+            "value": [],
+            "continuationUri": "https://example.com/next"
+        });
+        let (uri, token) = extract_pagination_pointers(&body);
+        assert_eq!(uri.as_deref(), Some("https://example.com/next"));
+        assert!(token.is_none());
+    }
+
+    #[test]
+    fn extract_pagination_neither_present() {
+        let body = serde_json::json!({
+            "value": [{"id": "1"}]
+        });
+        let (uri, token) = extract_pagination_pointers(&body);
+        assert!(uri.is_none());
+        assert!(token.is_none());
+    }
+
+    #[test]
+    fn extract_pagination_ignores_non_string_values() {
+        let body = serde_json::json!({
+            "value": [],
+            "continuationUri": 12345,
+            "continuationToken": null
+        });
+        let (uri, token) = extract_pagination_pointers(&body);
+        assert!(uri.is_none());
+        assert!(token.is_none());
     }
 }

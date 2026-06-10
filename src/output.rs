@@ -6,7 +6,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::cli::{Cli, OutputFormat};
-use crate::errors::FabioError;
+use crate::errors::{ErrorDetail, FabioError, RelatedResource};
 
 /// JSON envelope for single-object responses.
 #[derive(Serialize)]
@@ -28,6 +28,12 @@ struct ErrorBody {
     hint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     retriable: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "requestId")]
+    request_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "moreDetails")]
+    more_details: Option<Vec<ErrorDetail>>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "relatedResource")]
+    related_resource: Option<RelatedResource>,
 }
 
 /// Render a list of items respecting --quiet, --query, and --limit flags.
@@ -222,6 +228,9 @@ pub fn render_error(err: &FabioError) {
             message: err.message.clone(),
             hint: err.hint.clone(),
             retriable: err.retriable,
+            request_id: err.request_id.clone(),
+            more_details: err.more_details.clone(),
+            related_resource: err.related_resource.clone(),
         },
     };
     eprintln!(
@@ -657,6 +666,9 @@ mod tests {
             message: "server error".to_string(),
             hint: None,
             retriable: Some(true),
+            request_id: None,
+            more_details: None,
+            related_resource: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""retriable":true"#));
@@ -669,9 +681,108 @@ mod tests {
             message: "item not found".to_string(),
             hint: None,
             retriable: None,
+            request_id: None,
+            more_details: None,
+            related_resource: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(!json.contains("retriable"));
+    }
+
+    #[test]
+    fn error_body_serializes_request_id_when_set() {
+        let body = ErrorBody {
+            code: "API_ERROR".to_string(),
+            message: "server error".to_string(),
+            hint: None,
+            retriable: None,
+            request_id: Some("cfafbeb1-8037-4d0c-896e-a46fb27ff227".to_string()),
+            more_details: None,
+            related_resource: None,
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert!(json.contains(r#""requestId":"cfafbeb1-8037-4d0c-896e-a46fb27ff227""#));
+    }
+
+    #[test]
+    fn error_body_omits_request_id_when_none() {
+        let body = ErrorBody {
+            code: "NOT_FOUND".to_string(),
+            message: "not found".to_string(),
+            hint: None,
+            retriable: None,
+            request_id: None,
+            more_details: None,
+            related_resource: None,
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert!(!json.contains("requestId"));
+    }
+
+    #[test]
+    fn error_body_serializes_more_details_when_set() {
+        let body = ErrorBody {
+            code: "API_ERROR".to_string(),
+            message: "validation failed".to_string(),
+            hint: None,
+            retriable: None,
+            request_id: None,
+            more_details: Some(vec![
+                ErrorDetail {
+                    error_code: "InvalidField".to_string(),
+                    message: "name is required".to_string(),
+                },
+                ErrorDetail {
+                    error_code: "InvalidField".to_string(),
+                    message: "type is invalid".to_string(),
+                },
+            ]),
+            related_resource: None,
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert!(json.contains(r#""moreDetails""#));
+        assert!(json.contains(r#""errorCode":"InvalidField""#));
+        assert!(json.contains(r#""name is required""#));
+    }
+
+    #[test]
+    fn error_body_serializes_related_resource_when_set() {
+        let body = ErrorBody {
+            code: "NOT_FOUND".to_string(),
+            message: "item not found".to_string(),
+            hint: None,
+            retriable: None,
+            request_id: None,
+            more_details: None,
+            related_resource: Some(RelatedResource {
+                resource_id: "abc-123".to_string(),
+                resource_type: "Notebook".to_string(),
+            }),
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert!(json.contains(r#""relatedResource""#));
+        assert!(json.contains(r#""resourceId":"abc-123""#));
+        assert!(json.contains(r#""resourceType":"Notebook""#));
+    }
+
+    #[test]
+    fn error_body_omits_all_optional_fields_when_none() {
+        let body = ErrorBody {
+            code: "UNKNOWN".to_string(),
+            message: "something".to_string(),
+            hint: None,
+            retriable: None,
+            request_id: None,
+            more_details: None,
+            related_resource: None,
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        // Should only have code and message
+        assert!(!json.contains("hint"));
+        assert!(!json.contains("retriable"));
+        assert!(!json.contains("requestId"));
+        assert!(!json.contains("moreDetails"));
+        assert!(!json.contains("relatedResource"));
     }
 
     // ─── resolve_nested tests ────────────────────────────────────────────────

@@ -585,6 +585,9 @@ async fn connect(
                     .into(),
             ),
             retriable: None,
+            request_id: None,
+            more_details: None,
+            related_resource: None,
         }
         .into());
     }

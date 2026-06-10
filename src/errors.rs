@@ -37,6 +37,23 @@ impl fmt::Display for ErrorCode {
     }
 }
 
+/// Detail entry from the API's `error.moreDetails` array.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ErrorDetail {
+    #[serde(rename = "errorCode")]
+    pub error_code: String,
+    pub message: String,
+}
+
+/// Related resource information from the API's `error.relatedResource` object.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RelatedResource {
+    #[serde(rename = "resourceId")]
+    pub resource_id: String,
+    #[serde(rename = "resourceType")]
+    pub resource_type: String,
+}
+
 /// Structured error type for the fabio CLI.
 #[derive(Debug, Error)]
 #[error("{code}: {message}")]
@@ -47,6 +64,12 @@ pub struct FabioError {
     pub hint: Option<String>,
     /// Whether the API indicated this error is retriable (from `error.isRetriable` in response).
     pub retriable: Option<bool>,
+    /// Server-assigned request ID for support correlation (from `error.requestId`).
+    pub request_id: Option<String>,
+    /// Additional error details from the API (from `error.moreDetails`).
+    pub more_details: Option<Vec<ErrorDetail>>,
+    /// The resource involved in the error (from `error.relatedResource`).
+    pub related_resource: Option<RelatedResource>,
 }
 
 impl FabioError {
@@ -56,6 +79,9 @@ impl FabioError {
             message: message.into(),
             hint: None,
             retriable: None,
+            request_id: None,
+            more_details: None,
+            related_resource: None,
         }
     }
 
@@ -66,6 +92,9 @@ impl FabioError {
             message: message.into(),
             hint: Some(hint.into()),
             retriable: None,
+            request_id: None,
+            more_details: None,
+            related_resource: None,
         }
     }
 
@@ -89,6 +118,27 @@ impl FabioError {
     #[must_use]
     pub const fn set_retriable(mut self, retriable: Option<bool>) -> Self {
         self.retriable = retriable;
+        self
+    }
+
+    /// Set the request ID from the API response (builder pattern).
+    #[must_use]
+    pub fn set_request_id(mut self, request_id: Option<String>) -> Self {
+        self.request_id = request_id;
+        self
+    }
+
+    /// Set additional error details from the API response (builder pattern).
+    #[must_use]
+    pub fn set_more_details(mut self, more_details: Option<Vec<ErrorDetail>>) -> Self {
+        self.more_details = more_details;
+        self
+    }
+
+    /// Set related resource info from the API response (builder pattern).
+    #[must_use]
+    pub fn set_related_resource(mut self, related_resource: Option<RelatedResource>) -> Self {
+        self.related_resource = related_resource;
         self
     }
 }
@@ -125,6 +175,9 @@ impl FabioError {
             message: msg,
             hint,
             retriable: None,
+            request_id: None,
+            more_details: None,
+            related_resource: None,
         }
     }
 }
@@ -644,5 +697,65 @@ mod tests {
     fn new_error_has_retriable_none() {
         let err = FabioError::new(ErrorCode::NotFound, "not found");
         assert_eq!(err.retriable, None);
+    }
+
+    #[test]
+    fn new_error_has_all_optional_fields_none() {
+        let err = FabioError::new(ErrorCode::ApiError, "test");
+        assert!(err.request_id.is_none());
+        assert!(err.more_details.is_none());
+        assert!(err.related_resource.is_none());
+    }
+
+    #[test]
+    fn set_request_id_sets_field() {
+        let err = FabioError::new(ErrorCode::ApiError, "test")
+            .set_request_id(Some("req-123".to_string()));
+        assert_eq!(err.request_id.as_deref(), Some("req-123"));
+    }
+
+    #[test]
+    fn set_more_details_sets_field() {
+        let details = vec![ErrorDetail {
+            error_code: "SubError".to_string(),
+            message: "detail msg".to_string(),
+        }];
+        let err = FabioError::new(ErrorCode::ApiError, "test").set_more_details(Some(details));
+        assert_eq!(err.more_details.as_ref().unwrap().len(), 1);
+        assert_eq!(err.more_details.as_ref().unwrap()[0].error_code, "SubError");
+    }
+
+    #[test]
+    fn set_related_resource_sets_field() {
+        let resource = RelatedResource {
+            resource_id: "item-456".to_string(),
+            resource_type: "Notebook".to_string(),
+        };
+        let err = FabioError::new(ErrorCode::NotFound, "test").set_related_resource(Some(resource));
+        let r = err.related_resource.as_ref().unwrap();
+        assert_eq!(r.resource_id, "item-456");
+        assert_eq!(r.resource_type, "Notebook");
+    }
+
+    #[test]
+    fn builder_chain_sets_all_fields() {
+        let err = FabioError::new(ErrorCode::ApiError, "multi-error")
+            .set_retriable(Some(true))
+            .set_request_id(Some("req-abc".to_string()))
+            .set_more_details(Some(vec![ErrorDetail {
+                error_code: "E1".to_string(),
+                message: "m1".to_string(),
+            }]))
+            .set_related_resource(Some(RelatedResource {
+                resource_id: "r1".to_string(),
+                resource_type: "Lakehouse".to_string(),
+            }));
+        assert_eq!(err.retriable, Some(true));
+        assert_eq!(err.request_id.as_deref(), Some("req-abc"));
+        assert_eq!(err.more_details.as_ref().unwrap().len(), 1);
+        assert_eq!(
+            err.related_resource.as_ref().unwrap().resource_type,
+            "Lakehouse"
+        );
     }
 }
