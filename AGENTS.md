@@ -544,6 +544,54 @@ gh release create vX.Y.Z --notes-file release-notes.md --title "vX.Y.Z"
 - `cliff.toml`: git-cliff configuration (commit parsers, grouping, template)
 - `.github/RELEASE_TEMPLATE.md`: Release notes narrative structure template
 
+## Docker & Devcontainer
+
+### Production Docker Image
+
+Published to GHCR on every push to `main` and on version tags:
+
+```
+ghcr.io/iemejia/fabio:latest       # latest from main
+ghcr.io/iemejia/fabio:main         # branch tag
+ghcr.io/iemejia/fabio:0.20.0       # release version
+ghcr.io/iemejia/fabio:0.20         # major.minor
+```
+
+Multi-arch manifest: `linux/amd64` + `linux/arm64`.
+
+**Dockerfile** (root): Multi-stage build — compiles release binary in Ubuntu builder stage, copies to minimal runtime image (~52MB) with only `ca-certificates`.
+
+### Devcontainer
+
+Located in `.devcontainer/` for VS Code and GitHub Codespaces. Provides the full development environment:
+
+**System packages** (in Dockerfile): `build-essential`, `pkg-config`, `libssl-dev`, `lld`, `clang`, `zig 0.16.0`
+
+**Devcontainer features**: Rust (with cross targets), Git, GitHub CLI, Azure CLI
+
+**Cargo tools** (installed via `postCreateCommand`): `git-cliff`, `cargo-zigbuild`, `cargo-xwin`, `cargo-audit`
+
+**Cross-compilation targets** (for `./scripts/cross-check.sh`): `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`
+
+**VS Code extensions**: rust-analyzer, Even Better TOML, CodeLLDB debugger, Dependi (crate version checker)
+
+### Docker CI Workflow (`.github/workflows/docker.yml`)
+
+| Trigger | Build | Push to GHCR |
+|---------|-------|--------------|
+| Pull request | amd64 + arm64 | No (validation only) |
+| Push to `main` | amd64 + arm64 | Yes (`:main`, `:sha-*`) |
+| Tag `v*` | amd64 + arm64 | Yes (`:X.Y.Z`, `:X.Y`, `:sha-*`) |
+
+Uses GitHub Actions cache (`type=gha`) for Docker layer caching. QEMU for arm64 cross-build. `GITHUB_TOKEN` for GHCR auth (no extra secrets).
+
+### Relevant Docker Files
+
+- `Dockerfile`: Production multi-stage image (builder + minimal runtime)
+- `.devcontainer/Dockerfile`: Dev environment base image (Ubuntu + system deps + zig)
+- `.devcontainer/devcontainer.json`: Features, extensions, cargo tools, cross targets
+- `.github/workflows/docker.yml`: Build validation + GHCR publish workflow
+
 ## Ontology API Behaviors Discovered
 - **Definition format**: Fabric ontology uses a proprietary JSON definition format (NOT RDF). Structure: `definition.json` (root, usually `{}`), `EntityTypes/{ID}/definition.json`, `EntityTypes/{ID}/DataBindings/{UUID}.json`, `RelationshipTypes/{ID}/definition.json`.
 - **Schema URLs**: Entity types use `https://developer.microsoft.com/json-schemas/fabric/item/ontology/entityType/1.0.0/schema.json`, data bindings use `.../dataBinding/1.0.0/schema.json`, relationship types use `.../relationshipType/1.0.0/schema.json`.

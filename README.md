@@ -40,6 +40,29 @@ On Windows (PowerShell):
 git clone https://github.com/iemejia/fabio-skills "$env:USERPROFILE\.agents\skills\fabio-skills"
 ```
 
+**Docker** (multi-arch: amd64 + arm64):
+
+```bash
+docker pull ghcr.io/iemejia/fabio:latest
+docker run --rm ghcr.io/iemejia/fabio --help
+```
+
+Use a specific version:
+
+```bash
+docker run --rm ghcr.io/iemejia/fabio:0.20.0 workspace list
+```
+
+Pass credentials via environment variables for non-interactive use:
+
+```bash
+docker run --rm \
+  -e AZURE_TENANT_ID=<tenant-id> \
+  -e AZURE_CLIENT_ID=<client-id> \
+  -e AZURE_CLIENT_SECRET=<client-secret> \
+  ghcr.io/iemejia/fabio workspace list --output json
+```
+
 ## Design Principles
 
 - **JSON by default** -- All commands output structured JSON for machine consumption
