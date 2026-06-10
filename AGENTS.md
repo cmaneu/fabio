@@ -196,6 +196,16 @@ gh release create vX.Y.Z --notes-file release-notes.md --title "vX.Y.Z"
 - Include a `Stats` section with commit count, files changed, and lines added/removed.
 - Include the `Full Changelog` comparison link at the bottom.
 
+### Step 4: Update Version References in Documentation
+
+After tagging a release, update version-specific references in the repository:
+
+1. **README.md** — Update the Docker image version in the usage example (e.g., `ghcr.io/iemejia/fabio:0.20.0` → `ghcr.io/iemejia/fabio:0.21.0`).
+2. **AGENTS.md** — Update the `Docker & Devcontainer` section's version examples to reflect the new tag.
+3. **Cargo.toml** — Bump the `version` field to the next development version if applicable.
+
+**Note:** The release workflow automatically publishes the Docker image to `ghcr.io/iemejia/fabio:{version}` and `ghcr.io/iemejia/fabio:{major}.{minor}` as part of the `docker` job in `.github/workflows/release.yml`. No manual Docker build/push is needed.
+
 ## Progress
 ### Done
 - **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, data-build-tool-job, org-app, org-app-audience, rti, rest, profile, jobs, feedback, operation, agent-context
@@ -581,9 +591,10 @@ Located in `.devcontainer/` for VS Code and GitHub Codespaces. Provides the full
 |---------|-------|--------------|
 | Pull request | amd64 + arm64 | No (validation only) |
 | Push to `main` | amd64 + arm64 | Yes (`:main`, `:sha-*`) |
-| Tag `v*` | amd64 + arm64 | Yes (`:X.Y.Z`, `:X.Y`, `:sha-*`) |
 
 Uses GitHub Actions cache (`type=gha`) for Docker layer caching. QEMU for arm64 cross-build. `GITHUB_TOKEN` for GHCR auth (no extra secrets).
+
+The release workflow (`.github/workflows/release.yml`) handles tagged version images (`:X.Y.Z`, `:X.Y`) as a separate `docker` job that runs after binaries are published.
 
 ### Relevant Docker Files
 
