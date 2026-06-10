@@ -58,6 +58,27 @@ cargo build --release
 - If you modify existing tests or add new tests, verify they pass.
 - These steps mirror the CI pipeline exactly — if they pass locally, CI will pass.
 
+## Pre-Commit Self-Review (MANDATORY)
+
+Before committing, you MUST perform a deep, thoughtful review of ALL changes you are about to commit. This is not a formality — it is a critical quality gate:
+
+1. **Re-read every changed file** — Use `git diff --staged` (or `git diff` if not yet staged) and carefully review each hunk.
+2. **Check for issues you may have introduced** — Look for:
+   - Logic errors, off-by-one mistakes, or incorrect assumptions
+   - Missing error handling or edge cases
+   - Copy-paste errors (e.g., wrong variable names, leftover placeholder text)
+   - Inconsistencies with existing code patterns and conventions
+   - Dead code, unused imports, or debug artifacts left behind
+   - Incomplete implementations (TODO comments without corresponding work)
+   - Naming inconsistencies (does the new code match the codebase's naming style?)
+3. **Verify correctness against the intent** — Does the code actually accomplish what was requested? Are there subtle misunderstandings?
+4. **Fix any issues found** — Do NOT commit known problems. Fix them first, then re-run the pre-commit validation steps.
+
+**Rules:**
+- Treat this review as if you were reviewing someone else's code — be critical and objective.
+- If you find even a minor issue, fix it before committing. Do not leave it for later.
+- This step comes AFTER pre-commit validation passes but BEFORE the actual `git commit`.
+
 ## Documentation Updates (MANDATORY)
 
 When adding new features, commands, or discovering API behaviors, you MUST update the following documentation before committing:
