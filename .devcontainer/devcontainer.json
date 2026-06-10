@@ -6,7 +6,8 @@
   "features": {
     "ghcr.io/devcontainers/features/rust:1": {
       "version": "latest",
-      "profile": "default"
+      "profile": "default",
+      "targets": "aarch64-unknown-linux-gnu,x86_64-apple-darwin,aarch64-apple-darwin,x86_64-pc-windows-msvc"
     },
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {},
@@ -18,7 +19,7 @@
         "rust-lang.rust-analyzer",
         "tamasfe.even-better-toml",
         "vadimcn.vscode-lldb",
-        "serayuzgur.crates"
+        "fill-labs.dependi"
       ],
       "settings": {
         "rust-analyzer.check.command": "clippy",
@@ -27,6 +28,6 @@
       }
     }
   },
-  "postCreateCommand": "cargo fetch",
+  "postCreateCommand": "cargo fetch && cargo install git-cliff cargo-zigbuild cargo-xwin cargo-audit",
   "remoteUser": "ubuntu"
 }

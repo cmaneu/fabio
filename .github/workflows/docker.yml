@@ -47,3 +47,8 @@ jobs:
             cargo --version
             az --version
             gh --version
+            zig version
+            git-cliff --version
+            cargo zigbuild --version
+            cargo xwin --version
+            cargo audit --version
