@@ -32,6 +32,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - Linting: clippy pedantic+nursery (zero warnings), rustfmt
 - CI: GitHub Actions (cargo fmt, clippy, test, build release) on ubuntu/macos/windows
 - Installable via `cargo install --git https://github.com/iemejia/fabio.git`
+- **Dependency version freshness** — When introducing a new Cargo dependency or a new GitHub Action, always validate that you are using the most recent available and compatible version. Check crates.io for Rust crates and the action's repository releases/tags for GitHub Actions. Do NOT copy outdated versions from examples or memory — verify against the source of truth before adding. Additionally, reject any dependency with an incompatible license (GPL, LGPL, AGPL, SSPL, or any other copyleft license that would impose restrictions on the project). Only permissive licenses (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0, etc.) are acceptable.
 
 ## Pre-Commit Validation (MANDATORY)
 
