@@ -20,6 +20,6 @@ Your task:
 5. Before committing, run the mandatory pre-commit validation defined in AGENTS.md (section "Pre-Commit Validation (MANDATORY)"). All steps must pass with zero errors and zero warnings.
 6. Write a file called /tmp/pr-body.md describing what was changed and why, referencing the spec commits.
 
-Focus on high-impact changes: new endpoints that map to fabio command groups, breaking schema changes, and new required fields. Skip cosmetic or documentation-only spec changes.
+Focus on high-impact changes: new endpoints that map to fabio command groups, breaking schema changes, and new required fields.
 
 Follow all constraints and preferences defined in AGENTS.md, in particular the pre-commit validation rules and Windows-first compatibility requirements.
