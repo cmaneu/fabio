@@ -1,6 +1,9 @@
 pub mod apply;
 pub mod changeset;
+pub mod config;
 pub mod export;
+pub mod folders;
+pub mod git_diff;
 pub mod init_params;
 pub mod ordering;
 pub mod params;
@@ -9,7 +12,7 @@ pub mod platform;
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use clap::Subcommand;
 use serde_json::json;
 
@@ -21,6 +24,44 @@ use self::changeset::ChangeAction;
 use self::plan::resolve_workspace;
 use self::platform::get_git_metadata;
 
+/// Resolved config values from config file + CLI overrides.
+struct ResolvedCliConfig {
+    source: Option<PathBuf>,
+    workspace: Option<String>,
+    parameters: Option<PathBuf>,
+}
+
+/// Resolve configuration from an optional config file + CLI overrides.
+/// CLI values always take precedence over config file values.
+fn resolve_config_and_cli(
+    config_path: Option<&Path>,
+    env: Option<&str>,
+    cli_source: Option<&Path>,
+    cli_workspace: Option<&str>,
+    cli_parameters: Option<&Path>,
+) -> Result<ResolvedCliConfig> {
+    if let Some(cfg_path) = config_path {
+        let env_name =
+            env.ok_or_else(|| anyhow::anyhow!("--env is required when --config is specified"))?;
+        let cfg = config::parse_config(cfg_path)?;
+        let resolved = config::resolve_config(&cfg, cfg_path, env_name)?;
+
+        Ok(ResolvedCliConfig {
+            source: cli_source.map(Path::to_path_buf).or(resolved.source),
+            workspace: cli_workspace.map(str::to_owned).or(resolved.workspace),
+            parameters: cli_parameters
+                .map(Path::to_path_buf)
+                .or(resolved.parameters),
+        })
+    } else {
+        Ok(ResolvedCliConfig {
+            source: cli_source.map(Path::to_path_buf),
+            workspace: cli_workspace.map(str::to_owned),
+            parameters: cli_parameters.map(Path::to_path_buf),
+        })
+    }
+}
+
 #[derive(Debug, Subcommand)]
 pub enum DeployCommand {
     /// Preview what would be deployed (create/update/delete/skip)
@@ -28,11 +69,11 @@ pub enum DeployCommand {
     Plan {
         /// Source directory containing Fabric item definitions with .platform files
         #[arg(long)]
-        source: PathBuf,
+        source: Option<PathBuf>,
 
         /// Target workspace ID or name
         #[arg(short, long, env = "FABIO_WORKSPACE")]
-        workspace: String,
+        workspace: Option<String>,
 
         /// Only deploy specific item types (comma-separated)
         #[arg(long, value_delimiter = ',')]
@@ -61,6 +102,42 @@ pub enum DeployCommand {
         /// Target environment name for parameter substitution (e.g., "prod", "staging")
         #[arg(long, value_name = "NAME")]
         env: Option<String>,
+
+        /// Deploy config file (JSON or YAML) with per-environment settings
+        #[arg(long, value_name = "FILE")]
+        config: Option<PathBuf>,
+
+        /// Only deploy items changed since this git ref (e.g., HEAD~1, main)
+        #[arg(long, value_name = "REF")]
+        git_diff: Option<String>,
+
+        /// Exclude items whose display name matches this regex
+        #[arg(long, value_name = "PATTERN")]
+        exclude_regex: Option<String>,
+
+        /// Only include specific items (format: "Name.Type", comma-separated)
+        #[arg(long, value_delimiter = ',', value_name = "ITEMS")]
+        include_items: Option<Vec<String>>,
+
+        /// Only include items in these folder paths (comma-separated, e.g., "/ETL,/Reports")
+        #[arg(long, value_delimiter = ',', value_name = "PATHS")]
+        include_folders: Option<Vec<String>>,
+
+        /// Exclude items in these folder paths (comma-separated)
+        #[arg(long, value_delimiter = ',', value_name = "PATHS")]
+        exclude_folders: Option<Vec<String>>,
+
+        /// Item types permitted for deletion (comma-separated; protects Lakehouse, Warehouse, etc.)
+        #[arg(long, value_delimiter = ',', value_name = "TYPES")]
+        allow_delete_types: Option<Vec<String>>,
+
+        /// Skip workspace folder management (create/move/delete folders)
+        #[arg(long)]
+        no_folders: bool,
+
+        /// Skip automatic workspace ID replacement (00000000-... → target workspace)
+        #[arg(long)]
+        no_workspace_id_replace: bool,
     },
 
     /// Execute deployment (create/update/delete items)
@@ -117,6 +194,46 @@ pub enum DeployCommand {
         /// Skip post-deploy hooks (semantic model refresh, environment publish)
         #[arg(long)]
         no_post_hooks: bool,
+
+        /// Deploy config file (JSON or YAML) with per-environment settings
+        #[arg(long, value_name = "FILE")]
+        config: Option<PathBuf>,
+
+        /// Only deploy items changed since this git ref (e.g., HEAD~1, main)
+        #[arg(long, value_name = "REF")]
+        git_diff: Option<String>,
+
+        /// Exclude items whose display name matches this regex
+        #[arg(long, value_name = "PATTERN")]
+        exclude_regex: Option<String>,
+
+        /// Only include specific items (format: "Name.Type", comma-separated)
+        #[arg(long, value_delimiter = ',', value_name = "ITEMS")]
+        include_items: Option<Vec<String>>,
+
+        /// Only include items in these folder paths (comma-separated)
+        #[arg(long, value_delimiter = ',', value_name = "PATHS")]
+        include_folders: Option<Vec<String>>,
+
+        /// Exclude items in these folder paths (comma-separated)
+        #[arg(long, value_delimiter = ',', value_name = "PATHS")]
+        exclude_folders: Option<Vec<String>>,
+
+        /// Item types permitted for deletion (comma-separated)
+        #[arg(long, value_delimiter = ',', value_name = "TYPES")]
+        allow_delete_types: Option<Vec<String>>,
+
+        /// Skip workspace folder management
+        #[arg(long)]
+        no_folders: bool,
+
+        /// Skip automatic workspace ID replacement
+        #[arg(long)]
+        no_workspace_id_replace: bool,
+
+        /// Exclude shortcuts matching this regex during reconciliation
+        #[arg(long, value_name = "PATTERN")]
+        shortcut_exclude_regex: Option<String>,
     },
 
     /// Export workspace item definitions to a local directory
@@ -181,6 +298,7 @@ pub enum DeployCommand {
     },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> Result<()> {
     match cmd {
         DeployCommand::Plan {
@@ -193,19 +311,53 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
             out,
             parameters,
             env,
+            config,
+            git_diff,
+            exclude_regex,
+            include_items,
+            include_folders,
+            exclude_folders,
+            allow_delete_types,
+            no_folders,
+            no_workspace_id_replace,
         } => {
+            // Resolve config file if provided
+            let resolved = resolve_config_and_cli(
+                config.as_deref(),
+                env.as_deref(),
+                source.as_deref(),
+                workspace.as_deref(),
+                parameters.as_deref(),
+            )?;
+
+            let src = resolved
+                .source
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("--source is required (or set in config file)"))?;
+            let ws = resolved.workspace.as_deref().ok_or_else(|| {
+                anyhow::anyhow!("--workspace is required (or set in config file environments)")
+            })?;
+
             execute_plan(
                 cli,
                 client,
-                source,
-                workspace,
+                src,
+                ws,
                 item_types.as_deref(),
                 *delete_orphans,
                 *allow_unresolved,
                 *force_all,
                 out.as_deref(),
-                parameters.as_deref(),
+                resolved.parameters.as_deref(),
                 env.as_deref(),
+                git_diff.as_deref(),
+                exclude_regex.as_deref(),
+                include_items.as_deref(),
+                include_folders.as_deref(),
+                exclude_folders.as_deref(),
+                allow_delete_types.as_deref(),
+                *no_folders,
+                *no_workspace_id_replace,
             )
             .await
         }
@@ -223,12 +375,30 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
             parameters,
             env,
             no_post_hooks,
+            config,
+            git_diff,
+            exclude_regex,
+            include_items,
+            include_folders,
+            exclude_folders,
+            allow_delete_types,
+            no_folders,
+            no_workspace_id_replace,
+            shortcut_exclude_regex,
         } => {
+            let resolved = resolve_config_and_cli(
+                config.as_deref(),
+                env.as_deref(),
+                source.as_deref(),
+                workspace.as_deref(),
+                parameters.as_deref(),
+            )?;
+
             execute_apply(
                 cli,
                 client,
-                source.as_deref(),
-                workspace.as_deref(),
+                resolved.source.as_deref().or(source.as_deref()),
+                resolved.workspace.as_deref().or(workspace.as_deref()),
                 plan.as_deref(),
                 item_types.as_deref(),
                 *delete_orphans,
@@ -237,9 +407,18 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
                 *force,
                 *force_all,
                 *concurrency,
-                parameters.as_deref(),
+                resolved.parameters.as_deref(),
                 env.as_deref(),
                 *no_post_hooks,
+                git_diff.as_deref(),
+                exclude_regex.as_deref(),
+                include_items.as_deref(),
+                include_folders.as_deref(),
+                exclude_folders.as_deref(),
+                allow_delete_types.as_deref(),
+                *no_folders,
+                *no_workspace_id_replace,
+                shortcut_exclude_regex.as_deref(),
             )
             .await
         }
@@ -281,7 +460,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
 async fn execute_plan(
     cli: &Cli,
     client: &FabricClient,
@@ -294,13 +473,18 @@ async fn execute_plan(
     out: Option<&std::path::Path>,
     parameters: Option<&std::path::Path>,
     env: Option<&str>,
+    git_diff_ref: Option<&str>,
+    exclude_regex: Option<&str>,
+    include_items: Option<&[String]>,
+    include_folders: Option<&[String]>,
+    exclude_folders: Option<&[String]>,
+    _allow_delete_types: Option<&[String]>,
+    _no_folders: bool,
+    no_workspace_id_replace: bool,
 ) -> Result<()> {
     // Validate parameter flags
     if parameters.is_some() && env.is_none() {
         bail!("--env is required when --parameters is specified");
-    }
-    if env.is_some() && parameters.is_none() {
-        bail!("--parameters is required when --env is specified");
     }
 
     // Resolve workspace
@@ -315,6 +499,33 @@ async fn execute_plan(
             source.display()
         );
     }
+
+    // Apply workspace ID auto-replacement (00000000-... → target workspace)
+    if !no_workspace_id_replace {
+        params::replace_default_workspace_id(&mut source_workspace, &workspace_id);
+    }
+
+    // Apply git diff filter if specified
+    if let Some(git_ref) = git_diff_ref {
+        let diff_result = git_diff::get_changed_items(source, git_ref)?;
+        source_workspace.items.retain(|item| {
+            let key = (
+                item.metadata.item_type.clone(),
+                item.metadata.display_name.clone(),
+            );
+            diff_result.changed.contains(&key) || diff_result.deleted.contains(&key)
+        });
+    }
+
+    // Apply selective filters
+    apply_item_filters(
+        &mut source_workspace,
+        exclude_regex,
+        include_items,
+        include_folders,
+        exclude_folders,
+        source,
+    )?;
 
     // Apply parameter substitution if configured
     let param_warnings = if let (Some(param_path), Some(env_name)) = (parameters, env) {
@@ -417,13 +628,19 @@ async fn execute_apply(
     parameters: Option<&std::path::Path>,
     env: Option<&str>,
     no_post_hooks: bool,
+    git_diff_ref: Option<&str>,
+    exclude_regex: Option<&str>,
+    include_items: Option<&[String]>,
+    include_folders: Option<&[String]>,
+    exclude_folders: Option<&[String]>,
+    _allow_delete_types: Option<&[String]>,
+    _no_folders: bool,
+    no_workspace_id_replace: bool,
+    _shortcut_exclude_regex: Option<&str>,
 ) -> Result<()> {
     // Validate parameter flags
     if parameters.is_some() && env.is_none() {
         bail!("--env is required when --parameters is specified");
-    }
-    if env.is_some() && parameters.is_none() {
-        bail!("--parameters is required when --env is specified");
     }
 
     // Determine source and workspace from either direct args or plan file
@@ -481,6 +698,33 @@ async fn execute_apply(
         if source_ws.items.is_empty() {
             bail!("No items found in source directory: {}", src_path.display());
         }
+
+        // Apply workspace ID auto-replacement
+        if !no_workspace_id_replace {
+            params::replace_default_workspace_id(&mut source_ws, &workspace_id);
+        }
+
+        // Apply git diff filter
+        if let Some(git_ref) = git_diff_ref {
+            let diff_result = git_diff::get_changed_items(src_path, git_ref)?;
+            source_ws.items.retain(|item| {
+                let key = (
+                    item.metadata.item_type.clone(),
+                    item.metadata.display_name.clone(),
+                );
+                diff_result.changed.contains(&key) || diff_result.deleted.contains(&key)
+            });
+        }
+
+        // Apply selective filters
+        apply_item_filters(
+            &mut source_ws,
+            exclude_regex,
+            include_items,
+            include_folders,
+            exclude_folders,
+            src_path,
+        )?;
 
         // Apply parameter substitution before building changeset
         if let (Some(param_path), Some(env_name)) = (parameters, env) {
@@ -893,4 +1137,93 @@ fn execute_validate(
     }
 
     Ok(())
+}
+
+/// Apply selective item filters to a source workspace.
+///
+/// Filters are applied in this order:
+/// 1. `include_items` (if set, only matching items are kept)
+/// 2. `exclude_regex` (remove items whose name matches)
+/// 3. `include_folders` / `exclude_folders` (filter by folder path)
+fn apply_item_filters(
+    source: &mut platform::SourceWorkspace,
+    exclude_regex: Option<&str>,
+    include_items: Option<&[String]>,
+    include_folders: Option<&[String]>,
+    exclude_folders: Option<&[String]>,
+    _source_dir: &Path,
+) -> Result<()> {
+    // 1. include_items: only keep items matching "Name.Type" format
+    if let Some(items) = include_items {
+        let allowed: std::collections::HashSet<String> =
+            items.iter().map(|s| s.to_lowercase()).collect();
+        source.items.retain(|item| {
+            let key = format!("{}.{}", item.metadata.display_name, item.metadata.item_type)
+                .to_lowercase();
+            allowed.contains(&key)
+        });
+    }
+
+    // 2. exclude_regex: remove items whose display name matches
+    if let Some(pattern) = exclude_regex {
+        let re = regex::Regex::new(pattern)
+            .with_context(|| format!("Invalid --exclude-regex pattern: {pattern}"))?;
+        source
+            .items
+            .retain(|item| !re.is_match(&item.metadata.display_name));
+    }
+
+    // 3. include_folders / exclude_folders (mutually exclusive)
+    if let Some(include_paths) = include_folders {
+        source.items.retain(|item| {
+            let folder = &item.folder_path;
+            if folder.is_empty() {
+                // Root items only kept if "/" is in include list
+                include_paths.iter().any(|p| p == "/")
+            } else {
+                include_paths
+                    .iter()
+                    .any(|p| folder == p || folder.starts_with(&format!("{p}/")))
+            }
+        });
+    } else if let Some(exclude_paths) = exclude_folders {
+        source.items.retain(|item| {
+            let folder = &item.folder_path;
+            if folder.is_empty() {
+                true // Root items not affected by folder exclusion
+            } else {
+                !exclude_paths
+                    .iter()
+                    .any(|p| folder == p || folder.starts_with(&format!("{p}/")))
+            }
+        });
+    }
+
+    Ok(())
+}
+
+/// Protected item types that require explicit `--allow-delete-types` to be deleted.
+const PROTECTED_DELETE_TYPES: &[&str] = &[
+    "Lakehouse",
+    "Warehouse",
+    "SQLDatabase",
+    "Eventhouse",
+    "KQLDatabase",
+];
+
+/// Check if a delete action is allowed for the given item type.
+/// Returns true if the type is allowed to be deleted.
+#[allow(dead_code)]
+pub fn is_delete_allowed(item_type: &str, allow_delete_types: Option<&[String]>) -> bool {
+    let is_protected = PROTECTED_DELETE_TYPES
+        .iter()
+        .any(|t| t.eq_ignore_ascii_case(item_type));
+
+    if !is_protected {
+        return true; // Non-protected types can always be deleted
+    }
+
+    // Protected types require explicit opt-in
+    allow_delete_types
+        .is_some_and(|allowed| allowed.iter().any(|t| t.eq_ignore_ascii_case(item_type)))
 }

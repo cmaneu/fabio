@@ -279,28 +279,60 @@ fn resolve_value(raw: &str, ctx: &SubstitutionContext<'_>) -> Result<String> {
     }
 
     if let Some(item_ref) = raw.strip_prefix("$items.") {
-        // Format: $items.Type.Name.id
+        // Format: $items.Type.Name.property
+        // Supported properties: id, sqlendpoint, sqlendpointid, queryserviceuri
         let parts: Vec<&str> = item_ref.splitn(3, '.').collect();
-        if parts.len() == 3 && parts[2] == "id" {
+        if parts.len() == 3 {
             let item_type = parts[0];
             let item_name = parts[1];
+            let property = parts[2];
 
-            return ctx
-                .deployed_items
-                .get(&(item_type.to_owned(), item_name.to_owned()))
-                .cloned()
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Cannot resolve $items.{item_type}.{item_name}.id: item not found in deployed workspace or source"
-                    )
-                });
+            match property {
+                "id" => {
+                    return ctx
+                        .deployed_items
+                        .get(&(item_type.to_owned(), item_name.to_owned()))
+                        .cloned()
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "Cannot resolve $items.{item_type}.{item_name}.id: item not found in deployed workspace or source"
+                            )
+                        });
+                }
+                "sqlendpoint" | "sqlendpointid" | "queryserviceuri" => {
+                    // Extended properties require pre-fetched data in deployed_items map
+                    // The key format for extended props: (Type, Name.property) → value
+                    let extended_key = (item_type.to_owned(), format!("{item_name}.{property}"));
+                    return ctx
+                        .deployed_items
+                        .get(&extended_key)
+                        .cloned()
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "Cannot resolve $items.{item_type}.{item_name}.{property}: property not available. \
+                                 Extended properties (sqlendpoint, sqlendpointid, queryserviceuri) are resolved \
+                                 from live workspace items."
+                            )
+                        });
+                }
+                _ => {
+                    bail!(
+                        "Invalid $items property: '{property}'. \
+                         Supported: id, sqlendpoint, sqlendpointid, queryserviceuri"
+                    );
+                }
+            }
         }
-        bail!("Invalid $items reference: '{raw}'. Expected format: $items.Type.Name.id");
+        bail!(
+            "Invalid $items reference: '{raw}'. Expected format: $items.Type.Name.property \
+             (where property is: id, sqlendpoint, sqlendpointid, queryserviceuri)"
+        );
     }
 
-    // Unknown variable reference — return as-is with a warning? No, error.
+    // Unknown variable reference
     bail!(
-        "Unknown dynamic variable: '{raw}'. Supported: $workspace.id, $workspace.name, $items.Type.Name.id, $ENV:VAR"
+        "Unknown dynamic variable: '{raw}'. Supported: $workspace.id, $workspace.name, \
+         $items.Type.Name.<property>, $ENV:VAR_NAME"
     );
 }
 
@@ -354,6 +386,91 @@ pub fn apply_parameters(
     }
 
     Ok(warnings)
+}
+
+/// Default workspace GUID placeholder used in source definitions.
+/// This is the standard Fabric git integration placeholder for the "current workspace".
+const DEFAULT_WORKSPACE_GUID: &str = "00000000-0000-0000-0000-000000000000";
+
+/// Replace default workspace ID placeholders (`00000000-...`) with the target workspace ID.
+///
+/// Scans all definition payloads for well-known fields that reference a workspace
+/// (`default_lakehouse_workspace_id`, `workspaceId`, `workspace`) and replaces
+/// the default GUID with the actual target workspace.
+///
+/// Also applies to `creationPayload` and `shortcuts.metadata.json` content.
+pub fn replace_default_workspace_id(source: &mut SourceWorkspace, workspace_id: &str) {
+    for item in &mut source.items {
+        // Apply to definition parts
+        for part in &mut item.parts {
+            if let Ok(mut decoded) = decode_part_payload(&part.payload) {
+                if decoded.contains(DEFAULT_WORKSPACE_GUID) {
+                    decoded = decoded.replace(DEFAULT_WORKSPACE_GUID, workspace_id);
+                    part.payload = BASE64.encode(decoded.as_bytes());
+                }
+            }
+        }
+
+        // Apply to creationPayload
+        if let Some(ref mut payload) = item.creation_payload {
+            let s = payload.to_string();
+            if s.contains(DEFAULT_WORKSPACE_GUID) {
+                let replaced = s.replace(DEFAULT_WORKSPACE_GUID, workspace_id);
+                if let Ok(v) = serde_json::from_str(&replaced) {
+                    *payload = v;
+                }
+            }
+        }
+
+        // Apply to shortcuts
+        if let Some(ref mut shortcuts) = item.shortcuts {
+            for shortcut in shortcuts.iter_mut() {
+                let s = shortcut.to_string();
+                if s.contains(DEFAULT_WORKSPACE_GUID) {
+                    let replaced = s.replace(DEFAULT_WORKSPACE_GUID, workspace_id);
+                    if let Ok(v) = serde_json::from_str(&replaced) {
+                        *shortcut = v;
+                    }
+                }
+            }
+        }
+
+        // Recompute content hash
+        item.content_hash = recompute_content_hash(&item.parts);
+    }
+}
+
+/// Decode a base64 part payload to a string (best effort).
+fn decode_part_payload(payload: &str) -> Result<String> {
+    let bytes = BASE64.decode(payload)?;
+    Ok(String::from_utf8(bytes)?)
+}
+
+/// Recompute the content hash for a set of definition parts.
+fn recompute_content_hash(parts: &[DefinitionPart]) -> String {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write;
+
+    let mut hasher = Sha256::new();
+    let mut sorted: Vec<(&str, &str)> = parts
+        .iter()
+        .map(|p| (p.path.as_str(), p.payload.as_str()))
+        .collect();
+    sorted.sort_by_key(|(path, _)| *path);
+
+    for (path, payload) in sorted {
+        hasher.update(path.as_bytes());
+        hasher.update(b"\x00");
+        hasher.update(payload.as_bytes());
+        hasher.update(b"\x00");
+    }
+
+    let hash = hasher.finalize();
+    let hex = hash.iter().fold(String::with_capacity(64), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    });
+    format!("sha256:{hex}")
 }
 
 /// Apply `find_replace` rules to a source workspace.
@@ -1284,6 +1401,7 @@ mod tests {
                     payload_type: "InlineBase64".to_owned(),
                 }],
                 content_hash: "sha256:old".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
@@ -1347,6 +1465,7 @@ mod tests {
                         payload_type: "InlineBase64".to_owned(),
                     }],
                     content_hash: "sha256:a".to_owned(),
+                    folder_path: String::new(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
                     shortcuts: None,
@@ -1365,6 +1484,7 @@ mod tests {
                         payload_type: "InlineBase64".to_owned(),
                     }],
                     content_hash: "sha256:b".to_owned(),
+                    folder_path: String::new(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
                     shortcuts: None,
@@ -1411,6 +1531,7 @@ mod tests {
                     payload_type: "InlineBase64".to_owned(),
                 }],
                 content_hash: "sha256:old".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
@@ -1476,6 +1597,7 @@ mod tests {
                     payload_type: "InlineBase64".to_owned(),
                 }],
                 content_hash: "sha256:old".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
@@ -1536,6 +1658,7 @@ mod tests {
                     payload_type: "InlineBase64".to_owned(),
                 }],
                 content_hash: "sha256:old".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
@@ -1592,6 +1715,7 @@ mod tests {
                         payload_type: "InlineBase64".to_owned(),
                     }],
                     content_hash: "sha256:a".to_owned(),
+                    folder_path: String::new(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
                     shortcuts: None,
@@ -1610,6 +1734,7 @@ mod tests {
                         payload_type: "InlineBase64".to_owned(),
                     }],
                     content_hash: "sha256:b".to_owned(),
+                    folder_path: String::new(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
                     shortcuts: None,
@@ -1674,6 +1799,7 @@ mod tests {
                     payload_type: "InlineBase64".to_owned(),
                 }],
                 content_hash: "sha256:old".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
@@ -1727,6 +1853,7 @@ mod tests {
                     payload_type: "InlineBase64".to_owned(),
                 }],
                 content_hash: "sha256:old".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
@@ -1791,6 +1918,7 @@ mod tests {
                     payload_type: "InlineBase64".to_owned(),
                 }],
                 content_hash: "sha256:old".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
@@ -1874,6 +2002,7 @@ mod tests {
                     payload_type: "InlineBase64".to_owned(),
                 }],
                 content_hash: "sha256:old".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
@@ -1939,6 +2068,7 @@ mod tests {
                     payload_type: "InlineBase64".to_owned(),
                 }],
                 content_hash: "sha256:old".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
@@ -2000,6 +2130,7 @@ mod tests {
                     payload_type: "InlineBase64".to_owned(),
                 }],
                 content_hash: "sha256:old".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
@@ -2068,6 +2199,7 @@ mod tests {
                         payload_type: "InlineBase64".to_owned(),
                     }],
                     content_hash: "sha256:a".to_owned(),
+                    folder_path: String::new(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
                     shortcuts: None,
@@ -2086,6 +2218,7 @@ mod tests {
                         payload_type: "InlineBase64".to_owned(),
                     }],
                     content_hash: "sha256:b".to_owned(),
+                    folder_path: String::new(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
                     shortcuts: None,
@@ -2164,6 +2297,7 @@ mod tests {
                     payload_type: "InlineBase64".to_owned(),
                 }],
                 content_hash: "sha256:old".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
@@ -2225,6 +2359,7 @@ mod tests {
                     payload_type: "InlineBase64".to_owned(),
                 }],
                 content_hash: "sha256:old".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
@@ -2292,6 +2427,7 @@ mod tests {
                         payload_type: "InlineBase64".to_owned(),
                     }],
                     content_hash: "sha256:a".to_owned(),
+                    folder_path: String::new(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
                     shortcuts: None,
@@ -2310,6 +2446,7 @@ mod tests {
                         payload_type: "InlineBase64".to_owned(),
                     }],
                     content_hash: "sha256:b".to_owned(),
+                    folder_path: String::new(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
                     shortcuts: None,
@@ -2469,6 +2606,7 @@ mod tests {
                     "parentEventhouseItemId": "SOURCE_EH_ID"
                 })),
                 shortcuts: None,
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
             }],
             logical_id_index: std::collections::HashMap::new(),
@@ -2520,6 +2658,7 @@ mod tests {
                     "parentEventhouseItemId": "old-id"
                 })),
                 shortcuts: None,
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
             }],
             logical_id_index: std::collections::HashMap::new(),

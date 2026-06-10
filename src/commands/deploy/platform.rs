@@ -45,6 +45,8 @@ pub struct SourceItem {
     /// Optional shortcut definitions (from `shortcuts.metadata.json`).
     /// Only relevant for Lakehouse items. Contains the JSON array of shortcuts.
     pub shortcuts: Option<Vec<serde_json::Value>>,
+    /// Workspace folder path (e.g., "/ETL/Bronze"). Empty string means root level.
+    pub folder_path: String,
     /// Path to the item directory on disk.
     #[allow(dead_code)]
     pub source_path: PathBuf,
@@ -148,15 +150,16 @@ fn compute_content_hash(parts: &[DefinitionPart]) -> String {
 
 /// Parse a source directory containing Fabric item folders with `.platform` files.
 ///
-/// Expected directory structure:
+/// Supports both flat and nested (folder) structures:
 /// ```text
 /// source_dir/
-/// ├── MyNotebook.Notebook/
+/// ├── MyNotebook.Notebook/         (root-level item)
 /// │   ├── .platform
 /// │   └── notebook-content.py
-/// ├── MyPipeline.DataPipeline/
-/// │   ├── .platform
-/// │   └── pipeline-content.json
+/// ├── ETL/                          (folder)
+/// │   └── Transform.Notebook/
+/// │       ├── .platform
+/// │       └── notebook-content.py
 /// ```
 pub fn parse_source_directory(source_dir: &Path) -> Result<SourceWorkspace> {
     if !source_dir.is_dir() {
@@ -167,9 +170,38 @@ pub fn parse_source_directory(source_dir: &Path) -> Result<SourceWorkspace> {
     let mut logical_id_index = HashMap::new();
     let mut type_name_index = HashMap::new();
 
-    // Walk top-level entries looking for directories with .platform files
-    let entries = std::fs::read_dir(source_dir)
-        .with_context(|| format!("Failed to read source directory: {}", source_dir.display()))?;
+    // Recursively discover all item directories (those containing .platform)
+    discover_items_recursive(source_dir, source_dir, &mut items)?;
+
+    // Build indices
+    for (idx, item) in items.iter().enumerate() {
+        if let Some(ref lid) = item.metadata.logical_id {
+            logical_id_index.insert(lid.clone(), idx);
+        }
+        type_name_index.insert(
+            (
+                item.metadata.item_type.clone(),
+                item.metadata.display_name.clone(),
+            ),
+            idx,
+        );
+    }
+
+    Ok(SourceWorkspace {
+        items,
+        logical_id_index,
+        type_name_index,
+    })
+}
+
+/// Recursively discover item directories within the source tree.
+fn discover_items_recursive(
+    root: &Path,
+    current: &Path,
+    items: &mut Vec<SourceItem>,
+) -> Result<()> {
+    let entries = std::fs::read_dir(current)
+        .with_context(|| format!("Failed to read source directory: {}", current.display()))?;
 
     for entry in entries {
         let entry = entry?;
@@ -179,85 +211,93 @@ pub fn parse_source_directory(source_dir: &Path) -> Result<SourceWorkspace> {
             continue;
         }
 
-        let platform_path = path.join(".platform");
-        if !platform_path.exists() {
+        let dir_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        // Skip hidden directories and .children (KQL database internal)
+        if dir_name.starts_with('.') || dir_name == ".children" {
             continue;
         }
 
-        let metadata = parse_platform_file(&platform_path)?;
-
-        // Read all non-.platform, non-creationPayload files as definition parts
-        let parts = read_definition_parts(&path)?;
-        let content_hash = compute_content_hash(&parts);
-
-        // Read optional creationPayload.json
-        let creation_payload_path = path.join("creationPayload.json");
-        let creation_payload = if creation_payload_path.exists() {
-            let content = std::fs::read_to_string(&creation_payload_path).with_context(|| {
-                format!(
-                    "Failed to read creationPayload.json: {}",
-                    creation_payload_path.display()
-                )
-            })?;
-            let parsed: serde_json::Value = serde_json::from_str(&content).with_context(|| {
-                format!(
-                    "Invalid JSON in creationPayload.json: {}",
-                    creation_payload_path.display()
-                )
-            })?;
-            Some(parsed)
+        let platform_path = path.join(".platform");
+        if platform_path.exists() {
+            // This is an item directory — parse it
+            let item = parse_item_directory(root, &path)?;
+            items.push(item);
         } else {
-            None
-        };
-
-        // Read optional shortcuts.metadata.json (for Lakehouse items)
-        let shortcuts_path = path.join("shortcuts.metadata.json");
-        let shortcuts = if shortcuts_path.exists() {
-            let content = std::fs::read_to_string(&shortcuts_path).with_context(|| {
-                format!(
-                    "Failed to read shortcuts.metadata.json: {}",
-                    shortcuts_path.display()
-                )
-            })?;
-            let parsed: serde_json::Value = serde_json::from_str(&content).with_context(|| {
-                format!(
-                    "Invalid JSON in shortcuts.metadata.json: {}",
-                    shortcuts_path.display()
-                )
-            })?;
-            match parsed {
-                serde_json::Value::Array(arr) if !arr.is_empty() => Some(arr),
-                _ => None,
-            }
-        } else {
-            None
-        };
-
-        let idx = items.len();
-
-        if let Some(ref lid) = metadata.logical_id {
-            logical_id_index.insert(lid.clone(), idx);
+            // This is a folder directory — recurse into it
+            discover_items_recursive(root, &path, items)?;
         }
-
-        type_name_index.insert(
-            (metadata.item_type.clone(), metadata.display_name.clone()),
-            idx,
-        );
-
-        items.push(SourceItem {
-            metadata,
-            parts,
-            content_hash,
-            creation_payload,
-            shortcuts,
-            source_path: path,
-        });
     }
 
-    Ok(SourceWorkspace {
-        items,
-        logical_id_index,
-        type_name_index,
+    Ok(())
+}
+
+/// Parse a single item directory into a `SourceItem`.
+fn parse_item_directory(root: &Path, path: &Path) -> Result<SourceItem> {
+    let platform_path = path.join(".platform");
+    let metadata = parse_platform_file(&platform_path)?;
+
+    // Read all non-.platform, non-creationPayload files as definition parts
+    let parts = read_definition_parts(path)?;
+    let content_hash = compute_content_hash(&parts);
+
+    // Read optional creationPayload.json
+    let creation_payload_path = path.join("creationPayload.json");
+    let creation_payload = if creation_payload_path.exists() {
+        let content = std::fs::read_to_string(&creation_payload_path).with_context(|| {
+            format!(
+                "Failed to read creationPayload.json: {}",
+                creation_payload_path.display()
+            )
+        })?;
+        let parsed: serde_json::Value = serde_json::from_str(&content).with_context(|| {
+            format!(
+                "Invalid JSON in creationPayload.json: {}",
+                creation_payload_path.display()
+            )
+        })?;
+        Some(parsed)
+    } else {
+        None
+    };
+
+    // Read optional shortcuts.metadata.json (for Lakehouse items)
+    let shortcuts_path = path.join("shortcuts.metadata.json");
+    let shortcuts = if shortcuts_path.exists() {
+        let content = std::fs::read_to_string(&shortcuts_path).with_context(|| {
+            format!(
+                "Failed to read shortcuts.metadata.json: {}",
+                shortcuts_path.display()
+            )
+        })?;
+        let parsed: serde_json::Value = serde_json::from_str(&content).with_context(|| {
+            format!(
+                "Invalid JSON in shortcuts.metadata.json: {}",
+                shortcuts_path.display()
+            )
+        })?;
+        match parsed {
+            serde_json::Value::Array(arr) if !arr.is_empty() => Some(arr),
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    // Compute folder path from item's parent relative to root
+    let folder_path = super::folders::item_folder_path(root, path);
+
+    Ok(SourceItem {
+        metadata,
+        parts,
+        content_hash,
+        creation_payload,
+        shortcuts,
+        folder_path,
+        source_path: path.to_path_buf(),
     })
 }
 

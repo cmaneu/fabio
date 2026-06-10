@@ -109,9 +109,11 @@ pub async fn execute_changeset(
             ),
         );
 
-        // For DataPipeline, do topological sort within the group
+        // For DataPipeline and Dataflow, do topological sort within the group
         let ordered_changes = if *item_type == "DataPipeline" {
             order_pipelines(group, source, &source_map)?
+        } else if item_type.eq_ignore_ascii_case("Dataflow") {
+            order_dataflows(group, source, &source_map)?
         } else {
             group.clone()
         };
@@ -348,6 +350,7 @@ pub async fn execute_changeset(
 /// - **Environment**: Triggers `POST /environments/{id}/staging/publish` (publishes staged changes)
 ///
 /// Returns a list of hook result objects (for inclusion in the deploy output).
+#[allow(clippy::too_many_lines)]
 pub async fn execute_post_hooks(
     cli: &Cli,
     client: &FabricClient,
@@ -367,7 +370,47 @@ pub async fn execute_post_hooks(
         };
 
         match change.item_type.as_str() {
+            "Lakehouse" if change.action == ChangeAction::Create => {
+                // Feature 3: Poll SQL endpoint provisioning after Lakehouse creation
+                emit_progress(
+                    cli.quiet,
+                    &format!(
+                        "post-hook: polling SQL endpoint for lakehouse \"{}\"",
+                        change.name
+                    ),
+                );
+                match poll_lakehouse_sql_endpoint(client, workspace_id, item_id).await {
+                    Ok(()) => {
+                        results.push(json!({
+                            "hook": "sql_endpoint_poll",
+                            "item_type": "Lakehouse",
+                            "item_name": change.name,
+                            "status": "ready"
+                        }));
+                    }
+                    Err(e) => {
+                        emit_progress(
+                            cli.quiet,
+                            &format!(
+                                "  post-hook WARNING: SQL endpoint polling for \"{}\": {}",
+                                change.name,
+                                e.root_cause()
+                            ),
+                        );
+                        results.push(json!({
+                            "hook": "sql_endpoint_poll",
+                            "item_type": "Lakehouse",
+                            "item_name": change.name,
+                            "status": "timeout",
+                            "error": e.to_string()
+                        }));
+                    }
+                }
+            }
             "SemanticModel" => {
+                // Feature 9: Bind connection first (if semantic_model_binding is configured)
+                // Connection binding is handled externally via parameter substitution
+                // Here we just trigger the refresh for Direct Lake framing
                 emit_progress(
                     cli.quiet,
                     &format!("post-hook: refreshing semantic model \"{}\"", change.name),
@@ -403,6 +446,7 @@ pub async fn execute_post_hooks(
                 }
             }
             "Environment" => {
+                // Feature 10: Trigger publish and poll for completion
                 emit_progress(
                     cli.quiet,
                     &format!("post-hook: publishing environment \"{}\"", change.name),
@@ -412,11 +456,23 @@ pub async fn execute_post_hooks(
                 let body = json!({});
                 match client.post(&path, &body, false).await {
                     Ok(_) => {
+                        // Poll for publish completion
+                        let poll_result = poll_environment_publish(
+                            cli,
+                            client,
+                            workspace_id,
+                            item_id,
+                            &change.name,
+                        )
+                        .await;
                         results.push(json!({
                             "hook": "publish",
                             "item_type": "Environment",
                             "item_name": change.name,
-                            "status": "triggered"
+                            "status": match poll_result {
+                                Ok(()) => "succeeded",
+                                Err(_) => "triggered"
+                            }
                         }));
                     }
                     Err(e) => {
@@ -443,6 +499,110 @@ pub async fn execute_post_hooks(
     }
 
     results
+}
+
+/// Feature 3: Poll SQL endpoint provisioning status after Lakehouse creation.
+///
+/// The SQL analytics endpoint takes time to provision after a lakehouse is created.
+/// This polls the lakehouse properties until the endpoint is ready.
+async fn poll_lakehouse_sql_endpoint(
+    client: &FabricClient,
+    workspace_id: &str,
+    lakehouse_id: &str,
+) -> Result<()> {
+    let url = format!("workspaces/{workspace_id}/lakehouses/{lakehouse_id}");
+    let max_wait = std::time::Duration::from_secs(300);
+    let poll_interval = std::time::Duration::from_secs(5);
+    let start = std::time::Instant::now();
+
+    loop {
+        if start.elapsed() > max_wait {
+            anyhow::bail!("SQL endpoint provisioning timed out after 300 seconds");
+        }
+
+        let resp = client.get(&url).await?;
+
+        let status = resp
+            .get("properties")
+            .and_then(|p| p.get("sqlEndpointProperties"))
+            .and_then(|ep| ep.get("provisioningStatus"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("Unknown");
+
+        match status {
+            "Success" => return Ok(()),
+            "Failed" => anyhow::bail!("SQL endpoint provisioning failed"),
+            _ => tokio::time::sleep(poll_interval).await,
+        }
+    }
+}
+
+/// Feature 10: Poll environment publish state until completion.
+///
+/// After triggering `staging/publish`, polls the environment status until
+/// the publish succeeds, fails, or times out.
+async fn poll_environment_publish(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace_id: &str,
+    environment_id: &str,
+    env_name: &str,
+) -> Result<()> {
+    let url = format!("workspaces/{workspace_id}/environments/{environment_id}");
+    let max_wait = std::time::Duration::from_secs(300);
+    let poll_interval = std::time::Duration::from_secs(5);
+    let start = std::time::Instant::now();
+
+    loop {
+        if start.elapsed() > max_wait {
+            emit_progress(
+                cli.quiet,
+                &format!(
+                    "  environment \"{env_name}\" publish still in progress (timed out waiting)"
+                ),
+            );
+            return Err(anyhow::anyhow!("Environment publish polling timed out"));
+        }
+
+        tokio::time::sleep(poll_interval).await;
+
+        let resp = client.get(&url).await;
+        let Ok(body) = resp else {
+            continue; // Retry on transient errors
+        };
+
+        let state = body
+            .get("properties")
+            .and_then(|p| p.get("publishInfo"))
+            .and_then(|pi| pi.get("state"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("");
+
+        match state {
+            "Succeeded" | "Completed" => {
+                emit_progress(
+                    cli.quiet,
+                    &format!("  environment \"{env_name}\" publish succeeded"),
+                );
+                return Ok(());
+            }
+            "Failed" => {
+                emit_progress(
+                    cli.quiet,
+                    &format!("  environment \"{env_name}\" publish failed"),
+                );
+                return Err(anyhow::anyhow!("Environment publish failed"));
+            }
+            "Cancelled" => {
+                emit_progress(
+                    cli.quiet,
+                    &format!("  environment \"{env_name}\" publish was cancelled"),
+                );
+                return Err(anyhow::anyhow!("Environment publish cancelled"));
+            }
+            _ => {} // Still in progress, continue polling
+        }
+    }
 }
 
 /// Reconcile lakehouse shortcuts after deployment.
@@ -949,6 +1109,104 @@ fn extract_pipeline_references(source_item: &super::platform::SourceItem) -> Vec
     refs
 }
 
+/// Order `Dataflow` changes by their internal cross-references.
+///
+/// Dataflows can reference other dataflows via `PowerPlatform.Dataflows` patterns
+/// or by GUIDs/logical IDs that match other dataflows in the batch.
+fn order_dataflows<'a>(
+    changes: &[&'a Change],
+    source: &SourceWorkspace,
+    source_map: &HashMap<(&str, &str), usize>,
+) -> Result<Vec<&'a Change>> {
+    if changes.len() <= 1 {
+        return Ok(changes.to_vec());
+    }
+
+    // Extract dataflow references from definitions
+    let mut items_with_refs: Vec<(String, Vec<String>)> = Vec::new();
+
+    // Build a set of dataflow names and logical IDs for reference detection
+    let dataflow_names: std::collections::HashSet<&str> =
+        changes.iter().map(|c| c.name.as_str()).collect();
+    let dataflow_logical_ids: HashMap<&str, &str> = changes
+        .iter()
+        .filter_map(|c| {
+            source_map
+                .get(&("Dataflow", c.name.as_str()))
+                .and_then(|idx| source.items[*idx].metadata.logical_id.as_deref())
+                .map(|lid| (lid, c.name.as_str()))
+        })
+        .collect();
+
+    for change in changes {
+        let refs = source_map
+            .get(&("Dataflow", change.name.as_str()))
+            .map_or_else(Vec::new, |idx| {
+                extract_dataflow_references(
+                    &source.items[*idx],
+                    &dataflow_names,
+                    &dataflow_logical_ids,
+                )
+            });
+        items_with_refs.push((change.name.clone(), refs));
+    }
+
+    let sorted_names = topological_sort(&items_with_refs)?;
+
+    // Reorder changes to match sorted order
+    let change_map: HashMap<&str, &'a Change> =
+        changes.iter().map(|c| (c.name.as_str(), *c)).collect();
+
+    let mut ordered = Vec::with_capacity(changes.len());
+    for name in &sorted_names {
+        if let Some(change) = change_map.get(name.as_str()) {
+            ordered.push(*change);
+        }
+    }
+
+    Ok(ordered)
+}
+
+/// Extract names of other Dataflows referenced by this dataflow's definition.
+///
+/// Looks for `PowerPlatform.Dataflows` references and logical ID matches.
+fn extract_dataflow_references(
+    source_item: &super::platform::SourceItem,
+    dataflow_names: &std::collections::HashSet<&str>,
+    dataflow_logical_ids: &HashMap<&str, &str>,
+) -> Vec<String> {
+    let mut refs = Vec::new();
+
+    for part in &source_item.parts {
+        let Ok(decoded) = BASE64.decode(&part.payload) else {
+            continue;
+        };
+        let Ok(content) = String::from_utf8(decoded) else {
+            continue;
+        };
+
+        // Check for PowerPlatform.Dataflows references
+        // Pattern: references to other dataflow names in PQ expressions
+        for &name in dataflow_names {
+            if name != source_item.metadata.display_name && content.contains(name) {
+                refs.push(name.to_owned());
+            }
+        }
+
+        // Check for logical ID references
+        for (&lid, &name) in dataflow_logical_ids {
+            if name != source_item.metadata.display_name
+                && content.contains(lid)
+                && !refs.contains(&name.to_owned())
+            {
+                refs.push(name.to_owned());
+            }
+        }
+    }
+
+    refs
+}
+
 /// Build a map from logical IDs to deployed (runtime) IDs.
 ///
 /// This enables cross-item reference resolution: when item A's definition references
@@ -1042,6 +1300,7 @@ mod tests {
             },
             parts: vec![],
             content_hash: "sha256:abc".to_owned(),
+            folder_path: String::new(),
             source_path: std::path::PathBuf::from("/tmp"),
             creation_payload: None,
             shortcuts: None,
@@ -1089,6 +1348,7 @@ mod tests {
                 payload_type: "InlineBase64".to_owned(),
             }],
             content_hash: "sha256:abc".to_owned(),
+            folder_path: String::new(),
             source_path: std::path::PathBuf::from("/tmp"),
             creation_payload: None,
             shortcuts: None,
@@ -1136,6 +1396,7 @@ mod tests {
                 payload_type: "InlineBase64".to_owned(),
             }],
             content_hash: "sha256:abc".to_owned(),
+            folder_path: String::new(),
             source_path: std::path::PathBuf::from("/tmp"),
             creation_payload: None,
             shortcuts: None,
@@ -1301,6 +1562,7 @@ mod tests {
                 },
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
@@ -1339,6 +1601,7 @@ mod tests {
                 },
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
@@ -1373,6 +1636,7 @@ mod tests {
                     },
                     parts: vec![],
                     content_hash: "sha256:abc".to_owned(),
+                    folder_path: String::new(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
                     shortcuts: None,
@@ -1387,6 +1651,7 @@ mod tests {
                     },
                     parts: vec![],
                     content_hash: "sha256:def".to_owned(),
+                    folder_path: String::new(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
                     shortcuts: None,
@@ -1401,6 +1666,7 @@ mod tests {
                     },
                     parts: vec![],
                     content_hash: "sha256:ghi".to_owned(),
+                    folder_path: String::new(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
                     shortcuts: None,
@@ -1495,6 +1761,7 @@ mod tests {
                 },
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),
+                folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
