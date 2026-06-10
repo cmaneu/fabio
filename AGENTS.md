@@ -561,8 +561,7 @@ After tagging a release, update version-specific references in the repository:
 Published to GHCR on every push to `main` and on version tags:
 
 ```
-ghcr.io/iemejia/fabio:latest       # latest from main
-ghcr.io/iemejia/fabio:main         # branch tag
+ghcr.io/iemejia/fabio:latest       # latest stable release
 ghcr.io/iemejia/fabio:0.20.0       # release version
 ghcr.io/iemejia/fabio:0.20         # major.minor
 ```
@@ -590,11 +589,11 @@ Located in `.devcontainer/` for VS Code and GitHub Codespaces. Provides the full
 | Trigger | Build | Push to GHCR |
 |---------|-------|--------------|
 | Pull request | amd64 + arm64 | No (validation only) |
-| Push to `main` | amd64 + arm64 | Yes (`:main`, `:sha-*`) |
+| Push to `main` | amd64 + arm64 | No (validation only) |
 
 Uses GitHub Actions cache (`type=gha`) for Docker layer caching. QEMU for arm64 cross-build. `GITHUB_TOKEN` for GHCR auth (no extra secrets).
 
-The release workflow (`.github/workflows/release.yml`) handles tagged version images (`:X.Y.Z`, `:X.Y`) as a separate `docker` job that runs after binaries are published.
+The release workflow (`.github/workflows/release.yml`) handles tagged version images (`:latest`, `:X.Y.Z`, `:X.Y`) as a separate `docker` job that runs after binaries are published.
 
 ### Relevant Docker Files
 
