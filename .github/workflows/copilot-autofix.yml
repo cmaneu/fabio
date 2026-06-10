@@ -1,0 +1,188 @@
+name: Copilot Autofix
+
+# Triggers when Copilot submits a review requesting changes.
+# Collects review comments, starts a Copilot cloud agent task via the
+# Agent Tasks API to fix the issues on the PR branch, then re-requests review.
+#
+# Requirements:
+# - COPILOT_PAT secret: A Personal Access Token (classic with `repo` scope,
+#   or fine-grained with read/write for metadata, actions, contents, issues, pull-requests)
+# - Copilot cloud agent must be enabled for the repository
+# - Repository must be private or internal (cloud agent limitation)
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  autofix:
+    # Only run when the review is from Copilot and requests changes
+    if: >-
+      github.event.review.user.login == 'copilot[bot]' &&
+      github.event.review.state == 'changes_requested'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Collect Copilot review comments
+        id: collect
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_PAT }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          REVIEW_ID="${{ github.event.review.id }}"
+
+          # Fetch all comments from this specific review
+          COMMENTS=$(gh api \
+            "repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}/comments" \
+            --paginate \
+            --jq '[.[] | {path: .path, line: .line, body: .body, diff_hunk: .diff_hunk}]')
+
+          # Also capture the review body (top-level summary)
+          REVIEW_BODY=$(gh api \
+            "repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}" \
+            --jq '.body // ""')
+
+          # Write to files for the next step
+          echo "${COMMENTS}" > /tmp/review-comments.json
+          echo "${REVIEW_BODY}" > /tmp/review-body.txt
+
+          # Count comments for logging
+          COUNT=$(echo "${COMMENTS}" | jq 'length')
+          echo "comment_count=${COUNT}" >> "$GITHUB_OUTPUT"
+          echo "Found ${COUNT} review comments from Copilot"
+
+      - name: Build fix prompt
+        id: prompt
+        run: |
+          COUNT="${{ steps.collect.outputs.comment_count }}"
+          if [ "${COUNT}" = "0" ] && [ ! -s /tmp/review-body.txt ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No actionable comments found, skipping autofix"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+          # Build a structured prompt for the coding agent
+          {
+            echo "Fix the following code review issues on PR #${{ github.event.pull_request.number }}."
+            echo "Apply the minimum changes needed to address each comment."
+            echo "Do NOT refactor unrelated code. Do NOT add new features."
+            echo "Only fix what is explicitly requested in the review comments."
+            echo ""
+            echo "## Review Summary"
+            echo ""
+            cat /tmp/review-body.txt
+            echo ""
+            echo "## Inline Comments"
+            echo ""
+            jq -r '.[] | "### File: \(.path) (line \(.line // "N/A"))\n\nComment: \(.body)\n\nContext:\n\(.diff_hunk)\n\n---\n"' \
+              /tmp/review-comments.json
+          } > /tmp/fix-prompt.txt
+
+          # Store prompt for the API call (escape for JSON)
+          PROMPT=$(cat /tmp/fix-prompt.txt)
+          echo "prompt_file=/tmp/fix-prompt.txt" >> "$GITHUB_OUTPUT"
+
+      - name: Start Copilot cloud agent task
+        id: agent
+        if: steps.prompt.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_PAT }}
+        run: |
+          PROMPT=$(cat /tmp/fix-prompt.txt)
+          PR_BRANCH="${{ github.event.pull_request.head.ref }}"
+
+          # Start a Copilot cloud agent task via the Agent Tasks API
+          RESPONSE=$(gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "agents/repos/${{ github.repository }}/tasks" \
+            -f prompt="${PROMPT}" \
+            -f base_ref="${PR_BRANCH}" \
+            -F create_pull_request=false)
+
+          TASK_ID=$(echo "${RESPONSE}" | jq -r '.id // empty')
+          TASK_STATE=$(echo "${RESPONSE}" | jq -r '.state // "unknown"')
+
+          if [ -z "${TASK_ID}" ]; then
+            echo "::error::Failed to start Copilot cloud agent task"
+            echo "${RESPONSE}" >&2
+            exit 1
+          fi
+
+          echo "task_id=${TASK_ID}" >> "$GITHUB_OUTPUT"
+          echo "Started Copilot cloud agent task: ${TASK_ID} (state: ${TASK_STATE})"
+
+      - name: Wait for agent task completion
+        if: steps.prompt.outputs.skip != 'true' && steps.agent.outputs.task_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_PAT }}
+        run: |
+          TASK_ID="${{ steps.agent.outputs.task_id }}"
+          MAX_WAIT=600  # 10 minutes
+          ELAPSED=0
+          INTERVAL=15
+
+          echo "Polling task ${TASK_ID} every ${INTERVAL}s (max ${MAX_WAIT}s)..."
+
+          while [ ${ELAPSED} -lt ${MAX_WAIT} ]; do
+            STATE=$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "agents/repos/${{ github.repository }}/tasks/${TASK_ID}" \
+              --jq '.state')
+
+            echo "  [${ELAPSED}s] State: ${STATE}"
+
+            case "${STATE}" in
+              completed)
+                echo "Agent task completed successfully"
+                exit 0
+                ;;
+              failed|timed_out|cancelled)
+                echo "::warning::Agent task ended with state: ${STATE}"
+                exit 0
+                ;;
+              idle|waiting_for_user)
+                echo "::warning::Agent task requires attention (state: ${STATE})"
+                exit 0
+                ;;
+            esac
+
+            sleep ${INTERVAL}
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+
+          echo "::warning::Timed out waiting for agent task after ${MAX_WAIT}s"
+
+      - name: Post status comment and re-request review
+        if: steps.prompt.outputs.skip != 'true' && steps.agent.outputs.task_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_PAT }}
+        run: |
+          TASK_ID="${{ steps.agent.outputs.task_id }}"
+
+          # Check final state
+          STATE=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "agents/repos/${{ github.repository }}/tasks/${TASK_ID}" \
+            --jq '.state')
+
+          if [ "${STATE}" = "completed" ]; then
+            gh pr comment "${{ github.event.pull_request.number }}" \
+              --repo "${{ github.repository }}" \
+              --body "Copilot cloud agent addressed ${{ steps.collect.outputs.comment_count }} review comment(s) (task \`${TASK_ID}\`). Please re-review."
+
+            # Re-request Copilot review on the updated code
+            gh pr edit "${{ github.event.pull_request.number }}" \
+              --repo "${{ github.repository }}" \
+              --add-reviewer copilot
+          else
+            gh pr comment "${{ github.event.pull_request.number }}" \
+              --repo "${{ github.repository }}" \
+              --body "Copilot cloud agent task \`${TASK_ID}\` ended with state: \`${STATE}\`. Manual intervention may be needed for ${{ steps.collect.outputs.comment_count }} review comment(s)."
+          fi
