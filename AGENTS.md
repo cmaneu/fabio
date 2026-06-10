@@ -1643,7 +1643,10 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Update validation**: All update commands require at least one field (`--name` or `--description`). Fail with `INVALID_INPUT` if neither provided.
 - **LRO standard pattern**: POST returns 202 + `Location` header. Poll every 2s, max 120s. Terminal: `status == "Succeeded"` or `"Failed"`.
 - **Error enrichment**: All commands use `enrich_forbidden()` to add required role hints on 403 errors. Not-found errors include `fabio <group> list` suggestions.
-- **Error `isRetriable` field**: API responses may include `error.isRetriable: bool`. When present, serialized in `FabioError` output as `"retriable": true/false`.
+- **Error `isRetriable` field**: API responses may include `error.isRetriable: bool`. When present, included in error output as `"retriable": true/false`. Omitted from output when not provided by the API (backward compatible — not present when null).
+- **Error `requestId` field**: API error responses may include `error.requestId` (correlation ID for support tickets). When present, included in error output as `"requestId": "<uuid>"`. Omitted from output when not provided.
+- **Error `moreDetails` field**: API error responses may include `error.moreDetails` (array of nested sub-errors with `code` and `message`). When present, included in error output as `"moreDetails": [{"code":"...","message":"..."}]`. Omitted from output when not provided.
+- **Error `relatedResource` field**: API error responses may include `error.relatedResource` (object with `resourceType` and `resourceId`). When present, included in error output as `"relatedResource": {"resourceType":"...","resourceId":"..."}`. Omitted from output when not provided.
 - **Dry-run guard**: All mutations support `--dry-run` which returns the planned request body without executing. Output: `{"status": "dry_run", "message": "Would <action>..."}`.
 - **Definition operations pattern**: `POST .../getDefinition` (LRO, empty body `{}`) returns base64-encoded parts. `POST .../updateDefinition` (LRO) accepts `{"definition": {"parts": [{"path": "<file>", "payload": "<base64>", "payloadType": "InlineBase64"}]}}`.
 - **Tenant-level vs workspace-scoped resources**:

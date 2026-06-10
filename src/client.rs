@@ -2679,6 +2679,7 @@ async fn try_developer_tools_credential(scope: &str) -> Result<(CachedToken, Cre
 }
 
 /// Handle an HTTP response, converting errors to `FabioError`.
+#[allow(clippy::too_many_lines)]
 async fn handle_response(resp: Response) -> Result<Value> {
     let status = resp.status();
 
