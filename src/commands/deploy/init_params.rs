@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use regex::Regex;
@@ -46,7 +46,9 @@ pub fn scan_for_candidates(source: &Path) -> Result<InitParamsResult> {
 
     for item in &workspace.items {
         for part in &item.parts {
-            let decoded = decode_payload(&part.payload)?;
+            let Some(decoded) = decode_payload(&part.payload) else {
+                continue; // Skip binary (non-UTF-8) payloads
+            };
             for mat in guid_re.find_iter(&decoded) {
                 let guid = mat.as_str().to_lowercase();
                 guid_occurrences
@@ -162,8 +164,13 @@ pub fn diff_for_parameters(
                 continue; // Part only exists in source
             };
 
-            let source_decoded = decode_payload(&source_part.payload)?;
-            let compare_decoded = decode_payload(&compare_part.payload)?;
+            let source_decoded = decode_payload(&source_part.payload);
+            let compare_decoded = decode_payload(&compare_part.payload);
+
+            let (Some(source_decoded), Some(compare_decoded)) = (source_decoded, compare_decoded)
+            else {
+                continue; // Skip binary (non-UTF-8) payloads
+            };
 
             if source_decoded == compare_decoded {
                 continue; // Identical
@@ -381,12 +388,10 @@ fn find_ordered_guids(text: &str, guids: &BTreeSet<&String>) -> Vec<String> {
     ordered
 }
 
-/// Decode a base64 payload to a UTF-8 string.
-fn decode_payload(payload: &str) -> Result<String> {
-    let bytes = BASE64
-        .decode(payload)
-        .context("Failed to decode base64 payload")?;
-    String::from_utf8(bytes).context("Definition payload is not valid UTF-8")
+/// Decode a base64 payload to a UTF-8 string, or None for binary content.
+fn decode_payload(payload: &str) -> Option<String> {
+    let bytes = BASE64.decode(payload).ok()?;
+    String::from_utf8(bytes).ok()
 }
 
 /// Check if a GUID is a well-known placeholder that shouldn't be parameterized.
