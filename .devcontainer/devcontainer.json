@@ -1,7 +1,8 @@
 {
   "name": "Fabio Dev",
   "build": {
-    "dockerfile": "Dockerfile"
+    "dockerfile": "Dockerfile",
+    "cacheFrom": "ghcr.io/iemejia/fabio-devcontainer"
   },
   "features": {
     "ghcr.io/devcontainers/features/rust:1": {
