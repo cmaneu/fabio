@@ -143,6 +143,59 @@ All new features and changes MUST have corresponding tests:
 - Follow existing test patterns in `tests/common/mod.rs` and existing `tests/e2e_*.rs` files.
 - Tests must pass locally (`cargo test`) before committing.
 
+## Release Notes Workflow (MANDATORY)
+
+When creating a new release, you MUST generate proper release notes following this hybrid workflow (auto-generated raw changelog + human-curated narrative):
+
+### Step 1: Generate Raw Changelog
+
+Use `git-cliff` to produce a grouped commit list between the previous and new tag:
+
+```bash
+# For the latest tag (most common):
+git cliff --latest
+
+# Between two specific tags:
+git cliff v0.19.0..v0.20.0
+
+# Unreleased changes (preview before tagging):
+git cliff --unreleased
+```
+
+The output is grouped by commit type (New Features, Bug Fixes, CI/CD, etc.) with links to commits. This ensures no changes are missed.
+
+### Step 2: Write Curated Narrative
+
+Using the raw changelog as input, write a **human-readable narrative** following the template in `.github/RELEASE_TEMPLATE.md`. Key principles:
+
+1. **Lead with impact**: Put the most user-visible features first (new item types, major new capabilities)
+2. **Group related changes**: Multiple commits that form one feature should be described together
+3. **Include examples**: Show command usage for new features
+4. **Stats at the end**: Commit count, lines changed, test coverage additions
+
+### Step 3: Publish
+
+```bash
+# Edit an existing release:
+gh release edit vX.Y.Z --notes-file release-notes.md
+
+# Or create a new release with notes:
+gh release create vX.Y.Z --notes-file release-notes.md --title "vX.Y.Z"
+```
+
+### Configuration
+
+- `cliff.toml` — git-cliff configuration (commit parsers, grouping, template)
+- `.github/RELEASE_TEMPLATE.md` — Narrative structure template
+
+**Rules:**
+- ALWAYS run `git cliff --latest` first to get the complete raw list — do NOT rely on memory or `git log` alone.
+- The curated narrative must cover ALL features/fixes from the raw changelog (nothing should be silently dropped).
+- New item types and headline features go FIRST in the release notes.
+- CI/CD and documentation-only changes go at the end (lower priority for users).
+- Include a `Stats` section with commit count, files changed, and lines added/removed.
+- Include the `Full Changelog` comparison link at the bottom.
+
 ## Progress
 ### Done
 - **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, data-build-tool-job, org-app, org-app-audience, rti, rest, profile, jobs, feedback, operation, agent-context
@@ -488,6 +541,8 @@ All new features and changes MUST have corresponding tests:
 - `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
 - `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
 - `.github/dependabot.yml`: Cargo + GitHub Actions dependency updates
+- `cliff.toml`: git-cliff configuration (commit parsers, grouping, template)
+- `.github/RELEASE_TEMPLATE.md`: Release notes narrative structure template
 
 ## Ontology API Behaviors Discovered
 - **Definition format**: Fabric ontology uses a proprietary JSON definition format (NOT RDF). Structure: `definition.json` (root, usually `{}`), `EntityTypes/{ID}/definition.json`, `EntityTypes/{ID}/DataBindings/{UUID}.json`, `RelationshipTypes/{ID}/definition.json`.

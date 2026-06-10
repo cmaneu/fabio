@@ -1,0 +1,67 @@
+# git-cliff configuration for fabio CLI release notes.
+# Docs: https://git-cliff.org/docs/configuration
+#
+# Usage:
+#   git cliff --latest              # changelog for the latest tag
+#   git cliff v0.19.0..v0.20.0     # changelog between two tags
+#   git cliff --unreleased          # changes since last tag
+#
+# The output is a raw grouped changelog. For final release notes, use this
+# as input and write a curated narrative on top (see .github/RELEASE_TEMPLATE.md).
+
+[changelog]
+# Header prepended to the full changelog (not per-release).
+header = ""
+# Body template for each release section.
+body = """
+{%- if version %}
+## {{ version }} — {{ timestamp | date(format="%Y-%m-%d") }}
+{%- else %}
+## Unreleased
+{%- endif %}
+
+{% for group, commits in commits | group_by(attribute="group") -%}
+### {{ group }}
+{% for commit in commits -%}
+- {% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message | upper_first }}\
+  {% if commit.breaking %} (**BREAKING**){% endif %} \
+  ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/iemejia/fabio/commit/{{ commit.id }}))
+{% endfor %}
+{% endfor -%}
+"""
+footer = ""
+# Remove leading/trailing whitespace from body.
+trim = true
+
+[git]
+# Parse commits using conventional commit spec.
+conventional_commits = true
+# Filter out commits that don't follow conventional commits.
+filter_unconventional = true
+# Process each line of a commit as an individual commit (for squash merges).
+split_commits = false
+
+# Map commit types to changelog section headers.
+commit_parsers = [
+    { message = "^feat", group = "New Features" },
+    { message = "^fix", group = "Bug Fixes" },
+    { message = "^perf", group = "Performance" },
+    { message = "^refactor", group = "Refactoring" },
+    { message = "^ci", group = "CI/CD" },
+    { message = "^chore\\(deps\\)", group = "Dependencies" },
+    { message = "^chore", group = "Miscellaneous" },
+    { message = "^docs", group = "Documentation" },
+    { message = "^test", group = "Testing" },
+    { message = "^style", group = "Styling" },
+    { message = "^build", group = "Build" },
+    { message = "^revert", group = "Reverted" },
+]
+
+# Protect emails from being exposed.
+protect_breaking_commits = false
+# Filter out merge commits.
+filter_commits = true
+# Glob pattern for tags to consider.
+tag_pattern = "v[0-9].*"
+# Sort commits by date within each group.
+sort_commits = "newest"
