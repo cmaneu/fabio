@@ -17,14 +17,9 @@ Your task:
 2. Compare against the current fabio implementation in src/commands/ and src/client.rs.
 3. Make targeted improvements to fabio: add new subcommands, update existing request/response handling, fix field names, or add support for new parameters.
 4. Update relevant tests in tests/ if you add or modify commands.
-5. Ensure the code compiles (run 'cargo check') and passes clippy ('cargo clippy').
+5. Before committing, run the mandatory pre-commit validation defined in AGENTS.md (section "Pre-Commit Validation (MANDATORY)"). All steps must pass with zero errors and zero warnings.
 6. Write a file called /tmp/pr-body.md describing what was changed and why, referencing the spec commits.
 
 Focus on high-impact changes: new endpoints that map to fabio command groups, breaking schema changes, and new required fields. Skip cosmetic or documentation-only spec changes.
 
-Important constraints:
-- Rust edition 2024, rust-version 1.85
-- clippy pedantic+nursery with zero warnings
-- All output uses the JSON envelope pattern (see src/output.rs)
-- Follow existing code patterns in src/commands/ for new subcommands
-- Use Path::new().join() for filesystem paths (Windows compatibility)
+Follow all constraints and preferences defined in AGENTS.md, in particular the pre-commit validation rules and Windows-first compatibility requirements.

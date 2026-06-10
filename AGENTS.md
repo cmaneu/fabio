@@ -33,6 +33,83 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - CI: GitHub Actions (cargo fmt, clippy, test, build release) on ubuntu/macos/windows
 - Installable via `cargo install --git https://github.com/iemejia/fabio.git`
 
+## Pre-Commit Validation (MANDATORY)
+
+Before committing ANY change, you MUST run the following validation steps in order and ensure they all pass with zero errors and zero warnings:
+
+```bash
+# 1. Format check (must produce no diffs)
+cargo fmt -- --check
+
+# 2. Clippy with all tests and deny warnings (must produce zero warnings)
+cargo clippy --tests -- -D warnings
+
+# 3. Run unit tests (must all pass)
+cargo test
+
+# 4. Verify release build compiles
+cargo build --release
+```
+
+**Rules:**
+- Do NOT commit if any of these steps fail.
+- Fix all formatting issues (`cargo fmt` to auto-fix), clippy warnings, and test failures before committing.
+- If you add new code, ensure it has no clippy pedantic+nursery warnings.
+- If you modify existing tests or add new tests, verify they pass.
+- These steps mirror the CI pipeline exactly — if they pass locally, CI will pass.
+
+## Documentation Updates (MANDATORY)
+
+When adding new features, commands, or discovering API behaviors, you MUST update the following documentation before committing:
+
+1. **AGENTS.md** — Update these sections as applicable:
+   - **Progress > Done**: Add bullet points for new commands/features implemented.
+   - **Key Decisions**: Document significant architectural or design choices.
+   - **Relevant Files**: Add new source files, test files, or config files.
+   - **API Behaviors Discovered**: Add a new section or append to an existing one with any runtime behaviors, quirks, or undocumented API details encountered (response formats, required fields, error codes, LRO patterns, etc.).
+
+2. **`src/commands/agent_context.rs`** — Update the machine-readable command schema so AI agents can discover the new commands (flags, types, mutability, examples).
+
+3. **README.md** — Update the user-facing documentation:
+   - Add new commands to the command listing/examples.
+   - Update feature descriptions if capabilities have expanded.
+   - Update installation or usage instructions if relevant.
+
+4. **COMMANDS.md** — Add the new command(s) with their full flag/option signatures.
+
+5. **EXAMPLES.md** — Add practical usage examples for new commands when applicable.
+
+**Rules:**
+- Documentation updates are part of the feature — do NOT commit code without corresponding doc updates.
+- API behaviors discovered during implementation MUST be captured in AGENTS.md (this is critical institutional knowledge for future development).
+- The `agent-context` schema must stay in sync with the actual CLI surface — agents rely on it for discovery.
+
+## Testing Requirements (MANDATORY)
+
+All new features and changes MUST have corresponding tests:
+
+1. **Unit tests** — Add unit tests in the same source file (or a `#[cfg(test)]` module) for:
+   - New helper functions, parsers, or data transformations.
+   - Edge cases in business logic (error paths, boundary conditions).
+   - Output formatting and serialization.
+
+2. **E2E tests** — Add integration tests in `tests/e2e_*.rs` for:
+   - New CLI commands (verify structured output, exit codes, `--dry-run` behavior).
+   - API interactions (create/read/update/delete lifecycle).
+   - Error handling (invalid inputs, permission errors, not-found responses).
+
+3. **Live tenant validation** — You have access to a live Microsoft Fabric tenant for E2E testing:
+   - Run E2E tests against the live tenant to validate API behavior.
+   - Use the test env vars (`FABIO_TEST_SOURCE_WORKSPACE`, `FABIO_TEST_CAPACITY_ID`, etc.) for workspace/item references.
+   - If a feature requires additional Azure resources (VNets, storage accounts, etc.), use `az cli` to create them as part of test setup.
+   - Document any API behaviors discovered during testing in the appropriate AGENTS.md section.
+
+**Rules:**
+- Do NOT commit new commands or features without corresponding unit AND E2E tests.
+- E2E tests should cover at minimum: `--dry-run` validation, happy-path execution, and error cases (invalid ID, missing permissions).
+- Follow existing test patterns in `tests/common/mod.rs` and existing `tests/e2e_*.rs` files.
+- Tests must pass locally (`cargo test`) before committing.
+
 ## Progress
 ### Done
 - **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, rti, rest, profile, jobs, feedback, operation, agent-context
