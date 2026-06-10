@@ -21,7 +21,7 @@ body = """
 {%- endif %}
 
 {% for group, commits in commits | group_by(attribute="group") -%}
-### {{ group }}
+### {{ group | split(pat=" - ") | last }}
 {% for commit in commits -%}
 - {% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message | upper_first }}\
   {% if commit.breaking %} (**BREAKING**){% endif %} \
@@ -42,19 +42,20 @@ filter_unconventional = true
 split_commits = false
 
 # Map commit types to changelog section headers.
+# Order here determines display order in the changelog (first match wins).
 commit_parsers = [
-    { message = "^feat", group = "New Features" },
-    { message = "^fix", group = "Bug Fixes" },
-    { message = "^perf", group = "Performance" },
-    { message = "^refactor", group = "Refactoring" },
-    { message = "^ci", group = "CI/CD" },
-    { message = "^chore\\(deps\\)", group = "Dependencies" },
-    { message = "^chore", group = "Miscellaneous" },
-    { message = "^docs", group = "Documentation" },
-    { message = "^test", group = "Testing" },
-    { message = "^style", group = "Styling" },
-    { message = "^build", group = "Build" },
-    { message = "^revert", group = "Reverted" },
+    { message = "^feat", group = "0 - New Features" },
+    { message = "^fix", group = "1 - Bug Fixes" },
+    { message = "^perf", group = "2 - Performance" },
+    { message = "^refactor", group = "3 - Refactoring" },
+    { message = "^docs", group = "4 - Documentation" },
+    { message = "^test", group = "5 - Testing" },
+    { message = "^ci", group = "6 - CI/CD" },
+    { message = "^chore\\(deps\\)", group = "7 - Dependencies" },
+    { message = "^chore", group = "8 - Miscellaneous" },
+    { message = "^style", group = "9 - Styling" },
+    { message = "^build", group = "10 - Build" },
+    { message = "^revert", group = "11 - Reverted" },
 ]
 
 # Protect emails from being exposed.
