@@ -45,11 +45,8 @@ cargo fmt -- --check
 # 2. Clippy with all tests and deny warnings (must produce zero warnings)
 cargo clippy --tests -- -D warnings
 
-# 3. Run unit tests (must all pass)
+# 3. Run tests (must all pass)
 cargo test
-
-# 4. Verify release build compiles
-cargo build --release
 ```
 
 **Rules:**
@@ -57,7 +54,7 @@ cargo build --release
 - Fix all formatting issues (`cargo fmt` to auto-fix), clippy warnings, and test failures before committing.
 - If you add new code, ensure it has no clippy pedantic+nursery warnings.
 - If you modify existing tests or add new tests, verify they pass.
-- These steps mirror the CI pipeline exactly — if they pass locally, CI will pass.
+- These steps mirror the CI pipeline — if they pass locally, CI will pass. The CI release build is an additional artifact-packaging step, not a correctness gate.
 
 ## Pre-Commit Self-Review (MANDATORY)
 
@@ -79,6 +76,20 @@ Before committing, you MUST perform a deep, thoughtful review of ALL changes you
 - Treat this review as if you were reviewing someone else's code — be critical and objective.
 - If you find even a minor issue, fix it before committing. Do not leave it for later.
 - This step comes AFTER pre-commit validation passes but BEFORE the actual `git commit`.
+
+## Pre-Push Validation (MANDATORY)
+
+Before pushing changes to the remote, you MUST run the cross-compilation check to catch platform-specific issues (Windows/macOS quirks, conditional compilation errors):
+
+```bash
+./scripts/cross-check.sh
+```
+
+**Rules:**
+- Do NOT push if the cross-check script fails.
+- Fix any cross-compilation errors (e.g., `cfg(windows)` blocks, platform-specific imports, path handling) before pushing.
+- You can target a single platform to iterate faster: `./scripts/cross-check.sh --target windows-x64`
+- This catches issues that local clippy/tests miss: Windows-only code paths (`windows-sys`, `windows` crates), macOS Darwin targets, and ARM64 variants.
 
 ## Documentation Updates (MANDATORY)
 
