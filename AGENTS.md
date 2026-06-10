@@ -187,6 +187,7 @@ gh release create vX.Y.Z --notes-file release-notes.md --title "vX.Y.Z"
 
 - `cliff.toml` — git-cliff configuration (commit parsers, grouping, template)
 - `.github/RELEASE_TEMPLATE.md` — Narrative structure template
+- `scripts/release.sh` — Automated release script (version bump, changelog, tag, push, publish notes)
 
 **Rules:**
 - ALWAYS run `git cliff --latest` first to get the complete raw list — do NOT rely on memory or `git log` alone.
