@@ -1015,7 +1015,7 @@ async fn deploy_change(
 
             client
                 .post(
-                    &format!("/workspaces/{workspace_id}/items/{deployed_id}/updateDefinition?updateMetadata=true"),
+                    &format!("/workspaces/{workspace_id}/items/{deployed_id}/updateDefinition"),
                     &body,
                     true,
                 )
@@ -1062,7 +1062,7 @@ async fn deploy_change(
 
                 client
                     .post(
-                        &format!("/workspaces/{workspace_id}/items/{deployed_id}/updateDefinition?updateMetadata=true"),
+                        &format!("/workspaces/{workspace_id}/items/{deployed_id}/updateDefinition"),
                         &body,
                         true,
                     )
