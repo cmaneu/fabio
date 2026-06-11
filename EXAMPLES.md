@@ -389,6 +389,37 @@ Deploy handles 42 item types in dependency order, supports parallel execution (d
 
 If you're familiar with Microsoft's [fabric-cicd](https://github.com/microsoft/fabric-cicd) Python library, fabio is fully compatible with the same source directory format and parameter files. Here's how common workflows translate.
 
+### Creating the source directory
+
+In fabric-cicd, you typically export items from a git-connected workspace or build the `.platform` directory structure programmatically in Python. With fabio, there are three approaches:
+
+**1. Export from an existing workspace (most common):**
+```bash
+# Export all items to a local directory — ready for version control
+fabio deploy export --workspace "Development" --dir ./workspace/ --overwrite
+```
+
+**2. Let an AI coding agent create the source files:**
+
+Since fabio's source format is just files on disk (`.platform` JSON + definition files), any coding agent (GitHub Copilot, Cursor, OpenCode, etc.) can generate them. For example:
+
+> "Create a fabio deploy source directory with a Lakehouse called SalesLH, a Notebook that loads CSV data into a Delta table, and a DataPipeline that runs the notebook daily"
+
+The agent creates the directory structure with `.platform` files and definition content — then you deploy with `fabio deploy apply`.
+
+**3. Build incrementally with fabio commands, then export:**
+```bash
+# Create items interactively or via scripts
+fabio lakehouse create --workspace $WS --name "SalesLH"
+fabio notebook create --workspace $WS --name "ETL" --code "# transform logic"
+fabio data-pipeline create --workspace $WS --name "Daily Load"
+
+# Once satisfied, export to create your source of truth
+fabio deploy export --workspace $WS --dir ./workspace/ --overwrite
+```
+
+All three approaches produce the same `.platform` directory structure that `fabio deploy apply` consumes.
+
 ### Basic deployment (equivalent workflows)
 
 **fabric-cicd (Python):**
