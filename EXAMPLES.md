@@ -385,9 +385,9 @@ fabio deploy init-params --source ./dev-items/ --compare ./prod-items/ \
 
 Deploy handles 42 item types in dependency order, supports parallel execution (default 8 concurrent), rename detection via logical IDs, and automatic post-deploy hooks (semantic model refresh, environment publish).
 
-## Migrating from fabric-cicd
+## For fabric-cicd users
 
-If you're currently using Microsoft's [fabric-cicd](https://github.com/microsoft/fabric-cicd) Python library, fabio is fully compatible with the same source directory format. Your existing `.platform` directories, `parameter.yml` rules, and CI/CD pipelines can switch to fabio with minimal changes.
+If you're familiar with Microsoft's [fabric-cicd](https://github.com/microsoft/fabric-cicd) Python library, fabio is fully compatible with the same source directory format and parameter files. Here's how common workflows translate.
 
 ### Basic deployment (equivalent workflows)
 
@@ -563,16 +563,16 @@ workspace/
 
 fabric-cicd handles this automatically. fabio does too (disable with `--no-folders`).
 
-### Key advantages of switching to fabio
+### Additional capabilities in fabio
 
 | Workflow | fabric-cicd | fabio |
 |---|---|---|
-| Check what will change | Not possible | `fabio deploy plan` |
+| Check what will change | Not available | `fabio deploy plan` |
 | Skip unchanged items | Re-uploads everything | SHA-256 hash comparison |
-| Catch errors before deploy | Not possible | `fabio deploy validate` |
+| Catch errors before deploy | Not available | `fabio deploy validate` |
 | Scaffold parameter file | Manual | `fabio deploy init-params` |
-| Export workspace to disk | Not possible | `fabio deploy export` |
-| Rename an item | Delete + re-create (loses GUID) | Detects via logical ID (preserves GUID) |
+| Export workspace to disk | Not available | `fabio deploy export` |
+| Rename an item | Delete + re-create (new GUID) | Detects via logical ID (preserves GUID) |
 | CI/CD runtime | Python 3.9+ with pip deps | Single binary (curl install) |
 
 ## Connections and Gateways
