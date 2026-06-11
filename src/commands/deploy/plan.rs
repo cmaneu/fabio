@@ -163,6 +163,7 @@ async fn fetch_deployed_logical_id(
 }
 
 /// Compute content hash from API definition parts (same algorithm as local).
+/// Excludes `.platform` from hash (API modifies logicalId in it).
 fn hash_api_parts(parts: &[Value]) -> String {
     let mut hasher = Sha256::new();
 
@@ -170,6 +171,10 @@ fn hash_api_parts(parts: &[Value]) -> String {
         .iter()
         .filter_map(|p| {
             let path = p.get("path")?.as_str()?;
+            // Exclude .platform from hash comparison (API rewrites logicalId)
+            if path == ".platform" {
+                return None;
+            }
             let payload = p.get("payload")?.as_str()?;
             Some((path, payload))
         })

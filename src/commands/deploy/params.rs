@@ -455,6 +455,7 @@ fn decode_part_payload(payload: &str) -> Result<String> {
 }
 
 /// Recompute the content hash for a set of definition parts.
+/// Excludes `.platform` from hash (API modifies logicalId, breaking idempotency).
 fn recompute_content_hash(parts: &[DefinitionPart]) -> String {
     use sha2::{Digest, Sha256};
     use std::fmt::Write;
@@ -462,6 +463,7 @@ fn recompute_content_hash(parts: &[DefinitionPart]) -> String {
     let mut hasher = Sha256::new();
     let mut sorted: Vec<(&str, &str)> = parts
         .iter()
+        .filter(|p| p.path != ".platform")
         .map(|p| (p.path.as_str(), p.payload.as_str()))
         .collect();
     sorted.sort_by_key(|(path, _)| *path);

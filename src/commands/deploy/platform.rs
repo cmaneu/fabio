@@ -165,6 +165,31 @@ fn compute_content_hash(parts: &[DefinitionPart]) -> String {
     format!("sha256:{hex}")
 }
 
+/// Same as `compute_content_hash` but accepts references (for filtered subsets).
+fn compute_content_hash_refs(parts: &[&DefinitionPart]) -> String {
+    let mut hasher = Sha256::new();
+
+    let mut sorted: Vec<(&str, &str)> = parts
+        .iter()
+        .map(|p| (p.path.as_str(), p.payload.as_str()))
+        .collect();
+    sorted.sort_by_key(|(path, _)| *path);
+
+    for (path, payload) in sorted {
+        hasher.update(path.as_bytes());
+        hasher.update(b"\x00");
+        hasher.update(payload.as_bytes());
+        hasher.update(b"\x00");
+    }
+
+    let hash = hasher.finalize();
+    let hex = hash.iter().fold(String::with_capacity(64), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    });
+    format!("sha256:{hex}")
+}
+
 /// Parse a source directory containing Fabric item folders with `.platform` files.
 ///
 /// Supports both flat and nested (folder) structures:
@@ -271,9 +296,13 @@ fn parse_item_directory(root: &Path, path: &Path) -> Result<SourceItem> {
     let platform_path = path.join(".platform");
     let metadata = parse_platform_file(&platform_path)?;
 
-    // Read all non-.platform, non-creationPayload files as definition parts
+    // Read all definition parts (includes .platform for the API)
     let parts = read_definition_parts(path)?;
-    let content_hash = compute_content_hash(&parts);
+
+    // Content hash excludes .platform (the API modifies logicalId in .platform,
+    // so including it would break idempotent skip detection)
+    let hash_parts: Vec<&DefinitionPart> = parts.iter().filter(|p| p.path != ".platform").collect();
+    let content_hash = compute_content_hash_refs(&hash_parts);
 
     // Read optional creationPayload.json
     let creation_payload_path = path.join("creationPayload.json");
