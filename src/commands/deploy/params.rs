@@ -394,46 +394,54 @@ const DEFAULT_WORKSPACE_GUID: &str = "00000000-0000-0000-0000-000000000000";
 
 /// Replace default workspace ID placeholders (`00000000-...`) with the target workspace ID.
 ///
-/// Scans all definition payloads for well-known fields that reference a workspace
-/// (`default_lakehouse_workspace_id`, `workspaceId`, `workspace`) and replaces
-/// the default GUID with the actual target workspace.
+/// Uses a regex to match workspace-reference keys (`default_lakehouse_workspace_id`,
+/// `workspaceId`, `workspace`) where the value is the default GUID placeholder.
+/// This matches fabric-cicd's `WORKSPACE_ID_REFERENCE_REGEX` behavior — only replacing
+/// in known workspace-reference contexts, not blanket-replacing all occurrences.
 ///
-/// Also applies to `creationPayload` and `shortcuts.metadata.json` content.
+/// Does NOT apply to shortcuts (handled separately in shortcut reconciliation where
+/// `itemId` fields need the lakehouse's own GUID, not the workspace ID).
 pub fn replace_default_workspace_id(source: &mut SourceWorkspace, workspace_id: &str) {
+    // Regex matches: "key": "00000000-..." or key = "00000000-..."
+    // where key is one of the known workspace-reference field names
+    let pattern = regex::Regex::new(
+        r#"(?i)"?(default_lakehouse_workspace_id|workspaceId|workspace)"?\s*[:=]\s*"00000000-0000-0000-0000-000000000000""#,
+    )
+    .expect("valid workspace ID regex");
+
     for item in &mut source.items {
-        // Apply to definition parts
+        // Apply to definition parts (regex-based replacement)
         for part in &mut item.parts {
-            if let Ok(mut decoded) = decode_part_payload(&part.payload) {
+            if let Ok(decoded) = decode_part_payload(&part.payload) {
                 if decoded.contains(DEFAULT_WORKSPACE_GUID) {
-                    decoded = decoded.replace(DEFAULT_WORKSPACE_GUID, workspace_id);
-                    part.payload = BASE64.encode(decoded.as_bytes());
-                }
-            }
-        }
-
-        // Apply to creationPayload
-        if let Some(ref mut payload) = item.creation_payload {
-            let s = payload.to_string();
-            if s.contains(DEFAULT_WORKSPACE_GUID) {
-                let replaced = s.replace(DEFAULT_WORKSPACE_GUID, workspace_id);
-                if let Ok(v) = serde_json::from_str(&replaced) {
-                    *payload = v;
-                }
-            }
-        }
-
-        // Apply to shortcuts
-        if let Some(ref mut shortcuts) = item.shortcuts {
-            for shortcut in shortcuts.iter_mut() {
-                let s = shortcut.to_string();
-                if s.contains(DEFAULT_WORKSPACE_GUID) {
-                    let replaced = s.replace(DEFAULT_WORKSPACE_GUID, workspace_id);
-                    if let Ok(v) = serde_json::from_str(&replaced) {
-                        *shortcut = v;
+                    let replaced = pattern.replace_all(&decoded, |caps: &regex::Captures<'_>| {
+                        // Preserve the key and format, replace only the GUID value
+                        caps[0].replace(DEFAULT_WORKSPACE_GUID, workspace_id)
+                    });
+                    if replaced != decoded {
+                        part.payload = BASE64.encode(replaced.as_bytes());
                     }
                 }
             }
         }
+
+        // Apply to creationPayload (also regex-based)
+        if let Some(ref mut payload) = item.creation_payload {
+            let s = payload.to_string();
+            if s.contains(DEFAULT_WORKSPACE_GUID) {
+                let replaced = pattern.replace_all(&s, |caps: &regex::Captures<'_>| {
+                    caps[0].replace(DEFAULT_WORKSPACE_GUID, workspace_id)
+                });
+                if replaced != s {
+                    if let Ok(v) = serde_json::from_str(&replaced) {
+                        *payload = v;
+                    }
+                }
+            }
+        }
+
+        // Do NOT apply to shortcuts — they use itemId (lakehouse GUID, not workspace ID).
+        // Shortcuts are resolved separately in execute_shortcut_hooks().
 
         // Recompute content hash
         item.content_hash = recompute_content_hash(&item.parts);
@@ -1394,6 +1402,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
                     path: "pipeline-content.json".to_owned(),
@@ -1458,6 +1467,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
                         path: "notebook-content.py".to_owned(),
@@ -1477,6 +1487,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
                         path: "pipeline-content.json".to_owned(),
@@ -1524,6 +1535,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
                     path: "pipeline-content.json".to_owned(),
@@ -1590,6 +1602,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
                     path: "config.json".to_owned(),
@@ -1651,6 +1664,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
                     path: "pipeline.json".to_owned(),
@@ -1708,6 +1722,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
                         path: "pipeline.json".to_owned(),
@@ -1727,6 +1742,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
                         path: "config.json".to_owned(),
@@ -1792,6 +1808,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
                     path: "pipeline.json".to_owned(),
@@ -1846,6 +1863,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
                     path: "pipeline.json".to_owned(),
@@ -1911,6 +1929,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
                     path: "environment.metadata.json".to_owned(),
@@ -1995,6 +2014,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
                     path: "spark-job.json".to_owned(),
@@ -2061,6 +2081,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
                     path: "env.json".to_owned(),
@@ -2123,6 +2144,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
                     path: "definition.pbism".to_owned(),
@@ -2192,6 +2214,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
                         path: "definition.pbism".to_owned(),
@@ -2211,6 +2234,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
                         path: "definition.pbism".to_owned(),
@@ -2290,6 +2314,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
                     path: "definition.pbism".to_owned(),
@@ -2352,6 +2377,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
                     path: "config.json".to_owned(),
@@ -2420,6 +2446,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
                         path: "pipeline.json".to_owned(),
@@ -2439,6 +2466,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
                         path: "definition.pbism".to_owned(),
@@ -2598,6 +2626,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![],
                 content_hash: "sha256:empty".to_owned(),
@@ -2650,6 +2679,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![],
                 content_hash: "sha256:empty".to_owned(),

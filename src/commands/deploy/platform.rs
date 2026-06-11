@@ -17,6 +17,9 @@ pub struct PlatformMetadata {
     pub description: Option<String>,
     /// Definition format required by the Fabric API (e.g., "ipynb" for Notebooks).
     pub definition_format: Option<String>,
+    /// Optional creation payload embedded in `.platform` metadata (fabric-cicd compatible).
+    #[serde(skip)]
+    pub platform_creation_payload: Option<serde_json::Value>,
 }
 
 /// A single definition part (file) belonging to an item.
@@ -110,12 +113,26 @@ fn parse_platform_file(path: &Path) -> Result<PlatformMetadata> {
         .and_then(|v| v.as_str())
         .map(str::to_owned);
 
+    // Fallback format detection: if definitionFormat is not in .platform config,
+    // use hardcoded defaults for known item types (matches fabric-cicd behavior)
+    let definition_format = definition_format.or_else(|| match item_type.as_str() {
+        "SparkJobDefinition" => Some("SparkJobDefinitionV2".to_owned()),
+        _ => None,
+    });
+
+    // Check for creationPayload inside .platform metadata (fabric-cicd compatible)
+    let platform_creation_payload = parsed
+        .get("metadata")
+        .and_then(|m| m.get("creationPayload"))
+        .cloned();
+
     Ok(PlatformMetadata {
         item_type,
         display_name,
         logical_id,
         description,
         definition_format,
+        platform_creation_payload,
     })
 }
 
@@ -268,7 +285,8 @@ fn parse_item_directory(root: &Path, path: &Path) -> Result<SourceItem> {
         })?;
         Some(parsed)
     } else {
-        None
+        // Fallback: read creationPayload from .platform metadata (fabric-cicd compatible)
+        metadata.platform_creation_payload.clone()
     };
 
     // For Lakehouse items: detect enableSchemas from lakehouse.metadata.json
@@ -720,6 +738,7 @@ mod tests {
                 logical_id: Some("lid-123".to_owned()),
                 description: None,
                 definition_format: None,
+                platform_creation_payload: None,
             },
             vec![DefinitionPart {
                 path: "notebook-content.py".to_owned(),

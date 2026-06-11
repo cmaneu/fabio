@@ -667,7 +667,22 @@ pub async fn execute_shortcut_hooks(
             ),
         );
 
-        match reconcile_shortcuts(client, workspace_id, item_id, shortcuts).await {
+        // Replace default GUID placeholder in shortcut itemId with the lakehouse's own GUID.
+        // fabric-cicd does this via `_replace_default_lakehouse_id` — the itemId of
+        // "00000000-0000-0000-0000-000000000000" means "this lakehouse itself".
+        let resolved_shortcuts: Vec<Value> = shortcuts
+            .iter()
+            .map(|sc| {
+                let mut s = sc.to_string();
+                // Only replace in oneLake.itemId context (self-referencing shortcut)
+                if s.contains("00000000-0000-0000-0000-000000000000") {
+                    s = s.replace("00000000-0000-0000-0000-000000000000", item_id);
+                }
+                serde_json::from_str(&s).unwrap_or_else(|_| sc.clone())
+            })
+            .collect();
+
+        match reconcile_shortcuts(client, workspace_id, item_id, &resolved_shortcuts).await {
             Ok(summary) => {
                 results.push(json!({
                     "hook": "shortcuts",
@@ -1470,6 +1485,7 @@ mod tests {
                 logical_id: None,
                 description: None,
                 definition_format: None,
+                platform_creation_payload: None,
             },
             parts: vec![],
             content_hash: "sha256:abc".to_owned(),
@@ -1514,6 +1530,7 @@ mod tests {
                 logical_id: None,
                 description: None,
                 definition_format: None,
+                platform_creation_payload: None,
             },
             parts: vec![DefinitionPart {
                 path: "pipeline-content.json".to_owned(),
@@ -1562,6 +1579,7 @@ mod tests {
                 logical_id: None,
                 description: None,
                 definition_format: None,
+                platform_creation_payload: None,
             },
             parts: vec![DefinitionPart {
                 path: "pipeline-content.json".to_owned(),
@@ -1732,6 +1750,7 @@ mod tests {
                     logical_id: Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_owned()),
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),
@@ -1771,6 +1790,7 @@ mod tests {
                     logical_id: None, // no logical ID
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),
@@ -1806,6 +1826,7 @@ mod tests {
                         logical_id: Some("lid-lh1".to_owned()),
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![],
                     content_hash: "sha256:abc".to_owned(),
@@ -1821,6 +1842,7 @@ mod tests {
                         logical_id: Some("lid-lh2".to_owned()),
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![],
                     content_hash: "sha256:def".to_owned(),
@@ -1836,6 +1858,7 @@ mod tests {
                         logical_id: Some("lid-nb1".to_owned()),
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![],
                     content_hash: "sha256:ghi".to_owned(),
@@ -1931,6 +1954,7 @@ mod tests {
                     logical_id: Some("lid-lh1".to_owned()),
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),

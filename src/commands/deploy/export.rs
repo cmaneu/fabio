@@ -95,6 +95,7 @@ pub async fn export_workspace(
                     logical_id: extract_logical_id(&data),
                     description: description.clone(),
                     definition_format,
+                    platform_creation_payload: None,
                 };
 
                 exported.push((metadata, parts));

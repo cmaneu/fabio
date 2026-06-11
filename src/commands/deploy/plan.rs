@@ -935,6 +935,7 @@ mod tests {
                         logical_id: Some(lakehouse_lid.to_owned()),
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![],
                     content_hash: "sha256:aaa".to_owned(),
@@ -950,6 +951,7 @@ mod tests {
                         logical_id: Some("lid-notebook-001".to_owned()),
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
                         path: "notebook-content.py".to_owned(),
@@ -1014,6 +1016,7 @@ mod tests {
                         logical_id: Some(external_lid.to_owned()),
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![],
                     content_hash: "sha256:aaa".to_owned(),
@@ -1029,6 +1032,7 @@ mod tests {
                         logical_id: Some("lid-notebook-001".to_owned()),
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
                         path: "notebook-content.py".to_owned(),
@@ -1094,6 +1098,7 @@ mod tests {
                         logical_id: Some(lakehouse_lid.to_owned()),
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![],
                     content_hash: "sha256:aaa".to_owned(),
@@ -1109,6 +1114,7 @@ mod tests {
                         logical_id: Some("lid-notebook-002".to_owned()),
                         description: None,
                         definition_format: None,
+                        platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
                         path: "notebook-content.py".to_owned(),
@@ -1172,6 +1178,7 @@ mod tests {
                     logical_id: None, // No logical ID → skip validation
                     description: None,
                     definition_format: None,
+                    platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
                     path: "notebook-content.py".to_owned(),
