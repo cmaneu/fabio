@@ -957,13 +957,33 @@ async fn deploy_change(
                 return Ok(None);
             }
 
-            let result = client
-                .post(&format!("/workspaces/{workspace_id}/items"), &body, true)
-                .await?;
-
-            let id = result.get("id").and_then(|v| v.as_str()).map(str::to_owned);
-
-            Ok(id)
+            // Retry loop for ItemDisplayNameNotAvailableYet (name recently freed by deletion).
+            // The Fabric API may reject creation for up to 5 minutes after item deletion.
+            let url = format!("/workspaces/{workspace_id}/items");
+            let mut last_err = None;
+            for attempt in 0..10 {
+                match client.post(&url, &body, true).await {
+                    Ok(result) => {
+                        let id = result.get("id").and_then(|v| v.as_str()).map(str::to_owned);
+                        return Ok(id);
+                    }
+                    Err(e) => {
+                        let err_str = e.to_string();
+                        if err_str.contains("ItemDisplayNameNotAvailableYet")
+                            || err_str.contains("displayName is not available")
+                        {
+                            // Name not yet freed — wait and retry
+                            if attempt < 9 {
+                                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                                last_err = Some(e);
+                                continue;
+                            }
+                        }
+                        return Err(e);
+                    }
+                }
+            }
+            Err(last_err.unwrap_or_else(|| anyhow::anyhow!("Create failed after retries")))
         }
         ChangeAction::Update => {
             let deployed_id = change.deployed_id.as_deref().ok_or_else(|| {

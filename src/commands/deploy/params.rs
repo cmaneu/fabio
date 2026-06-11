@@ -562,12 +562,11 @@ fn apply_find_replace_to_item(
             .decode(&part.payload)
             .with_context(|| format!("Failed to decode base64 payload for {}", part.path))?;
 
-        let mut content = String::from_utf8(decoded).with_context(|| {
-            format!(
-                "Non-UTF8 content in {} of {} (cannot apply text substitution)",
-                part.path, item.metadata.display_name
-            )
-        })?;
+        // Skip binary (non-UTF-8) files — they can't have text substitution applied.
+        // This matches fabric-cicd's behavior of skipping binary/image files.
+        let Ok(mut content) = String::from_utf8(decoded) else {
+            continue;
+        };
 
         let mut modified = false;
 
