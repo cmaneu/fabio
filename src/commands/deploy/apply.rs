@@ -88,8 +88,15 @@ pub async fn execute_changeset(
         .collect();
 
     // Map to track created items: (type, name) → deployed GUID
-    // Used for logical ID resolution in subsequent batches
+    // Used for logical ID resolution in subsequent batches.
+    // Seed with deployed IDs from the changeset (pre-existing items being updated/skipped).
+    // This ensures cross-item references resolve even for items deployed in prior runs.
     let mut created_ids: HashMap<(String, String), String> = HashMap::new();
+    for change in &changeset.changes {
+        if let Some(ref id) = change.deployed_id {
+            created_ids.insert((change.item_type.clone(), change.name.clone()), id.clone());
+        }
+    }
 
     // Execute creates/updates in type order
     let total_changes = creates_updates.len();
@@ -848,12 +855,23 @@ async fn deploy_change(
     source_item: &super::platform::SourceItem,
     resolution_map: &HashMap<String, String>,
 ) -> Result<Option<String>> {
-    // Build definition parts for API, applying logical ID resolution
+    // Build definition parts for API, applying transformations:
+    // 1. Report byPath → byConnection conversion
+    // 2. Logical ID resolution (replace logical IDs with deployed GUIDs)
     let parts: Vec<Value> = source_item
         .parts
         .iter()
         .map(|p| {
-            let payload = resolve_logical_ids_in_payload(&p.payload, resolution_map);
+            let mut payload = p.payload.clone();
+
+            // Transform Report definition.pbir: convert byPath to byConnection
+            if change.item_type.eq_ignore_ascii_case("Report") && p.path == "definition.pbir" {
+                payload =
+                    transform_report_bypath_to_byconnection(&payload, source_item, resolution_map);
+            }
+
+            // Apply logical ID resolution to all payloads
+            let payload = resolve_logical_ids_in_payload(&payload, resolution_map);
             json!({
                 "path": p.path,
                 "payload": payload,
@@ -884,10 +902,12 @@ async fn deploy_change(
             };
 
             // Include creationPayload if present (e.g. KQLDatabase eventhouse-id)
+            // Apply logical ID resolution to creationPayload (replaces logical IDs with deployed GUIDs)
             if let Some(ref payload) = source_item.creation_payload {
+                let resolved_payload = resolve_logical_ids_in_json(payload, resolution_map);
                 body.as_object_mut()
                     .unwrap()
-                    .insert("creationPayload".to_owned(), payload.clone());
+                    .insert("creationPayload".to_owned(), resolved_payload);
             }
 
             // Include description if present in source metadata
@@ -1221,7 +1241,7 @@ fn build_resolution_map(
 ) -> HashMap<String, String> {
     let mut map = HashMap::new();
 
-    // Map logical_id → deployed_id from created_ids
+    // Map logical_id → deployed_id from created_ids (items created in this session)
     for ((item_type, name), deployed_id) in created_ids {
         // Find the source item's logical_id
         if let Some(&idx) = source
@@ -1233,6 +1253,13 @@ fn build_resolution_map(
             }
         }
     }
+
+    // Also map logical_id → deployed_id from ALL source items that have a deployed_id
+    // in the changeset (pre-existing items being updated/skipped). This enables
+    // cross-item references to resolve even when the target was deployed in a prior run.
+    // We check created_ids to see if an item already has a deployed ID.
+    // For items not in created_ids but present in source with a logical_id,
+    // we cannot resolve them here — they'll be resolved by the changeset's deployed_id.
 
     map
 }
@@ -1269,6 +1296,131 @@ fn resolve_logical_ids_in_payload(
         BASE64.encode(content.as_bytes())
     } else {
         payload.to_owned()
+    }
+}
+
+/// Transform a Report's `definition.pbir` from `byPath` to `byConnection` format.
+///
+/// The Fabric REST API does not support `byPath` references (filesystem-relative paths
+/// to semantic models). This function detects `byPath`, resolves the referenced semantic
+/// model's logical ID from the source directory structure, and converts to `byConnection`.
+///
+/// If the payload doesn't contain `byPath` or resolution fails, returns the original payload.
+fn transform_report_bypath_to_byconnection(
+    payload: &str,
+    source_item: &super::platform::SourceItem,
+    resolution_map: &HashMap<String, String>,
+) -> String {
+    let Ok(decoded_bytes) = BASE64.decode(payload) else {
+        return payload.to_owned();
+    };
+    let Ok(content) = String::from_utf8(decoded_bytes) else {
+        return payload.to_owned();
+    };
+
+    let Ok(mut pbir) = serde_json::from_str::<Value>(&content) else {
+        return payload.to_owned();
+    };
+
+    // Check if this has a byPath reference
+    let Some(rel_path) = pbir
+        .get("datasetReference")
+        .and_then(|dr| dr.get("byPath"))
+        .and_then(|bp| bp.get("path"))
+        .and_then(|p| p.as_str())
+        .map(str::to_owned)
+    else {
+        return payload.to_owned();
+    };
+
+    // Extract semantic model directory name from relative path
+    // e.g., "../ABC.SemanticModel" → "ABC.SemanticModel"
+    let model_dir_name = rel_path
+        .rsplit('/')
+        .next()
+        .unwrap_or(&rel_path)
+        .trim_start_matches("../");
+
+    // Parse "Name.SemanticModel" format to get display name
+    let model_name = model_dir_name
+        .strip_suffix(".SemanticModel")
+        .or_else(|| model_dir_name.strip_suffix(".Dataset"))
+        .unwrap_or(model_dir_name);
+
+    // Strategy: resolve the .platform file at the relative path to get the logical ID,
+    // then let the subsequent resolve_logical_ids_in_payload step replace it with the
+    // deployed GUID. If we can't find the .platform, fall back to direct resolution map lookup.
+    let source_dir = source_item
+        .source_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let model_platform_path = source_dir.join(&rel_path).join(".platform");
+
+    let model_logical_id = if model_platform_path.exists() {
+        std::fs::read_to_string(&model_platform_path)
+            .ok()
+            .and_then(|c| serde_json::from_str::<Value>(&c).ok())
+            .and_then(|v| {
+                v.get("config")
+                    .and_then(|c| c.get("logicalId"))
+                    .and_then(|l| l.as_str())
+                    .map(str::to_owned)
+            })
+    } else {
+        None
+    };
+
+    // Determine the ID to put in byConnection:
+    // 1. If we found logical ID AND it's in resolution map → use deployed GUID directly
+    // 2. If we found logical ID but it's not resolved yet → use logical ID (will be resolved later)
+    // 3. Fallback: use the model display name (won't work but gives a clear error)
+    let database_id = model_logical_id.as_ref().map_or_else(
+        || model_name.to_owned(),
+        |lid| {
+            resolution_map
+                .get(lid)
+                .cloned()
+                .unwrap_or_else(|| lid.clone())
+        },
+    );
+
+    // Rewrite from byPath to byConnection
+    pbir["datasetReference"] = json!({
+        "byConnection": {
+            "connectionString": null,
+            "pbiServiceModelId": null,
+            "pbiModelVirtualServerName": "sobe_wowvirtualserver",
+            "pbiModelDatabaseName": database_id,
+            "name": "EntityDataSource",
+            "connectionType": "pbiServiceXmlaStyleLive"
+        }
+    });
+
+    let new_content = serde_json::to_string(&pbir).unwrap_or(content);
+    BASE64.encode(new_content.as_bytes())
+}
+
+/// Apply logical ID resolution to a JSON value (for creationPayload).
+/// Serializes to string, replaces logical IDs, and deserializes back.
+fn resolve_logical_ids_in_json(value: &Value, resolution_map: &HashMap<String, String>) -> Value {
+    if resolution_map.is_empty() {
+        return value.clone();
+    }
+
+    let mut content = value.to_string();
+    let mut replaced = false;
+
+    for (logical_id, deployed_id) in resolution_map {
+        if content.contains(logical_id.as_str()) {
+            content = content.replace(logical_id.as_str(), deployed_id.as_str());
+            replaced = true;
+        }
+    }
+
+    if replaced {
+        serde_json::from_str(&content).unwrap_or_else(|_| value.clone())
+    } else {
+        value.clone()
     }
 }
 
