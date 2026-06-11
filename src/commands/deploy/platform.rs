@@ -391,12 +391,11 @@ fn read_parts_recursive(
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            // Skip .platform file, creationPayload.json, and shortcuts.metadata.json
+            // Skip creationPayload.json and shortcuts.metadata.json
             // (not definition parts — handled separately)
-            if file_name == ".platform"
-                || file_name == "creationPayload.json"
-                || file_name == "shortcuts.metadata.json"
-            {
+            // NOTE: .platform IS included as a definition part (the Fabric API
+            // uses it for metadata updates when ?updateMetadata=true is set)
+            if file_name == "creationPayload.json" || file_name == "shortcuts.metadata.json" {
                 continue;
             }
 
@@ -686,8 +685,12 @@ mod tests {
         assert_eq!(payload["parentEventhouseItemId"], "eh-123");
 
         // creationPayload.json should NOT be in the definition parts
-        assert_eq!(item.parts.len(), 1);
-        assert_eq!(item.parts[0].path, "DatabaseProperties.json");
+        assert_eq!(item.parts.len(), 2); // .platform + DatabaseProperties.json
+        assert!(
+            item.parts
+                .iter()
+                .any(|p| p.path == "DatabaseProperties.json")
+        );
     }
 
     #[test]
@@ -706,7 +709,7 @@ mod tests {
         let workspace = parse_source_directory(dir.path()).unwrap();
         let item = &workspace.items[0];
         assert!(item.creation_payload.is_none());
-        assert_eq!(item.parts.len(), 1);
+        assert_eq!(item.parts.len(), 2); // .platform + notebook-content.py
     }
 
     #[test]
@@ -809,10 +812,9 @@ mod tests {
         assert_eq!(shortcuts[0]["path"], "Tables");
 
         // shortcuts.metadata.json should NOT be in definition parts
-        assert!(
-            item.parts.is_empty(),
-            "shortcuts.metadata.json should not appear in definition parts"
-        );
+        // (.platform IS included as a part)
+        assert_eq!(item.parts.len(), 1);
+        assert_eq!(item.parts[0].path, ".platform");
     }
 
     #[test]
@@ -896,9 +898,10 @@ mod tests {
         assert_eq!(workspace.items.len(), 1);
 
         let item = &workspace.items[0];
-        // Only definition.pbir should be in parts (not .pbi/ contents)
-        assert_eq!(item.parts.len(), 1);
-        assert_eq!(item.parts[0].path, "definition.pbir");
+        // Only definition.pbir + .platform should be in parts (not .pbi/ contents)
+        assert_eq!(item.parts.len(), 2);
+        assert!(item.parts.iter().any(|p| p.path == "definition.pbir"));
+        assert!(item.parts.iter().any(|p| p.path == ".platform"));
     }
 
     #[test]
