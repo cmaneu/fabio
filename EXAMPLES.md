@@ -427,10 +427,10 @@ fabio deploy apply --source ./workspace --workspace "Production" --dry-run
 
 ### Parameter substitution
 
-**fabric-cicd** uses a YAML `parameter.yml`. **fabio** uses a JSON `parameters.json` with the same rule types. The syntax maps directly:
+Both tools use the same YAML format with the same four rule types. fabio reads `parameter.yml` directly — no conversion needed:
 
-**fabric-cicd `parameter.yml`:**
 ```yaml
+# parameter.yml (works identically in both fabric-cicd and fabio)
 find_replace:
   - find_value: "db52be81-c2b2-4261-84fa-840c67f4bbd0"
     replace_value:
@@ -463,53 +463,9 @@ semantic_model_binding:
       PROD: "c4f8e2b1-3d2a-4f5b-9c6e-7a8b9c0d1e2f"
 ```
 
-**fabio `parameters.json` (equivalent):**
-```json
-{
-  "find_replace": [
-    {
-      "find_value": "db52be81-c2b2-4261-84fa-840c67f4bbd0",
-      "replace_value": {
-        "PPE": "81bbb339-8d0b-46e8-bfa6-289a159c0733",
-        "PROD": "$items.Lakehouse.SalesLH.id"
-      },
-      "item_type": "Notebook",
-      "file_path": "notebook-content.py"
-    }
-  ],
-  "key_value_replace": [
-    {
-      "find_key": "$.variables[?(@.name==\"Server\")].value",
-      "replace_value": {
-        "PPE": "server-ppe.database.windows.net",
-        "PROD": "server-prod.database.windows.net"
-      },
-      "item_type": "VariableLibrary"
-    }
-  ],
-  "spark_pool": [
-    {
-      "instance_pool_id": "72c68dbc-0775-4d59-909d-a47896f4573b",
-      "replace_value": {
-        "PPE": {"type": "Capacity", "name": "Pool_Large_PPE"},
-        "PROD": {"type": "Capacity", "name": "Pool_Large_PROD"}
-      }
-    }
-  ],
-  "semantic_model_binding": {
-    "default": {
-      "connection_id": {
-        "PPE": "76e05dfe-9855-4e3d-a410-1dda048dbe99",
-        "PROD": "c4f8e2b1-3d2a-4f5b-9c6e-7a8b9c0d1e2f"
-      }
-    }
-  }
-}
-```
-
 ```bash
 fabio deploy apply --source ./workspace --workspace $WS \
-  --parameters parameters.json --env PROD
+  --parameters parameter.yml --env PROD
 ```
 
 ### Dynamic variables

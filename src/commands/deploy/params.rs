@@ -178,9 +178,21 @@ pub fn parse_parameters(path: &Path) -> Result<Parameters> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read parameters file: {}", path.display()))?;
 
-    // Support both JSON and simplified key=value, but primarily JSON
-    let params: Parameters = serde_json::from_str(&content)
-        .with_context(|| format!("Invalid JSON in parameters file: {}", path.display()))?;
+    // Auto-detect format by extension: .yml/.yaml → YAML, otherwise JSON
+    let ext = path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+
+    let params: Parameters = match ext.as_str() {
+        "yml" | "yaml" => serde_yaml::from_str(&content)
+            .with_context(|| format!("Invalid YAML in parameters file: {}", path.display()))?,
+        _ => serde_json::from_str(&content).or_else(|_| {
+            serde_yaml::from_str(&content).with_context(|| {
+                format!("Invalid JSON/YAML in parameters file: {}", path.display())
+            })
+        })?,
+    };
 
     // Validate rules
     for (i, rule) in params.find_replace.iter().enumerate() {
