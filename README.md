@@ -4,6 +4,58 @@ Agent-first CLI for managing Microsoft Fabric artifacts and data.
 
 Designed for composability: structured JSON output by default, consistent error codes, and stdin/stdout piping between commands. Follows the [10 principles for agent-native CLIs](https://trevinsays.com/p/10-principles-for-agent-native-clis).
 
+## Why fabio?
+
+Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microsoft/fabric-cli) (`fab` — interactive Python CLI) and [fabric-cicd](https://github.com/microsoft/fabric-cicd) (Python CI/CD library). fabio is designed to be a strict superset — everything they do, fabio does too, plus capabilities neither offers.
+
+### vs. Fabric CLI (`fab` — interactive Python CLI)
+
+| Capability | Fabric CLI | fabio |
+|---|---|---|
+| Design philosophy | Interactive-first (shell with `cd`/`ls`) | Agent-first (non-interactive, structured output) |
+| CI/CD deployment | Wraps fabric-cicd library | Native engine with content-hash diffing |
+| Default output | Human text | JSON (machine-parseable by default) |
+| Item type coverage | ~20 commands | 73 command groups |
+| SQL query execution | No | Warehouse, SQL Database, Lakehouse (T-SQL via TDS) |
+| KQL query execution | No | KQL Database and Eventhouse queries |
+| Data Agent interaction | No | Create, publish, and query Data Agents (chat) |
+| Git integration | No | Full lifecycle: connect, status, commit, pull, switch branch |
+| Notebook run | `job run` with `--wait`/`--timeout` | Run with `--wait`, `--timeout`, `--parameters`, cancel |
+| Bulk operations | No | `item bulk-create`, `item bulk-delete` (parallel) |
+| OneLake sync | No | rsync-like sync with rename detection and dedup |
+| Parallel data operations | No | Upload, copy, move, sync with bounded concurrency |
+| Error handling | Generic messages | Machine-readable codes with hints and valid enum values |
+| Runtime | Python 3.10+ (pip install) | Single Rust binary, no runtime |
+
+### vs. fabric-cicd (Python CI/CD library)
+
+| Capability | fabric-cicd | fabio |
+|---|---|---|
+| Source directory format | `.platform` directories | Same (100% compatible) |
+| Plan before apply | No (always pushes everything) | `plan` → review → `apply` |
+| Skip unchanged items | No (re-uploads every definition) | SHA-256 content hash (terraform-like) |
+| Rename detection | No (delete + create) | Logical ID matching (preserves item GUID) |
+| Dry-run mode | No | `--dry-run` on all mutations |
+| Export from workspace | No | `deploy export` |
+| Local validation | No | `deploy validate` (no API calls needed) |
+| Parameter scaffolding | No | `deploy init-params` (scans/diffs GUIDs automatically) |
+| Output format | Python logs | JSON envelope (stdout/stderr separation) |
+| Item types supported | 27 (deploy only) | 45 (deploy) + 73 command groups (full CRUD, query, run) |
+| Selective filtering | Feature-flagged, limited | `--exclude-regex`, `--include-items`, `--include-folders` |
+| Runtime | Python 3.9+ (pip install) | Single Rust binary, no runtime |
+
+### What fabio adds beyond both
+
+- **AI-native interactions** — create and query Data Agents, execute KQL for real-time intelligence, NL-to-KQL translation
+- **Self-improving** — when new Fabric REST APIs are detected, fabio auto-implements support for new commands and item types
+- **Terraform-like convergence** — re-running `deploy apply` on a synced workspace produces zero API calls
+- **Saved deployment plans** — `--out plan.json` then `apply --plan plan.json` (with staleness detection)
+- **Workspace folder management** — infers folder hierarchy, creates/moves/deletes automatically
+- **Protected type deletion guards** — Lakehouse/Warehouse/Eventhouse safe from accidental deletion
+- **Post-deploy automation** — Semantic Model refresh, Environment publish, SQL endpoint polling
+- **Parallel execution** — bounded-concurrency async deployment (default 8 parallel ops per type)
+- **Profile management** — named profiles for multi-tenant workflows
+
 ## Installation
 
 **Linux / macOS** (installs to `~/.local/bin`):
@@ -149,7 +201,7 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 
 ## Commands
 
-See [COMMANDS.md](COMMANDS.md) for the full list of 74 command groups and 790+ subcommands.
+See [COMMANDS.md](COMMANDS.md) for the full list of 73 command groups and 790+ subcommands.
 
 If you are an AI agent, run `fabio agent-context` to get a machine-readable command schema with flags, types, mutability, and examples.
 
@@ -195,7 +247,7 @@ Supported credential sources (in priority order):
 
 ## Shell Completions
 
-Generate tab-completion scripts for your shell. Completions cover all 74 command groups, 790+ subcommands, and their flags.
+Generate tab-completion scripts for your shell. Completions cover all 73 command groups, 790+ subcommands, and their flags.
 
 ### Bash
 
@@ -293,10 +345,19 @@ cargo fmt
 
 ### Project Stats
 
-- **74 command groups** with **790+ subcommands**
+- **73 command groups** with **790+ subcommands**
 - **1562 tests** (841 unit + 721 offline/E2E integration)
-- **~16 MB** release binary (stripped, full LTO, panic=abort)
 - Zero clippy warnings, zero unsafe code
+
+### Supported Platforms
+
+| OS | Architectures |
+|---|---|
+| Linux | x86_64, aarch64 |
+| macOS | x86_64, arm64 (Apple Silicon) |
+| Windows | x86_64, aarch64 |
+
+All platforms are built and tested in CI. Pre-built binaries and Docker images (multi-arch: amd64 + arm64) are published with every release.
 
 ## License
 
