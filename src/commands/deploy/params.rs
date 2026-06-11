@@ -2722,4 +2722,153 @@ mod tests {
         let payload = source.items[0].creation_payload.as_ref().unwrap();
         assert_eq!(payload["parentEventhouseItemId"], "new-eh-id-456");
     }
+
+    #[test]
+    fn test_workspace_id_replace_only_known_keys() {
+        // Workspace ID replacement should only affect known keys
+        // (workspaceId, default_lakehouse_workspace_id, workspace)
+        // NOT itemId or other fields with the default GUID.
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: super::super::platform::PlatformMetadata {
+                    item_type: "Notebook".to_owned(),
+                    display_name: "Test".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                    platform_creation_payload: None,
+                },
+                parts: vec![DefinitionPart {
+                    path: "notebook-content.py".to_owned(),
+                    payload: BASE64.encode(
+                        br#"{"workspaceId": "00000000-0000-0000-0000-000000000000", "itemId": "00000000-0000-0000-0000-000000000000", "default_lakehouse_workspace_id": "00000000-0000-0000-0000-000000000000"}"#,
+                    ),
+                    payload_type: "InlineBase64".to_owned(),
+                }],
+                content_hash: String::new(),
+                creation_payload: None,
+                shortcuts: None,
+                folder_path: String::new(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: std::collections::HashMap::new(),
+            type_name_index: std::collections::HashMap::new(),
+        };
+
+        replace_default_workspace_id(&mut source, "real-workspace-id-123");
+
+        let decoded = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
+        let content = String::from_utf8(decoded).unwrap();
+
+        // workspaceId and default_lakehouse_workspace_id should be replaced
+        assert!(content.contains("\"workspaceId\": \"real-workspace-id-123\""));
+        assert!(content.contains("\"default_lakehouse_workspace_id\": \"real-workspace-id-123\""));
+        // itemId should NOT be replaced (not a workspace reference key)
+        assert!(content.contains("\"itemId\": \"00000000-0000-0000-0000-000000000000\""));
+    }
+
+    #[test]
+    fn test_workspace_id_replace_skips_shortcuts() {
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: super::super::platform::PlatformMetadata {
+                    item_type: "Lakehouse".to_owned(),
+                    display_name: "LH".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                    platform_creation_payload: None,
+                },
+                parts: vec![],
+                content_hash: String::new(),
+                creation_payload: None,
+                shortcuts: Some(vec![serde_json::json!({
+                    "name": "myshortcut",
+                    "path": "Tables",
+                    "target": {
+                        "oneLake": {
+                            "workspaceId": "00000000-0000-0000-0000-000000000000",
+                            "itemId": "00000000-0000-0000-0000-000000000000"
+                        }
+                    }
+                })]),
+                folder_path: String::new(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: std::collections::HashMap::new(),
+            type_name_index: std::collections::HashMap::new(),
+        };
+
+        replace_default_workspace_id(&mut source, "ws-id-999");
+
+        // Shortcuts should NOT be modified (handled separately in shortcut hooks)
+        let shortcut = &source.items[0].shortcuts.as_ref().unwrap()[0];
+        assert_eq!(
+            shortcut["target"]["oneLake"]["itemId"],
+            "00000000-0000-0000-0000-000000000000"
+        );
+        assert_eq!(
+            shortcut["target"]["oneLake"]["workspaceId"],
+            "00000000-0000-0000-0000-000000000000"
+        );
+    }
+
+    #[test]
+    fn test_find_replace_skips_binary_payloads() {
+        // Binary (non-UTF-8) payloads should be skipped without error
+        let binary_content: Vec<u8> = vec![0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10]; // JPEG magic bytes
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: super::super::platform::PlatformMetadata {
+                    item_type: "Report".to_owned(),
+                    display_name: "MyReport".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                    platform_creation_payload: None,
+                },
+                parts: vec![DefinitionPart {
+                    path: "image.png".to_owned(),
+                    payload: BASE64.encode(&binary_content),
+                    payload_type: "InlineBase64".to_owned(),
+                }],
+                content_hash: String::new(),
+                creation_payload: None,
+                shortcuts: None,
+                folder_path: String::new(),
+                source_path: std::path::PathBuf::from("/tmp"),
+            }],
+            logical_id_index: std::collections::HashMap::new(),
+            type_name_index: std::collections::HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: vec![FindReplaceRule {
+                find_value: "anything".to_owned(),
+                replace_value: std::iter::once(("dev".to_owned(), "replaced".to_owned())).collect(),
+                is_regex: false,
+                item_type: None,
+                item_name: None,
+                file_path: None,
+            }],
+            key_value_replace: vec![],
+            spark_pool: vec![],
+            semantic_model_binding: None,
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-id",
+            workspace_name: None,
+            deployed_items: &std::collections::HashMap::new(),
+        };
+
+        // Should NOT error — binary payload is skipped gracefully
+        let result = apply_parameters(&mut source, &params, "dev", &ctx);
+        assert!(result.is_ok());
+        // Payload should be unchanged
+        assert_eq!(
+            source.items[0].parts[0].payload,
+            BASE64.encode(&binary_content)
+        );
+    }
 }

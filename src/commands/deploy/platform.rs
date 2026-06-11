@@ -250,6 +250,13 @@ fn discover_items_recursive(
             // This is an item directory — parse it
             let item = parse_item_directory(root, &path)?;
             items.push(item);
+
+            // Also check for .children/ subdirectory containing child items
+            // (e.g., KQL Databases nested under Eventhouses)
+            let children_dir = path.join(".children");
+            if children_dir.is_dir() {
+                discover_items_recursive(root, &children_dir, items)?;
+            }
         } else {
             // This is a folder directory — recurse into it
             discover_items_recursive(root, &path, items)?;
@@ -826,5 +833,189 @@ mod tests {
 
         // Empty array should result in None (no shortcuts to deploy)
         assert!(item.shortcuts.is_none());
+    }
+
+    #[test]
+    fn test_parse_discovers_kql_databases_in_children() {
+        let dir = TempDir::new().unwrap();
+
+        // Create Eventhouse with .children/ containing a KQL Database
+        let eh_dir = dir.path().join("MyEH.Eventhouse");
+        fs::create_dir_all(&eh_dir).unwrap();
+        fs::write(
+            eh_dir.join(".platform"),
+            r#"{"metadata":{"type":"Eventhouse","displayName":"MyEH"},"config":{"version":"2.0","logicalId":"eh-lid-001"}}"#,
+        ).unwrap();
+        fs::write(eh_dir.join("EventhouseProperties.json"), "{}").unwrap();
+
+        let kql_dir = eh_dir.join(".children").join("MyDB.KQLDatabase");
+        fs::create_dir_all(&kql_dir).unwrap();
+        fs::write(
+            kql_dir.join(".platform"),
+            r#"{"metadata":{"type":"KQLDatabase","displayName":"MyDB"},"config":{"version":"2.0","logicalId":"kql-lid-001"}}"#,
+        ).unwrap();
+        fs::write(
+            kql_dir.join("DatabaseProperties.json"),
+            r#"{"parentEventhouseItemId":"eh-lid-001"}"#,
+        )
+        .unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+
+        // Both Eventhouse and KQL Database should be discovered
+        assert_eq!(workspace.items.len(), 2);
+        let types: Vec<&str> = workspace
+            .items
+            .iter()
+            .map(|i| i.metadata.item_type.as_str())
+            .collect();
+        assert!(types.contains(&"Eventhouse"));
+        assert!(types.contains(&"KQLDatabase"));
+    }
+
+    #[test]
+    fn test_parse_excludes_pbi_directory_from_parts() {
+        let dir = TempDir::new().unwrap();
+
+        let report_dir = dir.path().join("MyReport.Report");
+        fs::create_dir_all(&report_dir).unwrap();
+        fs::write(
+            report_dir.join(".platform"),
+            r#"{"metadata":{"type":"Report","displayName":"MyReport"},"config":{"version":"2.0"}}"#,
+        )
+        .unwrap();
+        fs::write(report_dir.join("definition.pbir"), r#"{"version":"4.0"}"#).unwrap();
+
+        // Create .pbi/ directory (should be excluded from parts)
+        let pbi_dir = report_dir.join(".pbi");
+        fs::create_dir_all(&pbi_dir).unwrap();
+        fs::write(pbi_dir.join("localSettings.json"), "{}").unwrap();
+        fs::write(pbi_dir.join("cache.abf"), "binary data").unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        assert_eq!(workspace.items.len(), 1);
+
+        let item = &workspace.items[0];
+        // Only definition.pbir should be in parts (not .pbi/ contents)
+        assert_eq!(item.parts.len(), 1);
+        assert_eq!(item.parts[0].path, "definition.pbir");
+    }
+
+    #[test]
+    fn test_parse_lakehouse_enables_schemas_from_metadata() {
+        let dir = TempDir::new().unwrap();
+
+        let lh_dir = dir.path().join("SchemaLH.Lakehouse");
+        fs::create_dir_all(&lh_dir).unwrap();
+        fs::write(
+            lh_dir.join(".platform"),
+            r#"{"metadata":{"type":"Lakehouse","displayName":"SchemaLH"},"config":{"version":"2.0"}}"#,
+        ).unwrap();
+        // lakehouse.metadata.json with defaultSchema → should enable schemas
+        fs::write(
+            lh_dir.join("lakehouse.metadata.json"),
+            r#"{"defaultSchema": "dbo"}"#,
+        )
+        .unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        let item = &workspace.items[0];
+
+        // Should have creationPayload with enableSchemas
+        assert!(item.creation_payload.is_some());
+        assert_eq!(
+            item.creation_payload.as_ref().unwrap()["enableSchemas"],
+            true
+        );
+    }
+
+    #[test]
+    fn test_parse_reads_creation_payload_from_platform_metadata() {
+        let dir = TempDir::new().unwrap();
+
+        let wh_dir = dir.path().join("MyWH.Warehouse");
+        fs::create_dir_all(&wh_dir).unwrap();
+        // .platform with creationPayload in metadata (fabric-cicd format)
+        fs::write(
+            wh_dir.join(".platform"),
+            r#"{"metadata":{"type":"Warehouse","displayName":"MyWH","creationPayload":{"collation":"Latin1_General_100_BIN2_UTF8"}},"config":{"version":"2.0"}}"#,
+        ).unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        let item = &workspace.items[0];
+
+        // Should read creationPayload from .platform metadata
+        assert!(item.creation_payload.is_some());
+        assert_eq!(
+            item.creation_payload.as_ref().unwrap()["collation"],
+            "Latin1_General_100_BIN2_UTF8"
+        );
+    }
+
+    #[test]
+    fn test_spark_job_definition_format_fallback() {
+        let dir = TempDir::new().unwrap();
+
+        let sjd_dir = dir.path().join("MySJD.SparkJobDefinition");
+        fs::create_dir_all(&sjd_dir).unwrap();
+        // .platform WITHOUT definitionFormat
+        fs::write(
+            sjd_dir.join(".platform"),
+            r#"{"metadata":{"type":"SparkJobDefinition","displayName":"MySJD"},"config":{"version":"2.0"}}"#,
+        ).unwrap();
+        fs::write(sjd_dir.join("SparkJobDefinitionV1.json"), "{}").unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        let item = &workspace.items[0];
+
+        // Should auto-detect format as SparkJobDefinitionV2
+        assert_eq!(
+            item.metadata.definition_format.as_deref(),
+            Some("SparkJobDefinitionV2")
+        );
+    }
+
+    #[test]
+    fn test_parse_nested_folder_computes_folder_path() {
+        let dir = TempDir::new().unwrap();
+
+        // Create nested structure: ETL/Bronze/MyNb.Notebook
+        let nb_dir = dir.path().join("ETL").join("Bronze").join("MyNb.Notebook");
+        fs::create_dir_all(&nb_dir).unwrap();
+        fs::write(
+            nb_dir.join(".platform"),
+            r#"{"metadata":{"type":"Notebook","displayName":"MyNb"},"config":{"version":"2.0"}}"#,
+        )
+        .unwrap();
+        fs::write(nb_dir.join("notebook-content.py"), "# code").unwrap();
+
+        // Root-level item
+        let root_nb = dir.path().join("RootNb.Notebook");
+        fs::create_dir_all(&root_nb).unwrap();
+        fs::write(
+            root_nb.join(".platform"),
+            r#"{"metadata":{"type":"Notebook","displayName":"RootNb"},"config":{"version":"2.0"}}"#,
+        )
+        .unwrap();
+        fs::write(root_nb.join("notebook-content.py"), "# root").unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        assert_eq!(workspace.items.len(), 2);
+
+        // Find the nested item and check its folder_path
+        let nested = workspace
+            .items
+            .iter()
+            .find(|i| i.metadata.display_name == "MyNb")
+            .unwrap();
+        assert_eq!(nested.folder_path, "/ETL/Bronze");
+
+        // Root item should have empty folder_path
+        let root = workspace
+            .items
+            .iter()
+            .find(|i| i.metadata.display_name == "RootNb")
+            .unwrap();
+        assert_eq!(root.folder_path, "");
     }
 }
