@@ -201,7 +201,7 @@ gh release create vX.Y.Z --notes-file release-notes.md --title "vX.Y.Z"
 
 After tagging a release, update version-specific references in the repository:
 
-1. **README.md** — Update the Docker image version in the usage example (e.g., `ghcr.io/iemejia/fabio:0.20.0` → `ghcr.io/iemejia/fabio:0.21.0`).
+1. **README.md** — Update the Docker image version in the usage example (e.g., `ghcr.io/iemejia/fabio:0.20.0` → `ghcr.io/iemejia/fabio:0.22.0`).
 2. **AGENTS.md** — Update the `Docker & Devcontainer` section's version examples to reflect the new tag.
 3. **Cargo.toml** — Bump the `version` field to the next development version if applicable.
 
@@ -573,8 +573,8 @@ Published to GHCR on every push to `main` and on version tags:
 
 ```
 ghcr.io/iemejia/fabio:latest       # latest stable release
-ghcr.io/iemejia/fabio:0.21.0       # release version
-ghcr.io/iemejia/fabio:0.21         # major.minor
+ghcr.io/iemejia/fabio:0.22.0       # release version
+ghcr.io/iemejia/fabio:0.22         # major.minor
 ```
 
 Multi-arch manifest: `linux/amd64` + `linux/arm64`.
