@@ -385,6 +385,240 @@ fabio deploy init-params --source ./dev-items/ --compare ./prod-items/ \
 
 Deploy handles 42 item types in dependency order, supports parallel execution (default 8 concurrent), rename detection via logical IDs, and automatic post-deploy hooks (semantic model refresh, environment publish).
 
+## Migrating from fabric-cicd
+
+If you're currently using Microsoft's [fabric-cicd](https://github.com/microsoft/fabric-cicd) Python library, fabio is fully compatible with the same source directory format. Your existing `.platform` directories, `parameter.yml` rules, and CI/CD pipelines can switch to fabio with minimal changes.
+
+### Basic deployment (equivalent workflows)
+
+**fabric-cicd (Python):**
+```python
+from fabric_cicd import FabricWorkspace, publish_all_items
+from azure.identity import DefaultAzureCredential
+
+ws = FabricWorkspace(
+    workspace_id="aaaabbbb-cccc-dddd-eeee-ffffffffffff",
+    repository_directory="./workspace",
+    environment="prod",
+    item_type_in_scope=["Notebook", "DataPipeline"],
+)
+publish_all_items(ws)
+```
+
+**fabio (equivalent):**
+```bash
+fabio deploy apply \
+  --source ./workspace \
+  --workspace aaaabbbb-cccc-dddd-eeee-ffffffffffff \
+  --item-types Notebook,DataPipeline
+```
+
+### Preview before deploying (fabio-only capability)
+
+fabric-cicd has no dry-run or plan mode. fabio lets you preview:
+
+```bash
+# See what would change without touching anything
+fabio deploy plan --source ./workspace --workspace "Production"
+
+# Dry-run shows the plan and exits
+fabio deploy apply --source ./workspace --workspace "Production" --dry-run
+```
+
+### Parameter substitution
+
+**fabric-cicd** uses a YAML `parameter.yml`. **fabio** uses a JSON `parameters.json` with the same rule types. The syntax maps directly:
+
+**fabric-cicd `parameter.yml`:**
+```yaml
+find_replace:
+  - find_value: "db52be81-c2b2-4261-84fa-840c67f4bbd0"
+    replace_value:
+      PPE: "81bbb339-8d0b-46e8-bfa6-289a159c0733"
+      PROD: "$items.Lakehouse.SalesLH.id"
+    item_type: "Notebook"
+    file_path: "notebook-content.py"
+
+key_value_replace:
+  - find_key: $.variables[?(@.name=="Server")].value
+    replace_value:
+      PPE: "server-ppe.database.windows.net"
+      PROD: "server-prod.database.windows.net"
+    item_type: "VariableLibrary"
+
+spark_pool:
+  - instance_pool_id: "72c68dbc-0775-4d59-909d-a47896f4573b"
+    replace_value:
+      PPE:
+        type: "Capacity"
+        name: "Pool_Large_PPE"
+      PROD:
+        type: "Capacity"
+        name: "Pool_Large_PROD"
+
+semantic_model_binding:
+  default:
+    connection_id:
+      PPE: "76e05dfe-9855-4e3d-a410-1dda048dbe99"
+      PROD: "c4f8e2b1-3d2a-4f5b-9c6e-7a8b9c0d1e2f"
+```
+
+**fabio `parameters.json` (equivalent):**
+```json
+{
+  "find_replace": [
+    {
+      "find_value": "db52be81-c2b2-4261-84fa-840c67f4bbd0",
+      "replace_value": {
+        "PPE": "81bbb339-8d0b-46e8-bfa6-289a159c0733",
+        "PROD": "$items.Lakehouse.SalesLH.id"
+      },
+      "item_type": "Notebook",
+      "file_path": "notebook-content.py"
+    }
+  ],
+  "key_value_replace": [
+    {
+      "find_key": "$.variables[?(@.name==\"Server\")].value",
+      "replace_value": {
+        "PPE": "server-ppe.database.windows.net",
+        "PROD": "server-prod.database.windows.net"
+      },
+      "item_type": "VariableLibrary"
+    }
+  ],
+  "spark_pool": [
+    {
+      "instance_pool_id": "72c68dbc-0775-4d59-909d-a47896f4573b",
+      "replace_value": {
+        "PPE": {"type": "Capacity", "name": "Pool_Large_PPE"},
+        "PROD": {"type": "Capacity", "name": "Pool_Large_PROD"}
+      }
+    }
+  ],
+  "semantic_model_binding": {
+    "default": {
+      "connection_id": {
+        "PPE": "76e05dfe-9855-4e3d-a410-1dda048dbe99",
+        "PROD": "c4f8e2b1-3d2a-4f5b-9c6e-7a8b9c0d1e2f"
+      }
+    }
+  }
+}
+```
+
+```bash
+fabio deploy apply --source ./workspace --workspace $WS \
+  --parameters parameters.json --env PROD
+```
+
+### Dynamic variables
+
+Both tools support the same dynamic variables (slight syntax difference):
+
+| fabric-cicd | fabio | Resolves to |
+|---|---|---|
+| `$workspace.$id` | `$workspace.id` | Target workspace GUID |
+| `$items.Type.Name.$id` | `$items.Type.Name.id` | Deployed item GUID |
+| N/A | `$workspace.name` | Target workspace display name |
+| N/A | `$ENV:VAR_NAME` | Environment variable value |
+| N/A | `$items.Type.Name.sqlendpoint` | SQL endpoint connection string |
+| N/A | `$items.Type.Name.queryserviceuri` | Eventhouse query URI |
+
+### Config file (equivalent to fabric-cicd's `config.yml`)
+
+**fabric-cicd `config.yml`:**
+```yaml
+core:
+  workspace_id:
+    PPE: "ws-ppe-guid"
+    PROD: "ws-prod-guid"
+  repository_directory: "."
+  item_types_in_scope:
+    - Notebook
+    - DataPipeline
+  parameter: "parameter.yml"
+```
+
+**fabio `deploy-config.yml`:**
+```yaml
+source: "."
+parameters: "./parameters.json"
+
+environments:
+  PPE:
+    workspace: "ws-ppe-guid"
+  PROD:
+    workspace: "ws-prod-guid"
+
+filters:
+  item_types:
+    - Notebook
+    - DataPipeline
+```
+
+```bash
+fabio deploy apply --config deploy-config.yml --env PROD
+```
+
+### Git-diff selective deployment
+
+**fabric-cicd:**
+```python
+from fabric_cicd import get_changed_items
+changed = get_changed_items(ws.repository_directory, "HEAD~1")
+publish_all_items(ws, items_to_include=changed)
+```
+
+**fabio (built-in):**
+```bash
+fabio deploy apply --source ./workspace --workspace $WS --git-diff HEAD~1
+```
+
+### Deleting orphaned items
+
+**fabric-cicd:**
+```python
+# Requires feature flags for dangerous types
+from fabric_cicd import append_feature_flag
+append_feature_flag("enable_lakehouse_unpublish")
+publish_all_items(ws)  # Unpublishes orphans automatically
+```
+
+**fabio:**
+```bash
+# Safe by default -- protected types need explicit opt-in
+fabio deploy apply --source ./workspace --workspace $WS \
+  --delete-orphans --allow-delete-types Lakehouse,Warehouse
+```
+
+### Folder management
+
+Both tools auto-manage workspace folders from the source directory structure:
+
+```
+workspace/
+├── ETL/                        ← becomes workspace folder "/ETL"
+│   └── Transform.Notebook/
+├── Reports/                    ← becomes workspace folder "/Reports"
+│   └── Sales.Report/
+└── SalesLH.Lakehouse/          ← root level (no folder)
+```
+
+fabric-cicd handles this automatically. fabio does too (disable with `--no-folders`).
+
+### Key advantages of switching to fabio
+
+| Workflow | fabric-cicd | fabio |
+|---|---|---|
+| Check what will change | Not possible | `fabio deploy plan` |
+| Skip unchanged items | Re-uploads everything | SHA-256 hash comparison |
+| Catch errors before deploy | Not possible | `fabio deploy validate` |
+| Scaffold parameter file | Manual | `fabio deploy init-params` |
+| Export workspace to disk | Not possible | `fabio deploy export` |
+| Rename an item | Delete + re-create (loses GUID) | Detects via logical ID (preserves GUID) |
+| CI/CD runtime | Python 3.9+ with pip deps | Single binary (curl install) |
+
 ## Connections and Gateways
 
 ```bash
