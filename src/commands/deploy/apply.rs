@@ -880,6 +880,27 @@ async fn deploy_change(
         })
         .collect();
 
+    // Sort parts for Notebook items: .py/.ipynb content files before .json settings files.
+    // The Fabric API processes definition parts in order — content must precede settings.
+    let parts = if change.item_type.eq_ignore_ascii_case("Notebook") {
+        let mut sorted = parts;
+        sorted.sort_by_key(|p| {
+            let path = p.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            let ext = std::path::Path::new(path)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+            match ext {
+                "py" | "ipynb" => 0, // Content files first
+                "json" => 2,         // JSON settings last
+                _ => 1,              // Everything else in between
+            }
+        });
+        sorted
+    } else {
+        parts
+    };
+
     match change.action {
         ChangeAction::Create => {
             // Omit definition entirely when there are no parts (e.g. Lakehouse, MLModel)
@@ -959,7 +980,7 @@ async fn deploy_change(
 
             client
                 .post(
-                    &format!("/workspaces/{workspace_id}/items/{deployed_id}/updateDefinition"),
+                    &format!("/workspaces/{workspace_id}/items/{deployed_id}/updateDefinition?updateMetadata=true"),
                     &body,
                     true,
                 )
@@ -1006,7 +1027,7 @@ async fn deploy_change(
 
                 client
                     .post(
-                        &format!("/workspaces/{workspace_id}/items/{deployed_id}/updateDefinition"),
+                        &format!("/workspaces/{workspace_id}/items/{deployed_id}/updateDefinition?updateMetadata=true"),
                         &body,
                         true,
                     )

@@ -216,8 +216,15 @@ fn discover_items_recursive(
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        // Skip hidden directories and .children (KQL database internal)
-        if dir_name.starts_with('.') || dir_name == ".children" {
+        // Skip hidden directories EXCEPT .children (which contains KQL databases)
+        if dir_name.starts_with('.') && dir_name != ".children" {
+            continue;
+        }
+
+        // .children/ is a container for child items (KQL Databases under Eventhouses)
+        // — recurse into it to discover items, but don't treat it as a folder
+        if dir_name == ".children" {
+            discover_items_recursive(root, &path, items)?;
             continue;
         }
 
@@ -263,6 +270,25 @@ fn parse_item_directory(root: &Path, path: &Path) -> Result<SourceItem> {
     } else {
         None
     };
+
+    // For Lakehouse items: detect enableSchemas from lakehouse.metadata.json
+    // (fabric-cicd compatible: checks for "defaultSchema" key presence)
+    let creation_payload =
+        if creation_payload.is_none() && metadata.item_type.eq_ignore_ascii_case("Lakehouse") {
+            let lh_metadata_path = path.join("lakehouse.metadata.json");
+            if lh_metadata_path.exists() {
+                let content = std::fs::read_to_string(&lh_metadata_path).unwrap_or_default();
+                if content.contains("defaultSchema") {
+                    Some(serde_json::json!({"enableSchemas": true}))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            creation_payload
+        };
 
     // Read optional shortcuts.metadata.json (for Lakehouse items)
     let shortcuts_path = path.join("shortcuts.metadata.json");
@@ -322,6 +348,17 @@ fn read_parts_recursive(
         let path = entry.path();
 
         if path.is_dir() {
+            let dir_name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+
+            // Skip .pbi/ directories (local Power BI metadata, not part of definition)
+            // Skip .children/ directories (handled as separate items in discovery)
+            if dir_name == ".pbi" || dir_name == ".children" {
+                continue;
+            }
+
             read_parts_recursive(base_dir, &path, parts)?;
         } else {
             let file_name = path
