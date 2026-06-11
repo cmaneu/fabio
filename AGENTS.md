@@ -28,7 +28,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - JSON output by default with `--output json|table|plain` flag
 - Composable: manage inputs and produce outputs for piping
 - Machine-readable error codes in structured JSON envelope
-- Rust (edition 2024, rust-version 1.85), uses clap derive, tokio, reqwest, azure_identity, serde, comfy-table, thiserror/anyhow
+- Rust (edition 2024, rust-version 1.85), uses clap derive, tokio, reqwest, azure_identity, serde, serde_yaml, comfy-table, thiserror/anyhow
 - Linting: clippy pedantic+nursery (zero warnings), rustfmt
 - CI: GitHub Actions (cargo fmt, clippy, test, build release) on ubuntu/macos/windows
 - Installable via `cargo install --git https://github.com/iemejia/fabio.git`
@@ -283,7 +283,7 @@ After tagging a release, update version-specific references in the repository:
 - **Cosmos DB Database**: list/show/create/update/delete/get-definition/update-definition (empty shell creation supported)
 - **Snowflake Database**: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
 - **Anomaly Detector**: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
-- **Deploy**: plan/apply/export/init-params (CI/CD deployment engine: content-hash diffing, parameter substitution, rename detection, creationPayload, post-deploy hooks, logical ID resolution)
+- **Deploy**: plan/apply/export/init-params/validate (CI/CD deployment engine: content-hash diffing, parameter substitution, rename detection, creationPayload, post-deploy hooks, logical ID resolution, workspace folder management, git-diff selective deploy, deploy config file JSON+YAML, selective filtering, workspace ID regex replacement, protected type deletion guards, full fabric-cicd compatibility)
 - **Gateway**: list/show/create/update/delete, list-members/update-member/delete-member, list/add/show/update/delete-role-assignments, check-status/check-member-status/restart/shutdown (VNet gateways)
 - **Admin**: 49 subcommands (tenant settings, tags, workloads, workspaces, items, users, domains, labels, sharing links, external data shares, network policies)
 - **Apache Airflow Job**: list/show/create/update/delete/get-definition/update-definition, start-environment/stop-environment/get-environment, list-files/get-file/upload-file/delete-file, get-compute/get-workspace-settings/deploy-requirements
@@ -320,7 +320,8 @@ After tagging a release, update version-specific references in the repository:
 - **Notebook --strip-output**: `get-definition --strip-output` clears `outputs`/`execution_count` from ipynb cells; gracefully passes through `.py` format
 - **CSV/TSV output**: Global `--output csv|tsv` on all commands; RFC 4180 quoting via `format_csv_value()`
 - **Deploy validate**: Local-only pre-flight checks on source directory (validates .platform files, item types, definition structure, logical ID references); no API calls required
-- **1562 Rust tests** (841 unit + 721 offline/E2E integration), zero clippy warnings, rustfmt clean
+- **Deploy fabric-cicd full compatibility**: Parses .children/ KQL database discovery, .pbi/ directory exclusion, creationPayload from .platform metadata, SparkJobDefinitionV2 format auto-detection, Report byPath→byConnection transform, notebook part ordering (.py before .json), ItemDisplayNameNotAvailableYet retry (up to 5 min), binary file skip, .platform included as definition part but excluded from content hash for idempotency
+- **1571 Rust tests** (850 unit + 721 offline/E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~16 MB, stripped, full LTO, panic=abort
@@ -364,6 +365,11 @@ After tagging a release, update version-specific references in the repository:
 - **Deploy empty definitions**: Items with no parts (Lakehouse, MLModel) omit `definition` field on create; skip `updateDefinition` on update
 - **Deploy ordering**: 45 item types in `DEPLOY_ORDER`; deployed in dependency order (storage → compute → code → models → reactive → APIs → ML → graph → viz)
 - **Deploy no state file**: Stateless — always queries live workspace. No `.tfstate` equivalent.
+- **Deploy .platform in parts but excluded from hash**: `.platform` IS sent as a definition part (enables `?updateMetadata=true` for metadata propagation), but EXCLUDED from content hash (API rewrites `logicalId` in `.platform`, which would break idempotent skip detection)
+- **Deploy workspace ID regex replacement**: Uses regex matching on `workspaceId`, `default_lakehouse_workspace_id`, `workspace` keys — not blanket string replacement. Skips shortcuts (handled separately with lakehouse GUID). Opt-out: `--no-workspace-id-replace`
+- **Deploy config file (JSON + YAML)**: `--config <file> --env <name>` loads per-environment workspace/source/parameters; `serde_yaml` crate for YAML; CLI flags override config values
+- **Deploy protected type deletion**: Lakehouse, Warehouse, SQLDatabase, Eventhouse, KQLDatabase require `--allow-delete-types` to be deleted by `--delete-orphans`
+- **Deploy fabric-cicd full compatibility**: Source directory format, .platform file schema, definition parts, logical ID resolution, workspace ID replacement, creationPayload, .children/ discovery, .pbi/ exclusion, notebook ordering, Report byPath transform — all aligned with Microsoft's fabric-cicd Python library
 
 ## Critical Context
 - User's tenant: set locally via secure environment configuration (redacted)
@@ -448,6 +454,9 @@ After tagging a release, update version-specific references in the repository:
 - `src/commands/deploy/ordering.rs`: DEPLOY_ORDER (45 types), deploy_priority, delete_priority, topological_sort
 - `src/commands/deploy/platform.rs`: parse_source_directory (creationPayload.json parsing), SourceItem, SourceWorkspace, PlatformMetadata
 - `src/commands/deploy/export.rs`: export_workspace (getDefinition LRO per item, write .platform + parts)
+- `src/commands/deploy/config.rs`: DeployConfig struct (JSON+YAML parsing via serde_yaml), per-environment workspace/source/parameters resolution, FilterConfig, OptionsConfig
+- `src/commands/deploy/folders.rs`: Workspace folder management (discover from source directory, create/move/delete folders), SourceFolder, DeployedFolder, FolderPlan
+- `src/commands/deploy/git_diff.rs`: Git diff-based selective deployment (get_changed_items via `git diff --name-status`, GitDiffResult with changed/deleted sets)
 - `src/commands/gateway.rs`: list/show/create/update/delete, members, role assignments, check-status/check-member-status/restart/shutdown (VNet gateways)
 - `src/commands/admin.rs`: 49 subcommands for tenant administration
 - `src/commands/apache_airflow_job.rs`: CRUD + environment lifecycle + file ops + compute settings
@@ -516,6 +525,7 @@ After tagging a release, update version-specific references in the repository:
 - `tests/e2e_managed_private_endpoint.rs`: Managed private endpoint tests
 - `tests/e2e_admin.rs`: Admin API tests (63 tests: listing, tag lifecycle, domain lifecycle, dry-run validations, sharing links, labels, external data shares)
 - `tests/e2e_deploy.rs`: Deploy plan/apply/export/validate tests (42 tests: create, update, rename, creationPayload, parameters, staleness, logical ID resolution, post-hooks, init-params, validate)
+- `tests/e2e_fabric_cicd_compat.rs`: fabric-cicd compatibility tests (11 tests: validate source directory, nested folders, workspace ID replacement, parameter substitution, selective filtering, config file YAML, init-params scan)
 - `tests/e2e_gateway.rs`: Gateway CRUD + role assignment + lifecycle tests
 - `tests/e2e_apache_airflow_job.rs`: Apache Airflow job CRUD + environment + file ops tests
 - `tests/e2e_mirrored_catalog.rs`: Mirrored catalog tests
@@ -2499,4 +2509,18 @@ Git commands are run with CWD set to source directory. Returns `None` entirely i
 - **Restart**: `POST /gateways/{id}/restart` with empty body `{}`. LRO (polls until complete). Requires Admin permission.
 - **Shutdown**: `POST /gateways/{id}/shutdown` with empty body `{}`. LRO (polls until complete). Requires Admin permission.
 - **All require gateway Admin role**: Lifecycle operations restricted to gateway administrators.
+
+## Deploy Fabric-CICD Compatibility Behaviors Discovered
+- **`.platform` is a definition part**: The Fabric API uses `.platform` in definition parts for metadata updates (`?updateMetadata=true`). fabio includes `.platform` in parts sent to API but excludes it from content hash (API modifies `logicalId`, breaking skip detection).
+- **`.children/` discovery**: Eventhouses use `.children/` subdirectories to hold child items (KQL Databases). Discovered and deployed as independent items, not parts of the parent.
+- **`.pbi/` exclusion**: Power BI Desktop creates `.pbi/` directories with local metadata. Always excluded from definition parts.
+- **`creationPayload` in `.platform` metadata**: fabric-cicd stores `creationPayload` inside `.platform` JSON's `metadata` block. fabio reads this as fallback when no standalone `creationPayload.json` exists.
+- **`SparkJobDefinitionV2` format auto-detection**: When `.platform` lacks `definitionFormat`, SparkJobDefinition items auto-use `"SparkJobDefinitionV2"`.
+- **Report `byPath`→`byConnection` transform**: PBIP format `byPath` references (unsupported by API) are auto-converted to `byConnection` with the semantic model's resolved GUID.
+- **Notebook part ordering**: Content files (`.py`, `.ipynb`) must precede settings (`.json`). fabio sorts at deploy time.
+- **`ItemDisplayNameNotAvailableYet`**: After deletion, name may be reserved up to 5 minutes. fabio retries 10x at 30s intervals.
+- **Binary payloads skipped**: Non-UTF-8 payloads silently skipped during parameter replacement and reference validation.
+- **Lakehouse `enableSchemas`**: Inferred from `lakehouse.metadata.json` containing `"defaultSchema"`.
+- **Workspace ID placeholder**: `00000000-0000-0000-0000-000000000000` is auto-replaced with target workspace UUID (regex-based, workspace-reference keys only, skips shortcuts).
+- **Shortcut self-reference**: When shortcut `target.oneLake.itemId` is the default GUID, it means "this lakehouse itself" — replaced with the lakehouse's own deployed GUID (not the workspace ID).
 
