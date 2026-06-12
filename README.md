@@ -47,6 +47,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 ### What fabio adds beyond both
 
 - **AI-native interactions** — create and query Data Agents, execute KQL for real-time intelligence, NL-to-KQL translation
+- **Self-correcting error hints** — every error includes a `hint` field with the exact corrected command, valid enum values, or the logical next step so agents can retry without consulting docs
 - **Self-improving** — when new Fabric REST APIs are detected, fabio auto-implements support for new commands and item types
 - **Terraform-like convergence** — re-running `deploy apply` on a synced workspace produces zero API calls
 - **Saved deployment plans** — `--out plan.json` then `apply --plan plan.json` (with staleness detection)
