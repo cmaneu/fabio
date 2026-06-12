@@ -37,8 +37,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use serde::Deserialize;
+
+use crate::errors::{ErrorCode, FabioError};
 
 /// Top-level deploy configuration file.
 #[derive(Debug, Clone, Deserialize)]
@@ -188,9 +190,12 @@ pub fn parse_config(path: &Path) -> Result<DeployConfig> {
     // Validate mutual exclusivity of include_folders and exclude_folders
     if let Some(ref filters) = config.filters {
         if filters.include_folders.is_some() && filters.exclude_folders.is_some() {
-            bail!(
-                "Config file error: 'include_folders' and 'exclude_folders' are mutually exclusive"
-            );
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Config file error: 'include_folders' and 'exclude_folders' are mutually exclusive",
+                "Use only one: 'include_folders' to deploy specific folders, or 'exclude_folders' to skip specific folders.",
+            )
+            .into());
         }
     }
 
@@ -221,10 +226,18 @@ pub fn resolve_config(
 
     if workspace.is_none() && !config.environments.is_empty() {
         let available: Vec<&str> = config.environments.keys().map(String::as_str).collect();
-        bail!(
-            "Environment \"{env}\" not found in config. Available: {}",
-            available.join(", ")
-        );
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Environment \"{env}\" not found in config. Available: {}",
+                available.join(", ")
+            ),
+            format!(
+                "Use one of the defined environments: --env {}",
+                available.first().unwrap_or(&"<name>")
+            ),
+        )
+        .into());
     }
 
     // Resolve source path (relative to config file)

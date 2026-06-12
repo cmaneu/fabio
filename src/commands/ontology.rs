@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::enrich_forbidden;
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -263,7 +263,7 @@ async fn create(
     if let Some(path) = definition_path {
         let content = read_file_or_stdin(path)?;
         let def: Value = serde_json::from_str(&content)
-            .map_err(|e| anyhow::anyhow!("Invalid definition JSON: {e}"))?;
+            .map_err(|e| FabioError::with_hint(ErrorCode::InvalidInput, format!("Invalid definition JSON: {e}"), "Provide valid JSON. Inspect format: fabio ontology get-definition --workspace <WS> --id <ID> --decode"))?;
         body["definition"] = def;
     } else if let Some(path) = file_path {
         body["definition"] = build_definition_from_rdf(path)?;
@@ -288,7 +288,12 @@ async fn update(
     description: Option<&str>,
 ) -> Result<()> {
     if name.is_none() && description.is_none() {
-        anyhow::bail!("Specify at least one of --name or --description to update");
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Specify at least one of --name or --description to update",
+            "Example: fabio ontology update --workspace <WS> --id <ID> --name \"New Name\"",
+        )
+        .into());
     }
 
     let mut body = serde_json::json!({});
@@ -394,13 +399,18 @@ async fn update_definition(
     let def = if let Some(path) = definition_path {
         let content = read_file_or_stdin(path)?;
         serde_json::from_str::<Value>(&content)
-            .map_err(|e| anyhow::anyhow!("Invalid definition JSON: {e}"))?
+            .map_err(|e| FabioError::with_hint(ErrorCode::InvalidInput, format!("Invalid definition JSON: {e}"), "Provide valid JSON. Inspect format: fabio ontology get-definition --workspace <WS> --id <ID> --decode"))?
     } else if let Some(path) = file_path {
         build_definition_from_rdf(path)?
     } else if let Some(path) = dir_path {
         build_definition_from_dir(path)?
     } else {
-        anyhow::bail!("Specify either --definition, --file, or --dir");
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Specify either --definition, --file, or --dir",
+            "Use --definition for inline JSON, --file for RDF, or --dir for Fabric directory format.",
+        )
+        .into());
     };
 
     let body = serde_json::json!({"definition": def});
@@ -435,9 +445,12 @@ fn build_definition_from_rdf(path: &str) -> Result<Value> {
         "nt" => "ontology.nt",
         "n3" => "ontology.n3",
         "trig" => "ontology.trig",
-        _ => anyhow::bail!(
-            "Unsupported RDF format '.{ext}'. Supported: .ttl, .owl, .rdf, .xml, .jsonld, .nt, .n3, .trig"
-        ),
+        _ => return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Unsupported RDF format '.{ext}'"),
+            "Supported formats: .ttl, .owl, .rdf, .xml, .jsonld, .nt, .n3, .trig. Or use --dir for Fabric ontology directory format.",
+        )
+        .into()),
     };
 
     let content = std::fs::read(path)
@@ -478,7 +491,12 @@ fn build_definition_from_rdf(path: &str) -> Result<Value> {
 fn build_definition_from_dir(dir_path: &str) -> Result<Value> {
     let dir = Path::new(dir_path);
     if !dir.is_dir() {
-        anyhow::bail!("'{dir_path}' is not a directory");
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("'{dir_path}' is not a directory"),
+            "Expected Fabric ontology directory with: EntityTypes/<ID>/definition.json, RelationshipTypes/<ID>/definition.json. Export one: fabio ontology get-definition --workspace <WS> --id <ID> --dir ./ontology",
+        )
+        .into());
     }
 
     let mut parts: Vec<Value> = Vec::new();
@@ -716,13 +734,13 @@ struct OrderedSourceTableProperties {
 /// with `sourceType` as a discriminator field for the union type.
 fn normalize_data_binding(content: &[u8]) -> Result<Vec<u8>> {
     let mut binding: Value = serde_json::from_slice(content)
-        .map_err(|e| anyhow::anyhow!("Invalid JSON in DataBinding file: {e}"))?;
+        .map_err(|e| FabioError::with_hint(ErrorCode::InvalidInput, format!("Invalid JSON in DataBinding file: {e}"), "DataBinding files must be valid JSON. See format: fabio ontology get-definition --workspace <WS> --id <ID> --decode"))?;
 
     // Validate that the 'id' field is a valid UUID — non-UUID IDs are silently dropped by the server
     if let Some(id_val) = binding.get("id").and_then(Value::as_str) {
         if !is_valid_uuid(id_val) {
-            return Err(crate::errors::FabioError::with_hint(
-                crate::errors::ErrorCode::InvalidInput,
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
                 format!("Data binding 'id' must be UUID format, got: '{id_val}'"),
                 "Use UUID format (e.g., c0000001-0001-0001-0001-000000000001). \
                  Non-UUID IDs are silently dropped by the Fabric API with no error.",

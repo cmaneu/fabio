@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use anyhow::{Result, bail};
+use anyhow::Result;
+
+use crate::errors::{ErrorCode, FabioError};
 
 /// Static deployment order by item type.
 ///
@@ -147,10 +149,15 @@ pub fn topological_sort(items: &[(String, Vec<String>)]) -> Result<Vec<String>> 
             .filter(|n| !sorted.contains(&(**n).to_owned()))
             .copied()
             .collect();
-        bail!(
-            "Circular dependency detected among items: {}",
-            unsorted.join(", ")
-        );
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Circular dependency detected among items: {}",
+                unsorted.join(", ")
+            ),
+            "Break the cycle by splitting pipelines into separate deploy batches or removing the circular ExecutePipeline activity reference.",
+        )
+        .into());
     }
 
     Ok(sorted)

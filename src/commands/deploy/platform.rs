@@ -2,11 +2,13 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+
+use crate::errors::{ErrorCode, FabioError};
 
 /// Metadata from a `.platform` file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -205,7 +207,12 @@ fn compute_content_hash_refs(parts: &[&DefinitionPart]) -> String {
 /// ```
 pub fn parse_source_directory(source_dir: &Path) -> Result<SourceWorkspace> {
     if !source_dir.is_dir() {
-        bail!("Source directory does not exist: {}", source_dir.display());
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Source directory does not exist: {}", source_dir.display()),
+            "Check the path. Create a source directory: fabio deploy export --workspace <WS> --dir <DIR>",
+        )
+        .into());
     }
 
     let mut items = Vec::new();
@@ -464,10 +471,12 @@ pub fn write_source_directory(
         // Check if it's non-empty
         let has_entries = std::fs::read_dir(output_dir).is_ok_and(|mut rd| rd.next().is_some());
         if has_entries {
-            bail!(
-                "Output directory is not empty: {}. Use --overwrite to replace.",
-                output_dir.display()
-            );
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Output directory is not empty: {}", output_dir.display()),
+                "Use --overwrite to replace existing content.",
+            )
+            .into());
         }
     }
 
@@ -496,22 +505,31 @@ pub fn write_source_directory(
             // outside the item directory.
             if part.path.contains("..") || part.path.starts_with('/') || part.path.starts_with('\\')
             {
-                anyhow::bail!(
-                    "Refusing to write part with unsafe path '{}' in item '{}'. Path contains directory traversal.",
-                    part.path,
-                    metadata.display_name
-                );
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!(
+                        "Refusing to write part with unsafe path '{}' in item '{}'",
+                        part.path, metadata.display_name
+                    ),
+                    "Path contains directory traversal. Validate the source: fabio deploy validate --source <DIR>",
+                )
+                .into());
             }
 
             let part_path = item_dir.join(Path::new(&part.path));
 
             // Defense-in-depth: verify resolved path is inside item directory
             if !part_path.starts_with(&item_dir) {
-                anyhow::bail!(
-                    "Refusing to write part '{}' — resolved path escapes item directory '{}'.",
-                    part.path,
-                    item_dir.display()
-                );
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!(
+                        "Refusing to write part '{}' — resolved path escapes item directory '{}'",
+                        part.path,
+                        item_dir.display()
+                    ),
+                    "Path resolves outside the item directory. Validate the source: fabio deploy validate --source <DIR>",
+                )
+                .into());
             }
 
             // Create parent directories if needed
