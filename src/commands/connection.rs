@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::enrich_forbidden;
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -283,12 +283,21 @@ async fn create(
     }
 
     let params: Value = serde_json::from_str(parameters).map_err(|e| {
-        anyhow::anyhow!("Invalid --parameters JSON: {e}. Expected format: '{{\"key\":\"value\"}}'")
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid --parameters JSON: {e}"),
+            "Expected JSON object, e.g.: --parameters '{\"server\":\"host\",\"database\":\"db\"}'",
+        )
     })?;
 
     let cred_details = if let Some(creds) = credentials {
-        let cred_value: Value = serde_json::from_str(creds)
-            .map_err(|e| anyhow::anyhow!("Invalid --credentials JSON: {e}"))?;
+        let cred_value: Value = serde_json::from_str(creds).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid --credentials JSON: {e}"),
+                "Expected JSON object with credential fields, e.g.: '{\"credentialType\":\"Basic\",\"username\":\"u\",\"password\":\"p\"}'",
+            )
+        })?;
         let mut details = json!({
             "singleSignOnType": "None",
             "connectionEncryption": "NotEncrypted",
@@ -392,8 +401,13 @@ async fn update(
             cred_details["credentials"] = json!({ "credentialType": ct });
         }
         if let Some(creds) = credentials {
-            let cred_value: Value = serde_json::from_str(creds)
-                .map_err(|e| anyhow::anyhow!("Invalid --credentials JSON: {e}"))?;
+            let cred_value: Value = serde_json::from_str(creds).map_err(|e| {
+                FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("Invalid --credentials JSON: {e}"),
+                    "Expected JSON object with credential fields.",
+                )
+            })?;
             if cred_details["credentials"].is_null() {
                 cred_details["credentials"] = cred_value;
             } else if let Some(obj) = cred_details["credentials"].as_object_mut() {

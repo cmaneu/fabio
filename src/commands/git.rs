@@ -400,7 +400,11 @@ async fn commit(
         status
             .get("workspaceHead")
             .and_then(Value::as_str)
-            .ok_or_else(|| anyhow::anyhow!("Could not determine workspaceHead from status"))?
+            .ok_or_else(|| FabioError::with_hint(
+                ErrorCode::ApiError,
+                "Could not determine workspaceHead from status",
+                "Ensure the workspace is connected to Git and initialized: fabio git connection show --workspace <WS>",
+            ))?
             .to_string()
     };
 
@@ -462,7 +466,11 @@ async fn pull(
                     .and_then(Value::as_str)
                     .map(String::from)
             })
-            .ok_or_else(|| anyhow::anyhow!("Could not determine workspaceHead from status"))?;
+            .ok_or_else(|| FabioError::with_hint(
+                ErrorCode::ApiError,
+                "Could not determine workspaceHead from status",
+                "Ensure the workspace is connected to Git and initialized: fabio git connection show --workspace <WS>",
+            ))?;
         let r = remote_commit_hash
             .map(String::from)
             .or_else(|| {
@@ -471,7 +479,11 @@ async fn pull(
                     .and_then(Value::as_str)
                     .map(String::from)
             })
-            .ok_or_else(|| anyhow::anyhow!("Could not determine remoteCommitHash from status"))?;
+            .ok_or_else(|| FabioError::with_hint(
+                ErrorCode::ApiError,
+                "Could not determine remoteCommitHash from status",
+                "Ensure there are remote commits to pull. Check remote branch status with: fabio git status --workspace <WS>",
+            ))?;
         (h, r)
     };
 
@@ -529,9 +541,17 @@ async fn connect(
     let git_provider_details = match provider {
         "azure-devops" => {
             let org_name =
-                org.ok_or_else(|| anyhow::anyhow!("--org is required for Azure DevOps provider"))?;
+                org.ok_or_else(|| FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "--org is required for Azure DevOps provider",
+                    "Example: fabio git connect --workspace <WS> --provider azure-devops --org <ORG> --project <PROJECT> --repo <REPO> --branch <BRANCH>",
+                ))?;
             let project_name = project.ok_or_else(|| {
-                anyhow::anyhow!("--project is required for Azure DevOps provider")
+                FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "--project is required for Azure DevOps provider",
+                    "Example: fabio git connect --workspace <WS> --provider azure-devops --org <ORG> --project <PROJECT> --repo <REPO> --branch <BRANCH>",
+                )
             })?;
             let dir_name = directory.unwrap_or("/");
             let details = serde_json::json!({
@@ -546,7 +566,11 @@ async fn connect(
         }
         "github" => {
             let owner_name =
-                owner.ok_or_else(|| anyhow::anyhow!("--owner is required for GitHub provider"))?;
+                owner.ok_or_else(|| FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "--owner is required for GitHub provider",
+                    "Example: fabio git connect --workspace <WS> --provider github --owner <OWNER> --repo <REPO> --branch <BRANCH> --connection-id <CONN_ID>",
+                ))?;
             let dir_name = directory.unwrap_or("/");
             let mut details = serde_json::json!({
                 "gitProviderType": "GitHub",
@@ -701,7 +725,11 @@ async fn checkout(
 
     let provider_details = connection
         .get("gitProviderDetails")
-        .ok_or_else(|| anyhow::anyhow!("Workspace is not connected to Git"))?;
+        .ok_or_else(|| FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Workspace is not connected to Git",
+            "Connect the workspace first: fabio git connect --workspace <WS> --provider <PROVIDER> --repo <REPO> --branch <BRANCH>",
+        ))?;
 
     // Step 2: Get current credentials (needed for GitHub reconnect)
     let credentials = client
@@ -821,7 +849,11 @@ async fn checkout(
             }
         }
     }
-    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("initializeConnection failed")))
+    Err(last_err.unwrap_or_else(|| FabioError::with_hint(
+        ErrorCode::ApiError,
+        "initializeConnection failed",
+        "Retry the operation. If using Azure DevOps, ensure the user has Contributor access to the repo.",
+    ).into()))
 }
 
 async fn connection_show(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
@@ -854,8 +886,10 @@ async fn credentials_update(
         "none" => serde_json::json!({"source": "None"}),
         "configured-connection" => {
             let conn_id = connection_id.ok_or_else(|| {
-                anyhow::anyhow!(
-                    "--connection-id is required when source is 'configured-connection'"
+                FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "--connection-id is required when source is 'configured-connection'",
+                    "Find available connections with: fabio connection list",
                 )
             })?;
             serde_json::json!({

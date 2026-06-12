@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::enrich_forbidden;
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -166,12 +166,28 @@ async fn create(
     conflict_policy: &str,
 ) -> Result<()> {
     let role_value: Value = if let Some(path) = role.strip_prefix('@') {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?;
-        serde_json::from_str(&content)
-            .map_err(|e| anyhow::anyhow!("Invalid JSON in file '{path}': {e}"))?
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Failed to read file '{path}': {e}"),
+                "Verify the file path is correct and the file is readable.",
+            )
+        })?;
+        serde_json::from_str(&content).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid JSON in file '{path}': {e}"),
+                "The file must contain valid JSON role definition.",
+            )
+        })?
     } else {
-        serde_json::from_str(role).map_err(|e| anyhow::anyhow!("Invalid --role JSON: {e}"))?
+        serde_json::from_str(role).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid --role JSON: {e}"),
+                "Provide valid JSON or use @path/to/file.json prefix to read from a file.",
+            )
+        })?
     };
 
     if output::dry_run_guard(cli, "onelake-security create", &role_value) {
@@ -209,12 +225,28 @@ async fn upsert(
     roles: &str,
 ) -> Result<()> {
     let roles_value: Value = if let Some(path) = roles.strip_prefix('@') {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?;
-        serde_json::from_str(&content)
-            .map_err(|e| anyhow::anyhow!("Invalid JSON in file '{path}': {e}"))?
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Failed to read file '{path}': {e}"),
+                "Verify the file path is correct and the file is readable.",
+            )
+        })?;
+        serde_json::from_str(&content).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid JSON in file '{path}': {e}"),
+                "The file must contain valid JSON roles array.",
+            )
+        })?
     } else {
-        serde_json::from_str(roles).map_err(|e| anyhow::anyhow!("Invalid --roles JSON: {e}"))?
+        serde_json::from_str(roles).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid --roles JSON: {e}"),
+                "Provide valid JSON or use @path/to/file.json prefix to read from a file.",
+            )
+        })?
     };
 
     let body = serde_json::json!({ "value": roles_value });

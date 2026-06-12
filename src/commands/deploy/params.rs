@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use jsonpath_rust::JsonPath;
@@ -22,6 +22,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use super::platform::{DefinitionPart, SourceItem, SourceWorkspace};
+use crate::errors::{ErrorCode, FabioError};
 
 /// Parsed parameter file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,16 +198,18 @@ pub fn parse_parameters(path: &Path) -> Result<Parameters> {
     // Validate rules
     for (i, rule) in params.find_replace.iter().enumerate() {
         if rule.find_value.is_empty() {
-            bail!(
-                "parameters file rule #{}: find_value cannot be empty",
-                i + 1
-            );
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("parameters file rule #{}: find_value cannot be empty", i + 1),
+                "Provide a non-empty find_value string or regex pattern to match against definition payloads.",
+            ).into());
         }
         if rule.replace_value.is_empty() {
-            bail!(
-                "parameters file rule #{}: replace_value must have at least one environment entry",
-                i + 1
-            );
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("parameters file rule #{}: replace_value must have at least one environment entry", i + 1),
+                "Add at least one environment key, or use '_ALL_' as a universal fallback.",
+            ).into());
         }
         if rule.is_regex {
             Regex::new(&rule.find_value).with_context(|| {
@@ -222,16 +225,22 @@ pub fn parse_parameters(path: &Path) -> Result<Parameters> {
     // Validate key_value_replace rules
     for (i, rule) in params.key_value_replace.iter().enumerate() {
         if rule.find_key.is_empty() {
-            bail!(
-                "key_value_replace rule #{}: find_key cannot be empty",
-                i + 1
-            );
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!(
+                    "key_value_replace rule #{}: find_key cannot be empty",
+                    i + 1
+                ),
+                "Provide a JSONPath expression, e.g.: \"$.parentEventhouseItemId\"",
+            )
+            .into());
         }
         if rule.replace_value.is_empty() {
-            bail!(
-                "key_value_replace rule #{}: replace_value must have at least one environment entry",
-                i + 1
-            );
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("key_value_replace rule #{}: replace_value must have at least one environment entry", i + 1),
+                "Add at least one environment key, or use '_ALL_' as a universal fallback.",
+            ).into());
         }
         // Validate JSONPath syntax
         jsonpath_rust::parser::parse_json_path(&rule.find_key).with_context(|| {
@@ -246,16 +255,26 @@ pub fn parse_parameters(path: &Path) -> Result<Parameters> {
     // Validate spark_pool rules
     for (i, rule) in params.spark_pool.iter().enumerate() {
         if rule.instance_pool_id.is_empty() {
-            bail!(
-                "spark_pool rule #{}: instance_pool_id cannot be empty",
-                i + 1
-            );
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!(
+                    "spark_pool rule #{}: instance_pool_id cannot be empty",
+                    i + 1
+                ),
+                "Provide the current Spark pool instance ID to match against.",
+            )
+            .into());
         }
         if rule.replace_value.is_empty() {
-            bail!(
-                "spark_pool rule #{}: replace_value must have at least one environment entry",
-                i + 1
-            );
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!(
+                    "spark_pool rule #{}: replace_value must have at least one environment entry",
+                    i + 1
+                ),
+                "Add at least one environment key, or use '_ALL_' as a universal fallback.",
+            )
+            .into());
         }
     }
 
@@ -280,13 +299,24 @@ fn resolve_value(raw: &str, ctx: &SubstitutionContext<'_>) -> Result<String> {
 
     if raw == "$workspace.name" {
         return ctx.workspace_name.map(str::to_owned).ok_or_else(|| {
-            anyhow::anyhow!("$workspace.name not available (workspace resolved by ID, not name)")
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "$workspace.name not available (workspace resolved by ID, not name)",
+                "Use $workspace.id instead, or pass --workspace by display name to enable $workspace.name resolution.",
+            ).into()
         });
     }
 
     if let Some(var_name) = raw.strip_prefix("$ENV:") {
-        return std::env::var(var_name).with_context(|| {
-            format!("Environment variable '{var_name}' referenced in parameters is not set")
+        return std::env::var(var_name).map_err(|_| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Environment variable '{var_name}' referenced in parameters is not set"),
+                format!(
+                    "Set the environment variable before running deploy: export {var_name}=<value>"
+                ),
+            )
+            .into()
         });
     }
 
@@ -306,9 +336,11 @@ fn resolve_value(raw: &str, ctx: &SubstitutionContext<'_>) -> Result<String> {
                         .get(&(item_type.to_owned(), item_name.to_owned()))
                         .cloned()
                         .ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "Cannot resolve $items.{item_type}.{item_name}.id: item not found in deployed workspace or source"
-                            )
+                            FabioError::with_hint(
+                                ErrorCode::InvalidInput,
+                                format!("Cannot resolve $items.{item_type}.{item_name}.id: item not found in deployed workspace or source"),
+                                "Ensure the item exists in the workspace or source directory. Available variables: $workspace.id, $workspace.name, $items.Type.Name.id, $ENV:VAR_NAME",
+                            ).into()
                         });
                 }
                 "sqlendpoint" | "sqlendpointid" | "queryserviceuri" => {
@@ -320,32 +352,40 @@ fn resolve_value(raw: &str, ctx: &SubstitutionContext<'_>) -> Result<String> {
                         .get(&extended_key)
                         .cloned()
                         .ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "Cannot resolve $items.{item_type}.{item_name}.{property}: property not available. \
-                                 Extended properties (sqlendpoint, sqlendpointid, queryserviceuri) are resolved \
-                                 from live workspace items."
-                            )
+                            FabioError::with_hint(
+                                ErrorCode::InvalidInput,
+                                format!("Cannot resolve $items.{item_type}.{item_name}.{property}: property not available"),
+                                "Extended properties (sqlendpoint, sqlendpointid, queryserviceuri) are resolved from live workspace items.",
+                            ).into()
                         });
                 }
                 _ => {
-                    bail!(
-                        "Invalid $items property: '{property}'. \
-                         Supported: id, sqlendpoint, sqlendpointid, queryserviceuri"
-                    );
+                    return Err(FabioError::with_hint(
+                        ErrorCode::InvalidInput,
+                        format!("Invalid $items property: '{property}'"),
+                        "Supported: id, sqlendpoint, sqlendpointid, queryserviceuri",
+                    )
+                    .into());
                 }
             }
         }
-        bail!(
-            "Invalid $items reference: '{raw}'. Expected format: $items.Type.Name.property \
-             (where property is: id, sqlendpoint, sqlendpointid, queryserviceuri)"
-        );
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Invalid $items reference: '{raw}'. Expected format: $items.Type.Name.property"
+            ),
+            "Supported properties: id, sqlendpoint, sqlendpointid, queryserviceuri",
+        )
+        .into());
     }
 
     // Unknown variable reference
-    bail!(
-        "Unknown dynamic variable: '{raw}'. Supported: $workspace.id, $workspace.name, \
-         $items.Type.Name.<property>, $ENV:VAR_NAME"
-    );
+    Err(FabioError::with_hint(
+        ErrorCode::InvalidInput,
+        format!("Unknown dynamic variable: '{raw}'"),
+        "Supported: $workspace.id, $workspace.name, $items.Type.Name.<property>, $ENV:VAR_NAME",
+    )
+    .into())
 }
 
 /// Get the replacement value for a specific environment from a rule.

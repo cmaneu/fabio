@@ -1,9 +1,10 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use clap::Subcommand;
 use serde_json::{Value, json};
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
 const ARM_API_VERSION: &str = "2023-11-01";
@@ -254,7 +255,10 @@ async fn suspend(
         return Ok(());
     }
 
-    let data = client.arm_post(&path, &json!({}), true).await?;
+    let data = client
+        .arm_post(&path, &json!({}), true)
+        .await
+        .map_err(|e| enrich_arm_error(e, "capacity suspend"))?;
     output::render_object(
         cli,
         &json!({"status": "suspended", "name": name, "details": data}),
@@ -283,7 +287,10 @@ async fn resume(
         return Ok(());
     }
 
-    let data = client.arm_post(&path, &json!({}), true).await?;
+    let data = client
+        .arm_post(&path, &json!({}), true)
+        .await
+        .map_err(|e| enrich_arm_error(e, "capacity resume"))?;
     output::render_object(
         cli,
         &json!({"status": "resumed", "name": name, "details": data}),
@@ -329,7 +336,10 @@ async fn create(
         return Ok(());
     }
 
-    let data = client.arm_put(&path, &body).await?;
+    let data = client
+        .arm_put(&path, &body)
+        .await
+        .map_err(|e| enrich_arm_error(e, "capacity create"))?;
     output::render_object(cli, &data, "name");
     Ok(())
 }
@@ -346,7 +356,7 @@ async fn update(
     tags: Option<&str>,
 ) -> Result<()> {
     if sku.is_none() && admin.is_none() && tags.is_none() {
-        bail!("At least one of --sku, --admin, or --tags must be provided");
+        return Err(FabioError::with_hint(ErrorCode::InvalidInput, "At least one of --sku, --admin, or --tags must be provided", "Example: fabio capacity update --subscription <SUB> --resource-group <RG> --name <NAME> --sku F4. Valid SKUs: F2, F4, F8, F16, F32, F64, F128, F256, F512, F1024, F2048").into());
     }
 
     let path = format!(
@@ -372,8 +382,13 @@ async fn update(
     }
 
     if let Some(tags_json) = tags {
-        let tags_value: Value = serde_json::from_str(tags_json)
-            .map_err(|e| anyhow::anyhow!("Invalid JSON for --tags: {e}"))?;
+        let tags_value: Value = serde_json::from_str(tags_json).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid JSON for --tags: {e}"),
+                "Provide a JSON object. Example: --tags '{\"environment\":\"production\"}'",
+            )
+        })?;
         body["tags"] = tags_value;
     }
 
@@ -381,7 +396,10 @@ async fn update(
         return Ok(());
     }
 
-    let data = client.arm_patch(&path, &body).await?;
+    let data = client
+        .arm_patch(&path, &body)
+        .await
+        .map_err(|e| enrich_arm_error(e, "capacity update"))?;
     output::render_object(cli, &data, "name");
     Ok(())
 }
@@ -406,7 +424,10 @@ async fn delete(
         return Ok(());
     }
 
-    let data = client.arm_delete(&path).await?;
+    let data = client
+        .arm_delete(&path)
+        .await
+        .map_err(|e| enrich_arm_error(e, "capacity delete"))?;
     output::render_object(
         cli,
         &json!({"status": "deleted", "name": name, "details": data}),
@@ -459,6 +480,22 @@ async fn check_name(
     let data = client.arm_post(&path, &body, false).await?;
     output::render_object(cli, &data, "nameAvailable");
     Ok(())
+}
+
+/// Enrich ARM API errors with Azure RBAC guidance.
+fn enrich_arm_error(err: anyhow::Error, operation: &str) -> anyhow::Error {
+    let Some(fabio_err) = err.downcast_ref::<FabioError>() else {
+        return err;
+    };
+    if fabio_err.code != ErrorCode::Forbidden {
+        return err;
+    }
+    let hint = format!(
+        "'{operation}' requires Azure RBAC Contributor (or Owner) role on the capacity resource. \
+         This is NOT a Fabric workspace role — it's an Azure subscription-level permission. \
+         Check access: az role assignment list --assignee <your-id> --scope /subscriptions/<sub>/resourceGroups/<rg>"
+    );
+    FabioError::with_hint(ErrorCode::Forbidden, fabio_err.message.clone(), hint).into()
 }
 
 #[cfg(test)]

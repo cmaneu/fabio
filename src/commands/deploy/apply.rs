@@ -11,7 +11,7 @@ use tokio::sync::Semaphore;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::FabioError;
+use crate::errors::{ErrorCode, FabioError};
 
 use super::changeset::{Change, ChangeAction, Changeset, DeployFailure, DeployResult};
 use super::ordering::{delete_priority, deploy_priority, topological_sort};
@@ -524,7 +524,7 @@ async fn poll_lakehouse_sql_endpoint(
 
     loop {
         if start.elapsed() > max_wait {
-            anyhow::bail!("SQL endpoint provisioning timed out after 300 seconds");
+            return Err(FabioError::with_hint(ErrorCode::Timeout, "SQL endpoint provisioning timed out after 300 seconds", "The lakehouse SQL endpoint is still provisioning. Wait and retry, or check status in the Fabric portal.").into());
         }
 
         let resp = client.get(&url).await?;
@@ -538,7 +538,7 @@ async fn poll_lakehouse_sql_endpoint(
 
         match status {
             "Success" => return Ok(()),
-            "Failed" => anyhow::bail!("SQL endpoint provisioning failed"),
+            "Failed" => return Err(FabioError::with_hint(ErrorCode::ApiError, "SQL endpoint provisioning failed", "Check capacity state and lakehouse health. Ensure capacity is active: fabio capacity list").into()),
             _ => tokio::time::sleep(poll_interval).await,
         }
     }
@@ -568,7 +568,7 @@ async fn poll_environment_publish(
                     "  environment \"{env_name}\" publish still in progress (timed out waiting)"
                 ),
             );
-            return Err(anyhow::anyhow!("Environment publish polling timed out"));
+            return Err(FabioError::with_hint(ErrorCode::Timeout, "Environment publish polling timed out", "The environment is still publishing. Check status: fabio environment show --workspace <WS> --id <ID>").into());
         }
 
         tokio::time::sleep(poll_interval).await;
@@ -598,14 +598,19 @@ async fn poll_environment_publish(
                     cli.quiet,
                     &format!("  environment \"{env_name}\" publish failed"),
                 );
-                return Err(anyhow::anyhow!("Environment publish failed"));
+                return Err(FabioError::with_hint(ErrorCode::ApiError, "Environment publish failed", "Check staging settings: fabio environment get-staging-spark-settings --workspace <WS> --id <ID>").into());
             }
             "Cancelled" => {
                 emit_progress(
                     cli.quiet,
                     &format!("  environment \"{env_name}\" publish was cancelled"),
                 );
-                return Err(anyhow::anyhow!("Environment publish cancelled"));
+                return Err(FabioError::with_hint(
+                    ErrorCode::ApiError,
+                    "Environment publish was cancelled",
+                    "Retry: fabio environment publish --workspace <WS> --id <ID>",
+                )
+                .into());
             }
             _ => {} // Still in progress, continue polling
         }
@@ -983,7 +988,7 @@ async fn deploy_change(
                     }
                 }
             }
-            Err(last_err.unwrap_or_else(|| anyhow::anyhow!("Create failed after retries")))
+            Err(last_err.unwrap_or_else(|| FabioError::with_hint(ErrorCode::Conflict, "Create failed after retries — item name may still be reserved from a recent deletion", "Wait 5 minutes for the name to be released, then retry. Or use a different name.").into()))
         }
         ChangeAction::Update => {
             let deployed_id = change.deployed_id.as_deref().ok_or_else(|| {

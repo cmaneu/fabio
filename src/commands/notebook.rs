@@ -647,11 +647,12 @@ async fn run(
     loop {
         if start.elapsed() > max_wait {
             let _ = JobLedger::update(&job_id, "timeout", None);
-            return Err(FabioError::new(
+            return Err(FabioError::with_hint(
                 ErrorCode::Timeout,
                 format!(
                     "Notebook run timed out after {timeout_secs}s. Job ID: {job_id}. Use 'notebook status' to check progress."
                 ),
+                format!("Increase --timeout (current: {timeout_secs}s) or check status with: fabio notebook status --workspace <WS> --id {id} --job-id {job_id}"),
             )
             .into());
         }
@@ -687,13 +688,16 @@ async fn run(
                     .and_then(|m| m.as_str())
                     .unwrap_or("Notebook run failed");
                 let _ = JobLedger::update(&job_id, "failed", Some(message));
-                return Err(FabioError::new(ErrorCode::ApiError, message).into());
+                return Err(FabioError::with_hint(ErrorCode::ApiError, message, "Check Spark logs in the Fabric portal for details. Common causes: out-of-memory, missing dependencies, or code errors.").into());
             }
             "Cancelled" => {
                 let _ = JobLedger::update(&job_id, "cancelled", None);
-                return Err(
-                    FabioError::new(ErrorCode::ApiError, "Notebook run was cancelled").into(),
-                );
+                return Err(FabioError::with_hint(
+                    ErrorCode::ApiError,
+                    "Notebook run was cancelled",
+                    "Re-run with: fabio notebook run --workspace <WS> --id <ID> --wait",
+                )
+                .into());
             }
             // NotStarted, InProgress, Deduped - keep polling
             _ => {}

@@ -18,6 +18,7 @@ use serde_json::json;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
 use self::changeset::ChangeAction;
@@ -42,7 +43,7 @@ fn resolve_config_and_cli(
 ) -> Result<ResolvedCliConfig> {
     if let Some(cfg_path) = config_path {
         let env_name =
-            env.ok_or_else(|| anyhow::anyhow!("--env is required when --config is specified"))?;
+            env.ok_or_else(|| FabioError::with_hint(ErrorCode::InvalidInput, "--env is required when --config is specified", "Add --env <environment> to select which config environment. Example: fabio deploy plan --config config.yaml --env dev"))?;
         let cfg = config::parse_config(cfg_path)?;
         let resolved = config::resolve_config(&cfg, cfg_path, env_name)?;
 
@@ -333,9 +334,13 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
             let src = resolved
                 .source
                 .as_deref()
-                .ok_or_else(|| anyhow::anyhow!("--source is required (or set in config file)"))?;
+                .ok_or_else(|| FabioError::with_hint(ErrorCode::InvalidInput, "--source is required (or set in config file)", "Provide --source <DIR> pointing to exported item definitions. Create one: fabio deploy export --workspace <WS> --dir ./export"))?;
             let ws = resolved.workspace.as_deref().ok_or_else(|| {
-                anyhow::anyhow!("--workspace is required (or set in config file environments)")
+                FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "--workspace is required (or set in config file environments)",
+                    "Provide --workspace <ID|NAME>. List workspaces: fabio workspace list",
+                )
             })?;
 
             execute_plan(
@@ -484,7 +489,7 @@ async fn execute_plan(
 ) -> Result<()> {
     // Validate parameter flags
     if parameters.is_some() && env.is_none() {
-        bail!("--env is required when --parameters is specified");
+        return Err(FabioError::with_hint(ErrorCode::InvalidInput, "--env is required when --parameters is specified", "Both --parameters and --env must be provided together. Example: --parameters params.json --env dev").into());
     }
 
     // Resolve workspace
@@ -494,10 +499,7 @@ async fn execute_plan(
     let mut source_workspace = platform::parse_source_directory(source)?;
 
     if source_workspace.items.is_empty() {
-        bail!(
-            "No items found in source directory: {}. Expected directories with .platform files.",
-            source.display()
-        );
+        return Err(FabioError::with_hint(ErrorCode::InvalidInput, format!("No items found in source directory: {}", source.display()), "Ensure the directory contains item folders with .platform files. Export from a workspace: fabio deploy export --workspace <WS> --dir <DIR>").into());
     }
 
     // Apply workspace ID auto-replacement (00000000-... → target workspace)
@@ -640,7 +642,7 @@ async fn execute_apply(
 ) -> Result<()> {
     // Validate parameter flags
     if parameters.is_some() && env.is_none() {
-        bail!("--env is required when --parameters is specified");
+        return Err(FabioError::with_hint(ErrorCode::InvalidInput, "--env is required when --parameters is specified", "Both --parameters and --env must be provided together. Example: --parameters params.json --env dev").into());
     }
 
     // Determine source and workspace from either direct args or plan file
@@ -652,19 +654,19 @@ async fn execute_apply(
         let ws_id = plan
             .get("workspace_id")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Invalid plan file: missing workspace_id"))?
+            .ok_or_else(|| FabioError::with_hint(ErrorCode::InvalidInput, "Invalid plan file: missing workspace_id", "The plan file is malformed. Regenerate: fabio deploy plan --source <DIR> --workspace <WS> --out plan.json"))?
             .to_owned();
 
         let cs: changeset::Changeset = serde_json::from_value(
             plan.get("changeset")
-                .ok_or_else(|| anyhow::anyhow!("Invalid plan file: missing changeset"))?
+                .ok_or_else(|| FabioError::with_hint(ErrorCode::InvalidInput, "Invalid plan file: missing changeset", "The plan file is malformed. Regenerate: fabio deploy plan --source <DIR> --workspace <WS> --out plan.json"))?
                 .clone(),
         )?;
 
         let source_path = plan
             .get("source_path")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Invalid plan file: missing source_path"))?;
+            .ok_or_else(|| FabioError::with_hint(ErrorCode::InvalidInput, "Invalid plan file: missing source_path", "The plan file is malformed. Regenerate: fabio deploy plan --source <DIR> --workspace <WS> --out plan.json"))?;
 
         let src = platform::parse_source_directory(std::path::Path::new(source_path))?;
 
@@ -688,15 +690,20 @@ async fn execute_apply(
     } else {
         // Build changeset from source + workspace
         let src_path =
-            source.ok_or_else(|| anyhow::anyhow!("--source is required when not using --plan"))?;
-        let ws = workspace
-            .ok_or_else(|| anyhow::anyhow!("--workspace is required when not using --plan"))?;
+            source.ok_or_else(|| FabioError::with_hint(ErrorCode::InvalidInput, "--source is required when not using --plan", "Provide --source <DIR> or use --plan <FILE> from a previous 'fabio deploy plan --out' run."))?;
+        let ws = workspace.ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "--workspace is required when not using --plan",
+                "Provide --workspace <ID|NAME>. List workspaces: fabio workspace list",
+            )
+        })?;
 
         let workspace_id = resolve_workspace(client, ws).await?;
         let mut source_ws = platform::parse_source_directory(src_path)?;
 
         if source_ws.items.is_empty() {
-            bail!("No items found in source directory: {}", src_path.display());
+            return Err(FabioError::with_hint(ErrorCode::InvalidInput, format!("No items found in source directory: {}", src_path.display()), "Ensure the directory contains item folders with .platform files. Export from a workspace: fabio deploy export --workspace <WS> --dir <DIR>").into());
         }
 
         // Apply workspace ID auto-replacement
@@ -952,13 +959,13 @@ fn execute_validate(
 
     // --- 1. Parse source directory ---
     if !source.exists() {
-        bail!("Source directory does not exist: {}", source.display());
+        return Err(FabioError::with_hint(ErrorCode::InvalidInput, format!("Source directory does not exist: {}", source.display()), "Check the path. Create a source directory: fabio deploy export --workspace <WS> --dir <DIR>").into());
     }
 
     let source_ws = match parse_source_directory(source) {
         Ok(ws) => ws,
         Err(e) => {
-            bail!("Failed to parse source directory: {e}");
+            return Err(FabioError::with_hint(ErrorCode::InvalidInput, format!("Failed to parse source directory: {e}"), "Ensure item directories have valid .platform files. Validate: fabio deploy validate --source <DIR>").into());
         }
     };
 

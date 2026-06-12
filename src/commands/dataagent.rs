@@ -369,9 +369,10 @@ async fn query(
     } else {
         let mut buf = String::new();
         io::stdin().read_to_string(&mut buf).map_err(|e| {
-            FabioError::new(
-                ErrorCode::ApiError,
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
                 format!("Failed to read prompt from stdin: {e}"),
+                "Use --prompt to provide the question directly, e.g.: fabio data-agent query --workspace <WS> --id <ID> --prompt \"What are the top 10 products?\"",
             )
         })?;
         if buf.trim().is_empty() {
@@ -474,7 +475,7 @@ async fn run_assistant_query(
         .timeout(Duration::from_secs(360))
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        .map_err(|e| FabioError::with_hint(ErrorCode::NetworkError, e.to_string(), "Verify the data agent is published. Check status: fabio data-agent show --workspace <WS> --id <ID>. Publish if needed: fabio data-agent publish --workspace <WS> --id <ID>"))?;
 
     let auth_header = token;
 
@@ -529,7 +530,7 @@ async fn create_assistant(
         .json(&serde_json::json!({"model": "not used"}))
         .send()
         .await
-        .map_err(|e| FabioError::new(ErrorCode::NetworkError, format!("Create assistant: {e}")))?;
+        .map_err(|e| FabioError::with_hint(ErrorCode::NetworkError, format!("Create assistant: {e}"), "Verify the data agent is published. Check status: fabio data-agent show --workspace <WS> --id <ID>"))?;
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
@@ -544,9 +545,10 @@ async fn create_assistant(
         .into());
     }
     let body: Value = resp.json().await.map_err(|e| {
-        FabioError::new(
+        FabioError::with_hint(
             ErrorCode::ApiError,
             format!("Parse assistant response: {e}"),
+            "Unexpected response format. This may indicate an API version mismatch.",
         )
     })?;
     Ok(body
@@ -569,7 +571,7 @@ async fn create_thread(
         .json(&serde_json::json!({}))
         .send()
         .await
-        .map_err(|e| FabioError::new(ErrorCode::NetworkError, format!("Create thread: {e}")))?;
+        .map_err(|e| FabioError::with_hint(ErrorCode::NetworkError, format!("Create thread: {e}"), "Verify the data agent is published. Check status: fabio data-agent show --workspace <WS> --id <ID>"))?;
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
@@ -583,10 +585,13 @@ async fn create_thread(
         )
         .into());
     }
-    let body: Value = resp
-        .json()
-        .await
-        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("Parse thread response: {e}")))?;
+    let body: Value = resp.json().await.map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::ApiError,
+            format!("Parse thread response: {e}"),
+            "Unexpected response format. This may indicate an API version mismatch.",
+        )
+    })?;
     Ok(body
         .get("id")
         .and_then(Value::as_str)
@@ -614,7 +619,7 @@ async fn post_message(
         }))
         .send()
         .await
-        .map_err(|e| FabioError::new(ErrorCode::NetworkError, format!("Post message: {e}")))?;
+        .map_err(|e| FabioError::with_hint(ErrorCode::NetworkError, format!("Post message: {e}"), "Verify the data agent is published. Check status: fabio data-agent show --workspace <WS> --id <ID>"))?;
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
@@ -650,7 +655,7 @@ async fn create_run(
         }))
         .send()
         .await
-        .map_err(|e| FabioError::new(ErrorCode::NetworkError, format!("Create run: {e}")))?;
+        .map_err(|e| FabioError::with_hint(ErrorCode::NetworkError, format!("Create run: {e}"), "Verify the data agent is published. Check status: fabio data-agent show --workspace <WS> --id <ID>"))?;
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
@@ -664,10 +669,13 @@ async fn create_run(
         )
         .into());
     }
-    let body: Value = resp
-        .json()
-        .await
-        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("Parse run response: {e}")))?;
+    let body: Value = resp.json().await.map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::ApiError,
+            format!("Parse run response: {e}"),
+            "Unexpected response format. This may indicate an API version mismatch.",
+        )
+    })?;
     Ok(body
         .get("id")
         .and_then(Value::as_str)
@@ -709,7 +717,7 @@ async fn poll_run_completion(
             .header("Authorization", auth_header)
             .send()
             .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, format!("Poll run: {e}")))?;
+            .map_err(|e| FabioError::with_hint(ErrorCode::NetworkError, format!("Poll run: {e}"), "Verify the data agent is published. Check status: fabio data-agent show --workspace <WS> --id <ID>"))?;
 
         if !poll_resp.status().is_success() {
             let status = poll_resp.status().as_u16();
@@ -725,7 +733,11 @@ async fn poll_run_completion(
         }
 
         let run_state: Value = poll_resp.json().await.map_err(|e| {
-            FabioError::new(ErrorCode::ApiError, format!("Parse run poll response: {e}"))
+            FabioError::with_hint(
+                ErrorCode::ApiError,
+                format!("Parse run poll response: {e}"),
+                "Unexpected response format. This may indicate an API version mismatch.",
+            )
         })?;
         let status = run_state
             .get("status")
@@ -783,7 +795,7 @@ async fn retrieve_response(
         .header("Authorization", auth_header)
         .send()
         .await
-        .map_err(|e| FabioError::new(ErrorCode::NetworkError, format!("Retrieve messages: {e}")))?;
+        .map_err(|e| FabioError::with_hint(ErrorCode::NetworkError, format!("Retrieve messages: {e}"), "Verify the data agent is published. Check status: fabio data-agent show --workspace <WS> --id <ID>"))?;
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
@@ -799,7 +811,11 @@ async fn retrieve_response(
     }
 
     let messages: Value = resp.json().await.map_err(|e| {
-        FabioError::new(ErrorCode::ApiError, format!("Parse messages response: {e}"))
+        FabioError::with_hint(
+            ErrorCode::ApiError,
+            format!("Parse messages response: {e}"),
+            "Unexpected response format. This may indicate an API version mismatch.",
+        )
     })?;
 
     // Extract the assistant's response (last message with role=assistant)
@@ -845,7 +861,7 @@ async fn retrieve_run_steps(
         .send()
         .await
         .map_err(|e| {
-            FabioError::new(ErrorCode::NetworkError, format!("Retrieve run steps: {e}"))
+            FabioError::with_hint(ErrorCode::NetworkError, format!("Retrieve run steps: {e}"), "Verify the data agent is published. Check status: fabio data-agent show --workspace <WS> --id <ID>")
         })?;
 
     if !resp.status().is_success() {
@@ -854,9 +870,10 @@ async fn retrieve_run_steps(
     }
 
     let body: Value = resp.json().await.map_err(|e| {
-        FabioError::new(
+        FabioError::with_hint(
             ErrorCode::ApiError,
             format!("Parse run steps response: {e}"),
+            "Unexpected response format. This may indicate an API version mismatch.",
         )
     })?;
 

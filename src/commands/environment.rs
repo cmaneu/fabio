@@ -818,8 +818,13 @@ async fn import_staging_libraries(
     content: Option<&str>,
 ) -> Result<()> {
     let body_str = match (file, content) {
-        (Some(path), _) => std::fs::read_to_string(path)
-            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?,
+        (Some(path), _) => std::fs::read_to_string(path).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Failed to read file '{path}': {e}"),
+                "Verify the file path is correct and the file is readable.",
+            )
+        })?,
         (_, Some(c)) => c.to_string(),
         (None, None) => {
             return Err(FabioError::with_hint(
@@ -830,8 +835,13 @@ async fn import_staging_libraries(
         }
     };
 
-    let body: Value =
-        serde_json::from_str(&body_str).map_err(|e| anyhow::anyhow!("Invalid JSON: {e}"))?;
+    let body: Value = serde_json::from_str(&body_str).map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid JSON: {e}"),
+            "Provide valid JSON content via --file or --content.",
+        )
+    })?;
 
     if output::dry_run_guard(
         cli,
@@ -917,8 +927,13 @@ async fn update_staging_spark_compute(
     content: Option<&str>,
 ) -> Result<()> {
     let body_str = match (file, content) {
-        (Some(path), _) => std::fs::read_to_string(path)
-            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?,
+        (Some(path), _) => std::fs::read_to_string(path).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Failed to read file '{path}': {e}"),
+                "Verify the file path is correct and the file is readable.",
+            )
+        })?,
         (_, Some(c)) => c.to_string(),
         (None, None) => {
             return Err(FabioError::with_hint(
@@ -929,8 +944,13 @@ async fn update_staging_spark_compute(
         }
     };
 
-    let body: Value =
-        serde_json::from_str(&body_str).map_err(|e| anyhow::anyhow!("Invalid JSON: {e}"))?;
+    let body: Value = serde_json::from_str(&body_str).map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid JSON: {e}"),
+            "Provide valid JSON content via --file or --content.",
+        )
+    })?;
 
     if output::dry_run_guard(
         cli,

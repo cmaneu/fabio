@@ -1255,9 +1255,10 @@ async fn query_lakehouse(
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
-            FabioError::new(
+            FabioError::with_hint(
                 ErrorCode::NotFound,
                 "Lakehouse SQL endpoint not available. The lakehouse may not have a SQL endpoint provisioned yet.",
+                "Wait a few minutes for provisioning to complete, then retry. Check available tables with: fabio lakehouse list-tables --workspace <WS> --id <ID>",
             )
         })?;
 
@@ -2344,12 +2345,13 @@ fn render_batch_result(
             "status": "partial_failure"
         });
         output::render_object(cli, &obj, "status");
-        Err(crate::errors::FabioError::new(
+        Err(crate::errors::FabioError::with_hint(
             crate::errors::ErrorCode::ApiError,
             format!(
                 "Operation partially failed: {}/{} files {status_verb}",
                 summary.succeeded, summary.total
             ),
+            "Retry the operation to process remaining files. Failed files may be locked or have permission issues.",
         )
         .into())
     }
@@ -2919,9 +2921,10 @@ async fn sync_files(
     output::render_object(cli, &obj, "status");
 
     if total_failed > 0 {
-        return Err(crate::errors::FabioError::new(
+        return Err(crate::errors::FabioError::with_hint(
             crate::errors::ErrorCode::ApiError,
             format!("Sync partially failed: {total_failed} operations failed"),
+            "Retry the sync command to process remaining files. Use --verbose for detailed failure information.",
         )
         .into());
     }
@@ -3920,12 +3923,13 @@ async fn copy_single_table(
             });
             output::render_object(cli, &obj, "status");
         }
-        Err(crate::errors::FabioError::new(
+        Err(crate::errors::FabioError::with_hint(
             crate::errors::ErrorCode::ApiError,
             format!(
                 "Table copy partially failed: {}/{} files copied",
                 summary.succeeded, summary.total
             ),
+            "Retry the copy operation to process remaining files. Some files may be temporarily locked by active Spark sessions.",
         )
         .into())
     }
@@ -4057,12 +4061,13 @@ async fn move_table(
                     "status": "partial_failure"
                 });
                 output::render_object(cli, &obj, "status");
-                return Err(crate::errors::FabioError::new(
+                return Err(crate::errors::FabioError::with_hint(
                     crate::errors::ErrorCode::ApiError,
                     format!(
                         "Move aborted: copy phase partially failed ({}/{} files copied). Source tables not deleted.",
                         summary.succeeded, summary.total
                     ),
+                    "Retry the move operation. The source table is intact (no data was deleted).",
                 )
                 .into());
             }
@@ -4637,7 +4642,7 @@ async fn table_schema(
         .await
         .map_err(|e| {
             let msg = format!("Failed to read Delta log for table '{table}': {e}");
-            FabioError::new(ErrorCode::NotFound, msg)
+            FabioError::with_hint(ErrorCode::NotFound, msg, format!("Verify the table exists with: fabio lakehouse list-tables --workspace {workspace} --id {id}"))
         })?;
 
     // Filter to .json commit files under {item_id}/Tables/{table}/_delta_log/
@@ -4660,9 +4665,10 @@ async fn table_schema(
     json_files.sort_unstable_by(|a, b| b.cmp(a));
 
     if json_files.is_empty() {
-        return Err(FabioError::new(
+        return Err(FabioError::with_hint(
             ErrorCode::NotFound,
             format!("No schema metadata found in Delta log for table '{table}'"),
+            format!("The table may have no commits yet or uses checkpoint-only format. Verify the table exists with: fabio lakehouse list-tables --workspace {workspace} --id {id}"),
         )
         .into());
     }
@@ -4702,9 +4708,10 @@ async fn table_schema(
                 if let Some(schema_str) = metadata.get("schemaString").and_then(Value::as_str) {
                     // Parse the schema string (which is itself JSON)
                     let schema: Value = serde_json::from_str(schema_str).map_err(|e| {
-                        FabioError::new(
+                        FabioError::with_hint(
                             ErrorCode::ApiError,
                             format!("Failed to parse schema from Delta log: {e}"),
+                            "The Delta log schema metadata is malformed. Try querying the table directly with: fabio lakehouse query",
                         )
                     })?;
 
@@ -4727,9 +4734,10 @@ async fn table_schema(
         }
     }
 
-    Err(FabioError::new(
+    Err(FabioError::with_hint(
         ErrorCode::NotFound,
         format!("No schema metadata found in Delta log for table '{table}'"),
+        "Schema metadata may only exist in Parquet checkpoint files (tables with 10+ commits). Try querying the table directly with: fabio lakehouse query",
     )
     .into())
 }

@@ -253,7 +253,8 @@ pub fn dry_run_guard(cli: &Cli, operation: &str, details: &Value) -> bool {
     let obj = serde_json::json!({
         "dry_run": true,
         "would_execute": operation,
-        "details": details
+        "details": details,
+        "hint": "Remove --dry-run to execute this operation."
     });
     render_object(cli, &obj, "would_execute");
     true

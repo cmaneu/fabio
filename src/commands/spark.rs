@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::enrich_forbidden;
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -365,8 +365,13 @@ async fn update_settings(
     workspace: &str,
     settings: &str,
 ) -> Result<()> {
-    let body: Value = serde_json::from_str(settings)
-        .map_err(|e| anyhow::anyhow!("Invalid --settings JSON: {e}"))?;
+    let body: Value = serde_json::from_str(settings).map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid --settings JSON: {e}"),
+            "Provide valid JSON, e.g.: --settings '{\"automaticLog\":{\"enabled\":true}}'",
+        )
+    })?;
 
     if output::dry_run_guard(cli, "spark update-settings", &body) {
         return Ok(());
@@ -465,8 +470,13 @@ async fn update_pool(
     pool_id: &str,
     config: &str,
 ) -> Result<()> {
-    let body: Value =
-        serde_json::from_str(config).map_err(|e| anyhow::anyhow!("Invalid --config JSON: {e}"))?;
+    let body: Value = serde_json::from_str(config).map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid --config JSON: {e}"),
+            "Provide valid JSON pool configuration via --config.",
+        )
+    })?;
 
     if output::dry_run_guard(cli, "spark update-pool", &body) {
         return Ok(());
