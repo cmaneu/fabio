@@ -395,7 +395,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **Graph Model**: list/show/create/update/delete/get-definition/update-definition, refresh-graph/execute-query/get-queryable-graph-type (portal initialization required for refresh)
 - **Graph Query Set**: list/show/create/update/delete/get-definition/update-definition (definition is read-only export)
 - **Catalog**: search (tenant-level full-text search across workspaces)
-- **Context**: extract (workspace graph extraction — builds a relationship graph of items with nodes/edges/summary for agent memory; three-layer discovery: properties, definitions via `--deep`, connections via `--include-connections`; parallel execution; supports multi-workspace, `--item-types` filter, `--concurrency`)
+- **Context**: extract (workspace graph extraction — builds a relationship graph of items with nodes/edges/summary for agent memory; three-layer discovery: properties, definitions via `--deep`, connections via `--include-connections`; parallel execution; supports multi-workspace, `--item-types` filter, `--concurrency`; incremental building via `--output-file` + `--merge`; fast inventory via `--no-properties`)
 - **Dashboard**: list (read-only, portal-created)
 - **Datamart**: list (read-only, portal-created)
 - **Paginated Report**: list/update (read-only creation via portal/SSRS)
@@ -565,7 +565,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/graph_model.rs`: CRUD + definition + refresh-graph/execute-query/get-queryable-graph-type
 - `src/commands/graph_query_set.rs`: CRUD + get-definition/update-definition (read-only export)
 - `src/commands/catalog.rs`: search (tenant-level)
-- `src/commands/context.rs`: extract (workspace graph extraction — nodes/edges/summary, three-layer relationship discovery, parallel execution)
+- `src/commands/context.rs`: extract (workspace graph extraction — nodes/edges/summary, three-layer relationship discovery, parallel execution, incremental building)
 - `src/commands/dashboard.rs`: list (read-only)
 - `src/commands/datamart.rs`: list (read-only)
 - `src/commands/paginated_report.rs`: list/update (read-only creation)
@@ -634,7 +634,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `tests/e2e_graph_model.rs`: Graph model CRUD + refresh + query tests
 - `tests/e2e_graph_query_set.rs`: Graph query set tests
 - `tests/e2e_catalog.rs`: Catalog search tests
-- `tests/e2e_context.rs`: Context extract tests (6 offline dry-run + 5 live graph extraction)
+- `tests/e2e_context.rs`: Context extract tests (9 offline dry-run + 5 live graph extraction)
 - `tests/e2e_dashboard.rs`: Dashboard list tests
 - `tests/e2e_datamart.rs`: Datamart list tests
 - `tests/e2e_paginated_report.rs`: Paginated report tests
@@ -2638,4 +2638,9 @@ Git commands are run with CWD set to source directory. Returns `None` entirely i
 - **Parallel workspace listing is safe**: Concurrent `GET /workspaces/{ws}/items` calls (one per workspace) do not trigger rate limiting on typical tenants (tested with 20 concurrent calls).
 - **LRO polling is the deep mode bottleneck**: Each `getDefinition` LRO takes 2-6 seconds (POST → 202 → poll at 2s intervals). With 8 concurrent slots and 123 items: ~4 minutes total. Wall-clock time is dominated by server-side processing, not client overhead.
 - **Performance benchmarks (20 workspaces, 154 items)**: Shallow mode: 7.7s. Deep + connections: 4 min 18s. Output size: 55-57 KB. Graph: 154 nodes, 88 edges, 10 relationship types.
+- **`--no-properties` skips type-specific GETs**: Only calls `GET /workspaces/{ws}/items` (listing) — no per-item detail fetching. Nodes have `id`, `type`, `name`, `workspaceId`, `workspaceName` but no `properties`. Edges are limited to what can be discovered without properties. Useful for fast initial orientation (~3s for 20 workspaces).
+- **`--output-file` writes JSON envelope to disk**: Writes `{"data": {...}}` envelope (pretty-printed) to the specified path. Reports `{"status":"written","file":"...","nodes":N,"edges":N,"workspaces":N}` to stdout. Parent directories must exist.
+- **`--merge` enables incremental graph building**: Loads an existing graph JSON file, extracts the new workspace(s), and merges results. Merge semantics: nodes are deduped by ID (new overwrites old), edges are unioned (exact match dedup), workspaces are deduped by ID (new overwrites old). Summary is recomputed from the merged data. Supports both `{"data":{...}}` envelope format and bare graph object.
+- **Incremental workflow pattern**: (1) `--no-properties --output-file g.json` for fast inventory, (2) `--deep --merge g.json --output-file g.json` to deepen a specific workspace, (3) repeat step 2 for additional workspaces. Re-extracting the same workspace with `--merge` updates it in place (idempotent).
+- **Merge is idempotent**: Extracting the same workspace twice with `--merge` produces the same graph as extracting it once. New nodes overwrite old nodes with the same ID, so re-extraction captures any name/description/property changes.
 
