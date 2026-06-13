@@ -4,7 +4,7 @@
 //! by inspecting item properties, definitions, and connections. Designed to
 //! provide structured context for coding agents and external applications.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
@@ -629,144 +629,159 @@ fn scan_value_for_ids(
 
 // ── Deep mode: definition scanning ──────────────────────────────────────────
 
-/// Item types known to NOT support `getDefinition` — skip to avoid wasted LRO calls.
-fn supports_definition(item_type: &str) -> bool {
-    !matches!(
-        item_type,
-        "SQLEndpoint" | "Dashboard" | "Datamart" | "PaginatedReport" | "MLModel" | "MLExperiment"
-    )
-}
-
 async fn fetch_definitions_and_scan(
     client: &FabricClient,
     nodes: &[GraphNode],
     known_ids: &HashSet<String>,
     known_workspace_ids: &HashSet<String>,
-    semaphore: &Arc<Semaphore>,
+    _semaphore: &Arc<Semaphore>,
 ) -> HashSet<GraphEdge> {
     let uuid_re =
         Regex::new(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
             .expect("valid regex");
 
-    let mut edges: HashSet<GraphEdge> = HashSet::new();
-    let mut join_set = JoinSet::new();
-
-    // All IDs we consider "interesting" references (items + workspaces)
     let all_known: HashSet<String> = known_ids.union(known_workspace_ids).cloned().collect();
 
-    let scannable_count = nodes
-        .iter()
-        .filter(|n| supports_definition(&n.item_type))
-        .count();
+    // Fetch all definitions via bulk API (one LRO per workspace)
+    let item_parts = bulk_fetch_definitions(client, nodes).await;
+
     verbose::trace_category(
         "context",
-        &format!(
-            "scanning {scannable_count}/{} items (skipping types without definitions)",
-            nodes.len()
-        ),
+        &format!("scanning definitions for {} items", item_parts.len()),
     );
 
-    for (i, node) in nodes.iter().enumerate() {
-        // Skip items that don't support getDefinition
-        if !supports_definition(&node.item_type) {
+    // Scan each item's parts for GUID references
+    let mut edges: HashSet<GraphEdge> = HashSet::new();
+    for node in nodes {
+        let Some(parts) = item_parts.get(&node.id) else {
             continue;
-        }
-
-        let client = client.clone();
-        let sem = semaphore.clone();
-        let ws_id = node.workspace_id.clone();
-        let item_id = node.id.clone();
-        let uuid_re = uuid_re.clone();
-        let all_known = all_known.clone();
-        let known_items = known_ids.clone();
-        let source_id = node.id.clone();
-
-        join_set.spawn(async move {
-            let _permit = sem.acquire().await.unwrap_or_else(|_| unreachable!());
-            let discovered = scan_item_definition(
-                &client,
-                &ws_id,
-                &item_id,
-                &source_id,
+        };
+        for (path, payload) in parts {
+            if path == ".platform" {
+                continue;
+            }
+            let Ok(decoded) = BASE64_STANDARD.decode(payload) else {
+                continue;
+            };
+            let Ok(content) = String::from_utf8(decoded) else {
+                continue;
+            };
+            let mut discovered: HashSet<GraphEdge> = HashSet::new();
+            scan_content_for_refs(
+                &content,
+                path,
+                &node.id,
                 &uuid_re,
                 &all_known,
-                &known_items,
-            )
-            .await;
-            (i, discovered)
-        });
-    }
-
-    while let Some(Ok((_index, discovered))) = join_set.join_next().await {
-        edges.extend(discovered);
+                known_ids,
+                &mut discovered,
+            );
+            edges.extend(discovered);
+        }
     }
 
     edges
 }
 
-/// Scan a single item's definition for GUID references to known items.
-async fn scan_item_definition(
+/// Fetch definitions for all items using bulk export (one LRO per workspace).
+async fn bulk_fetch_definitions(
     client: &FabricClient,
-    ws_id: &str,
-    item_id: &str,
-    source_id: &str,
-    uuid_re: &Regex,
-    all_known: &HashSet<String>,
-    known_items: &HashSet<String>,
-) -> HashSet<GraphEdge> {
-    let mut discovered: HashSet<GraphEdge> = HashSet::new();
+    nodes: &[GraphNode],
+) -> HashMap<String, Vec<(String, String)>> {
+    let mut ws_ids: Vec<String> = nodes.iter().map(|n| n.workspace_id.clone()).collect();
+    ws_ids.sort();
+    ws_ids.dedup();
 
-    let Ok(def_data) = client
-        .post(
-            &format!("/workspaces/{ws_id}/items/{item_id}/getDefinition"),
-            &serde_json::json!({}),
-            true,
-        )
-        .await
-    else {
-        return discovered;
+    verbose::trace_category(
+        "context",
+        &format!(
+            "bulk-exporting definitions from {} workspace(s) (single LRO each)",
+            ws_ids.len()
+        ),
+    );
+
+    let mut join_set = JoinSet::new();
+    for ws_id in ws_ids {
+        let client = client.clone();
+        join_set.spawn(async move {
+            let result = client
+                .post(
+                    &format!("/workspaces/{ws_id}/items/bulkExportDefinitions?beta=True"),
+                    &serde_json::json!({"mode": "All"}),
+                    true,
+                )
+                .await;
+            (ws_id, result)
+        });
+    }
+
+    let mut item_parts: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    while let Some(Ok((ws_id, result))) = join_set.join_next().await {
+        let Ok(data) = result else {
+            verbose::trace_category(
+                "context",
+                &format!("bulk export failed for workspace {ws_id}"),
+            );
+            continue;
+        };
+        parse_bulk_export_response(&data, &mut item_parts);
+    }
+
+    item_parts
+}
+
+/// Parse a bulk export response and populate the `item_parts` map.
+fn parse_bulk_export_response(
+    data: &Value,
+    item_parts: &mut HashMap<String, Vec<(String, String)>>,
+) {
+    let index = data.get("itemDefinitionsIndex").and_then(Value::as_array);
+    let parts = data.get("definitionParts").and_then(Value::as_array);
+
+    let (Some(index), Some(parts)) = (index, parts) else {
+        return;
     };
 
-    let parts = def_data
-        .get("definition")
-        .and_then(|d| d.get("parts"))
-        .and_then(Value::as_array)
-        .or_else(|| def_data.get("parts").and_then(Value::as_array));
+    // Build rootPath → item_id mapping
+    let mut root_to_id: Vec<(String, String)> = Vec::new();
+    for entry in index {
+        let id = entry.get("id").and_then(Value::as_str).unwrap_or_default();
+        let root = entry
+            .get("rootPath")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if !id.is_empty() && !root.is_empty() {
+            root_to_id.push((root.to_string(), id.to_string()));
+        }
+    }
+    root_to_id.sort_by_key(|entry| std::cmp::Reverse(entry.0.len()));
 
-    let Some(parts) = parts else {
-        return discovered;
-    };
-
+    // Assign each part to an item by matching its path prefix
     for part in parts {
         let path = part.get("path").and_then(Value::as_str).unwrap_or_default();
-        if path == ".platform" {
-            continue;
-        }
-
         let payload = part
             .get("payload")
             .and_then(Value::as_str)
             .unwrap_or_default();
 
-        let Ok(decoded) = BASE64_STANDARD.decode(payload) else {
-            continue;
-        };
-        let Ok(content) = String::from_utf8(decoded) else {
-            continue;
-        };
+        let matched = root_to_id
+            .iter()
+            .find(|(root, _)| path.starts_with(root.as_str()))
+            .map(|(root, id)| {
+                let rel_path = path
+                    .strip_prefix(root.as_str())
+                    .unwrap_or(path)
+                    .trim_start_matches('/');
+                (id.clone(), rel_path.to_string())
+            });
 
-        scan_content_for_refs(
-            &content,
-            path,
-            source_id,
-            uuid_re,
-            all_known,
-            known_items,
-            &mut discovered,
-        );
+        if let Some((id, rel_path)) = matched {
+            item_parts
+                .entry(id)
+                .or_default()
+                .push((rel_path, payload.to_string()));
+        }
     }
-
-    discovered
 }
 
 /// Scan decoded content for UUID references to known items.
