@@ -973,4 +973,16 @@ fabio context extract --workspace $WS1 --deep --merge graph.json --output-file g
 # Pipe to jq for graph analysis
 fabio context extract --workspace $WS --deep | jq '.data.summary'
 fabio context extract --workspace $WS --deep | jq '.data.edges[] | select(.relationship == "default_lakehouse")'
+
+# ── JSON-LD output (RDF-compatible) ──
+
+# Export as JSON-LD for graph databases and SPARQL endpoints
+fabio context extract --workspace $WS --deep --format jsonld
+
+# Save JSON-LD to file for import into Neptune/Stardog/Jena
+fabio context extract --workspace $WS --deep --format jsonld --output-file context.jsonld
+
+# JSON-LD output has @context vocabulary + @graph with typed resources
+# Each item becomes: {"@id": "urn:fabric:item:<uuid>", "@type": "fabric:Notebook", ...}
+# Edges are inlined as typed properties: {"fabric:defaultLakehouse": {"@id": "urn:fabric:item:<uuid>"}}
 ```

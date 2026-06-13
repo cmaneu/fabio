@@ -193,6 +193,25 @@ fn context_extract_dry_run_merge() {
     );
 }
 
+#[test]
+fn context_extract_dry_run_format_jsonld() {
+    let assert = fabio()
+        .args([
+            "context",
+            "extract",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--format",
+            "jsonld",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("missing data");
+    assert_eq!(data["dry_run"], true);
+}
+
 // ── Live tenant tests ───────────────────────────────────────────────────────
 
 #[test]

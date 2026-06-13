@@ -24,6 +24,16 @@ use crate::verbose;
 
 // ── CLI definition ──────────────────────────────────────────────────────────
 
+/// Output format for context graph.
+#[derive(Debug, Clone, Copy, Default, clap::ValueEnum)]
+pub enum ContextFormat {
+    /// Default graph format (nodes/edges/workspaces/summary)
+    #[default]
+    Graph,
+    /// JSON-LD format (RDF-compatible @graph with @context vocabulary)
+    Jsonld,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum ContextCommand {
     /// Extract a graph of items and relationships from workspace(s)
@@ -48,6 +58,10 @@ pub enum ContextCommand {
         /// Skip type-specific detail fetching (fast inventory-only mode)
         #[arg(long)]
         no_properties: bool,
+
+        /// Output format: graph (default) or jsonld (RDF-compatible)
+        #[arg(long, value_enum, default_value = "graph")]
+        format: ContextFormat,
 
         /// Merge results into an existing graph file (incremental extraction)
         #[arg(long)]
@@ -129,6 +143,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
             include_connections,
             item_types,
             no_properties,
+            format,
             merge,
             output_file,
             concurrency,
@@ -139,6 +154,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
                 include_connections: *include_connections,
                 item_types_filter: item_types.as_deref(),
                 no_properties: *no_properties,
+                format: *format,
                 merge: merge.as_deref(),
                 output_file: output_file.as_deref(),
                 concurrency: *concurrency,
@@ -156,6 +172,7 @@ struct ExtractParams<'a> {
     include_connections: bool,
     item_types_filter: Option<&'a str>,
     no_properties: bool,
+    format: ContextFormat,
     merge: Option<&'a std::path::Path>,
     output_file: Option<&'a std::path::Path>,
     concurrency: usize,
@@ -217,8 +234,11 @@ async fn extract(cli: &Cli, client: &FabricClient, params: &ExtractParams<'_>) -
         graph
     };
 
-    // Phase 9: Output
-    let json_value = serde_json::to_value(&final_graph)?;
+    // Phase 9: Output — format selection
+    let json_value = match params.format {
+        ContextFormat::Graph => serde_json::to_value(&final_graph)?,
+        ContextFormat::Jsonld => format_as_jsonld(&final_graph),
+    };
 
     if let Some(file_path) = params.output_file {
         let content = serde_json::to_string_pretty(&serde_json::json!({"data": json_value}))?;
@@ -226,6 +246,10 @@ async fn extract(cli: &Cli, client: &FabricClient, params: &ExtractParams<'_>) -
         let report = serde_json::json!({
             "status": "written",
             "file": file_path.display().to_string(),
+            "format": match params.format {
+                ContextFormat::Graph => "graph",
+                ContextFormat::Jsonld => "jsonld",
+            },
             "nodes": final_graph.summary.total_nodes,
             "edges": final_graph.summary.total_edges,
             "workspaces": final_graph.summary.workspaces_scanned,
@@ -997,6 +1021,127 @@ async fn fetch_connections(
     edges
 }
 
+// ── JSON-LD formatting ──────────────────────────────────────────────────────
+
+/// Format the context graph as a JSON-LD document with `@context` and `@graph`.
+fn format_as_jsonld(graph: &ContextGraph) -> Value {
+    // Build @context vocabulary
+    let context = build_jsonld_context();
+
+    // Build @graph: items as nodes with edges inlined as properties
+    let mut resources: Vec<Value> = Vec::new();
+
+    // Add workspace resources
+    for ws in &graph.workspaces {
+        let mut resource = serde_json::json!({
+            "@id": format!("urn:fabric:workspace:{}", ws.id),
+            "@type": "fabric:Workspace",
+            "name": ws.name,
+        });
+        if let Some(ref cap) = ws.capacity_id {
+            resource["fabric:capacityId"] = Value::String(cap.clone());
+        }
+        resources.push(resource);
+    }
+
+    // Group edges by source for inlining
+    let mut edges_by_source: std::collections::HashMap<&str, Vec<&GraphEdge>> =
+        std::collections::HashMap::new();
+    for edge in &graph.edges {
+        edges_by_source
+            .entry(edge.source.as_str())
+            .or_default()
+            .push(edge);
+    }
+
+    // Add item resources with inlined edges
+    for node in &graph.nodes {
+        let mut resource = serde_json::json!({
+            "@id": format!("urn:fabric:item:{}", node.id),
+            "@type": format!("fabric:{}", node.item_type),
+            "name": node.name,
+            "fabric:workspace": {"@id": format!("urn:fabric:workspace:{}", node.workspace_id)},
+        });
+        if let Some(ref desc) = node.description {
+            resource["description"] = Value::String(desc.clone());
+        }
+
+        // Inline edges as typed properties
+        if let Some(edges) = edges_by_source.get(node.id.as_str()) {
+            let mut rel_targets: std::collections::HashMap<&str, Vec<Value>> =
+                std::collections::HashMap::new();
+            for edge in edges {
+                let target_iri = if edge.relationship == "connected_via" {
+                    format!("urn:fabric:connection:{}", edge.target)
+                } else {
+                    format!("urn:fabric:item:{}", edge.target)
+                };
+                rel_targets
+                    .entry(edge.relationship.as_str())
+                    .or_default()
+                    .push(serde_json::json!({"@id": target_iri}));
+            }
+            for (rel, targets) in rel_targets {
+                let predicate = format!("fabric:{}", relationship_to_camel(rel));
+                if targets.len() == 1 {
+                    resource[&predicate] = targets.into_iter().next().unwrap_or(Value::Null);
+                } else {
+                    resource[&predicate] = Value::Array(targets);
+                }
+            }
+        }
+
+        resources.push(resource);
+    }
+
+    serde_json::json!({
+        "@context": context,
+        "@graph": resources
+    })
+}
+
+/// Build the JSON-LD `@context` mapping.
+fn build_jsonld_context() -> Value {
+    serde_json::json!({
+        "fabric": "https://api.fabric.microsoft.com/ontology/",
+        "xsd": "http://www.w3.org/2001/XMLSchema#",
+        "name": "fabric:name",
+        "description": "fabric:description",
+        "fabric:workspace": {"@type": "@id"},
+        "fabric:capacityId": "fabric:capacityId",
+        "fabric:defaultLakehouse": {"@type": "@id"},
+        "fabric:boundToModel": {"@type": "@id"},
+        "fabric:childOf": {"@type": "@id"},
+        "fabric:hasEndpoint": {"@type": "@id"},
+        "fabric:readsFrom": {"@type": "@id"},
+        "fabric:streamsTo": {"@type": "@id"},
+        "fabric:queries": {"@type": "@id"},
+        "fabric:executes": {"@type": "@id"},
+        "fabric:connectedVia": {"@type": "@id"},
+        "fabric:references": {"@type": "@id"},
+        "fabric:definitionRef": {"@type": "@id"},
+        "fabric:workspaceRef": {"@type": "@id"},
+        "fabric:boundToData": {"@type": "@id"}
+    })
+}
+
+/// Convert `snake_case` relationship names to `camelCase` for JSON-LD predicates.
+fn relationship_to_camel(rel: &str) -> String {
+    let mut result = String::new();
+    let mut capitalize_next = false;
+    for ch in rel.chars() {
+        if ch == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(ch.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(ch);
+        }
+    }
+    result
+}
+
 // ── Graph persistence and merging ───────────────────────────────────────────
 
 /// Load an existing graph from a JSON file (expects `{"data": {...}}` envelope).
@@ -1192,5 +1337,82 @@ mod tests {
         assert_eq!(json["nodes"][0]["name"], "MyNB");
         assert_eq!(json["edges"][0]["relationship"], "default_lakehouse");
         assert_eq!(json["workspaces"][0]["capacityId"], "cap1");
+    }
+
+    #[test]
+    fn test_format_as_jsonld() {
+        let graph = ContextGraph {
+            nodes: vec![GraphNode {
+                id: "aaa-bbb-ccc".to_string(),
+                item_type: "Notebook".to_string(),
+                name: "MyNB".to_string(),
+                workspace_id: "ws1".to_string(),
+                workspace_name: "TestWS".to_string(),
+                description: Some("A notebook".to_string()),
+                properties: None,
+            }],
+            edges: vec![GraphEdge {
+                source: "aaa-bbb-ccc".to_string(),
+                target: "ddd-eee-fff".to_string(),
+                relationship: "default_lakehouse".to_string(),
+                metadata: None,
+            }],
+            workspaces: vec![WorkspaceInfo {
+                id: "ws1".to_string(),
+                name: "TestWS".to_string(),
+                capacity_id: Some("cap1".to_string()),
+            }],
+            summary: GraphSummary {
+                total_nodes: 1,
+                total_edges: 1,
+                workspaces_scanned: 1,
+                item_types: BTreeMap::from([("Notebook".to_string(), 1)]),
+                relationship_types: Some(BTreeMap::from([("default_lakehouse".to_string(), 1)])),
+            },
+        };
+
+        let jsonld = format_as_jsonld(&graph);
+
+        // Has @context and @graph
+        assert!(jsonld.get("@context").is_some());
+        assert!(jsonld.get("@graph").is_some());
+
+        let graph_arr = jsonld["@graph"].as_array().unwrap();
+        // Workspace + 1 item = 2 resources
+        assert_eq!(graph_arr.len(), 2);
+
+        // Find the notebook node
+        let nb = graph_arr
+            .iter()
+            .find(|r| r["@id"] == "urn:fabric:item:aaa-bbb-ccc")
+            .expect("notebook not found");
+        assert_eq!(nb["@type"], "fabric:Notebook");
+        assert_eq!(nb["name"], "MyNB");
+        assert_eq!(nb["description"], "A notebook");
+        // Edge is inlined as property
+        assert_eq!(
+            nb["fabric:defaultLakehouse"]["@id"],
+            "urn:fabric:item:ddd-eee-fff"
+        );
+
+        // Find workspace
+        let ws = graph_arr
+            .iter()
+            .find(|r| r["@id"] == "urn:fabric:workspace:ws1")
+            .expect("workspace not found");
+        assert_eq!(ws["@type"], "fabric:Workspace");
+        assert_eq!(ws["name"], "TestWS");
+    }
+
+    #[test]
+    fn test_relationship_to_camel() {
+        assert_eq!(
+            relationship_to_camel("default_lakehouse"),
+            "defaultLakehouse"
+        );
+        assert_eq!(relationship_to_camel("bound_to_model"), "boundToModel");
+        assert_eq!(relationship_to_camel("has_endpoint"), "hasEndpoint");
+        assert_eq!(relationship_to_camel("references"), "references");
+        assert_eq!(relationship_to_camel("connected_via"), "connectedVia");
     }
 }
