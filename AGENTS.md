@@ -273,16 +273,19 @@ gh release create v0.23.0 --notes-file release-notes.md --title "v0.23.0"
 
 ### Automated Release Script
 
-The `scripts/release.sh` script automates steps 1, 3, 5, 6, 7, and 8:
+The `scripts/release.sh` script automates ALL 8 steps end-to-end:
 
 ```bash
 ./scripts/release.sh 0.23.0
 ```
 
-It handles version bump, doc updates, commit, changelog generation, tagging, pushing, and release note publishing. However, you MUST still manually:
-- Validate dependency freshness (step 2)
-- Run full validation (step 4)
-- Review the generated release notes before the script publishes them
+It handles: version bump, dependency freshness check (with optional `cargo update`), doc version updates, full validation (fmt + clippy + test + cross-check), commit (Cargo.toml + Cargo.lock + docs), changelog generation, tagging, pushing, and release note publishing.
+
+The script pauses at two interactive points:
+- After showing outdated dependencies — asks whether to run `cargo update`
+- After generating raw changelog — waits for you to edit the release notes file
+
+If any validation step fails (fmt, clippy, tests, cross-check), the script aborts immediately with a clear error message.
 
 ### Configuration
 
