@@ -306,7 +306,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 
 ## Progress
 ### Done
-- **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, data-build-tool-job, org-app, org-app-audience, rti, rest, profile, jobs, feedback, operation, agent-context
+- **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, context, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, data-build-tool-job, org-app, org-app-audience, rti, rest, profile, jobs, feedback, operation, agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain, CSV, TSV formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (JMESPath expression — see jmespath.org), `--quiet` (suppresses stdout), `--verbose/-v` (HTTP/LRO/auth diagnostics on stderr), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`, `--lro-timeout`
@@ -395,6 +395,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **Graph Model**: list/show/create/update/delete/get-definition/update-definition, refresh-graph/execute-query/get-queryable-graph-type (portal initialization required for refresh)
 - **Graph Query Set**: list/show/create/update/delete/get-definition/update-definition (definition is read-only export)
 - **Catalog**: search (tenant-level full-text search across workspaces)
+- **Context**: extract (workspace graph extraction — builds a relationship graph of items with nodes/edges/summary for agent memory; three-layer discovery: properties, definitions via `--deep`, connections via `--include-connections`; parallel execution; supports multi-workspace, `--item-types` filter, `--concurrency`)
 - **Dashboard**: list (read-only, portal-created)
 - **Datamart**: list (read-only, portal-created)
 - **Paginated Report**: list/update (read-only creation via portal/SSRS)
@@ -418,7 +419,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **CSV/TSV output**: Global `--output csv|tsv` on all commands; RFC 4180 quoting via `format_csv_value()`
 - **Deploy validate**: Local-only pre-flight checks on source directory (validates .platform files, item types, definition structure, logical ID references); no API calls required
 - **Deploy fabric-cicd full compatibility**: Parses .children/ KQL database discovery, .pbi/ directory exclusion, creationPayload from .platform metadata, SparkJobDefinitionV2 format auto-detection, Report byPath→byConnection transform, notebook part ordering (.py before .json), ItemDisplayNameNotAvailableYet retry (up to 5 min), binary file skip, .platform included as definition part but excluded from content hash for idempotency
-- **1571 Rust tests** (850 unit + 721 offline/E2E integration), zero clippy warnings, rustfmt clean
+- **1642 Rust tests** (905 unit + 737 offline/E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~16 MB, stripped, full LTO, panic=abort
@@ -564,6 +565,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/graph_model.rs`: CRUD + definition + refresh-graph/execute-query/get-queryable-graph-type
 - `src/commands/graph_query_set.rs`: CRUD + get-definition/update-definition (read-only export)
 - `src/commands/catalog.rs`: search (tenant-level)
+- `src/commands/context.rs`: extract (workspace graph extraction — nodes/edges/summary, three-layer relationship discovery, parallel execution)
 - `src/commands/dashboard.rs`: list (read-only)
 - `src/commands/datamart.rs`: list (read-only)
 - `src/commands/paginated_report.rs`: list/update (read-only creation)
@@ -632,6 +634,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `tests/e2e_graph_model.rs`: Graph model CRUD + refresh + query tests
 - `tests/e2e_graph_query_set.rs`: Graph query set tests
 - `tests/e2e_catalog.rs`: Catalog search tests
+- `tests/e2e_context.rs`: Context extract tests (6 offline dry-run + 5 live graph extraction)
 - `tests/e2e_dashboard.rs`: Dashboard list tests
 - `tests/e2e_datamart.rs`: Datamart list tests
 - `tests/e2e_paginated_report.rs`: Paginated report tests
@@ -2621,4 +2624,18 @@ Git commands are run with CWD set to source directory. Returns `None` entirely i
 - **Lakehouse `enableSchemas`**: Inferred from `lakehouse.metadata.json` containing `"defaultSchema"`.
 - **Workspace ID placeholder**: `00000000-0000-0000-0000-000000000000` is auto-replaced with target workspace UUID (regex-based, workspace-reference keys only, skips shortcuts).
 - **Shortcut self-reference**: When shortcut `target.oneLake.itemId` is the default GUID, it means "this lakehouse itself" — replaced with the lakehouse's own deployed GUID (not the workspace ID).
+
+## Context Extract Behaviors Discovered
+- **Three-layer relationship discovery**: Layer 1 (properties) finds typed edges from item GET responses. Layer 2 (`--deep`) decodes base64 definition payloads and regex-scans for UUID references. Layer 3 (`--include-connections`) fetches `/items/{id}/connections`. Each layer is additive — deeper layers find significantly more edges.
+- **Properties layer alone finds very few edges**: In a 154-item tenant, properties-only discovered 2 edges (both `has_endpoint`). Deep mode found 88 edges. Most relationships are embedded inside definitions, not exposed in the item's GET response.
+- **GUID scanning discovers all cross-references generically**: By building a registry of known item/workspace IDs and regex-matching `[0-9a-fA-F]{8}-...-[0-9a-fA-F]{12}` in decoded definitions, all embedded references are found without type-specific parsing logic.
+- **Items without definition support must be skipped**: SQLEndpoint, Dashboard, Datamart, PaginatedReport, MLModel, MLExperiment never support `getDefinition` (always return errors). Skipping them saves 20% of LRO calls in deep mode.
+- **Type-specific endpoints expose richer properties**: Items fetched via their type-specific GET (e.g., `/kqlDatabases/{id}` vs `/items/{id}`) include a `properties` object with parent references, connection strings, and status fields not available from the generic items endpoint.
+- **Workspace IDs appear frequently in definitions**: ~30% of definition-discovered edges are `workspace_ref` — notebooks and agents embed their workspace ID in metadata (trident, datasource configs). These are informational rather than item-to-item edges.
+- **Relationship classification by file path/content**: The definition file path and content context determine the semantic relationship type (e.g., `definition.pbir` → `bound_to_model`, `default_lakehouse` in content → `default_lakehouse`, `ExecutePipeline` → `executes`).
+- **Well-known GUIDs must be excluded**: All-zeros, all-f's, and near-zero GUIDs (`00000000-0000-0000-0000-00000000000X`) are placeholder values that should not be treated as item references.
+- **`bulkExportDefinitions` format is undocumented**: `POST /workspaces/{ws}/items/bulkExportDefinitions` exists but rejects all attempted body formats (`items[]`, `itemIds[]`, `requests[]`, `itemRequests[]`, with/without type fields, with/without `?beta=true`). Cannot be used to batch definition exports.
+- **Parallel workspace listing is safe**: Concurrent `GET /workspaces/{ws}/items` calls (one per workspace) do not trigger rate limiting on typical tenants (tested with 20 concurrent calls).
+- **LRO polling is the deep mode bottleneck**: Each `getDefinition` LRO takes 2-6 seconds (POST → 202 → poll at 2s intervals). With 8 concurrent slots and 123 items: ~4 minutes total. Wall-clock time is dominated by server-side processing, not client overhead.
+- **Performance benchmarks (20 workspaces, 154 items)**: Shallow mode: 7.7s. Deep + connections: 4 min 18s. Output size: 55-57 KB. Graph: 154 nodes, 88 edges, 10 relationship types.
 

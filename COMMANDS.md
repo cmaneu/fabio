@@ -149,6 +149,10 @@ fabio capacity list-skus     List available SKUs and regions
 fabio capacity check-name    Check capacity name availability
 
 fabio catalog search         Search items across the tenant
+
+fabio context extract        Extract a graph of items and relationships from workspace(s)
+                             Flags: --workspace (repeatable), --deep, --include-connections,
+                                    --item-types, --concurrency
 ```
 
 ## Data & Compute

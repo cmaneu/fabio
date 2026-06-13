@@ -918,3 +918,41 @@ jobs:
 | Dependencies | `azure/login` action | None (env vars only) |
 | Secret rotation | Automatic (token-based) | Manual (expiry management) |
 | Recommended for | Production workloads | Quick setup, dev/test |
+
+## Context extraction (agent memory)
+
+```bash
+# Extract a graph of all items and relationships from a workspace
+fabio context extract --workspace $WS
+
+# Scan multiple workspaces at once
+fabio context extract --workspace $WS1 --workspace $WS2 --workspace $WS3
+
+# Deep mode: fetch definitions to discover embedded references (slower)
+fabio context extract --workspace $WS --deep
+
+# Include connection objects as graph edges
+fabio context extract --workspace $WS --include-connections
+
+# Full extraction with all discovery layers
+fabio context extract --workspace $WS --deep --include-connections
+
+# Filter to specific item types
+fabio context extract --workspace $WS --item-types "Notebook,Lakehouse,SemanticModel"
+
+# Increase concurrency for large workspaces
+fabio context extract --workspace $WS --deep --concurrency 16
+
+# Use workspace name instead of ID
+fabio context extract --workspace "sales-analytics"
+
+# Preview what would be scanned without making API calls
+fabio context extract --workspace $WS --deep --dry-run
+
+# Pipe to jq for graph analysis
+fabio context extract --workspace $WS --deep | jq '.data.summary'
+fabio context extract --workspace $WS --deep | jq '.data.edges[] | select(.relationship == "default_lakehouse")'
+
+# Save full graph as agent context file
+fabio context extract --workspace $WS --deep --include-connections > workspace_graph.json
+```
