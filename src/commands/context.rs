@@ -1415,4 +1415,256 @@ mod tests {
         assert_eq!(relationship_to_camel("references"), "references");
         assert_eq!(relationship_to_camel("connected_via"), "connectedVia");
     }
+
+    #[test]
+    fn test_merge_graphs_nodes_dedup_by_id() {
+        let existing = ContextGraph {
+            nodes: vec![
+                GraphNode {
+                    id: "aaa".to_string(),
+                    item_type: "Notebook".to_string(),
+                    name: "OldName".to_string(),
+                    workspace_id: "ws1".to_string(),
+                    workspace_name: "WS1".to_string(),
+                    description: None,
+                    properties: None,
+                },
+                GraphNode {
+                    id: "bbb".to_string(),
+                    item_type: "Lakehouse".to_string(),
+                    name: "LH".to_string(),
+                    workspace_id: "ws1".to_string(),
+                    workspace_name: "WS1".to_string(),
+                    description: None,
+                    properties: None,
+                },
+            ],
+            edges: vec![],
+            workspaces: vec![WorkspaceInfo {
+                id: "ws1".to_string(),
+                name: "WS1".to_string(),
+                capacity_id: None,
+            }],
+            summary: GraphSummary {
+                total_nodes: 2,
+                total_edges: 0,
+                workspaces_scanned: 1,
+                item_types: BTreeMap::new(),
+                relationship_types: None,
+            },
+        };
+
+        let new = ContextGraph {
+            nodes: vec![
+                GraphNode {
+                    id: "aaa".to_string(),
+                    item_type: "Notebook".to_string(),
+                    name: "NewName".to_string(), // Updated name
+                    workspace_id: "ws1".to_string(),
+                    workspace_name: "WS1".to_string(),
+                    description: Some("updated".to_string()),
+                    properties: None,
+                },
+                GraphNode {
+                    id: "ccc".to_string(),
+                    item_type: "Report".to_string(),
+                    name: "NewReport".to_string(),
+                    workspace_id: "ws2".to_string(),
+                    workspace_name: "WS2".to_string(),
+                    description: None,
+                    properties: None,
+                },
+            ],
+            edges: vec![],
+            workspaces: vec![WorkspaceInfo {
+                id: "ws2".to_string(),
+                name: "WS2".to_string(),
+                capacity_id: None,
+            }],
+            summary: GraphSummary {
+                total_nodes: 2,
+                total_edges: 0,
+                workspaces_scanned: 1,
+                item_types: BTreeMap::new(),
+                relationship_types: None,
+            },
+        };
+
+        let merged = merge_graphs(existing, new);
+
+        // Should have 3 unique nodes (aaa overwritten with new name, bbb kept, ccc added)
+        assert_eq!(merged.summary.total_nodes, 3);
+        let aaa = merged.nodes.iter().find(|n| n.id == "aaa").unwrap();
+        assert_eq!(aaa.name, "NewName");
+        assert_eq!(aaa.description, Some("updated".to_string()));
+        assert!(merged.nodes.iter().any(|n| n.id == "bbb"));
+        assert!(merged.nodes.iter().any(|n| n.id == "ccc"));
+
+        // Should have 2 workspaces
+        assert_eq!(merged.summary.workspaces_scanned, 2);
+    }
+
+    #[test]
+    fn test_merge_graphs_edges_union() {
+        let existing = ContextGraph {
+            nodes: vec![],
+            edges: vec![
+                GraphEdge {
+                    source: "a".to_string(),
+                    target: "b".to_string(),
+                    relationship: "ref".to_string(),
+                    metadata: None,
+                },
+                GraphEdge {
+                    source: "a".to_string(),
+                    target: "c".to_string(),
+                    relationship: "ref".to_string(),
+                    metadata: None,
+                },
+            ],
+            workspaces: vec![],
+            summary: GraphSummary {
+                total_nodes: 0,
+                total_edges: 2,
+                workspaces_scanned: 0,
+                item_types: BTreeMap::new(),
+                relationship_types: None,
+            },
+        };
+
+        let new = ContextGraph {
+            nodes: vec![],
+            edges: vec![
+                GraphEdge {
+                    source: "a".to_string(),
+                    target: "b".to_string(),
+                    relationship: "ref".to_string(),
+                    metadata: None,
+                }, // duplicate
+                GraphEdge {
+                    source: "x".to_string(),
+                    target: "y".to_string(),
+                    relationship: "new_rel".to_string(),
+                    metadata: None,
+                },
+            ],
+            workspaces: vec![],
+            summary: GraphSummary {
+                total_nodes: 0,
+                total_edges: 2,
+                workspaces_scanned: 0,
+                item_types: BTreeMap::new(),
+                relationship_types: None,
+            },
+        };
+
+        let merged = merge_graphs(existing, new);
+        // 2 from existing + 1 new (1 duplicate removed)
+        assert_eq!(merged.summary.total_edges, 3);
+    }
+
+    #[test]
+    fn test_merge_graphs_idempotent() {
+        let graph = ContextGraph {
+            nodes: vec![GraphNode {
+                id: "aaa".to_string(),
+                item_type: "Notebook".to_string(),
+                name: "NB".to_string(),
+                workspace_id: "ws1".to_string(),
+                workspace_name: "WS1".to_string(),
+                description: None,
+                properties: None,
+            }],
+            edges: vec![GraphEdge {
+                source: "aaa".to_string(),
+                target: "bbb".to_string(),
+                relationship: "ref".to_string(),
+                metadata: None,
+            }],
+            workspaces: vec![WorkspaceInfo {
+                id: "ws1".to_string(),
+                name: "WS1".to_string(),
+                capacity_id: None,
+            }],
+            summary: GraphSummary {
+                total_nodes: 1,
+                total_edges: 1,
+                workspaces_scanned: 1,
+                item_types: BTreeMap::from([("Notebook".to_string(), 1)]),
+                relationship_types: Some(BTreeMap::from([("ref".to_string(), 1)])),
+            },
+        };
+
+        let clone = ContextGraph {
+            nodes: graph.nodes.clone(),
+            edges: graph.edges.clone(),
+            workspaces: graph.workspaces.clone(),
+            summary: GraphSummary {
+                total_nodes: 1,
+                total_edges: 1,
+                workspaces_scanned: 1,
+                item_types: BTreeMap::from([("Notebook".to_string(), 1)]),
+                relationship_types: Some(BTreeMap::from([("ref".to_string(), 1)])),
+            },
+        };
+
+        let merged = merge_graphs(graph, clone);
+        // Merging with itself should produce same counts
+        assert_eq!(merged.summary.total_nodes, 1);
+        assert_eq!(merged.summary.total_edges, 1);
+        assert_eq!(merged.summary.workspaces_scanned, 1);
+    }
+
+    #[test]
+    fn test_jsonld_multiple_edges_same_type() {
+        let graph = ContextGraph {
+            nodes: vec![GraphNode {
+                id: "nb1".to_string(),
+                item_type: "Notebook".to_string(),
+                name: "Multi".to_string(),
+                workspace_id: "ws1".to_string(),
+                workspace_name: "WS".to_string(),
+                description: None,
+                properties: None,
+            }],
+            edges: vec![
+                GraphEdge {
+                    source: "nb1".to_string(),
+                    target: "lh1".to_string(),
+                    relationship: "references".to_string(),
+                    metadata: None,
+                },
+                GraphEdge {
+                    source: "nb1".to_string(),
+                    target: "lh2".to_string(),
+                    relationship: "references".to_string(),
+                    metadata: None,
+                },
+            ],
+            workspaces: vec![WorkspaceInfo {
+                id: "ws1".to_string(),
+                name: "WS".to_string(),
+                capacity_id: None,
+            }],
+            summary: GraphSummary {
+                total_nodes: 1,
+                total_edges: 2,
+                workspaces_scanned: 1,
+                item_types: BTreeMap::from([("Notebook".to_string(), 1)]),
+                relationship_types: Some(BTreeMap::from([("references".to_string(), 2)])),
+            },
+        };
+
+        let jsonld = format_as_jsonld(&graph);
+        let graph_arr = jsonld["@graph"].as_array().unwrap();
+        let nb = graph_arr
+            .iter()
+            .find(|r| r["@id"] == "urn:fabric:item:nb1")
+            .unwrap();
+
+        // Multiple edges of same type should be an array
+        let refs = &nb["fabric:references"];
+        assert!(refs.is_array(), "expected array for multiple edges");
+        assert_eq!(refs.as_array().unwrap().len(), 2);
+    }
 }
