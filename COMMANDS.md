@@ -213,6 +213,7 @@ fabio sql-database list-deleted List restorable deleted databases
 fabio sql-endpoint list      List SQL analytics endpoints
 fabio sql-endpoint show      Show endpoint details
 fabio sql-endpoint connection-string Get TDS connection string
+fabio sql-endpoint query     Execute T-SQL query against endpoint
 fabio sql-endpoint refresh-metadata  Refresh table sync metadata (LRO)
 fabio sql-endpoint get-audit-settings  Get audit configuration
 fabio sql-endpoint update-audit-settings Update audit settings

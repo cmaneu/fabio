@@ -230,6 +230,26 @@ fabio sql-database query --workspace $WS --id $DB \
 fabio sql-database connection-string --workspace $WS --id $DB
 ```
 
+## SQL Endpoint
+
+```bash
+# List SQL endpoints in a workspace (auto-created alongside lakehouses)
+fabio sql-endpoint list --workspace $WS -o table
+
+# Query a SQL endpoint directly (supports three-part naming for cross-lakehouse queries)
+fabio sql-endpoint query --workspace $WS --id $SQLEP \
+  --sql "SELECT TOP 10 * FROM dbo.sales ORDER BY order_date DESC"
+
+# Query from a file
+fabio sql-endpoint query --workspace $WS --id $SQLEP --sql @queries/analytics.sql
+
+# Pipe SQL via stdin
+echo "SELECT COUNT(*) as total FROM dbo.products" | fabio sql-endpoint query --workspace $WS --id $SQLEP
+
+# Get connection string for external tools (SSMS, Azure Data Studio)
+fabio sql-endpoint connection-string --workspace $WS --id $SQLEP
+```
+
 ## Real-Time Intelligence (Eventhouse + EventStream)
 
 ```bash

@@ -273,7 +273,7 @@ After tagging a release, update version-specific references in the repository:
   - Principle 10: Two-way I/O (`fabio feedback send/list`)
 - **SQL Database**: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
 - **SQL Database import**: Reads CSV/JSON files, infers column types (Int/BigInt/Float/Bit/Date/NVarChar), generates CREATE TABLE + batched INSERTs via TDS. Supports --drop-if-exists, --no-create-table, --batch-size.
-- **SQL Endpoint**: list/show/connection-string/refresh-metadata/get-audit-settings/update-audit-settings/set-audit-actions (read-only companion to lakehouses)
+- **SQL Endpoint**: list/show/connection-string/query/refresh-metadata/get-audit-settings/update-audit-settings/set-audit-actions (read-only companion to lakehouses)
 - **Variable Library**: list/show/create/update/delete/get-definition/update-definition (variables.json + settings.json)
 - **Event Schema Set**: list/show/create/update/delete/get-definition/update-definition (EventSchemaSetDefinition.json)
 - **User Data Function**: list/show/create/update/delete/get-definition/update-definition (Python runtime)
@@ -443,7 +443,7 @@ After tagging a release, update version-specific references in the repository:
 - `src/commands/digital_twin_builder_flow.rs`: list/show/create/update/delete/get-definition/update-definition (requires parent DTB)
 - `src/commands/cosmos_db_database.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json)
 - `src/commands/snowflake_database.rs`: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
-- `src/commands/sql_endpoint.rs`: list/show/connection-string/refresh-metadata/get-audit-settings/update-audit-settings/set-audit-actions
+- `src/commands/sql_endpoint.rs`: list/show/connection-string/query/refresh-metadata/get-audit-settings/update-audit-settings/set-audit-actions
 - `src/commands/anomaly_detector.rs`: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
 - `src/commands/deploy/mod.rs`: DeployCommand enum (plan/apply/export/init-params/validate); execute dispatch; workspace name resolution
 - `src/commands/deploy/apply.rs`: execute_changeset, execute_post_hooks, Rename handling (PATCH + updateDefinition), build_resolution_map, resolve_logical_ids_in_payload
@@ -1810,7 +1810,8 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 ## SQL Endpoint API Behaviors Discovered
 - **Read-only companion item**: SQL Endpoints are auto-created as companion items alongside Lakehouses (one per lakehouse). They cannot be created or deleted independently.
 - **No getDefinition/updateDefinition**: SQL Endpoints do not support definition operations.
-- **Available commands**: list, show, connection-string, refresh-metadata, get-audit-settings, update-audit-settings, set-audit-actions.
+- **Available commands**: list, show, connection-string, query, refresh-metadata, get-audit-settings, update-audit-settings, set-audit-actions.
+- **Query uses TDS via shared utilities**: `sql-endpoint query` fetches the connection string from `GET /workspaces/{ws}/sqlEndpoints/{id}/connectionString`, resolves the display name as the initial catalog, then delegates to `execute_and_render_sql()`. Supports `--sql` (inline text), `@file` path, or stdin piping.
 - **Connection string format**: Returns the DW-style endpoint hostname (e.g., `*.datawarehouse.fabric.microsoft.com`).
 - **refresh-metadata returns table sync status**: Each table shows `status` (`NotRun`, `Succeeded`, `Failed`), `startDateTime`, `endDateTime`, `lastSuccessfulSyncDateTime`.
 - **Audit settings structure**: `{"state":"Disabled|Enabled","retentionDays":N,"auditActionsAndGroups":["GROUP1","GROUP2",...]}`.

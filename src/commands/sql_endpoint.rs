@@ -4,6 +4,9 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::commands::tds_utils::{
+    execute_and_render_sql, parse_connection_string, resolve_sql_input,
+};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -46,8 +49,23 @@ pub enum SqlEndpointCommand {
         #[arg(long)]
         private_link_type: Option<String>,
     },
-    /// Refresh metadata for all tables in a SQL endpoint (LRO)
+    /// Execute a SQL query against a SQL endpoint
     #[command(display_order = 4)]
+    Query {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL endpoint ID
+        #[arg(long)]
+        id: String,
+
+        /// SQL query text, @file path, or omit for stdin
+        #[arg(long)]
+        sql: Option<String>,
+    },
+    /// Refresh metadata for all tables in a SQL endpoint (LRO)
+    #[command(display_order = 5)]
     RefreshMetadata {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
@@ -131,6 +149,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlEndpointComm
                 private_link_type.as_deref(),
             )
             .await
+        }
+        SqlEndpointCommand::Query { workspace, id, sql } => {
+            query(cli, client, workspace, id, sql.as_deref()).await
         }
         SqlEndpointCommand::RefreshMetadata { workspace, id } => {
             refresh_metadata(cli, client, workspace, id).await
@@ -221,6 +242,56 @@ async fn connection_string(
     let data = client.get(&url).await?;
     output::render_object(cli, &data, "connectionString");
     Ok(())
+}
+
+async fn query(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    sql: Option<&str>,
+) -> Result<()> {
+    let sql_text = resolve_sql_input(sql)?;
+
+    // Fetch endpoint metadata to get the display name (used as initial catalog)
+    let item = client
+        .get(&format!("/workspaces/{workspace}/sqlEndpoints/{id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "sql-endpoint query", "Viewer"))?;
+
+    let display_name = item
+        .get("displayName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    // Fetch the connection string
+    let conn_data = client
+        .get(&format!(
+            "/workspaces/{workspace}/sqlEndpoints/{id}/connectionString"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "sql-endpoint query", "Viewer"))?;
+
+    let conn_str = conn_data
+        .get("connectionString")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::NotFound,
+                "SQL endpoint connection string not available.",
+                "The SQL endpoint may still be provisioning. Wait and retry, or check with: fabio sql-endpoint show --workspace <WS> --id <ID>",
+            )
+        })?;
+
+    let (server, parsed_db) = parse_connection_string(conn_str);
+    let database = if display_name.is_empty() {
+        parsed_db
+    } else {
+        display_name.to_string()
+    };
+
+    execute_and_render_sql(cli, client, &server, &database, &sql_text).await
 }
 
 // ─── Mutations ───────────────────────────────────────────────────────────────
