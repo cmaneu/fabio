@@ -143,45 +143,146 @@ All new features and changes MUST have corresponding tests:
 - Follow existing test patterns in `tests/common/mod.rs` and existing `tests/e2e_*.rs` files.
 - Tests must pass locally (`cargo test`) before committing.
 
-## Release Notes Workflow (MANDATORY)
+## Release Workflow (MANDATORY)
 
-When creating a new release, you MUST generate proper release notes following this hybrid workflow (auto-generated raw changelog + human-curated narrative):
+When creating a new release, you MUST complete ALL of the following steps in order before triggering the release. Do NOT skip any step.
 
-### Step 1: Generate Raw Changelog
+### Pre-Release Checklist
 
-Use `git-cliff` to produce a grouped commit list between the previous and new tag:
+Before tagging or publishing, complete these mandatory pre-flight steps:
+
+#### 1. Bump the Version Number
+
+Update `Cargo.toml` with the new version:
 
 ```bash
-# For the latest tag (most common):
+# Check current version
+grep '^version' Cargo.toml | head -1
+
+# Update to new version (e.g., 0.23.0)
+sed -i 's/^version = ".*"/version = "0.23.0"/' Cargo.toml
+```
+
+Run `cargo check` or `cargo build` to regenerate `Cargo.lock` with the new version.
+
+#### 2. Validate Dependency Freshness
+
+Check that ALL Cargo dependencies are at their latest compatible versions:
+
+```bash
+# Show outdated dependencies (requires cargo-outdated or cargo-edit)
+cargo outdated --root-deps-only
+
+# Alternative: use `cargo update --dry-run` to see what would be updated
+cargo update --dry-run
+```
+
+**Rules:**
+- Update any dependency that has a newer compatible version available (within semver range).
+- For major version bumps, evaluate changelog for breaking changes before updating.
+- Verify no dependency has an incompatible license (GPL, LGPL, AGPL, SSPL, or other copyleft). Only permissive licenses (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0, etc.) are acceptable.
+- If updating dependencies, run the full pre-commit validation (`cargo fmt -- --check`, `cargo clippy --tests -- -D warnings`, `cargo test`) after updates.
+- Also check GitHub Actions in `.github/workflows/*.yml` — ensure all action versions (e.g., `actions/checkout@v4`) are at their latest release tags.
+
+#### 3. Update Version References in Documentation
+
+Update version-specific strings throughout the repository:
+
+1. **README.md** — Docker image version in usage examples (e.g., `ghcr.io/iemejia/fabio:0.22.0` → `ghcr.io/iemejia/fabio:0.23.0`).
+2. **AGENTS.md** — Docker & Devcontainer section version examples.
+
+#### 4. Run Full Validation
+
+```bash
+# Format check
+cargo fmt -- --check
+
+# Clippy with deny warnings
+cargo clippy --tests -- -D warnings
+
+# Run all tests
+cargo test
+
+# Cross-compilation check
+./scripts/cross-check.sh
+```
+
+ALL must pass with zero errors and zero warnings.
+
+#### 5. Commit Cargo.toml AND Cargo.lock Together
+
+Both files MUST be committed in the same commit. `Cargo.lock` is tracked in this repository (binary CLI tool — deterministic builds require a lockfile).
+
+```bash
+git add Cargo.toml Cargo.lock README.md AGENTS.md
+git status  # verify only intended files are staged
+git commit -m "chore: bump version to 0.23.0"
+```
+
+**Rules:**
+- NEVER tag a release without `Cargo.lock` reflecting the exact dependency tree.
+- If you updated dependencies in step 2, `Cargo.lock` will have additional changes — these MUST be committed.
+- Verify `git status` is clean (no uncommitted changes) before proceeding to tagging.
+
+#### 6. Generate Release Notes
+
+Use `git-cliff` to produce a grouped commit list, then write curated narrative:
+
+```bash
+# Preview unreleased changes (before tagging):
+git cliff --unreleased
+
+# For the latest tag (after tagging, most common):
 git cliff --latest
 
 # Between two specific tags:
-git cliff v0.19.0..v0.20.0
-
-# Unreleased changes (preview before tagging):
-git cliff --unreleased
+git cliff v0.22.0..v0.23.0
 ```
 
 The output is grouped by commit type (New Features, Bug Fixes, CI/CD, etc.) with links to commits. This ensures no changes are missed.
 
-### Step 2: Write Curated Narrative
-
-Using the raw changelog as input, write a **human-readable narrative** following the template in `.github/RELEASE_TEMPLATE.md`. Key principles:
+**Writing the curated narrative** — Follow the template in `.github/RELEASE_TEMPLATE.md`:
 
 1. **Lead with impact**: Put the most user-visible features first (new item types, major new capabilities)
 2. **Group related changes**: Multiple commits that form one feature should be described together
 3. **Include examples**: Show command usage for new features
 4. **Stats at the end**: Commit count, lines changed, test coverage additions
 
-### Step 3: Publish
+#### 7. Tag and Trigger the Release
 
 ```bash
-# Edit an existing release:
-gh release edit vX.Y.Z --notes-file release-notes.md
+# Tag the release
+git tag v0.23.0
 
-# Or create a new release with notes:
-gh release create vX.Y.Z --notes-file release-notes.md --title "vX.Y.Z"
+# Push commit and tag
+git push
+git push origin v0.23.0
 ```
+
+The CI release workflow (`.github/workflows/release.yml`) is triggered by the tag push and builds 6 binaries + Docker image automatically.
+
+#### 8. Publish Release Notes
+
+```bash
+# Wait for the GitHub Release to be created by CI, then update notes:
+gh release edit v0.23.0 --notes-file release-notes.md
+
+# Or create a new release with notes (if CI doesn't auto-create):
+gh release create v0.23.0 --notes-file release-notes.md --title "v0.23.0"
+```
+
+### Automated Release Script
+
+The `scripts/release.sh` script automates steps 1, 3, 5, 6, 7, and 8:
+
+```bash
+./scripts/release.sh 0.23.0
+```
+
+It handles version bump, doc updates, commit, changelog generation, tagging, pushing, and release note publishing. However, you MUST still manually:
+- Validate dependency freshness (step 2)
+- Run full validation (step 4)
+- Review the generated release notes before the script publishes them
 
 ### Configuration
 
@@ -189,21 +290,14 @@ gh release create vX.Y.Z --notes-file release-notes.md --title "vX.Y.Z"
 - `.github/RELEASE_TEMPLATE.md` — Narrative structure template
 - `scripts/release.sh` — Automated release script (version bump, changelog, tag, push, publish notes)
 
-**Rules:**
-- ALWAYS run `git cliff --latest` first to get the complete raw list — do NOT rely on memory or `git log` alone.
+### Release Notes Rules
+
+- ALWAYS run `git cliff --latest` (or `--unreleased`) first to get the complete raw list — do NOT rely on memory or `git log` alone.
 - The curated narrative must cover ALL features/fixes from the raw changelog (nothing should be silently dropped).
 - New item types and headline features go FIRST in the release notes.
 - CI/CD and documentation-only changes go at the end (lower priority for users).
 - Include a `Stats` section with commit count, files changed, and lines added/removed.
 - Include the `Full Changelog` comparison link at the bottom.
-
-### Step 4: Update Version References in Documentation
-
-After tagging a release, update version-specific references in the repository:
-
-1. **README.md** — Update the Docker image version in the usage example (e.g., `ghcr.io/iemejia/fabio:0.20.0` → `ghcr.io/iemejia/fabio:0.22.0`).
-2. **AGENTS.md** — Update the `Docker & Devcontainer` section's version examples to reflect the new tag.
-3. **Cargo.toml** — Bump the `version` field to the next development version if applicable.
 
 **Note:** The release workflow automatically publishes the Docker image to `ghcr.io/iemejia/fabio:{version}` and `ghcr.io/iemejia/fabio:{major}.{minor}` as part of the `docker` job in `.github/workflows/release.yml`. No manual Docker build/push is needed.
 
