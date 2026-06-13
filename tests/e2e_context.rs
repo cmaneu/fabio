@@ -124,6 +124,75 @@ fn context_extract_dry_run_concurrency_flag() {
     assert_eq!(data["details"]["concurrency"], 4);
 }
 
+#[test]
+fn context_extract_dry_run_no_properties() {
+    let assert = fabio()
+        .args([
+            "context",
+            "extract",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--no-properties",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("missing data");
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["noProperties"], true);
+}
+
+#[test]
+fn context_extract_dry_run_output_file() {
+    let assert = fabio()
+        .args([
+            "context",
+            "extract",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--output-file",
+            "/tmp/opencode/test_context_output.json",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("missing data");
+    assert_eq!(data["dry_run"], true);
+    assert!(
+        data["details"]["outputFile"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("test_context_output.json")
+    );
+}
+
+#[test]
+fn context_extract_dry_run_merge() {
+    let assert = fabio()
+        .args([
+            "context",
+            "extract",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--merge",
+            "/tmp/opencode/existing_graph.json",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("missing data");
+    assert_eq!(data["dry_run"], true);
+    assert!(
+        data["details"]["merge"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("existing_graph.json")
+    );
+}
+
 // ── Live tenant tests ───────────────────────────────────────────────────────
 
 #[test]

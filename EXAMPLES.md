@@ -940,6 +940,9 @@ fabio context extract --workspace $WS --deep --include-connections
 # Filter to specific item types
 fabio context extract --workspace $WS --item-types "Notebook,Lakehouse,SemanticModel"
 
+# Fast inventory-only mode (skip property fetching, just list items)
+fabio context extract --workspace $WS --no-properties
+
 # Increase concurrency for large workspaces
 fabio context extract --workspace $WS --deep --concurrency 16
 
@@ -949,10 +952,25 @@ fabio context extract --workspace "sales-analytics"
 # Preview what would be scanned without making API calls
 fabio context extract --workspace $WS --deep --dry-run
 
+# ── Incremental context building ──
+
+# Save graph to a file
+fabio context extract --workspace $WS --deep --output-file context.json
+
+# Later: add another workspace to the existing graph (merge)
+fabio context extract --workspace $NEW_WS --deep \
+  --merge context.json --output-file context.json
+
+# Build up context workspace by workspace
+fabio context extract --workspace $WS1 --output-file graph.json
+fabio context extract --workspace $WS2 --merge graph.json --output-file graph.json
+fabio context extract --workspace $WS3 --merge graph.json --output-file graph.json
+
+# Quick inventory first, then deepen a specific workspace
+fabio context extract --workspace $WS1 --workspace $WS2 --no-properties --output-file graph.json
+fabio context extract --workspace $WS1 --deep --merge graph.json --output-file graph.json
+
 # Pipe to jq for graph analysis
 fabio context extract --workspace $WS --deep | jq '.data.summary'
 fabio context extract --workspace $WS --deep | jq '.data.edges[] | select(.relationship == "default_lakehouse")'
-
-# Save full graph as agent context file
-fabio context extract --workspace $WS --deep --include-connections > workspace_graph.json
 ```

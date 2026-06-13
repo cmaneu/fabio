@@ -152,7 +152,8 @@ fabio catalog search         Search items across the tenant
 
 fabio context extract        Extract a graph of items and relationships from workspace(s)
                              Flags: --workspace (repeatable), --deep, --include-connections,
-                                    --item-types, --concurrency
+                                    --item-types, --no-properties, --merge, --output-file,
+                                    --concurrency
 ```
 
 ## Data & Compute

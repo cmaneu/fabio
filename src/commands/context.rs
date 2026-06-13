@@ -5,13 +5,14 @@
 //! provide structured context for coding agents and external applications.
 
 use std::collections::{BTreeMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
 use base64::prelude::{BASE64_STANDARD, Engine as _};
 use clap::Subcommand;
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
@@ -44,6 +45,18 @@ pub enum ContextCommand {
         #[arg(long)]
         item_types: Option<String>,
 
+        /// Skip type-specific detail fetching (fast inventory-only mode)
+        #[arg(long)]
+        no_properties: bool,
+
+        /// Merge results into an existing graph file (incremental extraction)
+        #[arg(long)]
+        merge: Option<PathBuf>,
+
+        /// Write output to a file instead of stdout
+        #[arg(long)]
+        output_file: Option<PathBuf>,
+
         /// Max concurrency for API calls
         #[arg(long, default_value = "8")]
         concurrency: usize,
@@ -52,7 +65,7 @@ pub enum ContextCommand {
 
 // ── Graph data model ────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GraphNode {
     id: String,
@@ -67,7 +80,7 @@ struct GraphNode {
     properties: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 struct GraphEdge {
     source: String,
@@ -77,7 +90,7 @@ struct GraphEdge {
     metadata: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct WorkspaceInfo {
     id: String,
@@ -86,7 +99,7 @@ struct WorkspaceInfo {
     capacity_id: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GraphSummary {
     total_nodes: usize,
@@ -97,7 +110,7 @@ struct GraphSummary {
     relationship_types: Option<BTreeMap<String, usize>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ContextGraph {
     nodes: Vec<GraphNode>,
@@ -115,60 +128,71 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
             deep,
             include_connections,
             item_types,
+            no_properties,
+            merge,
+            output_file,
             concurrency,
         } => {
-            extract(
-                cli,
-                client,
-                workspace,
-                *deep,
-                *include_connections,
-                item_types.as_deref(),
-                *concurrency,
-            )
-            .await
+            let params = ExtractParams {
+                workspaces: workspace,
+                deep: *deep,
+                include_connections: *include_connections,
+                item_types_filter: item_types.as_deref(),
+                no_properties: *no_properties,
+                merge: merge.as_deref(),
+                output_file: output_file.as_deref(),
+                concurrency: *concurrency,
+            };
+            extract(cli, client, &params).await
         }
     }
 }
 
 // ── Main extraction logic ───────────────────────────────────────────────────
 
-async fn extract(
-    cli: &Cli,
-    client: &FabricClient,
-    workspaces: &[String],
+struct ExtractParams<'a> {
+    workspaces: &'a [String],
     deep: bool,
     include_connections: bool,
-    item_types_filter: Option<&str>,
+    item_types_filter: Option<&'a str>,
+    no_properties: bool,
+    merge: Option<&'a std::path::Path>,
+    output_file: Option<&'a std::path::Path>,
     concurrency: usize,
-) -> Result<()> {
-    if workspaces.is_empty() {
+}
+
+async fn extract(cli: &Cli, client: &FabricClient, params: &ExtractParams<'_>) -> Result<()> {
+    if params.workspaces.is_empty() {
         bail!("At least one --workspace is required");
     }
 
     // Parse item type filter
-    let type_filter: Option<HashSet<String>> =
-        item_types_filter.map(|s| s.split(',').map(|t| t.trim().to_lowercase()).collect());
+    let type_filter: Option<HashSet<String>> = params
+        .item_types_filter
+        .map(|s| s.split(',').map(|t| t.trim().to_lowercase()).collect());
 
     // Dry-run: show what would be scanned
     if output::dry_run_guard(
         cli,
         "context extract",
         &serde_json::json!({
-            "workspaces": workspaces,
-            "deep": deep,
-            "includeConnections": include_connections,
-            "itemTypes": item_types_filter,
-            "concurrency": concurrency,
+            "workspaces": params.workspaces,
+            "deep": params.deep,
+            "includeConnections": params.include_connections,
+            "itemTypes": params.item_types_filter,
+            "noProperties": params.no_properties,
+            "merge": params.merge.map(|p| p.display().to_string()),
+            "outputFile": params.output_file.map(|p| p.display().to_string()),
+            "concurrency": params.concurrency,
         }),
     ) {
         return Ok(());
     }
 
-    let semaphore = Arc::new(Semaphore::new(concurrency));
+    let semaphore = Arc::new(Semaphore::new(params.concurrency));
 
     // Phase 1: Resolve workspaces
-    let workspace_infos = resolve_workspaces(client, workspaces).await?;
+    let workspace_infos = resolve_workspaces(client, params.workspaces).await?;
 
     // Phase 2: List and filter items
     let all_items = list_workspace_items(client, &workspace_infos, type_filter.as_ref()).await?;
@@ -178,14 +202,38 @@ async fn extract(
         client,
         &workspace_infos,
         &all_items,
-        deep,
-        include_connections,
+        params.deep,
+        params.include_connections,
+        params.no_properties,
         &semaphore,
     )
     .await?;
 
-    let json_value = serde_json::to_value(&graph)?;
-    output::render_object(cli, &json_value, "summary");
+    // Phase 8: Merge with existing graph if --merge specified
+    let final_graph = if let Some(merge_path) = params.merge {
+        let existing = load_graph(merge_path)?;
+        merge_graphs(existing, graph)
+    } else {
+        graph
+    };
+
+    // Phase 9: Output
+    let json_value = serde_json::to_value(&final_graph)?;
+
+    if let Some(file_path) = params.output_file {
+        let content = serde_json::to_string_pretty(&serde_json::json!({"data": json_value}))?;
+        std::fs::write(file_path, content)?;
+        let report = serde_json::json!({
+            "status": "written",
+            "file": file_path.display().to_string(),
+            "nodes": final_graph.summary.total_nodes,
+            "edges": final_graph.summary.total_edges,
+            "workspaces": final_graph.summary.workspaces_scanned,
+        });
+        output::render_object(cli, &report, "status");
+    } else {
+        output::render_object(cli, &json_value, "summary");
+    }
     Ok(())
 }
 
@@ -273,6 +321,7 @@ async fn build_graph(
     all_items: &[(Value, String, String)],
     deep: bool,
     include_connections: bool,
+    no_properties: bool,
     semaphore: &Arc<Semaphore>,
 ) -> Result<ContextGraph> {
     // Build known-item ID set for cross-referencing
@@ -284,12 +333,17 @@ async fn build_graph(
     let known_workspace_ids: HashSet<String> =
         workspace_infos.iter().map(|ws| ws.id.clone()).collect();
 
-    // Fetch item details (properties) concurrently
-    verbose::trace_category(
-        "context",
-        "fetching item details for property-based relationships",
-    );
-    let item_details = fetch_item_details(client, all_items, semaphore).await;
+    // Fetch item details (properties) concurrently — skip if --no-properties
+    let item_details = if no_properties {
+        verbose::trace_category("context", "skipping property fetching (--no-properties)");
+        all_items.iter().map(|(item, _, _)| item.clone()).collect()
+    } else {
+        verbose::trace_category(
+            "context",
+            "fetching item details for property-based relationships",
+        );
+        fetch_item_details(client, all_items, semaphore).await
+    };
 
     // Build nodes
     let nodes: Vec<GraphNode> = build_nodes(all_items, &item_details);
@@ -941,6 +995,64 @@ async fn fetch_connections(
     }
 
     edges
+}
+
+// ── Graph persistence and merging ───────────────────────────────────────────
+
+/// Load an existing graph from a JSON file (expects `{"data": {...}}` envelope).
+fn load_graph(path: &std::path::Path) -> Result<ContextGraph> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| anyhow::anyhow!("Failed to read graph file {}: {e}", path.display()))?;
+    let envelope: Value = serde_json::from_str(&content)
+        .map_err(|e| anyhow::anyhow!("Failed to parse graph file as JSON: {e}"))?;
+
+    // Support both {"data": {...}} envelope and bare graph object
+    let graph_value = envelope.get("data").unwrap_or(&envelope);
+
+    let graph: ContextGraph = serde_json::from_value(graph_value.clone())
+        .map_err(|e| anyhow::anyhow!("Failed to parse graph structure: {e}"))?;
+
+    verbose::trace_category(
+        "context",
+        &format!(
+            "loaded existing graph: {} nodes, {} edges, {} workspaces",
+            graph.summary.total_nodes, graph.summary.total_edges, graph.summary.workspaces_scanned
+        ),
+    );
+
+    Ok(graph)
+}
+
+/// Merge two graphs: union of nodes (by ID), union of edges, union of workspaces.
+fn merge_graphs(mut existing: ContextGraph, new: ContextGraph) -> ContextGraph {
+    // Merge nodes (deduplicate by ID, new nodes overwrite existing for same ID)
+    let mut node_map: std::collections::HashMap<String, GraphNode> = existing
+        .nodes
+        .drain(..)
+        .map(|n| (n.id.clone(), n))
+        .collect();
+    for node in new.nodes {
+        node_map.insert(node.id.clone(), node);
+    }
+    let nodes: Vec<GraphNode> = node_map.into_values().collect();
+
+    // Merge edges (deduplicate by full equality)
+    let mut edge_set: HashSet<GraphEdge> = existing.edges.into_iter().collect();
+    edge_set.extend(new.edges);
+
+    // Merge workspaces (deduplicate by ID)
+    let mut ws_map: std::collections::HashMap<String, WorkspaceInfo> = existing
+        .workspaces
+        .into_iter()
+        .map(|ws| (ws.id.clone(), ws))
+        .collect();
+    for ws in new.workspaces {
+        ws_map.insert(ws.id.clone(), ws);
+    }
+    let workspaces: Vec<WorkspaceInfo> = ws_map.into_values().collect();
+
+    // Rebuild summary
+    assemble_graph(nodes, edge_set, &workspaces)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
