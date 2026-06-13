@@ -188,7 +188,7 @@ cargo update --dry-run
 
 Update version-specific strings throughout the repository:
 
-1. **README.md** — Docker image version in usage examples (e.g., `ghcr.io/iemejia/fabio:0.22.0` → `ghcr.io/iemejia/fabio:0.23.0`).
+1. **README.md** — Docker image version in usage examples (e.g., `ghcr.io/iemejia/fabio:0.23.0` → `ghcr.io/iemejia/fabio:0.24.0`).
 2. **AGENTS.md** — Docker & Devcontainer section version examples.
 
 #### 4. Run Full Validation
@@ -670,8 +670,8 @@ Published to GHCR on every push to `main` and on version tags:
 
 ```
 ghcr.io/iemejia/fabio:latest       # latest stable release
-ghcr.io/iemejia/fabio:0.22.0       # release version
-ghcr.io/iemejia/fabio:0.22         # major.minor
+ghcr.io/iemejia/fabio:0.23.0       # release version
+ghcr.io/iemejia/fabio:0.23         # major.minor
 ```
 
 Multi-arch manifest: `linux/amd64` + `linux/arm64`.
