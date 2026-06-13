@@ -1,6 +1,6 @@
 # fabio
 
-Agent-first CLI for managing Microsoft Fabric artifacts and data.
+Agent-native CLI for managing Microsoft Fabric artifacts and data.
 
 Composable by design: commands just work together with JSON output by default, errors that explain how to fix things and what to try next, and results that pipe straight into the next command. Follows the [10 principles for agent-native CLIs](https://trevinsays.com/p/10-principles-for-agent-native-clis).
 
@@ -14,7 +14,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 
 | Capability | Fabric CLI | fabio |
 |---|---|---|
-| Design philosophy | Interactive-first (shell with `cd`/`ls`) | Agent-first (non-interactive, structured output) |
+| Design philosophy | Interactive-first (shell with `cd`/`ls`) | Agent-native (non-interactive, structured output) |
 | CI/CD deployment | Wraps fabric-cicd library | Native engine with content-hash diffing |
 | Default output | Human text | JSON (machine-parseable by default) |
 | Item type coverage | ~20 commands | 74 command groups |

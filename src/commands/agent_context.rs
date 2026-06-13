@@ -55,7 +55,7 @@ pub fn execute(cli: &Cli) -> Result<()> {
     );
     value.insert(
         "description".to_owned(),
-        serde_json::json!("Agent-first CLI for managing Microsoft Fabric artifacts and data"),
+        serde_json::json!("Agent-native CLI for managing Microsoft Fabric artifacts and data"),
     );
     value.insert(
         "global_flags".to_owned(),

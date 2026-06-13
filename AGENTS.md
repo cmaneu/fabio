@@ -1,7 +1,7 @@
 # Fabio CLI - Session Context
 
 ## Goal
-- Design and implement an agent-first CLI (`fabio`) to manage Microsoft Fabric artifacts and data, inspired by AWS/gcloud/Azure CLI principles, with structured JSON output, composability via stdin/stdout, and machine-readable errors.
+- Design and implement an agent-native CLI (`fabio`) to manage Microsoft Fabric artifacts and data, inspired by AWS/gcloud/Azure CLI principles, with structured JSON output, composability via stdin/stdout, and machine-readable errors.
 
 ## Agent-Native CLI Principles
 

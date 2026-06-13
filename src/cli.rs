@@ -14,7 +14,7 @@ use crate::commands::{
     sql_endpoint, user_data_function, variable_library, warehouse, warehouse_snapshot, workspace,
 };
 
-/// Agent-first CLI for managing Microsoft Fabric artifacts and data.
+/// Agent-native CLI for managing Microsoft Fabric artifacts and data.
 ///
 /// Structured JSON output by default. Designed for composability via stdin/stdout.
 #[derive(Parser, Debug)]
