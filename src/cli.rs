@@ -2,8 +2,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
     admin, anomaly_detector, apache_airflow_job, app_backend, auth, capacity, catalog, connection,
-    copy_job, cosmos_db_database, dashboard, data_build_tool_job, data_pipeline, dataagent,
-    dataflow, datamart, deploy, deployment_pipeline, digital_twin_builder,
+    context, copy_job, cosmos_db_database, dashboard, data_build_tool_job, data_pipeline,
+    dataagent, dataflow, datamart, deploy, deployment_pipeline, digital_twin_builder,
     digital_twin_builder_flow, domain, environment, event_schema_set, eventhouse, eventstream,
     feedback, gateway, git, graph_model, graph_query_set, graphql_api, item, job_scheduler, jobs,
     kql_dashboard, kql_database, kql_queryset, lakehouse, lro, managed_private_endpoint, map,
@@ -140,6 +140,12 @@ pub enum Command {
     Catalog {
         #[command(subcommand)]
         command: catalog::CatalogCommand,
+    },
+    /// Extract workspace runtime context as a relationship graph
+    #[command(display_order = 6)]
+    Context {
+        #[command(subcommand)]
+        command: context::ContextCommand,
     },
 
     // ── Data & Compute ───────────────────────────────────────────────────

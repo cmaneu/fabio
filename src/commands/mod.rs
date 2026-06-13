@@ -6,6 +6,7 @@ pub mod auth;
 pub mod capacity;
 pub mod catalog;
 pub mod connection;
+pub mod context;
 pub mod copy_job;
 pub mod cosmos_db_database;
 pub mod dashboard;
@@ -113,6 +114,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Lakehouse { command } => lakehouse::execute(&cli, &client, command).await,
         Command::Capacity { command } => capacity::execute(&cli, &client, command).await,
         Command::Catalog { command } => catalog::execute(&cli, &client, command).await,
+        Command::Context { command } => context::execute(&cli, &client, command).await,
         // Data & Compute
         Command::Notebook { command } => notebook::execute(&cli, &client, command).await,
         Command::Warehouse { command } => warehouse::execute(&cli, &client, command).await,
