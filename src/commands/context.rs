@@ -197,11 +197,21 @@ async fn resolve_workspaces(
         "context",
         &format!("resolving {} workspace(s)", workspaces.len()),
     );
-    let mut infos = Vec::with_capacity(workspaces.len());
-    for ws in workspaces {
-        infos.push(resolve_workspace(client, ws).await?);
+
+    // Resolve all workspaces concurrently
+    let mut join_set = JoinSet::new();
+    for (i, ws) in workspaces.iter().enumerate() {
+        let client = client.clone();
+        let ws = ws.clone();
+        join_set.spawn(async move { (i, resolve_workspace(&client, &ws).await) });
     }
-    Ok(infos)
+
+    let mut infos: Vec<Option<WorkspaceInfo>> = vec![None; workspaces.len()];
+    while let Some(Ok((i, result))) = join_set.join_next().await {
+        infos[i] = Some(result?);
+    }
+
+    Ok(infos.into_iter().flatten().collect())
 }
 
 async fn list_workspace_items(
@@ -213,14 +223,31 @@ async fn list_workspace_items(
         "context",
         &format!("listing items in {} workspace(s)", workspace_infos.len()),
     );
+
+    // List all workspaces concurrently
+    let mut join_set = JoinSet::new();
+    for (i, ws) in workspace_infos.iter().enumerate() {
+        let client = client.clone();
+        let ws_id = ws.id.clone();
+        join_set.spawn(async move {
+            let resp = client
+                .get_list(&format!("/workspaces/{ws_id}/items"), "value", true, None)
+                .await;
+            (i, resp)
+        });
+    }
+
+    let mut per_workspace_items: Vec<Vec<Value>> = vec![Vec::new(); workspace_infos.len()];
+    while let Some(Ok((i, result))) = join_set.join_next().await {
+        per_workspace_items[i] = result?.items;
+    }
+
+    // Flatten and filter
     let mut all_items: Vec<(Value, String, String)> = Vec::new();
-
-    for ws in workspace_infos {
-        let resp = client
-            .get_list(&format!("/workspaces/{}/items", ws.id), "value", true, None)
-            .await?;
-
-        for item in resp.items {
+    for (i, items) in per_workspace_items.into_iter().enumerate() {
+        let ws_id = &workspace_infos[i].id;
+        let ws_name = &workspace_infos[i].name;
+        for item in items {
             if let Some(filter) = type_filter {
                 let item_type = item
                     .get("type")
@@ -231,7 +258,7 @@ async fn list_workspace_items(
                     continue;
                 }
             }
-            all_items.push((item, ws.id.clone(), ws.name.clone()));
+            all_items.push((item, ws_id.clone(), ws_name.clone()));
         }
     }
 
@@ -602,6 +629,14 @@ fn scan_value_for_ids(
 
 // ── Deep mode: definition scanning ──────────────────────────────────────────
 
+/// Item types known to NOT support `getDefinition` — skip to avoid wasted LRO calls.
+fn supports_definition(item_type: &str) -> bool {
+    !matches!(
+        item_type,
+        "SQLEndpoint" | "Dashboard" | "Datamart" | "PaginatedReport" | "MLModel" | "MLExperiment"
+    )
+}
+
 async fn fetch_definitions_and_scan(
     client: &FabricClient,
     nodes: &[GraphNode],
@@ -619,7 +654,24 @@ async fn fetch_definitions_and_scan(
     // All IDs we consider "interesting" references (items + workspaces)
     let all_known: HashSet<String> = known_ids.union(known_workspace_ids).cloned().collect();
 
+    let scannable_count = nodes
+        .iter()
+        .filter(|n| supports_definition(&n.item_type))
+        .count();
+    verbose::trace_category(
+        "context",
+        &format!(
+            "scanning {scannable_count}/{} items (skipping types without definitions)",
+            nodes.len()
+        ),
+    );
+
     for (i, node) in nodes.iter().enumerate() {
+        // Skip items that don't support getDefinition
+        if !supports_definition(&node.item_type) {
+            continue;
+        }
+
         let client = client.clone();
         let sem = semaphore.clone();
         let ws_id = node.workspace_id.clone();
