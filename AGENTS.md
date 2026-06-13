@@ -419,7 +419,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **CSV/TSV output**: Global `--output csv|tsv` on all commands; RFC 4180 quoting via `format_csv_value()`
 - **Deploy validate**: Local-only pre-flight checks on source directory (validates .platform files, item types, definition structure, logical ID references); no API calls required
 - **Deploy fabric-cicd full compatibility**: Parses .children/ KQL database discovery, .pbi/ directory exclusion, creationPayload from .platform metadata, SparkJobDefinitionV2 format auto-detection, Report byPath→byConnection transform, notebook part ordering (.py before .json), ItemDisplayNameNotAvailableYet retry (up to 5 min), binary file skip, .platform included as definition part but excluded from content hash for idempotency
-- **1642 Rust tests** (905 unit + 737 offline/E2E integration), zero clippy warnings, rustfmt clean
+- **1657 Rust tests** (915 unit + 742 offline/E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~16 MB, stripped, full LTO, panic=abort
@@ -634,7 +634,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `tests/e2e_graph_model.rs`: Graph model CRUD + refresh + query tests
 - `tests/e2e_graph_query_set.rs`: Graph query set tests
 - `tests/e2e_catalog.rs`: Catalog search tests
-- `tests/e2e_context.rs`: Context extract tests (9 offline dry-run + 5 live graph extraction)
+- `tests/e2e_context.rs`: Context extract tests (10 offline dry-run + 10 live graph extraction)
 - `tests/e2e_dashboard.rs`: Dashboard list tests
 - `tests/e2e_datamart.rs`: Datamart list tests
 - `tests/e2e_paginated_report.rs`: Paginated report tests
