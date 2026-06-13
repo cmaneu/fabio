@@ -71,9 +71,9 @@ pub enum ContextCommand {
         #[arg(long)]
         output_file: Option<PathBuf>,
 
-        /// Max concurrency for API calls
-        #[arg(long, default_value = "8")]
-        concurrency: usize,
+        /// Max concurrency for API calls (default: auto-scaled to CPU count)
+        #[arg(long)]
+        concurrency: Option<usize>,
     },
 }
 
@@ -157,7 +157,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
                 format: *format,
                 merge: merge.as_deref(),
                 output_file: output_file.as_deref(),
-                concurrency: *concurrency,
+                concurrency: concurrency.unwrap_or_else(crate::parallel::default_concurrency),
             };
             extract(cli, client, &params).await
         }
