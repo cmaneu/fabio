@@ -986,3 +986,25 @@ fabio context extract --workspace $WS --deep --format jsonld --output-file conte
 # Each item becomes: {"@id": "urn:fabric:item:<uuid>", "@type": "fabric:Notebook", ...}
 # Edges are inlined as typed properties: {"fabric:defaultLakehouse": {"@id": "urn:fabric:item:<uuid>"}}
 ```
+
+## Self-update
+
+```bash
+# Check if a newer version is available (no install)
+fabio selfupdate --check
+
+# Update to the latest release
+fabio selfupdate
+
+# Preview the update without installing (dry-run)
+fabio selfupdate --dry-run
+
+# Install a specific version
+fabio selfupdate --target-version 0.23.0
+
+# Force reinstall even if already on the latest version
+fabio selfupdate --force
+
+# Combine: check what version would be installed without doing it
+fabio selfupdate --dry-run --force
+```

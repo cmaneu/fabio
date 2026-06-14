@@ -875,5 +875,10 @@ fabio operation get-result   Get result of a completed operation
 
 fabio agent-context          Machine-readable command schema for AI agents
 
+fabio selfupdate             Update fabio to the latest release from GitHub
+fabio selfupdate --check     Only check if an update is available
+fabio selfupdate --target-version <VER>  Install a specific version
+fabio selfupdate --force     Force reinstall even if already on latest
+
 fabio completions <shell>    Generate shell completion scripts (bash/zsh/fish/powershell/elvish)
 ```

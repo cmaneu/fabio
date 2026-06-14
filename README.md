@@ -315,6 +315,21 @@ fabio lakehouse list --out<Tab> → --output
 
 See [EXAMPLES.md](EXAMPLES.md) for usage examples covering all major workflows (lakehouse, notebooks, warehouses, real-time intelligence, semantic models, CI/CD, GitHub Actions, and more).
 
+## Updating
+
+Fabio can update itself to the latest release:
+
+```bash
+# Check if a newer version is available
+fabio selfupdate --check
+
+# Update to the latest release (downloads, verifies SHA256, replaces binary)
+fabio selfupdate
+
+# Install a specific version
+fabio selfupdate --target-version 0.23.0
+```
+
 ## Development
 
 ```bash
