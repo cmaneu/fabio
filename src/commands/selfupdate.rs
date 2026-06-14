@@ -26,12 +26,13 @@ pub async fn execute(cli: &Cli, check: bool, version: Option<&str>, force: bool)
     };
 
     let is_current = target_version == CURRENT_VERSION;
+    let is_newer = is_version_newer(&target_version, CURRENT_VERSION);
 
     if check {
         let obj = serde_json::json!({
             "current_version": CURRENT_VERSION,
             "latest_version": target_version,
-            "update_available": !is_current,
+            "update_available": is_newer,
         });
         output::render_object(cli, &obj, "current_version");
         return Ok(());
@@ -42,6 +43,20 @@ pub async fn execute(cli: &Cli, check: bool, version: Option<&str>, force: bool)
             "status": "up_to_date",
             "current_version": CURRENT_VERSION,
             "message": format!("Already running the latest version ({CURRENT_VERSION})."),
+        });
+        output::render_object(cli, &obj, "status");
+        return Ok(());
+    }
+
+    // Refuse to downgrade unless --force is used
+    if !is_newer && !force {
+        let obj = serde_json::json!({
+            "status": "up_to_date",
+            "current_version": CURRENT_VERSION,
+            "latest_version": target_version,
+            "message": format!(
+                "Current version ({CURRENT_VERSION}) is newer than the latest release ({target_version}). Use --force to downgrade."
+            ),
         });
         output::render_object(cli, &obj, "status");
         return Ok(());
@@ -175,6 +190,18 @@ const fn artifact_name() -> &'static str {
     {
         compile_error!("Unsupported platform for selfupdate");
     }
+}
+
+/// Compare two version strings (major.minor.patch) and return true if `target` is newer than `current`.
+fn is_version_newer(target: &str, current: &str) -> bool {
+    let parse = |v: &str| -> (u32, u32, u32) {
+        let mut parts = v.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
+        let major = parts.next().unwrap_or(0);
+        let minor = parts.next().unwrap_or(0);
+        let patch = parts.next().unwrap_or(0);
+        (major, minor, patch)
+    };
+    parse(target) > parse(current)
 }
 
 /// Verify the SHA256 checksum of the downloaded archive.
@@ -374,6 +401,33 @@ mod tests {
                 "Version component '{part}' is not a number"
             );
         }
+    }
+
+    #[test]
+    fn test_is_version_newer_basic() {
+        assert!(is_version_newer("1.0.0", "0.9.9"));
+        assert!(is_version_newer("0.2.0", "0.1.0"));
+        assert!(is_version_newer("0.1.1", "0.1.0"));
+        assert!(is_version_newer("0.24.0", "0.1.0"));
+    }
+
+    #[test]
+    fn test_is_version_newer_same() {
+        assert!(!is_version_newer("0.24.0", "0.24.0"));
+        assert!(!is_version_newer("1.0.0", "1.0.0"));
+    }
+
+    #[test]
+    fn test_is_version_newer_older() {
+        assert!(!is_version_newer("0.1.0", "0.24.0"));
+        assert!(!is_version_newer("0.23.9", "0.24.0"));
+        assert!(!is_version_newer("0.0.1", "1.0.0"));
+    }
+
+    #[test]
+    fn test_is_version_newer_major_trumps_minor() {
+        assert!(is_version_newer("2.0.0", "1.99.99"));
+        assert!(!is_version_newer("1.99.99", "2.0.0"));
     }
 
     #[cfg(not(windows))]
