@@ -99,11 +99,13 @@ fn inject_profile_env_vars() {
 
     let store = ProfileStore::load();
 
-    // Determine which profile is active. We cannot read --profile from clap yet
-    // (haven't parsed), so we check the FABIO_PROFILE env var and fall back to
-    // the stored active profile.
-    let profile_name = std::env::var("FABIO_PROFILE")
-        .ok()
+    // Pre-scan argv for --profile <name> since clap hasn't parsed yet.
+    // This allows `--profile prod` to correctly inject that profile's defaults
+    // (not just the active profile).
+    let profile_from_argv = scan_profile_from_args();
+
+    let profile_name = profile_from_argv
+        .or_else(|| std::env::var("FABIO_PROFILE").ok())
         .or_else(|| store.active.clone());
 
     let Some(name) = profile_name else {
@@ -119,9 +121,30 @@ fn inject_profile_env_vars() {
             unsafe { std::env::set_var("FABIO_WORKSPACE", ws) };
         }
     }
+    if let Some(ref cap) = profile.capacity {
+        if std::env::var("FABIO_CAPACITY").is_err() {
+            unsafe { std::env::set_var("FABIO_CAPACITY", cap) };
+        }
+    }
     if let Some(ref fmt) = profile.output {
         if std::env::var("FABIO_OUTPUT").is_err() {
             unsafe { std::env::set_var("FABIO_OUTPUT", fmt) };
         }
     }
+}
+
+/// Pre-scan argv for `--profile <name>` or `--profile=<name>` before clap parsing.
+fn scan_profile_from_args() -> Option<String> {
+    let args: Vec<String> = std::env::args().collect();
+    let mut i = 1; // skip argv[0] (binary name)
+    while i < args.len() {
+        if args[i] == "--profile" {
+            return args.get(i + 1).cloned();
+        }
+        if let Some(val) = args[i].strip_prefix("--profile=") {
+            return Some(val.to_string());
+        }
+        i += 1;
+    }
+    None
 }

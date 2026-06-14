@@ -160,11 +160,22 @@ fn save(
     private_link_workspace: Option<&str>,
 ) -> Result<()> {
     let mut store = ProfileStore::load();
+
+    // Merge with existing profile: only override fields that were explicitly provided.
+    let existing = store.profiles.get(name).cloned().unwrap_or(Profile {
+        workspace: None,
+        capacity: None,
+        output: None,
+        private_link_workspace: None,
+    });
+
     let profile = Profile {
-        workspace: workspace.map(String::from),
-        capacity: capacity.map(String::from),
-        output: output_fmt.map(String::from),
-        private_link_workspace: private_link_workspace.map(String::from),
+        workspace: workspace.map(String::from).or(existing.workspace),
+        capacity: capacity.map(String::from).or(existing.capacity),
+        output: output_fmt.map(String::from).or(existing.output),
+        private_link_workspace: private_link_workspace
+            .map(String::from)
+            .or(existing.private_link_workspace),
     };
     store.profiles.insert(name.to_string(), profile);
     store.save()?;

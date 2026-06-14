@@ -28,7 +28,7 @@ pub enum GatewayCommand {
         name: String,
 
         /// Capacity ID for the gateway
-        #[arg(long)]
+        #[arg(long, env = "FABIO_CAPACITY")]
         capacity_id: String,
 
         /// Azure subscription ID containing the virtual network

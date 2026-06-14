@@ -91,7 +91,7 @@ pub enum WorkspaceCommand {
         id: String,
 
         /// Target capacity ID
-        #[arg(short, long, visible_alias = "capacity-id")]
+        #[arg(short, long, visible_alias = "capacity-id", env = "FABIO_CAPACITY")]
         capacity: String,
     },
     /// Unassign a workspace from its capacity

@@ -482,3 +482,213 @@ fn profile_save_all_fields() {
         .assert()
         .success();
 }
+
+#[test]
+#[serial]
+fn profile_save_merges_with_existing() {
+    // Save a profile with workspace and output
+    fabio()
+        .args([
+            "profile",
+            "save",
+            "--name",
+            "test-merge",
+            "--workspace",
+            "ws-merge",
+            "--default-output",
+            "table",
+        ])
+        .assert()
+        .success();
+
+    // Now save again with only --capacity (should preserve workspace and output)
+    fabio()
+        .args([
+            "profile",
+            "save",
+            "--name",
+            "test-merge",
+            "--capacity",
+            "cap-merge",
+        ])
+        .assert()
+        .success();
+
+    // Verify all fields are preserved
+    let assert = fabio()
+        .args(["profile", "show", "--name", "test-merge"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["workspace"], "ws-merge");
+    assert_eq!(json["data"]["capacity"], "cap-merge");
+    assert_eq!(json["data"]["output"], "table");
+
+    // Cleanup
+    fabio()
+        .args(["profile", "delete", "--name", "test-merge"])
+        .assert()
+        .success();
+}
+
+#[test]
+#[serial]
+fn profile_save_can_override_existing_field() {
+    // Save initial profile
+    fabio()
+        .args([
+            "profile",
+            "save",
+            "--name",
+            "test-override-field",
+            "--workspace",
+            "ws-old",
+        ])
+        .assert()
+        .success();
+
+    // Override workspace with a new value
+    fabio()
+        .args([
+            "profile",
+            "save",
+            "--name",
+            "test-override-field",
+            "--workspace",
+            "ws-new",
+        ])
+        .assert()
+        .success();
+
+    // Verify workspace was updated
+    let assert = fabio()
+        .args(["profile", "show", "--name", "test-override-field"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["workspace"], "ws-new");
+
+    // Cleanup
+    fabio()
+        .args(["profile", "delete", "--name", "test-override-field"])
+        .assert()
+        .success();
+}
+
+#[test]
+#[serial]
+fn profile_flag_overrides_active_profile_workspace() {
+    // Save two profiles with different workspaces
+    fabio()
+        .args([
+            "profile",
+            "save",
+            "--name",
+            "test-active-ws",
+            "--workspace",
+            "aaaaaaaa-0000-0000-0000-000000000001",
+        ])
+        .assert()
+        .success();
+    fabio()
+        .args([
+            "profile",
+            "save",
+            "--name",
+            "test-other-ws",
+            "--workspace",
+            "bbbbbbbb-0000-0000-0000-000000000002",
+        ])
+        .assert()
+        .success();
+
+    // Activate the first profile
+    fabio()
+        .args(["profile", "use", "--name", "test-active-ws"])
+        .assert()
+        .success();
+
+    // Use --profile to override with the second profile's workspace
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "--profile",
+            "test-other-ws",
+            "item",
+            "create",
+            "--name",
+            "test",
+            "--type",
+            "Notebook",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    // Should use the --profile workspace (bbbb), not the active profile (aaaa)
+    assert_eq!(
+        json["data"]["details"]["workspace"],
+        "bbbbbbbb-0000-0000-0000-000000000002"
+    );
+
+    // Cleanup
+    fabio()
+        .args(["profile", "delete", "--name", "test-active-ws"])
+        .assert()
+        .success();
+    fabio()
+        .args(["profile", "delete", "--name", "test-other-ws"])
+        .assert()
+        .success();
+}
+
+#[test]
+#[serial]
+fn profile_capacity_injected_as_env_var() {
+    // Save a profile with capacity
+    fabio()
+        .args([
+            "profile",
+            "save",
+            "--name",
+            "test-cap-inject",
+            "--workspace",
+            "ws-cap-test",
+            "--capacity",
+            "cccccccc-0000-0000-0000-000000000003",
+        ])
+        .assert()
+        .success();
+    fabio()
+        .args(["profile", "use", "--name", "test-cap-inject"])
+        .assert()
+        .success();
+
+    // Dry-run workspace assign-capacity without --capacity flag
+    // (should pick up from profile via FABIO_CAPACITY)
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "assign-capacity",
+            "--id",
+            "ws-cap-test",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["dry_run"], true);
+    assert_eq!(
+        json["data"]["details"]["capacityId"],
+        "cccccccc-0000-0000-0000-000000000003"
+    );
+
+    // Cleanup
+    fabio()
+        .args(["profile", "delete", "--name", "test-cap-inject"])
+        .assert()
+        .success();
+}
