@@ -16,7 +16,7 @@ struct Release {
     tag_name: String,
 }
 
-/// Execute the selfupdate command.
+/// Execute the upgrade command.
 pub async fn execute(cli: &Cli, check: bool, version: Option<&str>, force: bool) -> Result<()> {
     let target_version = if let Some(v) = version {
         // Strip leading 'v' if provided
@@ -38,14 +38,14 @@ pub async fn execute(cli: &Cli, check: bool, version: Option<&str>, force: bool)
         return Ok(());
     }
 
-    // Refuse to selfupdate development builds unless --force is used
+    // Refuse to upgrade development builds unless --force is used
     if is_dev_build() && !force {
         let obj = serde_json::json!({
             "status": "dev_build",
             "current_version": CURRENT_VERSION,
             "message": format!(
                 "You are running a development build ({CURRENT_VERSION}). \
-                 selfupdate only updates official released versions. \
+                 upgrade only updates official released versions. \
                  Use --force to override, or install a release with: \
                  cargo install --git https://github.com/{GITHUB_REPO}.git --tag <version>"
             ),
@@ -81,7 +81,7 @@ pub async fn execute(cli: &Cli, check: bool, version: Option<&str>, force: bool)
     // Dry-run guard
     if output::dry_run_guard(
         cli,
-        &format!("selfupdate from {CURRENT_VERSION} to {target_version}"),
+        &format!("upgrade from {CURRENT_VERSION} to {target_version}"),
         &serde_json::json!({
             "current_version": CURRENT_VERSION,
             "target_version": target_version,
@@ -111,7 +111,7 @@ async fn download_and_install(target_version: &str) -> Result<()> {
         format!("https://github.com/{GITHUB_REPO}/releases/download/{tag}/{artifact}");
     let checksum_url = format!("{archive_url}.sha256");
 
-    eprintln!("[selfupdate] Downloading {artifact} ({target_version})...");
+    eprintln!("[upgrade] Downloading {artifact} ({target_version})...");
 
     // Download archive and checksum
     let http = reqwest::Client::builder()
@@ -137,15 +137,15 @@ async fn download_and_install(target_version: &str) -> Result<()> {
         .await?;
 
     // Verify SHA256
-    eprintln!("[selfupdate] Verifying checksum...");
+    eprintln!("[upgrade] Verifying checksum...");
     verify_checksum(&archive_bytes, &checksum_text)?;
 
     // Extract binary from archive
-    eprintln!("[selfupdate] Extracting binary...");
+    eprintln!("[upgrade] Extracting binary...");
     let binary = extract_binary(&archive_bytes)?;
 
     // Replace current executable
-    eprintln!("[selfupdate] Replacing binary...");
+    eprintln!("[upgrade] Replacing binary...");
     replace_executable(&binary)?;
 
     Ok(())
@@ -211,7 +211,7 @@ const fn artifact_name() -> &'static str {
         all(target_os = "windows", target_arch = "aarch64"),
     )))]
     {
-        compile_error!("Unsupported platform for selfupdate");
+        compile_error!("Unsupported platform for upgrade");
     }
 }
 

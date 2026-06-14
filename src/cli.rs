@@ -548,9 +548,9 @@ pub enum Command {
     /// Machine-readable CLI schema for agent introspection
     #[command(name = "agent-context", display_order = 65)]
     AgentContext,
-    /// Update fabio to the latest release from GitHub
+    /// Upgrade fabio to the latest release from GitHub
     #[command(display_order = 66)]
-    Selfupdate {
+    Upgrade {
         /// Only check if an update is available (don't install)
         #[arg(long)]
         check: bool,

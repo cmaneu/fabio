@@ -321,13 +321,13 @@ Fabio can update itself to the latest release:
 
 ```bash
 # Check if a newer version is available
-fabio selfupdate --check
+fabio upgrade --check
 
 # Update to the latest release (downloads, verifies SHA256, replaces binary)
-fabio selfupdate
+fabio upgrade
 
 # Install a specific version
-fabio selfupdate --target-version 0.23.0
+fabio upgrade --target-version 0.23.0
 ```
 
 ## Development

@@ -72,7 +72,7 @@ pub mod warehouse;
 pub mod warehouse_snapshot;
 pub mod workspace;
 
-pub mod selfupdate;
+pub mod upgrade;
 
 mod agent_context;
 mod completions;
@@ -235,11 +235,11 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Rest { command } => rest::execute(&cli, &client, command).await,
         Command::Rti { command } => rti::execute(&cli, &client, command).await,
         Command::AgentContext => agent_context::execute(&cli),
-        Command::Selfupdate {
+        Command::Upgrade {
             check,
             target_version,
             force,
-        } => selfupdate::execute(&cli, *check, target_version.as_deref(), *force).await,
+        } => upgrade::execute(&cli, *check, target_version.as_deref(), *force).await,
         Command::Completions { shell } => completions::execute(*shell),
     }
 }

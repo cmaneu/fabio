@@ -5,20 +5,20 @@ fn fabio() -> Command {
 }
 
 #[test]
-fn selfupdate_help_shows_usage() {
+fn upgrade_help_shows_usage() {
     fabio()
-        .args(["selfupdate", "--help"])
+        .args(["upgrade", "--help"])
         .assert()
         .success()
         .stdout(predicates::str::contains(
-            "Update fabio to the latest release",
+            "Upgrade fabio to the latest release",
         ));
 }
 
 #[test]
-fn selfupdate_dry_run_shows_plan() {
+fn upgrade_dry_run_shows_plan() {
     let assert = fabio()
-        .args(["selfupdate", "--dry-run", "--force"])
+        .args(["upgrade", "--dry-run", "--force"])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
@@ -28,7 +28,7 @@ fn selfupdate_dry_run_shows_plan() {
         json["data"]["would_execute"]
             .as_str()
             .unwrap()
-            .contains("selfupdate")
+            .contains("upgrade")
     );
     // Details should include the artifact name
     assert!(
@@ -40,8 +40,8 @@ fn selfupdate_dry_run_shows_plan() {
 }
 
 #[test]
-fn selfupdate_check_reports_version() {
-    let assert = fabio().args(["selfupdate", "--check"]).assert().success();
+fn upgrade_check_reports_version() {
+    let assert = fabio().args(["upgrade", "--check"]).assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     // Should have current_version and latest_version fields
@@ -51,11 +51,11 @@ fn selfupdate_check_reports_version() {
 }
 
 #[test]
-fn selfupdate_dry_run_specific_version() {
+fn upgrade_dry_run_specific_version() {
     // --force needed because 0.23.0 < current version (would be a downgrade)
     let assert = fabio()
         .args([
-            "selfupdate",
+            "upgrade",
             "--dry-run",
             "--force",
             "--target-version",
@@ -75,11 +75,11 @@ fn selfupdate_dry_run_specific_version() {
 }
 
 #[test]
-fn selfupdate_dry_run_with_v_prefix_version() {
+fn upgrade_dry_run_with_v_prefix_version() {
     // Should strip the v prefix gracefully (--force needed for downgrade)
     let assert = fabio()
         .args([
-            "selfupdate",
+            "upgrade",
             "--dry-run",
             "--force",
             "--target-version",
@@ -93,9 +93,9 @@ fn selfupdate_dry_run_with_v_prefix_version() {
 }
 
 #[test]
-fn selfupdate_json_output() {
+fn upgrade_json_output() {
     let assert = fabio()
-        .args(["--output", "json", "selfupdate", "--check"])
+        .args(["--output", "json", "upgrade", "--check"])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
@@ -105,10 +105,10 @@ fn selfupdate_json_output() {
 }
 
 #[test]
-fn selfupdate_refuses_on_dev_build_even_with_target_version() {
-    // On dev builds, any selfupdate attempt (even with --target-version) hits the dev guard
+fn upgrade_refuses_on_dev_build_even_with_target_version() {
+    // On dev builds, any upgrade attempt (even with --target-version) hits the dev guard
     let assert = fabio()
-        .args(["selfupdate", "--target-version", "0.0.1"])
+        .args(["upgrade", "--target-version", "0.0.1"])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
@@ -123,9 +123,9 @@ fn selfupdate_refuses_on_dev_build_even_with_target_version() {
 }
 
 #[test]
-fn selfupdate_check_reports_not_available_for_older() {
+fn upgrade_check_reports_not_available_for_older() {
     // --check with an older release should report update_available: false
-    let assert = fabio().args(["selfupdate", "--check"]).assert().success();
+    let assert = fabio().args(["upgrade", "--check"]).assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     // Since the latest release (0.1.0) is older than our dev version (0.25.0-dev)
@@ -133,9 +133,9 @@ fn selfupdate_check_reports_not_available_for_older() {
 }
 
 #[test]
-fn selfupdate_dev_build_refuses_without_force() {
-    // Dev builds (version contains -dev) should refuse selfupdate
-    let assert = fabio().args(["selfupdate"]).assert().success();
+fn upgrade_dev_build_refuses_without_force() {
+    // Dev builds (version contains -dev) should refuse upgrade
+    let assert = fabio().args(["upgrade"]).assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["status"], "dev_build");
@@ -148,9 +148,9 @@ fn selfupdate_dev_build_refuses_without_force() {
 }
 
 #[test]
-fn selfupdate_dev_build_check_still_works() {
+fn upgrade_dev_build_check_still_works() {
     // --check should still work on dev builds (informational, no mutation)
-    let assert = fabio().args(["selfupdate", "--check"]).assert().success();
+    let assert = fabio().args(["upgrade", "--check"]).assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert!(

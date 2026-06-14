@@ -289,7 +289,7 @@ git push
 ```
 
 **Rules:**
-- The `-dev` suffix signals "unreleased development build" and prevents `fabio selfupdate` from overwriting dev builds with older releases.
+- The `-dev` suffix signals "unreleased development build" and prevents `fabio upgrade` from overwriting dev builds with older releases.
 - Release versions MUST NOT contain `-dev` — the release workflow strips it.
 - Development versions MUST contain `-dev` — all commits between releases use this format.
 - The version lifecycle is: `0.24.0-dev` (development) → `0.24.0` (release tag) → `0.25.0-dev` (next cycle).
@@ -329,7 +329,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 
 ## Progress
 ### Done
-- **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, context, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, data-build-tool-job, org-app, org-app-audience, rti, rest, profile, jobs, feedback, operation, agent-context, selfupdate
+- **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, context, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, data-build-tool-job, org-app, org-app-audience, rti, rest, profile, jobs, feedback, operation, agent-context, upgrade
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain, CSV, TSV formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (JMESPath expression — see jmespath.org), `--quiet` (suppresses stdout), `--verbose/-v` (HTTP/LRO/auth diagnostics on stderr), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`, `--lro-timeout`
@@ -491,7 +491,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **Deploy config file (JSON + YAML)**: `--config <file> --env <name>` loads per-environment workspace/source/parameters; `serde_yaml` crate for YAML; CLI flags override config values
 - **Deploy protected type deletion**: Lakehouse, Warehouse, SQLDatabase, Eventhouse, KQLDatabase require `--allow-delete-types` to be deleted by `--delete-orphans`
 - **Deploy fabric-cicd full compatibility**: Source directory format, .platform file schema, definition parts, logical ID resolution, workspace ID replacement, creationPayload, .children/ discovery, .pbi/ exclusion, notebook ordering, Report byPath transform — all aligned with Microsoft's fabric-cicd Python library
-- **Selfupdate**: `fabio selfupdate` downloads latest release from GitHub, verifies SHA256 checksum, extracts platform-appropriate archive (tar.gz on Unix, zip on Windows), atomically replaces running binary; supports `--check` (version query only), `--target-version` (pin specific version), `--force` (reinstall even if current), `--dry-run`
+- **Upgrade**: `fabio upgrade` downloads latest release from GitHub, verifies SHA256 checksum, extracts platform-appropriate archive (tar.gz on Unix, zip on Windows), atomically replaces running binary; supports `--check` (version query only), `--target-version` (pin specific version), `--force` (reinstall even if current), `--dry-run`
 
 ## Critical Context
 - User's tenant: set locally via secure environment configuration (redacted)
@@ -602,7 +602,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/data_build_tool_job.rs`: list/show/create/update/delete/get-definition/update-definition/run (with --wait/--timeout/--cancel-on-timeout) [preview]
 - `src/commands/org_app.rs`: list/show/create/update/delete/get-definition/update-definition (Organizational App)
 - `src/commands/org_app_audience.rs`: list/show/create/update/delete/get-definition/update-definition (Org App Audience)
-- `src/commands/selfupdate.rs`: selfupdate (check/download/verify/replace binary from GitHub Releases)
+- `src/commands/upgrade.rs`: upgrade (check/download/verify/replace binary from GitHub Releases)
 - `tests/common/mod.rs`: Shared E2E test harness (TestConfig, helpers)
 - `tests/e2e_auth.rs`: Auth integration tests (device code, service principal secret/certificate/federated, WAM, input validation)
 - `tests/e2e_workspace.rs`: Workspace CRUD + assign-capacity + networking + OneLake settings + folders + storage format + roles filter tests
@@ -683,7 +683,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `tests/e2e_data_build_tool_job.rs`: DataBuildToolJob CRUD + definition + run tests
 - `tests/e2e_org_app.rs`: OrgApp CRUD + definition tests
 - `tests/e2e_org_app_audience.rs`: OrgAppAudience CRUD + definition tests
-- `tests/e2e_selfupdate.rs`: Selfupdate tests (dry-run, check, version targeting, JSON output)
+- `tests/e2e_upgrade.rs`: Upgrade tests (dry-run, check, version targeting, JSON output)
 - `.github/workflows/ci.yml`: Rust CI (fmt, clippy, test, build) on 6 targets (x64+arm64 x linux/macos/windows)
 - `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
 - `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass

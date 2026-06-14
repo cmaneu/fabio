@@ -1018,20 +1018,20 @@ fabio context extract --workspace $WS --deep --format jsonld --output-file conte
 
 ```bash
 # Check if a newer version is available (no install)
-fabio selfupdate --check
+fabio upgrade --check
 
 # Update to the latest release
-fabio selfupdate
+fabio upgrade
 
 # Preview the update without installing (dry-run)
-fabio selfupdate --dry-run
+fabio upgrade --dry-run
 
 # Install a specific version
-fabio selfupdate --target-version 0.23.0
+fabio upgrade --target-version 0.23.0
 
 # Force reinstall even if already on the latest version
-fabio selfupdate --force
+fabio upgrade --force
 
 # Combine: check what version would be installed without doing it
-fabio selfupdate --dry-run --force
+fabio upgrade --dry-run --force
 ```
