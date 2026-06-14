@@ -549,7 +549,7 @@ pub enum Command {
     #[command(name = "agent-context", display_order = 65)]
     AgentContext,
     /// Update fabio to the latest release from GitHub
-    #[command(display_order = 66)]
+    #[command(name = "selfupdate", visible_alias = "self-update", display_order = 66)]
     Selfupdate {
         /// Only check if an update is available (don't install)
         #[arg(long)]
