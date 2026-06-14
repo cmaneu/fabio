@@ -105,20 +105,20 @@ fn selfupdate_json_output() {
 }
 
 #[test]
-fn selfupdate_refuses_downgrade_without_force() {
-    // Targeting an older version without --force should refuse to proceed
+fn selfupdate_refuses_on_dev_build_even_with_target_version() {
+    // On dev builds, any selfupdate attempt (even with --target-version) hits the dev guard
     let assert = fabio()
         .args(["selfupdate", "--target-version", "0.0.1"])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(json["data"]["status"], "up_to_date");
+    assert_eq!(json["data"]["status"], "dev_build");
     assert!(
         json["data"]["message"]
             .as_str()
             .unwrap()
-            .contains("--force to downgrade")
+            .contains("development build")
     );
 }
 
@@ -128,6 +128,35 @@ fn selfupdate_check_reports_not_available_for_older() {
     let assert = fabio().args(["selfupdate", "--check"]).assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    // Since the latest release (0.1.0) is older than our dev version (0.24.0)
+    // Since the latest release (0.1.0) is older than our dev version (0.25.0-dev)
     assert_eq!(json["data"]["update_available"], false);
+}
+
+#[test]
+fn selfupdate_dev_build_refuses_without_force() {
+    // Dev builds (version contains -dev) should refuse selfupdate
+    let assert = fabio().args(["selfupdate"]).assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["status"], "dev_build");
+    assert!(
+        json["data"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("development build")
+    );
+}
+
+#[test]
+fn selfupdate_dev_build_check_still_works() {
+    // --check should still work on dev builds (informational, no mutation)
+    let assert = fabio().args(["selfupdate", "--check"]).assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(
+        json["data"]["current_version"]
+            .as_str()
+            .unwrap()
+            .contains("-dev")
+    );
 }

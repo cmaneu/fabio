@@ -157,14 +157,14 @@ Before tagging or publishing, complete these mandatory pre-flight steps:
 
 #### 1. Bump the Version Number
 
-Update `Cargo.toml` with the new version:
+Update `Cargo.toml` with the new version. Development versions use the `-dev` suffix (e.g., `0.25.0-dev`). Release versions MUST NOT contain `-dev` — strip it before tagging:
 
 ```bash
-# Check current version
+# Check current version (should be X.Y.Z-dev during development)
 grep '^version' Cargo.toml | head -1
 
-# Update to new version (e.g., 0.23.0)
-sed -i 's/^version = ".*"/version = "0.23.0"/' Cargo.toml
+# Update to release version (remove -dev suffix, e.g., 0.25.0-dev → 0.25.0)
+sed -i 's/^version = ".*"/version = "0.25.0"/' Cargo.toml
 ```
 
 Run `cargo check` or `cargo build` to regenerate `Cargo.lock` with the new version.
@@ -274,6 +274,25 @@ gh release edit v0.23.0 --notes-file release-notes.md
 # Or create a new release with notes (if CI doesn't auto-create):
 gh release create v0.23.0 --notes-file release-notes.md --title "v0.23.0"
 ```
+
+### Post-Release: Bump to Next Dev Version
+
+Immediately after a release is tagged and pushed, bump `Cargo.toml` to the next development version:
+
+```bash
+# Bump to next version with -dev suffix (e.g., 0.23.0 → 0.24.0-dev)
+sed -i 's/^version = ".*"/version = "0.24.0-dev"/' Cargo.toml
+cargo check  # regenerate Cargo.lock
+git add Cargo.toml Cargo.lock
+git commit -m "chore: bump version to 0.24.0-dev"
+git push
+```
+
+**Rules:**
+- The `-dev` suffix signals "unreleased development build" and prevents `fabio selfupdate` from overwriting dev builds with older releases.
+- Release versions MUST NOT contain `-dev` — the release workflow strips it.
+- Development versions MUST contain `-dev` — all commits between releases use this format.
+- The version lifecycle is: `0.24.0-dev` (development) → `0.24.0` (release tag) → `0.25.0-dev` (next cycle).
 
 ### Automated Release Script
 

@@ -38,6 +38,22 @@ pub async fn execute(cli: &Cli, check: bool, version: Option<&str>, force: bool)
         return Ok(());
     }
 
+    // Refuse to selfupdate development builds unless --force is used
+    if is_dev_build() && !force {
+        let obj = serde_json::json!({
+            "status": "dev_build",
+            "current_version": CURRENT_VERSION,
+            "message": format!(
+                "You are running a development build ({CURRENT_VERSION}). \
+                 selfupdate only updates official released versions. \
+                 Use --force to override, or install a release with: \
+                 cargo install --git https://github.com/{GITHUB_REPO}.git --tag <version>"
+            ),
+        });
+        output::render_object(cli, &obj, "status");
+        return Ok(());
+    }
+
     if is_current && !force {
         let obj = serde_json::json!({
             "status": "up_to_date",
@@ -75,6 +91,20 @@ pub async fn execute(cli: &Cli, check: bool, version: Option<&str>, force: bool)
         return Ok(());
     }
 
+    download_and_install(&target_version).await?;
+
+    let obj = serde_json::json!({
+        "status": "updated",
+        "previous_version": CURRENT_VERSION,
+        "new_version": target_version,
+        "message": format!("Successfully updated from {CURRENT_VERSION} to {target_version}."),
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+/// Download, verify, extract, and install the target version.
+async fn download_and_install(target_version: &str) -> Result<()> {
     let artifact = artifact_name();
     let tag = format!("v{target_version}");
     let archive_url =
@@ -118,13 +148,6 @@ pub async fn execute(cli: &Cli, check: bool, version: Option<&str>, force: bool)
     eprintln!("[selfupdate] Replacing binary...");
     replace_executable(&binary)?;
 
-    let obj = serde_json::json!({
-        "status": "updated",
-        "previous_version": CURRENT_VERSION,
-        "new_version": target_version,
-        "message": format!("Successfully updated from {CURRENT_VERSION} to {target_version}."),
-    });
-    output::render_object(cli, &obj, "status");
     Ok(())
 }
 
@@ -190,6 +213,20 @@ const fn artifact_name() -> &'static str {
     {
         compile_error!("Unsupported platform for selfupdate");
     }
+}
+
+/// Returns true if the current binary is a development build (version contains `-dev`).
+const fn is_dev_build() -> bool {
+    // const-compatible: check for '-' in version string (release versions are pure x.y.z)
+    let bytes = CURRENT_VERSION.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'-' {
+            return true;
+        }
+        i += 1;
+    }
+    false
 }
 
 /// Compare two version strings (major.minor.patch) and return true if `target` is newer than `current`.
@@ -392,8 +429,9 @@ mod tests {
 
     #[test]
     fn test_current_version_is_valid() {
-        // Ensure version string is a valid semver-like format
-        let parts: Vec<&str> = CURRENT_VERSION.split('.').collect();
+        // Ensure version string is a valid semver-like format (x.y.z or x.y.z-prerelease)
+        let base = CURRENT_VERSION.split('-').next().unwrap();
+        let parts: Vec<&str> = base.split('.').collect();
         assert_eq!(parts.len(), 3, "Version should be major.minor.patch");
         for part in parts {
             assert!(
@@ -401,6 +439,12 @@ mod tests {
                 "Version component '{part}' is not a number"
             );
         }
+    }
+
+    #[test]
+    fn test_is_dev_build_detected() {
+        // Our current version is 0.25.0-dev, so this should be true
+        assert!(is_dev_build());
     }
 
     #[test]
