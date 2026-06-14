@@ -548,8 +548,21 @@ pub enum Command {
     /// Machine-readable CLI schema for agent introspection
     #[command(name = "agent-context", display_order = 65)]
     AgentContext,
-    /// Generate shell completion scripts
+    /// Update fabio to the latest release from GitHub
     #[command(display_order = 66)]
+    Selfupdate {
+        /// Only check if an update is available (don't install)
+        #[arg(long)]
+        check: bool,
+        /// Install a specific version (e.g., 0.24.0)
+        #[arg(long = "target-version")]
+        target_version: Option<String>,
+        /// Force reinstall even if already on the latest version
+        #[arg(long)]
+        force: bool,
+    },
+    /// Generate shell completion scripts
+    #[command(display_order = 67)]
     Completions {
         /// Shell to generate completions for
         #[arg(value_enum)]

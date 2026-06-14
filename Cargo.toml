@@ -56,6 +56,10 @@ base64 = "0.22"
 glob = "0.3"
 csv = "1"
 
+# Archive extraction (selfupdate command)
+flate2 = "1"
+tar = "0.4"
+
 # TDS protocol (SQL query execution for warehouse/lakehouse)
 # TODO: Switch to upstream crates.io release once https://github.com/microsoft/mssql-rust-driver
 # publishes a version with rustls support (currently only available in this fork).
@@ -86,6 +90,8 @@ windows = { version = "0.62", features = ["Foundation", "Security_Authentication
 # OpenSSL vendored build for Windows (client_certificate feature requires OpenSSL;
 # Windows runners don't have it pre-installed, especially ARM64)
 openssl = { version = "0.10", features = ["vendored"] }
+# Zip extraction for selfupdate on Windows
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 assert_cmd = "2"
