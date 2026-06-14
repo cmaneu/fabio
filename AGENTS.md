@@ -119,7 +119,7 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
 
 ## Testing Requirements (MANDATORY)
 
-All new features and changes MUST have corresponding tests:
+All new features, improvements, and bug fixes MUST have corresponding tests. This is non-negotiable — code without tests is incomplete code. Do NOT submit or consider work done until both unit tests and E2E tests are written, passing, and validated live.
 
 1. **Unit tests** — Add unit tests in the same source file (or a `#[cfg(test)]` module) for:
    - New helper functions, parsers, or data transformations.
@@ -132,13 +132,17 @@ All new features and changes MUST have corresponding tests:
    - Error handling (invalid inputs, permission errors, not-found responses).
 
 3. **Live tenant validation** — You have access to a live Microsoft Fabric tenant for E2E testing:
-   - Run E2E tests against the live tenant to validate API behavior.
+   - **ALWAYS run your new feature live against the tenant** before considering the work done. Do not skip this step.
+   - Use `cargo run -- <command> ...` to execute against the real Fabric APIs and verify the feature works end-to-end.
    - Use the test env vars (`FABIO_TEST_SOURCE_WORKSPACE`, `FABIO_TEST_CAPACITY_ID`, etc.) for workspace/item references.
+   - If env vars are not set in your session, use the values from `tests/common/mod.rs` or ask the user.
    - If a feature requires additional Azure resources (VNets, storage accounts, etc.), use `az cli` to create them as part of test setup.
    - Document any API behaviors discovered during testing in the appropriate AGENTS.md section.
+   - Clean up any test resources you create (delete items, profiles, etc.) after validation.
 
 **Rules:**
 - Do NOT commit new commands or features without corresponding unit AND E2E tests.
+- Do NOT consider a feature complete until it has been validated live against the tenant (not just dry-run).
 - E2E tests should cover at minimum: `--dry-run` validation, happy-path execution, and error cases (invalid ID, missing permissions).
 - Follow existing test patterns in `tests/common/mod.rs` and existing `tests/e2e_*.rs` files.
 - Tests must pass locally (`cargo test`) before committing.
