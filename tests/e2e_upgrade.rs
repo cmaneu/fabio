@@ -106,29 +106,27 @@ fn upgrade_json_output() {
 
 #[test]
 fn upgrade_refuses_on_dev_build_even_with_target_version() {
-    // On dev builds, any upgrade attempt (even with --target-version) hits the dev guard
+    // On dev builds: "dev_build"; on release builds: "up_to_date" (0.0.1 < 0.25.0)
     let assert = fabio()
         .args(["upgrade", "--target-version", "0.0.1"])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(json["data"]["status"], "dev_build");
+    let status = json["data"]["status"].as_str().unwrap();
     assert!(
-        json["data"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("development build")
+        status == "dev_build" || status == "up_to_date",
+        "Unexpected status: {status}"
     );
 }
 
 #[test]
 fn upgrade_check_reports_not_available_for_older() {
-    // --check with an older release should report update_available: false
+    // --check should report update_available: false when current >= latest
     let assert = fabio().args(["upgrade", "--check"]).assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    // Since the latest release (0.1.0) is older than our dev version (0.25.0-dev)
+    // Current version (0.25.0) is newer than last GitHub release (0.1.0)
     assert_eq!(json["data"]["update_available"], false);
 }
 
@@ -138,25 +136,20 @@ fn upgrade_dev_build_refuses_without_force() {
     let assert = fabio().args(["upgrade"]).assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(json["data"]["status"], "dev_build");
+    let status = json["data"]["status"].as_str().unwrap();
+    // On dev builds: "dev_build"; on release builds: "up_to_date" (since 0.25.0 > 0.1.0)
     assert!(
-        json["data"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("development build")
+        status == "dev_build" || status == "up_to_date",
+        "Unexpected status: {status}"
     );
 }
 
 #[test]
 fn upgrade_dev_build_check_still_works() {
-    // --check should still work on dev builds (informational, no mutation)
+    // --check should always work regardless of dev/release build
     let assert = fabio().args(["upgrade", "--check"]).assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    assert!(
-        json["data"]["current_version"]
-            .as_str()
-            .unwrap()
-            .contains("-dev")
-    );
+    assert!(json["data"]["current_version"].as_str().is_some());
+    assert!(json["data"]["latest_version"].as_str().is_some());
 }

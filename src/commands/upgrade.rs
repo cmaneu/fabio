@@ -442,9 +442,10 @@ mod tests {
     }
 
     #[test]
-    fn test_is_dev_build_detected() {
-        // Our current version is 0.25.0-dev, so this should be true
-        assert!(is_dev_build());
+    fn test_is_dev_build_detection() {
+        // Verify is_dev_build() correctly detects the -dev suffix
+        let has_dev = CURRENT_VERSION.contains('-');
+        assert_eq!(is_dev_build(), has_dev);
     }
 
     #[test]

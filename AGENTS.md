@@ -699,7 +699,7 @@ Published to GHCR on every push to `main` and on version tags:
 
 ```
 ghcr.io/iemejia/fabio:latest       # latest stable release
-ghcr.io/iemejia/fabio:0.23.0       # release version
+ghcr.io/iemejia/fabio:0.25.0       # release version
 ghcr.io/iemejia/fabio:0.23         # major.minor
 ```
 
