@@ -57,7 +57,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Protected type deletion guards** — Lakehouse/Warehouse/Eventhouse safe from accidental deletion
 - **Post-deploy automation** — Semantic Model refresh, Environment publish, SQL endpoint polling
 - **Parallel execution** — bounded-concurrency async deployment (default 8 parallel ops per type)
-- **Profile management** — named profiles for multi-tenant workflows
+- **Profile management** — named profiles store default workspace, capacity, output format, and private link settings; switch contexts with `fabio profile use`
 
 ## Installation
 

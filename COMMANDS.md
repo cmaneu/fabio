@@ -858,6 +858,11 @@ fabio admin list-user-access List access details for a user
 fabio rest call              Raw REST API passthrough (Fabric or Power BI)
 
 fabio profile save           Save a named profile with default settings
+                             --name <NAME>                     Profile name (required)
+                             --workspace <ID>                  Default workspace ID
+                             --capacity <ID>                   Default capacity ID
+                             --default-output <FMT>            Default output format (json|table|plain|csv|tsv)
+                             --private-link-workspace <ID>     Workspace ID for private link URL routing
 fabio profile use            Set the active profile
 fabio profile list           List all saved profiles
 fabio profile show           Show profile details

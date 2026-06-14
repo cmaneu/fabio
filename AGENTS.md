@@ -2648,3 +2648,65 @@ Git commands are run with CWD set to source directory. Returns `None` entirely i
 - **Merge is idempotent**: Extracting the same workspace twice with `--merge` produces the same graph as extracting it once. New nodes overwrite old nodes with the same ID, so re-extraction captures any name/description/property changes.
 - **`--format jsonld` produces RDF-compatible output**: JSON-LD format with `@context` vocabulary (`https://api.fabric.microsoft.com/ontology/`) and `@graph` array. Items become typed resources (`@id: urn:fabric:item:{uuid}`, `@type: fabric:{ItemType}`). Edges are inlined as typed link properties on source nodes (e.g., `fabric:defaultLakehouse: {"@id": "urn:fabric:item:{target}"}`). Workspaces are separate resources (`urn:fabric:workspace:{uuid}`). The output is simultaneously valid JSON (agents consume as-is) and valid RDF (importable into Neptune, Stardog, Jena, or any SPARQL endpoint via standard JSON-LD parsers). No external RDF crate needed — pure `serde_json` construction.
 
+## Profile System
+
+Named profiles store per-environment default settings, eliminating repetitive flags. Implements Agent-Native Principle 9 (persistent identity through profiles).
+
+### Storage
+- File: `~/.fabio/profiles.json`
+- Unix permissions: directory `0700`, file `0600` (atomic write avoids TOCTOU)
+- Windows: standard file write (DPAPI encryption is for token cache only, not profiles)
+
+### Configurable Fields
+
+| Field | CLI flag on `profile save` | Env var injected | Effect |
+|-------|---------------------------|-----------------|--------|
+| `workspace` | `--workspace <ID>` | `FABIO_WORKSPACE` | Default workspace for all workspace-scoped commands |
+| `capacity` | `--capacity <ID>` | *(none)* | Default capacity ID for capacity operations |
+| `output` | `--default-output <fmt>` | `FABIO_OUTPUT` | Default output format (json, table, plain, csv, tsv) |
+| `private_link_workspace` | `--private-link-workspace <ID>` | *(none)* | Routes all Fabric/OneLake API calls through private link URLs |
+
+### Precedence Chain
+
+Defaults are injected at the **lowest priority** — any explicit source wins:
+
+```
+CLI flag (--workspace X)  >  env var (FABIO_WORKSPACE)  >  active profile value  >  clap default
+```
+
+Profile values are injected by setting env vars **before** clap parses arguments (in `main.rs`). Clap's `env = "FABIO_..."` attributes pick them up as fallbacks.
+
+### Commands
+
+```bash
+fabio profile save --name <NAME> [--workspace <ID>] [--capacity <ID>] [--default-output <FMT>] [--private-link-workspace <ID>]
+fabio profile use --name <NAME>       # Set active profile
+fabio profile list                    # List all profiles (shows active marker)
+fabio profile show --name <NAME>      # Show profile details
+fabio profile delete --name <NAME>    # Delete a profile (supports --dry-run)
+```
+
+### Global Flag
+
+`--profile <NAME>` on any command overrides the active profile for that single invocation:
+
+```bash
+# Active profile is "dev", but this command uses "prod" defaults
+fabio lakehouse list --profile prod
+```
+
+### Private Link Routing
+
+When `private_link_workspace` is set, the `FabricClient` transforms URLs:
+- `https://api.fabric.microsoft.com/v1/...` → `https://<ws-id>-api.privatelink.analysis.windows.net/v1/...`
+- `https://onelake.dfs.fabric.microsoft.com/...` → `https://<ws-id>-onelake.dfs.fabric.microsoft.com/...`
+- `https://onelake.blob.fabric.microsoft.com/...` → `https://<ws-id>-onelake.blob.fabric.microsoft.com/...`
+
+This enables fabio to work in environments where public Fabric endpoints are blocked and only private link access is permitted.
+
+### Notes
+- Profiles do NOT store credentials — authentication is managed separately via `fabio auth login`
+- `save` overwrites all fields (not merge) — omitted fields become `null`
+- `delete` removes the profile; if it was active, `active` is cleared
+- Profiles are NOT authentication identities — switching profiles does not change the authenticated user/service principal
+

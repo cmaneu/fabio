@@ -793,18 +793,45 @@ fabio domain assign-workspaces --id $DOM --workspace-ids '["ws1","ws2"]'
 ## Named profiles
 
 ```bash
-# Save profiles for different environments
-fabio profile save --name dev --workspace $DEV_WS
-fabio profile save --name prod --workspace $PROD_WS
+# ── Creating profiles ──
 
-# Use a profile (sets defaults for --workspace, etc.)
+# Save a dev profile with workspace and table output
+fabio profile save --name dev --workspace $DEV_WS --default-output table
+
+# Save a prod profile with workspace and JSON output
+fabio profile save --name prod --workspace $PROD_WS --capacity $PROD_CAP --default-output json
+
+# Save a profile for private link environments
+fabio profile save --name private --workspace $WS --private-link-workspace $PRIVATE_WS_ID
+
+# ── Switching contexts ──
+
+# Activate the dev profile (all subsequent commands inherit its defaults)
 fabio profile use --name dev
 
-# Override profile with explicit flags
-fabio lakehouse list-tables --id $LH --profile prod
+# Now these work without --workspace or --output flags
+fabio lakehouse list
+fabio item list
+fabio notebook run --id $NB_ID
 
-# List profiles
+# One-off command against prod without switching active profile
+fabio lakehouse list --profile prod
+
+# Explicit flags always override profile defaults
+fabio item list --workspace $OTHER_WS --output json
+
+# ── Inspecting profiles ──
+
+# List all profiles (shows which is active)
 fabio profile list -o table
+
+# Show full details of a specific profile
+fabio profile show --name dev
+
+# ── Cleanup ──
+
+# Delete a profile
+fabio profile delete --name old-env
 ```
 
 ## Composability and scripting

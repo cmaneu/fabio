@@ -30,6 +30,10 @@ pub enum ProfileCommand {
         /// Default output format for this profile
         #[arg(long = "default-output")]
         default_output: Option<String>,
+
+        /// Workspace ID for private link URL routing
+        #[arg(long)]
+        private_link_workspace: Option<String>,
     },
     /// Set the active profile
     Use {
@@ -131,12 +135,14 @@ pub fn execute(cli: &Cli, command: &ProfileCommand) -> Result<()> {
             workspace,
             capacity,
             default_output,
+            private_link_workspace,
         } => save(
             cli,
             name,
             workspace.as_deref(),
             capacity.as_deref(),
             default_output.as_deref(),
+            private_link_workspace.as_deref(),
         ),
         ProfileCommand::Use { name } => use_profile(cli, name),
         ProfileCommand::List => list(cli),
@@ -151,13 +157,14 @@ fn save(
     workspace: Option<&str>,
     capacity: Option<&str>,
     output_fmt: Option<&str>,
+    private_link_workspace: Option<&str>,
 ) -> Result<()> {
     let mut store = ProfileStore::load();
     let profile = Profile {
         workspace: workspace.map(String::from),
         capacity: capacity.map(String::from),
         output: output_fmt.map(String::from),
-        private_link_workspace: None,
+        private_link_workspace: private_link_workspace.map(String::from),
     };
     store.profiles.insert(name.to_string(), profile);
     store.save()?;
@@ -216,6 +223,7 @@ fn list(cli: &Cli) -> Result<()> {
                 "workspace": profile.workspace,
                 "capacity": profile.capacity,
                 "output": profile.output,
+                "private_link_workspace": profile.private_link_workspace,
             })
         })
         .collect();
@@ -246,6 +254,7 @@ fn show(cli: &Cli, name: &str) -> Result<()> {
         "workspace": profile.workspace,
         "capacity": profile.capacity,
         "output": profile.output,
+        "private_link_workspace": profile.private_link_workspace,
     });
     output::render_object(cli, &obj, "name");
     Ok(())
