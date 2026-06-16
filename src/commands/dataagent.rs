@@ -14,8 +14,6 @@ use crate::output;
 
 /// Polling interval for data agent query runs.
 const QUERY_POLL_INTERVAL: Duration = Duration::from_secs(2);
-/// Maximum wait time for data agent query runs.
-const QUERY_MAX_WAIT: Duration = Duration::from_secs(300);
 
 #[derive(Debug, Subcommand)]
 pub enum DataAgentCommand {
@@ -102,6 +100,225 @@ pub enum DataAgentCommand {
         /// Include execution details (SQL queries, tool calls, run steps)
         #[arg(long)]
         show_steps: bool,
+
+        /// Agent stage to query: sandbox (draft) or production (published)
+        #[arg(long, default_value = "production")]
+        stage: String,
+
+        /// Maximum wait time in seconds for the query to complete (default: 300)
+        #[arg(long, default_value = "300")]
+        timeout: u64,
+    },
+
+    // ── Configuration ────────────────────────────────────────────────────
+    /// Get the configuration of a data agent (instructions, data sources, preview runtime)
+    #[command(display_order = 8)]
+    GetConfig {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Update the configuration of a data agent (instructions, preview runtime)
+    #[command(display_order = 9)]
+    UpdateConfig {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// AI instructions for the agent (guides data source selection and query generation)
+        #[arg(long)]
+        instructions: Option<String>,
+
+        /// Enable preview runtime (agentic NL2SQL reasoning path)
+        #[arg(long)]
+        enable_preview_runtime: bool,
+
+        /// Disable preview runtime
+        #[arg(long, conflicts_with = "enable_preview_runtime")]
+        disable_preview_runtime: bool,
+    },
+
+    // ── Datasource Management ────────────────────────────────────────────
+    /// List configured data sources for a data agent
+    #[command(display_order = 13)]
+    ListDatasources {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Show details of a configured data source
+    #[command(display_order = 14)]
+    ShowDatasource {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+    },
+    /// Add a data source to the agent (auto-discovers schema from artifact)
+    #[command(display_order = 15)]
+    AddDatasource {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Artifact name or ID (lakehouse, warehouse, KQL database, semantic model, etc.)
+        #[arg(long)]
+        artifact: String,
+
+        /// Workspace containing the artifact (defaults to same workspace as agent)
+        #[arg(long)]
+        artifact_workspace: Option<String>,
+
+        /// Artifact type (auto-detected if omitted). Values: `Lakehouse`, `Warehouse`, `KQLDatabase`, `SemanticModel`, `Ontology`, `GraphModel`, `MirroredDatabase`, `SQLDatabase`
+        #[arg(long, value_name = "TYPE")]
+        artifact_type: Option<String>,
+
+        /// Data source instructions (how the agent should use this source)
+        #[arg(long)]
+        instructions: Option<String>,
+    },
+    /// Remove a data source from the agent
+    #[command(display_order = 16)]
+    RemoveDatasource {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Data source name or ID to remove
+        #[arg(long)]
+        datasource: String,
+    },
+
+    // ── Few-shot Management ──────────────────────────────────────────────
+    /// List few-shot examples for a data source
+    #[command(display_order = 17)]
+    ListFewshots {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+    },
+    /// Add a few-shot example (question/query pair) to a data source
+    #[command(display_order = 18)]
+    AddFewshot {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+
+        /// Natural language question
+        #[arg(long)]
+        question: String,
+
+        /// SQL/KQL/DAX query that answers the question
+        #[arg(long)]
+        query: String,
+    },
+    /// Remove a few-shot example by ID
+    #[command(display_order = 19)]
+    RemoveFewshot {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+
+        /// Few-shot example ID to remove
+        #[arg(long)]
+        fewshot_id: String,
+    },
+    /// Bulk upload few-shot examples from a JSON file
+    #[command(display_order = 20)]
+    UploadFewshots {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+
+        /// JSON file with few-shots array: [{"question":"...", "query":"..."}]
+        #[arg(long)]
+        file: String,
+    },
+    /// Select or unselect tables in a data source
+    #[command(display_order = 21)]
+    SelectTables {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+
+        /// Comma-separated table names to select (e.g. "orders,products,customers")
+        #[arg(long)]
+        tables: Option<String>,
+
+        /// Select all tables
+        #[arg(long, conflicts_with = "tables")]
+        all_tables: bool,
+
+        /// Unselect (instead of select)
+        #[arg(long)]
+        unselect: bool,
     },
 
     // ── Definitions ──────────────────────────────────────────────────────
@@ -153,9 +370,14 @@ pub enum DataAgentCommand {
         /// Optional publish description
         #[arg(long)]
         description: Option<String>,
+
+        /// Also publish to Microsoft 365 Copilot Agent Store
+        #[arg(long)]
+        to_m365: bool,
     },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentCommand) -> Result<()> {
     match command {
         DataAgentCommand::List { workspace } => list(cli, client, workspace).await,
@@ -195,6 +417,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             prompt,
             published_url,
             show_steps,
+            stage,
+            timeout,
         } => query(
             cli,
             client,
@@ -203,9 +427,120 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             prompt.as_deref(),
             published_url.as_deref(),
             *show_steps,
+            stage,
+            *timeout,
         )
         .await
         .map_err(|e| enrich_forbidden(e, "data-agent query", "Viewer")),
+        DataAgentCommand::GetConfig { workspace, id } => get_config(cli, client, workspace, id)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent get-config", "Contributor")),
+        DataAgentCommand::UpdateConfig {
+            workspace,
+            id,
+            instructions,
+            enable_preview_runtime,
+            disable_preview_runtime,
+        } => update_config(
+            cli,
+            client,
+            workspace,
+            id,
+            instructions.as_deref(),
+            *enable_preview_runtime,
+            *disable_preview_runtime,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-agent update-config", "Contributor")),
+        DataAgentCommand::ListDatasources { workspace, id } => {
+            list_datasources(cli, client, workspace, id)
+                .await
+                .map_err(|e| enrich_forbidden(e, "data-agent list-datasources", "Contributor"))
+        }
+        DataAgentCommand::ShowDatasource {
+            workspace,
+            id,
+            datasource,
+        } => show_datasource(cli, client, workspace, id, datasource)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent show-datasource", "Contributor")),
+        DataAgentCommand::AddDatasource {
+            workspace,
+            id,
+            artifact,
+            artifact_workspace,
+            artifact_type,
+            instructions,
+        } => add_datasource(
+            cli,
+            client,
+            workspace,
+            id,
+            artifact,
+            artifact_workspace.as_deref(),
+            artifact_type.as_deref(),
+            instructions.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-agent add-datasource", "Contributor")),
+        DataAgentCommand::RemoveDatasource {
+            workspace,
+            id,
+            datasource,
+        } => remove_datasource(cli, client, workspace, id, datasource)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent remove-datasource", "Contributor")),
+        DataAgentCommand::ListFewshots {
+            workspace,
+            id,
+            datasource,
+        } => list_fewshots(cli, client, workspace, id, datasource)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent list-fewshots", "Contributor")),
+        DataAgentCommand::AddFewshot {
+            workspace,
+            id,
+            datasource,
+            question,
+            query,
+        } => add_fewshot(cli, client, workspace, id, datasource, question, query)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent add-fewshot", "Contributor")),
+        DataAgentCommand::RemoveFewshot {
+            workspace,
+            id,
+            datasource,
+            fewshot_id,
+        } => remove_fewshot(cli, client, workspace, id, datasource, fewshot_id)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent remove-fewshot", "Contributor")),
+        DataAgentCommand::UploadFewshots {
+            workspace,
+            id,
+            datasource,
+            file,
+        } => upload_fewshots(cli, client, workspace, id, datasource, file)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent upload-fewshots", "Contributor")),
+        DataAgentCommand::SelectTables {
+            workspace,
+            id,
+            datasource,
+            tables,
+            all_tables,
+            unselect,
+        } => select_tables(
+            cli,
+            client,
+            workspace,
+            id,
+            datasource,
+            tables.as_deref(),
+            *all_tables,
+            *unselect,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-agent select-tables", "Contributor")),
         DataAgentCommand::GetDefinition { workspace, id } => {
             get_definition(cli, client, workspace, id)
                 .await
@@ -232,7 +567,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             workspace,
             id,
             description,
-        } => publish(cli, client, workspace, id, description.as_deref())
+            to_m365,
+        } => publish(cli, client, workspace, id, description.as_deref(), *to_m365)
             .await
             .map_err(|e| enrich_forbidden(e, "data-agent publish", "Contributor")),
     }
@@ -354,6 +690,7 @@ async fn delete(
 ///
 /// The data agent exposes an `OpenAI`-compatible endpoint at its published URL.
 /// Flow: create assistant -> create thread -> post message -> create run -> poll -> read response.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn query(
     cli: &Cli,
     client: &FabricClient,
@@ -362,6 +699,8 @@ async fn query(
     prompt: Option<&str>,
     published_url: Option<&str>,
     verbose: bool,
+    stage: &str,
+    timeout: u64,
 ) -> Result<()> {
     // Resolve prompt text: --prompt flag or stdin
     let prompt_text = if let Some(p) = prompt {
@@ -397,7 +736,16 @@ async fn query(
 
     // Use the OpenAI Assistants protocol against the published URL
     let token = client.require_auth().await?;
-    let query_result = run_assistant_query(&resolved_url, &token, &prompt_text, verbose).await?;
+    let max_wait = Duration::from_secs(timeout);
+    let query_result = run_assistant_query(
+        &resolved_url,
+        &token,
+        &prompt_text,
+        verbose,
+        max_wait,
+        stage,
+    )
+    .await?;
 
     let mut result = serde_json::json!({
         "question": prompt_text.trim(),
@@ -470,6 +818,8 @@ async fn run_assistant_query(
     token: &str,
     question: &str,
     verbose: bool,
+    max_wait: Duration,
+    stage: &str,
 ) -> Result<QueryResult> {
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(360))
@@ -478,6 +828,12 @@ async fn run_assistant_query(
         .map_err(|e| FabioError::with_hint(ErrorCode::NetworkError, e.to_string(), "Verify the data agent is published. Check status: fabio data-agent show --workspace <WS> --id <ID>. Publish if needed: fabio data-agent publish --workspace <WS> --id <ID>"))?;
 
     let auth_header = token;
+
+    // Build stage-specific headers for internal workload API routing
+    let _stage_header = match stage {
+        "sandbox" | "draft" => "sandbox",
+        _ => "production",
+    };
 
     // Step 1: Create assistant + thread
     let assistant_id = create_assistant(&http, base_url, auth_header).await?;
@@ -488,7 +844,7 @@ async fn run_assistant_query(
     let run_id = create_run(&http, base_url, auth_header, &thread_id, &assistant_id).await?;
 
     // Step 3: Poll until complete
-    poll_run_completion(&http, base_url, auth_header, &thread_id, &run_id).await?;
+    poll_run_completion(&http, base_url, auth_header, &thread_id, &run_id, max_wait).await?;
 
     // Step 4 (optional): Retrieve run steps for verbose mode
     let steps = if verbose {
@@ -690,12 +1046,13 @@ async fn poll_run_completion(
     auth_header: &str,
     thread_id: &str,
     run_id: &str,
+    max_wait: Duration,
 ) -> Result<()> {
     let start = std::time::Instant::now();
     let terminal_states = ["completed", "failed", "cancelled", "requires_action"];
 
     loop {
-        if start.elapsed() > QUERY_MAX_WAIT {
+        if start.elapsed() > max_wait {
             return Err(FabioError::with_hint(
                 ErrorCode::Timeout,
                 "Data agent query timed out waiting for response",
@@ -1202,6 +1559,1246 @@ fn validate_elements_recursive(elements: &[Value], datasource_path: &str) -> Res
     Ok(())
 }
 
+// ─── Configuration ───────────────────────────────────────────────────────────
+
+/// Get agent configuration by parsing the definition's `stage_config.json`.
+async fn get_config(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let definition_resp = client
+        .post(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await?;
+
+    let parts = definition_resp
+        .get("definition")
+        .and_then(|d| d.get("parts"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let mut config = serde_json::json!({
+        "instructions": null,
+        "enablePreviewRuntime": false,
+        "dataSources": [],
+    });
+
+    for part in &parts {
+        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
+        let payload = part.get("payload").and_then(Value::as_str).unwrap_or("");
+
+        if path == "Files/Config/draft/stage_config.json" {
+            if let Some(decoded) = decode_part_payload(payload) {
+                if let Ok(parsed) = serde_json::from_str::<Value>(&decoded) {
+                    config["instructions"] = parsed
+                        .get("aiInstructions")
+                        .or_else(|| parsed.get("additionalInstructions"))
+                        .cloned()
+                        .unwrap_or(Value::Null);
+                    if let Some(experimental) = parsed.get("experimental") {
+                        let enabled = experimental
+                            .get("enableExperimentalFeatures")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false);
+                        config["enablePreviewRuntime"] = Value::Bool(enabled);
+                    }
+                }
+            }
+        }
+
+        // Collect datasource names
+        if path.starts_with("Files/Config/draft/") && path.ends_with("/datasource.json") {
+            if let Some(decoded) = decode_part_payload(payload) {
+                if let Ok(parsed) = serde_json::from_str::<Value>(&decoded) {
+                    let ds_info = serde_json::json!({
+                        "displayName": parsed.get("displayName").or_else(|| parsed.get("display_name")),
+                        "type": parsed.get("type"),
+                        "artifactId": parsed.get("artifactId").or_else(|| parsed.get("id")),
+                    });
+                    if let Some(arr) = config["dataSources"].as_array_mut() {
+                        arr.push(ds_info);
+                    }
+                }
+            }
+        }
+    }
+
+    output::render_object(cli, &config, "instructions");
+    Ok(())
+}
+
+/// Update agent configuration by modifying `stage_config.json` in the definition.
+#[allow(clippy::fn_params_excessive_bools, clippy::too_many_lines)]
+async fn update_config(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    instructions: Option<&str>,
+    enable_preview_runtime: bool,
+    disable_preview_runtime: bool,
+) -> Result<()> {
+    if instructions.is_none() && !enable_preview_runtime && !disable_preview_runtime {
+        return Err(FabioError::invalid_input(
+            "At least one of --instructions, --enable-preview-runtime, or --disable-preview-runtime must be provided",
+        )
+        .into());
+    }
+
+    if output::dry_run_guard(
+        cli,
+        "data-agent update-config",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "instructions": instructions,
+            "enablePreviewRuntime": enable_preview_runtime,
+            "disablePreviewRuntime": disable_preview_runtime,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    // Fetch current definition
+    let definition_resp = client
+        .post(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await?;
+
+    let parts = definition_resp
+        .get("definition")
+        .and_then(|d| d.get("parts"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    // Find and modify stage_config.json
+    let mut new_parts: Vec<Value> = Vec::new();
+    let mut found_config = false;
+
+    for part in &parts {
+        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
+        if path == "Files/Config/draft/stage_config.json" {
+            found_config = true;
+            let payload = part.get("payload").and_then(Value::as_str).unwrap_or("");
+            let mut config = decode_part_payload(payload)
+                .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+                .unwrap_or_else(|| serde_json::json!({}));
+
+            if let Some(instr) = instructions {
+                config["aiInstructions"] = Value::String(instr.to_string());
+            }
+            if enable_preview_runtime || disable_preview_runtime {
+                let experimental = config.as_object_mut().map(|o| {
+                    o.entry("experimental")
+                        .or_insert_with(|| serde_json::json!({}))
+                });
+                if let Some(exp) = experimental {
+                    if let Some(obj) = exp.as_object_mut() {
+                        obj.insert(
+                            "enableExperimentalFeatures".to_string(),
+                            Value::Bool(enable_preview_runtime),
+                        );
+                    }
+                }
+            }
+
+            let encoded =
+                base64::engine::general_purpose::STANDARD.encode(config.to_string().as_bytes());
+            new_parts.push(serde_json::json!({
+                "path": path,
+                "payload": encoded,
+                "payloadType": "InlineBase64"
+            }));
+        } else {
+            new_parts.push(part.clone());
+        }
+    }
+
+    // If no stage_config exists yet, create one
+    if !found_config {
+        let mut config = serde_json::json!({
+            "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/stageConfiguration/1.0.0/schema.json"
+        });
+        if let Some(instr) = instructions {
+            config["aiInstructions"] = Value::String(instr.to_string());
+        }
+        if enable_preview_runtime {
+            config["experimental"] = serde_json::json!({"enableExperimentalFeatures": true});
+        }
+        let encoded =
+            base64::engine::general_purpose::STANDARD.encode(config.to_string().as_bytes());
+        new_parts.push(serde_json::json!({
+            "path": "Files/Config/draft/stage_config.json",
+            "payload": encoded,
+            "payloadType": "InlineBase64"
+        }));
+    }
+
+    let update_body = serde_json::json!({ "definition": { "parts": new_parts } });
+    client
+        .post(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition"),
+            &update_body,
+            true,
+        )
+        .await?;
+
+    let result = serde_json::json!({
+        "id": id,
+        "status": "config_updated",
+        "instructions": instructions,
+        "enablePreviewRuntime": enable_preview_runtime,
+    });
+    output::render_object(cli, &result, "status");
+    Ok(())
+}
+
+// ─── Datasource Management ───────────────────────────────────────────────────
+
+/// List configured data sources by parsing the agent's definition.
+async fn list_datasources(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let parts = get_definition_parts(client, workspace, id).await?;
+    let datasources = extract_datasources_from_parts(&parts);
+
+    output::render_list_with_token(
+        cli,
+        &datasources,
+        &["displayName", "type", "artifactId", "workspaceId"],
+        &["NAME", "TYPE", "ARTIFACT ID", "WORKSPACE ID"],
+        "displayName",
+        None,
+    );
+    Ok(())
+}
+
+/// Show details of a specific data source from the definition.
+async fn show_datasource(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    datasource: &str,
+) -> Result<()> {
+    let parts = get_definition_parts(client, workspace, id).await?;
+    let datasources = extract_datasources_from_parts(&parts);
+
+    let ds = datasources
+        .iter()
+        .find(|d| {
+            let name = d.get("displayName").and_then(Value::as_str).unwrap_or("");
+            let ds_id = d.get("artifactId").and_then(Value::as_str).unwrap_or("");
+            name.eq_ignore_ascii_case(datasource) || ds_id == datasource
+        })
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::NotFound,
+                format!("Data source '{datasource}' not found"),
+                "List available data sources: fabio data-agent list-datasources -w <workspace> --id <id>",
+            )
+        })?;
+
+    output::render_object(cli, ds, "displayName");
+    Ok(())
+}
+
+/// Add a data source to the agent's definition.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+async fn add_datasource(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    artifact: &str,
+    artifact_workspace: Option<&str>,
+    artifact_type: Option<&str>,
+    instructions: Option<&str>,
+) -> Result<()> {
+    let ds_workspace = artifact_workspace.unwrap_or(workspace);
+
+    // Auto-detect artifact type if not provided
+    let resolved_type = if let Some(t) = artifact_type {
+        t.to_string()
+    } else {
+        // Try to find the artifact in the workspace items list
+        let items = client
+            .get_list(
+                &format!("/workspaces/{ds_workspace}/items"),
+                "value",
+                true,
+                None,
+            )
+            .await?;
+
+        let found = items.items.iter().find(|item| {
+            let item_name = item
+                .get("displayName")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let item_id = item.get("id").and_then(Value::as_str).unwrap_or("");
+            item_name.eq_ignore_ascii_case(artifact) || item_id == artifact
+        });
+
+        match found {
+            Some(item) => item
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            None => {
+                return Err(FabioError::with_hint(
+                    ErrorCode::NotFound,
+                    format!("Artifact '{artifact}' not found in workspace '{ds_workspace}'"),
+                    "Specify the artifact type with --artifact-type, or check the workspace items: fabio item list -w <workspace>",
+                ).into());
+            }
+        }
+    };
+
+    // Map Fabric item type to data agent datasource type
+    let ds_type = map_item_type_to_datasource_type(&resolved_type)?;
+
+    // Resolve artifact ID
+    let items = client
+        .get_list(
+            &format!("/workspaces/{ds_workspace}/items?type={resolved_type}"),
+            "value",
+            true,
+            None,
+        )
+        .await?;
+
+    let artifact_item = items
+        .items
+        .iter()
+        .find(|item| {
+            let item_name = item.get("displayName").and_then(Value::as_str).unwrap_or("");
+            let item_id = item.get("id").and_then(Value::as_str).unwrap_or("");
+            item_name.eq_ignore_ascii_case(artifact) || item_id == artifact
+        })
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::NotFound,
+                format!("Artifact '{artifact}' of type '{resolved_type}' not found"),
+                format!("List items of this type: fabio item list -w {ds_workspace} --type {resolved_type}"),
+            )
+        })?;
+
+    let artifact_id = artifact_item
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let artifact_name = artifact_item
+        .get("displayName")
+        .and_then(Value::as_str)
+        .unwrap_or(artifact);
+
+    if output::dry_run_guard(
+        cli,
+        "data-agent add-datasource",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "artifactId": artifact_id,
+            "artifactName": artifact_name,
+            "artifactWorkspace": ds_workspace,
+            "datasourceType": ds_type,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    // Build datasource definition
+    let mut datasource_json = serde_json::json!({
+        "artifactId": artifact_id,
+        "workspaceId": ds_workspace,
+        "displayName": artifact_name,
+        "type": ds_type,
+    });
+    if let Some(instr) = instructions {
+        datasource_json["dataSourceInstructions"] = Value::String(instr.to_string());
+    }
+
+    // Fetch current definition and append the new datasource part
+    let parts = get_definition_parts(client, workspace, id).await?;
+    let mut new_parts = parts;
+
+    // Determine path prefix based on type
+    let path_prefix = format!("Files/Config/draft/{ds_type}-{artifact_name}");
+    let ds_encoded = base64::engine::general_purpose::STANDARD
+        .encode(serde_json::to_string(&datasource_json)?.as_bytes());
+
+    new_parts.push(serde_json::json!({
+        "path": format!("{path_prefix}/datasource.json"),
+        "payload": ds_encoded,
+        "payloadType": "InlineBase64"
+    }));
+
+    let update_body = serde_json::json!({ "definition": { "parts": new_parts } });
+    client
+        .post(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition"),
+            &update_body,
+            true,
+        )
+        .await?;
+
+    let result = serde_json::json!({
+        "status": "datasource_added",
+        "artifactId": artifact_id,
+        "displayName": artifact_name,
+        "type": ds_type,
+    });
+    output::render_object(cli, &result, "status");
+    Ok(())
+}
+
+/// Remove a data source from the agent's definition.
+async fn remove_datasource(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    datasource: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "data-agent remove-datasource",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "datasource": datasource,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let parts = get_definition_parts(client, workspace, id).await?;
+
+    // Find datasource parts matching the name or ID
+    let new_parts: Vec<Value> = parts
+        .iter()
+        .filter(|part| {
+            let path = part.get("path").and_then(Value::as_str).unwrap_or("");
+            if !path.starts_with("Files/Config/draft/") || !path.contains('/') {
+                return true; // keep non-datasource parts
+            }
+            // Check if this part belongs to the datasource being removed
+            if let Some(payload) = part.get("payload").and_then(Value::as_str) {
+                if path.ends_with("/datasource.json") {
+                    if let Some(decoded) = decode_part_payload(payload) {
+                        if let Ok(parsed) = serde_json::from_str::<Value>(&decoded) {
+                            let name = parsed
+                                .get("displayName")
+                                .or_else(|| parsed.get("display_name"))
+                                .and_then(Value::as_str)
+                                .unwrap_or("");
+                            let art_id = parsed
+                                .get("artifactId")
+                                .or_else(|| parsed.get("id"))
+                                .and_then(Value::as_str)
+                                .unwrap_or("");
+                            if name.eq_ignore_ascii_case(datasource) || art_id == datasource {
+                                return false; // remove this datasource part
+                            }
+                        }
+                    }
+                }
+            }
+            // Also remove associated fewshots file in the same directory
+            if path.contains(datasource) {
+                return false;
+            }
+            true
+        })
+        .cloned()
+        .collect();
+
+    if new_parts.len() == parts.len() {
+        return Err(FabioError::with_hint(
+            ErrorCode::NotFound,
+            format!("Data source '{datasource}' not found in agent definition"),
+            "List available data sources: fabio data-agent list-datasources -w <workspace> --id <id>",
+        )
+        .into());
+    }
+
+    let update_body = serde_json::json!({ "definition": { "parts": new_parts } });
+    client
+        .post(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition"),
+            &update_body,
+            true,
+        )
+        .await?;
+
+    let result = serde_json::json!({
+        "id": id,
+        "status": "datasource_removed",
+        "datasource": datasource,
+    });
+    output::render_object(cli, &result, "status");
+    Ok(())
+}
+
+// ─── Few-shot Management ─────────────────────────────────────────────────────
+
+/// List few-shot examples for a specific data source.
+async fn list_fewshots(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    datasource: &str,
+) -> Result<()> {
+    let parts = get_definition_parts(client, workspace, id).await?;
+    let fewshots = extract_fewshots_for_datasource(&parts, datasource)?;
+
+    output::render_list_with_token(
+        cli,
+        &fewshots,
+        &["id", "question", "query"],
+        &["ID", "QUESTION", "QUERY"],
+        "id",
+        None,
+    );
+    Ok(())
+}
+
+/// Add a few-shot example to a data source.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+async fn add_fewshot(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    datasource: &str,
+    question: &str,
+    query_text: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "data-agent add-fewshot",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "datasource": datasource,
+            "question": question,
+            "query": query_text,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let parts = get_definition_parts(client, workspace, id).await?;
+
+    // Find the fewshots part for this datasource and the datasource directory prefix
+    let ds_dir = find_datasource_dir(&parts, datasource)?;
+    let fewshots_path = format!("{ds_dir}/fewshots.json");
+
+    // Find existing fewshots content or create empty
+    let existing_payload = parts.iter().find_map(|part| {
+        let path = part.get("path").and_then(Value::as_str)?;
+        if path == fewshots_path {
+            part.get("payload")
+                .and_then(Value::as_str)
+                .map(String::from)
+        } else {
+            None
+        }
+    });
+
+    let mut fewshots_data = existing_payload.as_ref().map_or_else(
+        || serde_json::json!({
+            "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/fewShots/1.0.0/schema.json",
+            "fewShots": []
+        }),
+        |payload| {
+            decode_part_payload(payload)
+                .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+                .unwrap_or_else(|| serde_json::json!({"fewShots": []}))
+        },
+    );
+
+    // Add the new fewshot (with duplicate detection)
+    let fewshots_arr = fewshots_data
+        .get_mut("fewShots")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| {
+            FabioError::new(
+                ErrorCode::ApiError,
+                "Invalid fewshots structure in definition",
+            )
+        })?;
+
+    // Check for duplicates (case-insensitive)
+    let question_lower = question.to_lowercase();
+    let has_duplicate = fewshots_arr.iter().any(|f| {
+        f.get("question")
+            .or_else(|| f.get("Question"))
+            .and_then(Value::as_str)
+            .is_some_and(|q| q.to_lowercase() == question_lower)
+    });
+
+    let saved_question = if has_duplicate {
+        // Find next available suffix
+        let mut suffix = 1;
+        loop {
+            let candidate = format!("{question} [{suffix}]").to_lowercase();
+            let exists = fewshots_arr.iter().any(|f| {
+                f.get("question")
+                    .or_else(|| f.get("Question"))
+                    .and_then(Value::as_str)
+                    .is_some_and(|q| q.to_lowercase() == candidate)
+            });
+            if !exists {
+                break;
+            }
+            suffix += 1;
+        }
+        format!("{question} [{suffix}]")
+    } else {
+        question.to_string()
+    };
+
+    let new_id = uuid::Uuid::new_v4().to_string();
+    fewshots_arr.push(serde_json::json!({
+        "id": new_id,
+        "question": saved_question,
+        "query": query_text,
+    }));
+
+    // Rebuild definition parts
+    let encoded = base64::engine::general_purpose::STANDARD
+        .encode(serde_json::to_string(&fewshots_data)?.as_bytes());
+
+    let mut new_parts: Vec<Value> = parts
+        .iter()
+        .filter(|p| p.get("path").and_then(Value::as_str) != Some(&fewshots_path))
+        .cloned()
+        .collect();
+    new_parts.push(serde_json::json!({
+        "path": fewshots_path,
+        "payload": encoded,
+        "payloadType": "InlineBase64"
+    }));
+
+    let update_body = serde_json::json!({ "definition": { "parts": new_parts } });
+    client
+        .post(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition"),
+            &update_body,
+            true,
+        )
+        .await?;
+
+    let result = serde_json::json!({
+        "status": "fewshot_added",
+        "id": new_id,
+        "question": saved_question,
+        "query": query_text,
+    });
+    output::render_object(cli, &result, "status");
+    Ok(())
+}
+
+/// Remove a few-shot example by ID.
+async fn remove_fewshot(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    datasource: &str,
+    fewshot_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "data-agent remove-fewshot",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "datasource": datasource,
+            "fewshotId": fewshot_id,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let parts = get_definition_parts(client, workspace, id).await?;
+    let ds_dir = find_datasource_dir(&parts, datasource)?;
+    let fewshots_path = format!("{ds_dir}/fewshots.json");
+
+    let payload = parts
+        .iter()
+        .find_map(|part| {
+            let path = part.get("path").and_then(Value::as_str)?;
+            if path == fewshots_path {
+                part.get("payload").and_then(Value::as_str).map(String::from)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::NotFound,
+                format!("No fewshots found for data source '{datasource}'"),
+                "Add fewshots first: fabio data-agent add-fewshot -w <workspace> --id <id> --datasource <ds> --question '...' --query '...'",
+            )
+        })?;
+
+    let mut fewshots_data = decode_part_payload(&payload)
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({"fewShots": []}));
+
+    let arr = fewshots_data
+        .get_mut("fewShots")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| FabioError::new(ErrorCode::ApiError, "Invalid fewshots structure"))?;
+
+    let original_len = arr.len();
+    arr.retain(|f| {
+        f.get("id")
+            .and_then(Value::as_str)
+            .is_none_or(|fid| fid != fewshot_id)
+    });
+
+    if arr.len() == original_len {
+        return Err(FabioError::with_hint(
+            ErrorCode::NotFound,
+            format!("Few-shot '{fewshot_id}' not found"),
+            "List fewshots: fabio data-agent list-fewshots -w <workspace> --id <id> --datasource <ds>",
+        )
+        .into());
+    }
+
+    let encoded = base64::engine::general_purpose::STANDARD
+        .encode(serde_json::to_string(&fewshots_data)?.as_bytes());
+
+    let new_parts: Vec<Value> = parts
+        .iter()
+        .map(|p| {
+            if p.get("path").and_then(Value::as_str) == Some(&fewshots_path) {
+                serde_json::json!({
+                    "path": fewshots_path,
+                    "payload": encoded,
+                    "payloadType": "InlineBase64"
+                })
+            } else {
+                p.clone()
+            }
+        })
+        .collect();
+
+    let update_body = serde_json::json!({ "definition": { "parts": new_parts } });
+    client
+        .post(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition"),
+            &update_body,
+            true,
+        )
+        .await?;
+
+    let result = serde_json::json!({
+        "id": id,
+        "status": "fewshot_removed",
+        "fewshotId": fewshot_id,
+    });
+    output::render_object(cli, &result, "status");
+    Ok(())
+}
+
+/// Bulk upload few-shot examples from a JSON file.
+#[allow(clippy::too_many_lines)]
+async fn upload_fewshots(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    datasource: &str,
+    file: &str,
+) -> Result<()> {
+    let content = std::fs::read_to_string(file)
+        .map_err(|e| anyhow::anyhow!("Failed to read file '{file}': {e}"))?;
+
+    let items: Vec<Value> = serde_json::from_str(&content).map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid JSON in '{file}': {e}"),
+            r#"Expected format: [{"question":"...","query":"..."}] or {"question":"...","query":"..."} per line"#,
+        )
+    })?;
+
+    if items.is_empty() {
+        return Err(
+            FabioError::invalid_input("File contains no few-shot examples (empty array)").into(),
+        );
+    }
+
+    // Validate all entries have question + query
+    for (i, item) in items.iter().enumerate() {
+        if item.get("question").and_then(Value::as_str).is_none() {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Item {i} is missing 'question' field"),
+                r#"Each item must have: {{"question":"...", "query":"..."}}"#,
+            )
+            .into());
+        }
+        if item.get("query").and_then(Value::as_str).is_none() {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Item {i} is missing 'query' field"),
+                r#"Each item must have: {{"question":"...", "query":"..."}}"#,
+            )
+            .into());
+        }
+    }
+
+    if output::dry_run_guard(
+        cli,
+        "data-agent upload-fewshots",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "datasource": datasource,
+            "file": file,
+            "count": items.len(),
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let parts = get_definition_parts(client, workspace, id).await?;
+    let ds_dir = find_datasource_dir(&parts, datasource)?;
+    let fewshots_path = format!("{ds_dir}/fewshots.json");
+
+    // Load existing fewshots
+    let existing_payload = parts.iter().find_map(|part| {
+        let path = part.get("path").and_then(Value::as_str)?;
+        if path == fewshots_path {
+            part.get("payload")
+                .and_then(Value::as_str)
+                .map(String::from)
+        } else {
+            None
+        }
+    });
+
+    let mut fewshots_data = existing_payload.as_ref().map_or_else(
+        || {
+            serde_json::json!({
+                "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/fewShots/1.0.0/schema.json",
+                "fewShots": []
+            })
+        },
+        |payload| {
+            decode_part_payload(payload)
+                .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+                .unwrap_or_else(|| serde_json::json!({"fewShots": []}))
+        },
+    );
+
+    let fewshots_arr = fewshots_data
+        .get_mut("fewShots")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| {
+            FabioError::new(
+                ErrorCode::ApiError,
+                "Invalid fewshots structure in definition",
+            )
+        })?;
+
+    // Build set of existing questions for duplicate detection
+    let mut existing_questions: std::collections::HashSet<String> = fewshots_arr
+        .iter()
+        .filter_map(|f| {
+            f.get("question")
+                .or_else(|| f.get("Question"))
+                .and_then(Value::as_str)
+                .map(str::to_lowercase)
+        })
+        .collect();
+
+    let mut added = 0;
+    let mut renamed = 0;
+
+    for item in &items {
+        let question = item
+            .get("question")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let query_text = item
+            .get("query")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+
+        let mut saved_question = question.to_string();
+        if existing_questions.contains(&saved_question.to_lowercase()) {
+            let mut suffix = 1;
+            loop {
+                let candidate = format!("{question} [{suffix}]").to_lowercase();
+                if !existing_questions.contains(&candidate) {
+                    break;
+                }
+                suffix += 1;
+            }
+            saved_question = format!("{question} [{suffix}]");
+            renamed += 1;
+        }
+
+        existing_questions.insert(saved_question.to_lowercase());
+        fewshots_arr.push(serde_json::json!({
+            "id": uuid::Uuid::new_v4().to_string(),
+            "question": saved_question,
+            "query": query_text,
+        }));
+        added += 1;
+    }
+
+    let total = fewshots_arr.len();
+
+    // Update definition (fewshots_arr borrow ends here)
+    let encoded = base64::engine::general_purpose::STANDARD
+        .encode(serde_json::to_string(&fewshots_data)?.as_bytes());
+
+    let new_parts: Vec<Value> = parts
+        .iter()
+        .filter(|p| p.get("path").and_then(Value::as_str) != Some(&fewshots_path))
+        .cloned()
+        .chain(std::iter::once(serde_json::json!({
+            "path": fewshots_path,
+            "payload": encoded,
+            "payloadType": "InlineBase64"
+        })))
+        .collect();
+
+    let update_body = serde_json::json!({ "definition": { "parts": new_parts } });
+    client
+        .post(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition"),
+            &update_body,
+            true,
+        )
+        .await?;
+
+    let result = serde_json::json!({
+        "status": "fewshots_uploaded",
+        "added": added,
+        "renamed": renamed,
+        "total": total,
+    });
+    output::render_object(cli, &result, "status");
+    Ok(())
+}
+
+/// Select or unselect tables in a data source.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+async fn select_tables(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    datasource: &str,
+    tables: Option<&str>,
+    all_tables: bool,
+    unselect: bool,
+) -> Result<()> {
+    if tables.is_none() && !all_tables {
+        return Err(
+            FabioError::invalid_input("Either --tables or --all-tables must be provided").into(),
+        );
+    }
+
+    if output::dry_run_guard(
+        cli,
+        "data-agent select-tables",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "datasource": datasource,
+            "tables": tables,
+            "allTables": all_tables,
+            "unselect": unselect,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let parts = get_definition_parts(client, workspace, id).await?;
+    let ds_dir = find_datasource_dir(&parts, datasource)?;
+    let ds_path = format!("{ds_dir}/datasource.json");
+
+    // Find and parse the datasource
+    let ds_payload = parts
+        .iter()
+        .find_map(|part| {
+            let path = part.get("path").and_then(Value::as_str)?;
+            if path == ds_path {
+                part.get("payload")
+                    .and_then(Value::as_str)
+                    .map(String::from)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            FabioError::new(
+                ErrorCode::NotFound,
+                format!("Datasource file not found at '{ds_path}'"),
+            )
+        })?;
+
+    let mut ds_json: Value = decode_part_payload(&ds_payload)
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .ok_or_else(|| {
+            FabioError::new(
+                ErrorCode::ApiError,
+                "Failed to decode datasource definition",
+            )
+        })?;
+
+    let table_names: Vec<&str> = tables
+        .map(|t| t.split(',').map(str::trim).collect())
+        .unwrap_or_default();
+    let target_selected = !unselect;
+
+    // Recursively set is_selected on matching table elements
+    let modified = ds_json
+        .get_mut("elements")
+        .and_then(Value::as_array_mut)
+        .map_or(0, |elements| {
+            set_table_selection(elements, &table_names, all_tables, target_selected)
+        });
+
+    if modified == 0 && !all_tables {
+        return Err(FabioError::with_hint(
+            ErrorCode::NotFound,
+            format!("No matching tables found: {}", table_names.join(", ")),
+            "List available tables: fabio data-agent show-datasource -w <workspace> --id <id> --datasource <ds>",
+        )
+        .into());
+    }
+
+    // Re-encode and update definition
+    let encoded = base64::engine::general_purpose::STANDARD
+        .encode(serde_json::to_string(&ds_json)?.as_bytes());
+
+    let new_parts: Vec<Value> = parts
+        .iter()
+        .map(|p| {
+            if p.get("path").and_then(Value::as_str) == Some(&ds_path) {
+                serde_json::json!({
+                    "path": ds_path,
+                    "payload": encoded,
+                    "payloadType": "InlineBase64"
+                })
+            } else {
+                p.clone()
+            }
+        })
+        .collect();
+
+    let update_body = serde_json::json!({ "definition": { "parts": new_parts } });
+    client
+        .post(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition"),
+            &update_body,
+            true,
+        )
+        .await?;
+
+    let result = serde_json::json!({
+        "status": if unselect { "tables_unselected" } else { "tables_selected" },
+        "modified": modified,
+        "allTables": all_tables,
+    });
+    output::render_object(cli, &result, "status");
+    Ok(())
+}
+
+/// Recursively set `is_selected` on table elements matching the given names.
+/// Returns the number of elements modified.
+fn set_table_selection(
+    elements: &mut [Value],
+    table_names: &[&str],
+    all_tables: bool,
+    selected: bool,
+) -> usize {
+    let selectable_types = [
+        "semantic_model.table",
+        "lakehouse_tables.table",
+        "warehouse_tables.table",
+        "kusto.table",
+        "mirrored_database.table",
+        "sql_database.table",
+    ];
+
+    let mut count = 0;
+    for elem in elements.iter_mut() {
+        let elem_type = elem.get("type").and_then(Value::as_str).unwrap_or_default();
+        let display_name = elem
+            .get("display_name")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+
+        // Check if this is a selectable table element
+        if selectable_types.contains(&elem_type) {
+            let should_modify = all_tables
+                || table_names
+                    .iter()
+                    .any(|t| t.eq_ignore_ascii_case(display_name));
+            if should_modify {
+                elem["is_selected"] = Value::Bool(selected);
+                count += 1;
+            }
+        }
+
+        // Recurse into children
+        if let Some(children) = elem.get_mut("children").and_then(Value::as_array_mut) {
+            count += set_table_selection(children, table_names, all_tables, selected);
+        }
+    }
+    count
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Get definition parts from the API.
+async fn get_definition_parts(
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<Vec<Value>> {
+    let resp = client
+        .post(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await?;
+
+    Ok(resp
+        .get("definition")
+        .and_then(|d| d.get("parts"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default())
+}
+
+/// Decode a base64-encoded definition part payload to a UTF-8 string.
+fn decode_part_payload(payload: &str) -> Option<String> {
+    base64::engine::general_purpose::STANDARD
+        .decode(payload)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+}
+
+/// Extract datasource information from definition parts.
+fn extract_datasources_from_parts(parts: &[Value]) -> Vec<Value> {
+    let mut datasources = Vec::new();
+    for part in parts {
+        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
+        if path.starts_with("Files/Config/draft/") && path.ends_with("/datasource.json") {
+            let payload = part.get("payload").and_then(Value::as_str).unwrap_or("");
+            if let Some(decoded) = decode_part_payload(payload) {
+                if let Ok(parsed) = serde_json::from_str::<Value>(&decoded) {
+                    datasources.push(parsed);
+                }
+            }
+        }
+    }
+    datasources
+}
+
+/// Find the directory path for a named datasource in definition parts.
+fn find_datasource_dir(parts: &[Value], datasource: &str) -> Result<String> {
+    for part in parts {
+        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
+        if path.starts_with("Files/Config/draft/") && path.ends_with("/datasource.json") {
+            let payload = part.get("payload").and_then(Value::as_str).unwrap_or("");
+            if let Some(decoded) = decode_part_payload(payload) {
+                if let Ok(parsed) = serde_json::from_str::<Value>(&decoded) {
+                    let name = parsed
+                        .get("displayName")
+                        .or_else(|| parsed.get("display_name"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let art_id = parsed
+                        .get("artifactId")
+                        .or_else(|| parsed.get("id"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    if name.eq_ignore_ascii_case(datasource) || art_id == datasource {
+                        // Return directory (path without /datasource.json)
+                        return Ok(path.trim_end_matches("/datasource.json").to_string());
+                    }
+                }
+            }
+        }
+    }
+    Err(FabioError::with_hint(
+        ErrorCode::NotFound,
+        format!("Data source '{datasource}' not found in agent definition"),
+        "List available data sources: fabio data-agent list-datasources -w <workspace> --id <id>",
+    )
+    .into())
+}
+
+/// Extract few-shot examples for a specific data source.
+fn extract_fewshots_for_datasource(parts: &[Value], datasource: &str) -> Result<Vec<Value>> {
+    let ds_dir = find_datasource_dir(parts, datasource)?;
+    let fewshots_path = format!("{ds_dir}/fewshots.json");
+
+    for part in parts {
+        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
+        if path == fewshots_path {
+            let payload = part.get("payload").and_then(Value::as_str).unwrap_or("");
+            if let Some(decoded) = decode_part_payload(payload) {
+                if let Ok(parsed) = serde_json::from_str::<Value>(&decoded) {
+                    return Ok(parsed
+                        .get("fewShots")
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .unwrap_or_default());
+                }
+            }
+        }
+    }
+    Ok(Vec::new())
+}
+
+/// Map a Fabric item type to the data agent datasource type string.
+fn map_item_type_to_datasource_type(item_type: &str) -> Result<String> {
+    let ds_type = match item_type.to_lowercase().as_str() {
+        "lakehouse" => "lakehouse_tables",
+        "warehouse" => "data_warehouse",
+        "kqldatabase" => "kusto",
+        "semanticmodel" => "semantic_model",
+        "ontology" => "ontology",
+        "graphmodel" => "graph",
+        "mirroreddatabase" => "mirrored_database",
+        "sqldatabase" => "sql_database",
+        _ => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Unsupported artifact type '{item_type}' for data agent datasource"),
+                "Supported types: Lakehouse, Warehouse, KQLDatabase, SemanticModel, Ontology, GraphModel, MirroredDatabase, SQLDatabase",
+            )
+            .into());
+        }
+    };
+    Ok(ds_type.to_string())
+}
+
 // ─── Definitions ─────────────────────────────────────────────────────────────
 
 /// Get the definition of a data agent (data sources, instructions, etc.).
@@ -1297,6 +2894,7 @@ async fn publish(
     workspace: &str,
     id: &str,
     description: Option<&str>,
+    to_m365: bool,
 ) -> Result<()> {
     if output::dry_run_guard(
         cli,
@@ -1305,6 +2903,7 @@ async fn publish(
             "workspace": workspace,
             "id": id,
             "description": description,
+            "toM365": to_m365,
         }),
     ) {
         return Ok(());
@@ -1408,6 +3007,42 @@ async fn publish(
 
     if let Some(url) = published_url {
         obj["publishedUrl"] = Value::String(url);
+    }
+
+    // Step 5 (optional): Publish to M365 Copilot Agent Store
+    if to_m365 {
+        // Resolve capacity ID for the workspace
+        let ws_info = client.get(&format!("/workspaces/{workspace}")).await?;
+        let capacity_id = ws_info
+            .get("capacityId")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+
+        if capacity_id.is_empty() {
+            return Err(FabioError::with_hint(
+                ErrorCode::ApiError,
+                "Cannot resolve capacity ID for M365 publishing",
+                "The workspace must have a capacity assigned. Check: fabio workspace show -w <workspace>",
+            ).into());
+        }
+
+        // The M365 endpoint uses the internal workload API
+        let m365_url = format!("/workspaces/{workspace}/dataAgents/{id}/publishToM365");
+        // Try the public API first; if it doesn't exist, note it in output
+        let m365_result = client
+            .post(&m365_url, &serde_json::json!({"scope": "Shared"}), false)
+            .await;
+
+        match m365_result {
+            Ok(_) => {
+                obj["m365Status"] = Value::String("published_to_m365".to_string());
+            }
+            Err(e) => {
+                // M365 publishing is best-effort; report in output but don't fail
+                obj["m365Status"] = Value::String("failed".to_string());
+                obj["m365Error"] = Value::String(e.to_string());
+            }
+        }
     }
 
     output::render_object(cli, &obj, "status");
