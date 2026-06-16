@@ -252,8 +252,8 @@ pub enum DataAgentCommand {
         question: String,
 
         /// SQL/KQL/DAX query that answers the question
-        #[arg(long)]
-        query: String,
+        #[arg(long, visible_alias = "sql")]
+        answer: String,
     },
     /// Remove a few-shot example by ID
     #[command(display_order = 19)]
@@ -502,8 +502,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             id,
             datasource,
             question,
-            query,
-        } => add_fewshot(cli, client, workspace, id, datasource, question, query)
+            answer,
+        } => add_fewshot(cli, client, workspace, id, datasource, question, answer)
             .await
             .map_err(|e| enrich_forbidden(e, "data-agent add-fewshot", "Contributor")),
         DataAgentCommand::RemoveFewshot {
@@ -2251,7 +2251,7 @@ async fn remove_fewshot(
             FabioError::with_hint(
                 ErrorCode::NotFound,
                 format!("No fewshots found for data source '{datasource}'"),
-                "Add fewshots first: fabio data-agent add-fewshot -w <workspace> --id <id> --datasource <ds> --question '...' --query '...'",
+                "Add fewshots first: fabio data-agent add-fewshot -w <workspace> --id <id> --datasource <ds> --question '...' --answer '...'",
             )
         })?;
 
@@ -3248,5 +3248,289 @@ mod tests {
             }
         });
         assert!(validate_datasource_elements(&body).is_ok());
+    }
+
+    // ─── Tests for new helper functions ──────────────────────────────────────
+
+    use super::{
+        decode_part_payload, extract_datasources_from_parts, extract_fewshots_for_datasource,
+        find_datasource_dir, map_item_type_to_datasource_type, set_table_selection,
+    };
+
+    #[test]
+    fn decode_part_payload_valid_base64() {
+        let payload = base64::engine::general_purpose::STANDARD.encode(br#"{"hello":"world"}"#);
+        let decoded = decode_part_payload(&payload).unwrap();
+        assert_eq!(decoded, r#"{"hello":"world"}"#);
+    }
+
+    #[test]
+    fn decode_part_payload_invalid_base64() {
+        assert!(decode_part_payload("not-valid-base64!!!").is_none());
+    }
+
+    #[test]
+    fn map_item_type_lakehouse() {
+        assert_eq!(
+            map_item_type_to_datasource_type("Lakehouse").unwrap(),
+            "lakehouse_tables"
+        );
+    }
+
+    #[test]
+    fn map_item_type_warehouse() {
+        assert_eq!(
+            map_item_type_to_datasource_type("Warehouse").unwrap(),
+            "data_warehouse"
+        );
+    }
+
+    #[test]
+    fn map_item_type_kql_database() {
+        assert_eq!(
+            map_item_type_to_datasource_type("KQLDatabase").unwrap(),
+            "kusto"
+        );
+    }
+
+    #[test]
+    fn map_item_type_semantic_model() {
+        assert_eq!(
+            map_item_type_to_datasource_type("SemanticModel").unwrap(),
+            "semantic_model"
+        );
+    }
+
+    #[test]
+    fn map_item_type_mirrored_database() {
+        assert_eq!(
+            map_item_type_to_datasource_type("MirroredDatabase").unwrap(),
+            "mirrored_database"
+        );
+    }
+
+    #[test]
+    fn map_item_type_sql_database() {
+        assert_eq!(
+            map_item_type_to_datasource_type("SQLDatabase").unwrap(),
+            "sql_database"
+        );
+    }
+
+    #[test]
+    fn map_item_type_unsupported() {
+        let err = map_item_type_to_datasource_type("Notebook").unwrap_err();
+        assert!(err.to_string().contains("Unsupported"));
+    }
+
+    #[test]
+    fn map_item_type_case_insensitive() {
+        assert_eq!(
+            map_item_type_to_datasource_type("lakehouse").unwrap(),
+            "lakehouse_tables"
+        );
+        assert_eq!(
+            map_item_type_to_datasource_type("WAREHOUSE").unwrap(),
+            "data_warehouse"
+        );
+    }
+
+    #[test]
+    fn extract_datasources_from_parts_finds_datasource() {
+        let ds_json = json!({
+            "artifactId": "aaa",
+            "displayName": "TestLH",
+            "type": "lakehouse_tables"
+        });
+        let payload =
+            base64::engine::general_purpose::STANDARD.encode(ds_json.to_string().as_bytes());
+        let parts = vec![
+            json!({
+                "path": "Files/Config/data_agent.json",
+                "payload": "e30=",
+                "payloadType": "InlineBase64"
+            }),
+            json!({
+                "path": "Files/Config/draft/lakehouse_tables-TestLH/datasource.json",
+                "payload": payload,
+                "payloadType": "InlineBase64"
+            }),
+        ];
+
+        let datasources = extract_datasources_from_parts(&parts);
+        assert_eq!(datasources.len(), 1);
+        assert_eq!(datasources[0]["displayName"], "TestLH");
+        assert_eq!(datasources[0]["type"], "lakehouse_tables");
+    }
+
+    #[test]
+    fn extract_datasources_from_parts_empty() {
+        let parts = vec![json!({
+            "path": "Files/Config/data_agent.json",
+            "payload": "e30=",
+            "payloadType": "InlineBase64"
+        })];
+        let datasources = extract_datasources_from_parts(&parts);
+        assert!(datasources.is_empty());
+    }
+
+    #[test]
+    fn find_datasource_dir_by_name() {
+        let ds_json =
+            json!({"displayName": "MyWarehouse", "type": "data_warehouse", "artifactId": "bbb"});
+        let payload =
+            base64::engine::general_purpose::STANDARD.encode(ds_json.to_string().as_bytes());
+        let parts = vec![json!({
+            "path": "Files/Config/draft/data_warehouse-MyWarehouse/datasource.json",
+            "payload": payload,
+            "payloadType": "InlineBase64"
+        })];
+
+        let dir = find_datasource_dir(&parts, "MyWarehouse").unwrap();
+        assert_eq!(dir, "Files/Config/draft/data_warehouse-MyWarehouse");
+    }
+
+    #[test]
+    fn find_datasource_dir_by_id() {
+        let ds_json =
+            json!({"displayName": "TestLH", "type": "lakehouse_tables", "artifactId": "abc-123"});
+        let payload =
+            base64::engine::general_purpose::STANDARD.encode(ds_json.to_string().as_bytes());
+        let parts = vec![json!({
+            "path": "Files/Config/draft/lakehouse_tables-TestLH/datasource.json",
+            "payload": payload,
+            "payloadType": "InlineBase64"
+        })];
+
+        let dir = find_datasource_dir(&parts, "abc-123").unwrap();
+        assert_eq!(dir, "Files/Config/draft/lakehouse_tables-TestLH");
+    }
+
+    #[test]
+    fn find_datasource_dir_not_found() {
+        let parts = vec![json!({
+            "path": "Files/Config/data_agent.json",
+            "payload": "e30=",
+            "payloadType": "InlineBase64"
+        })];
+        assert!(find_datasource_dir(&parts, "nonexistent").is_err());
+    }
+
+    #[test]
+    fn extract_fewshots_for_datasource_found() {
+        let ds_json =
+            json!({"displayName": "TestLH", "type": "lakehouse_tables", "artifactId": "x"});
+        let ds_payload =
+            base64::engine::general_purpose::STANDARD.encode(ds_json.to_string().as_bytes());
+        let fs_json = json!({
+            "fewShots": [
+                {"id": "fs1", "question": "How many?", "query": "SELECT COUNT(*) FROM t"}
+            ]
+        });
+        let fs_payload =
+            base64::engine::general_purpose::STANDARD.encode(fs_json.to_string().as_bytes());
+
+        let parts = vec![
+            json!({
+                "path": "Files/Config/draft/lakehouse_tables-TestLH/datasource.json",
+                "payload": ds_payload,
+                "payloadType": "InlineBase64"
+            }),
+            json!({
+                "path": "Files/Config/draft/lakehouse_tables-TestLH/fewshots.json",
+                "payload": fs_payload,
+                "payloadType": "InlineBase64"
+            }),
+        ];
+
+        let fewshots = extract_fewshots_for_datasource(&parts, "TestLH").unwrap();
+        assert_eq!(fewshots.len(), 1);
+        assert_eq!(fewshots[0]["id"], "fs1");
+        assert_eq!(fewshots[0]["question"], "How many?");
+    }
+
+    #[test]
+    fn extract_fewshots_empty_when_no_file() {
+        let ds_json =
+            json!({"displayName": "TestLH", "type": "lakehouse_tables", "artifactId": "x"});
+        let ds_payload =
+            base64::engine::general_purpose::STANDARD.encode(ds_json.to_string().as_bytes());
+        let parts = vec![json!({
+            "path": "Files/Config/draft/lakehouse_tables-TestLH/datasource.json",
+            "payload": ds_payload,
+            "payloadType": "InlineBase64"
+        })];
+
+        let fewshots = extract_fewshots_for_datasource(&parts, "TestLH").unwrap();
+        assert!(fewshots.is_empty());
+    }
+
+    #[test]
+    fn set_table_selection_selects_by_name() {
+        let mut elements = vec![json!({
+            "display_name": "dbo",
+            "type": "lakehouse_tables.schema",
+            "is_selected": false,
+            "children": [
+                {"display_name": "orders", "type": "lakehouse_tables.table", "is_selected": false, "children": []},
+                {"display_name": "products", "type": "lakehouse_tables.table", "is_selected": false, "children": []}
+            ]
+        })];
+
+        let count = set_table_selection(&mut elements, &["orders"], false, true);
+        assert_eq!(count, 1);
+        let children = elements[0]["children"].as_array().unwrap();
+        assert_eq!(children[0]["is_selected"], true);
+        assert_eq!(children[1]["is_selected"], false);
+    }
+
+    #[test]
+    fn set_table_selection_selects_all() {
+        let mut elements = vec![json!({
+            "display_name": "dbo",
+            "type": "lakehouse_tables.schema",
+            "is_selected": false,
+            "children": [
+                {"display_name": "orders", "type": "lakehouse_tables.table", "is_selected": false, "children": []},
+                {"display_name": "products", "type": "lakehouse_tables.table", "is_selected": false, "children": []}
+            ]
+        })];
+
+        let count = set_table_selection(&mut elements, &[], true, true);
+        assert_eq!(count, 2);
+        let children = elements[0]["children"].as_array().unwrap();
+        assert_eq!(children[0]["is_selected"], true);
+        assert_eq!(children[1]["is_selected"], true);
+    }
+
+    #[test]
+    fn set_table_selection_unselects() {
+        let mut elements = vec![json!({
+            "display_name": "dbo",
+            "type": "lakehouse_tables.schema",
+            "is_selected": true,
+            "children": [
+                {"display_name": "orders", "type": "lakehouse_tables.table", "is_selected": true, "children": []}
+            ]
+        })];
+
+        let count = set_table_selection(&mut elements, &["orders"], false, false);
+        assert_eq!(count, 1);
+        let children = elements[0]["children"].as_array().unwrap();
+        assert_eq!(children[0]["is_selected"], false);
+    }
+
+    #[test]
+    fn set_table_selection_case_insensitive() {
+        let mut elements = vec![json!({
+            "display_name": "dbo",
+            "type": "lakehouse_tables.schema",
+            "children": [
+                {"display_name": "Orders", "type": "lakehouse_tables.table", "is_selected": false, "children": []}
+            ]
+        })];
+
+        let count = set_table_selection(&mut elements, &["orders"], false, true);
+        assert_eq!(count, 1);
     }
 }

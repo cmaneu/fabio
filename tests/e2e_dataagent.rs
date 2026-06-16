@@ -1058,3 +1058,590 @@ fn dataagent_full_lifecycle_create_publish_query_delete() {
         .success();
     eprintln!("  Agent deleted. Full lifecycle complete.");
 }
+
+// ─── Tests for new subcommands ───────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_get_config_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    // get-config should work (no dry-run guard on reads, just needs an agent)
+    // Use a nonexistent ID — will get a NOT_FOUND error (validates CLI parsing)
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "get-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert();
+
+    // Should fail with NOT_FOUND (not a parse error)
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("NOT_FOUND") || stderr.contains("not found") || stderr.contains("404"),
+        "Expected NOT_FOUND error, got: {stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_update_config_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "update-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--instructions",
+            "Test instructions",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "data-agent update-config");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_update_config_requires_at_least_one_flag() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "update-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("At least one of"),
+        "Expected validation error, got: {stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_list_datasources_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    // list-datasources on a nonexistent agent should return NOT_FOUND
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "list-datasources",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("NOT_FOUND") || stderr.contains("not found") || stderr.contains("404"),
+        "Expected NOT_FOUND error, got: {stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_add_datasource_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "add-datasource",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--artifact",
+            &cfg.source_lakehouse,
+            "--artifact-type",
+            "Lakehouse",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "data-agent add-datasource");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_remove_datasource_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "remove-datasource",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--datasource",
+            "TestLH",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "data-agent remove-datasource");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_select_tables_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "select-tables",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--datasource",
+            "TestLH",
+            "--tables",
+            "orders,products",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "data-agent select-tables");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_select_tables_requires_tables_or_all() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "select-tables",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--datasource",
+            "TestLH",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("--tables") || stderr.contains("--all-tables"),
+        "Expected validation error about tables, got: {stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_add_fewshot_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "add-fewshot",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--datasource",
+            "TestLH",
+            "--question",
+            "How many rows?",
+            "--answer",
+            "SELECT COUNT(*) FROM t",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "data-agent add-fewshot");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_remove_fewshot_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "remove-fewshot",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--datasource",
+            "TestLH",
+            "--fewshot-id",
+            "a0000001-0001-0001-0001-000000000001",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "data-agent remove-fewshot");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_upload_fewshots_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    // Create a temp file with fewshots
+    let fewshots = serde_json::json!([
+        {"question": "How many customers?", "query": "SELECT COUNT(*) FROM customers"},
+        {"question": "Top product?", "query": "SELECT TOP 1 name FROM products ORDER BY sales DESC"}
+    ]);
+    let tmpfile = "/tmp/opencode/test_fewshots.json";
+    std::fs::write(tmpfile, fewshots.to_string()).unwrap();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "upload-fewshots",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--datasource",
+            "TestLH",
+            "--file",
+            tmpfile,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "data-agent upload-fewshots");
+    assert_eq!(data["details"]["count"], 2);
+
+    std::fs::remove_file(tmpfile).ok();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_query_with_stage_and_timeout_flags() {
+    // Just validate the flags are accepted by the CLI parser
+    let cfg = TestConfig::from_env();
+
+    // Should accept --stage and --timeout without errors
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--stage",
+            "sandbox",
+            "--timeout",
+            "60",
+            "--prompt",
+            "test query",
+        ])
+        .assert();
+
+    // Should fail with a data-agent-specific error (not a CLI parsing error)
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        !stderr.contains("unexpected argument") && !stderr.contains("unrecognized"),
+        "CLI should accept --stage and --timeout flags: {stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_publish_to_m365_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "publish",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--to-m365",
+            "--description",
+            "dry run m365 test",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "data-agent publish");
+    assert_eq!(data["details"]["toM365"], true);
+}
+
+/// Full lifecycle test for new datasource + fewshot management subcommands.
+///
+/// Creates a data agent, adds a datasource via `add-datasource`, manages
+/// fewshots via `add-fewshot`/`list-fewshots`/`remove-fewshot`, then cleans up.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_datasource_fewshot_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("da_ds_test");
+
+    // ─── Step 1: Create a data agent ─────────────────────────────────────────
+    eprintln!("[1/8] Creating data agent '{name}'...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let agent_id = data["id"].as_str().unwrap().to_string();
+    eprintln!("  Created agent: {agent_id}");
+
+    // ─── Step 2: Get config (should be empty/defaults) ───────────────────────
+    eprintln!("[2/8] Getting config...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "get-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["enablePreviewRuntime"], false);
+    assert!(
+        data["dataSources"].as_array().unwrap().is_empty(),
+        "expected no datasources initially"
+    );
+    eprintln!("  Config OK: no datasources, preview runtime disabled");
+
+    // ─── Step 3: Add datasource via add-datasource ───────────────────────────
+    eprintln!("[3/8] Adding lakehouse datasource...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "add-datasource",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--artifact",
+            &cfg.source_lakehouse,
+            "--artifact-type",
+            "Lakehouse",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "datasource_added");
+    assert_eq!(data["type"], "lakehouse_tables");
+    eprintln!("  Datasource added: {}", data["displayName"]);
+
+    // ─── Step 4: List datasources ────────────────────────────────────────────
+    eprintln!("[4/8] Listing datasources...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "list-datasources",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let count = extract_count(&json);
+    assert!(count >= 1, "expected at least 1 datasource, got {count}");
+    eprintln!("  Listed {count} datasource(s)");
+
+    // ─── Step 5: Add fewshot ─────────────────────────────────────────────────
+    eprintln!("[5/8] Adding fewshot...");
+    let ds_name = &cfg.source_lakehouse; // use the artifact ID as datasource identifier
+
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "add-fewshot",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            ds_name,
+            "--question",
+            "How many tables are there?",
+            "--answer",
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "fewshot_added");
+    let fewshot_id = data["id"].as_str().unwrap().to_string();
+    eprintln!("  Added fewshot: {fewshot_id}");
+
+    // ─── Step 6: List fewshots ───────────────────────────────────────────────
+    eprintln!("[6/8] Listing fewshots...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "list-fewshots",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            ds_name,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let count = extract_count(&json);
+    assert_eq!(count, 1, "expected 1 fewshot, got {count}");
+    eprintln!("  Listed {count} fewshot(s)");
+
+    // ─── Step 7: Remove fewshot ──────────────────────────────────────────────
+    eprintln!("[7/8] Removing fewshot...");
+    fabio()
+        .args([
+            "data-agent",
+            "remove-fewshot",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            ds_name,
+            "--fewshot-id",
+            &fewshot_id,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+    eprintln!("  Fewshot removed");
+
+    // Verify it's gone
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "list-fewshots",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            ds_name,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let count = extract_count(&json);
+    assert_eq!(count, 0, "expected 0 fewshots after removal, got {count}");
+
+    // ─── Step 8: Cleanup ─────────────────────────────────────────────────────
+    eprintln!("[8/8] Cleaning up...");
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .assert()
+        .success();
+    eprintln!("  Done. Datasource + fewshot lifecycle complete.");
+}
