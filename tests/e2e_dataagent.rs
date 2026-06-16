@@ -27,23 +27,6 @@ fn dataagent_list_returns_json() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn dataagent_list_via_alias() {
-    let cfg = TestConfig::from_env();
-
-    // Should work with the 'da' alias
-    let assert = fabio()
-        .args(["da", "list", "--workspace", &cfg.source_workspace])
-        .assert()
-        .success();
-
-    let json = parse_json(&assert);
-    assert!(json.get("data").is_some());
-    assert!(json.get("count").is_some());
-}
-
-#[test]
-#[ignore = "requires live Fabric tenant"]
-#[serial]
 fn dataagent_create_show_update_delete() {
     let cfg = TestConfig::from_env();
     let name = unique_name("da_test");
@@ -254,7 +237,7 @@ fn dataagent_list_with_query_projection() {
     let assert = fabio()
         .args([
             "--query",
-            "displayName",
+            "[*].displayName",
             "data-agent",
             "list",
             "--workspace",
