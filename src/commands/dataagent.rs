@@ -137,6 +137,10 @@ pub enum DataAgentCommand {
         #[arg(long)]
         instructions: Option<String>,
 
+        /// Path to file containing AI instructions (alternative to --instructions)
+        #[arg(long, conflicts_with = "instructions")]
+        instructions_file: Option<String>,
+
         /// Enable preview runtime (agentic NL2SQL reasoning path)
         #[arg(long)]
         enable_preview_runtime: bool,
@@ -274,7 +278,7 @@ pub enum DataAgentCommand {
         #[arg(long)]
         fewshot_id: String,
     },
-    /// Bulk upload few-shot examples from a JSON file
+    /// Bulk upload few-shot examples from a JSON or CSV file
     #[command(display_order = 20)]
     UploadFewshots {
         /// Workspace ID
@@ -289,7 +293,7 @@ pub enum DataAgentCommand {
         #[arg(long)]
         datasource: String,
 
-        /// JSON file with few-shots array: [{"question":"...", "query":"..."}]
+        /// File with few-shots (JSON: [{"question":"...", "query":"..."}] or CSV with question,query columns)
         #[arg(long)]
         file: String,
     },
@@ -439,6 +443,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             workspace,
             id,
             instructions,
+            instructions_file,
             enable_preview_runtime,
             disable_preview_runtime,
         } => update_config(
@@ -447,6 +452,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             workspace,
             id,
             instructions.as_deref(),
+            instructions_file.as_deref(),
             *enable_preview_runtime,
             *disable_preview_runtime,
         )
@@ -1629,19 +1635,35 @@ async fn get_config(cli: &Cli, client: &FabricClient, workspace: &str, id: &str)
 }
 
 /// Update agent configuration by modifying `stage_config.json` in the definition.
-#[allow(clippy::fn_params_excessive_bools, clippy::too_many_lines)]
+#[allow(
+    clippy::fn_params_excessive_bools,
+    clippy::too_many_lines,
+    clippy::too_many_arguments
+)]
 async fn update_config(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     id: &str,
     instructions: Option<&str>,
+    instructions_file: Option<&str>,
     enable_preview_runtime: bool,
     disable_preview_runtime: bool,
 ) -> Result<()> {
-    if instructions.is_none() && !enable_preview_runtime && !disable_preview_runtime {
+    // Resolve instructions from --instructions or --instructions-file
+    let resolved_instructions = match (instructions, instructions_file) {
+        (Some(instr), _) => Some(instr.to_string()),
+        (_, Some(path)) => {
+            let content = std::fs::read_to_string(path)
+                .map_err(|e| anyhow::anyhow!("Failed to read instructions file '{path}': {e}"))?;
+            Some(content)
+        }
+        _ => None,
+    };
+
+    if resolved_instructions.is_none() && !enable_preview_runtime && !disable_preview_runtime {
         return Err(FabioError::invalid_input(
-            "At least one of --instructions, --enable-preview-runtime, or --disable-preview-runtime must be provided",
+            "At least one of --instructions, --instructions-file, --enable-preview-runtime, or --disable-preview-runtime must be provided",
         )
         .into());
     }
@@ -1652,7 +1674,8 @@ async fn update_config(
         &serde_json::json!({
             "workspace": workspace,
             "id": id,
-            "instructions": instructions,
+            "instructions": resolved_instructions.as_deref().map(|s| if s.len() > 100 { format!("{}...", &s[..100]) } else { s.to_string() }),
+            "instructionsFile": instructions_file,
             "enablePreviewRuntime": enable_preview_runtime,
             "disablePreviewRuntime": disable_preview_runtime,
         }),
@@ -1689,8 +1712,8 @@ async fn update_config(
                 .and_then(|s| serde_json::from_str::<Value>(&s).ok())
                 .unwrap_or_else(|| serde_json::json!({}));
 
-            if let Some(instr) = instructions {
-                config["aiInstructions"] = Value::String(instr.to_string());
+            if let Some(instr) = &resolved_instructions {
+                config["aiInstructions"] = Value::String(instr.clone());
             }
             if enable_preview_runtime || disable_preview_runtime {
                 let experimental = config.as_object_mut().map(|o| {
@@ -1724,8 +1747,8 @@ async fn update_config(
         let mut config = serde_json::json!({
             "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/stageConfiguration/1.0.0/schema.json"
         });
-        if let Some(instr) = instructions {
-            config["aiInstructions"] = Value::String(instr.to_string());
+        if let Some(instr) = &resolved_instructions {
+            config["aiInstructions"] = Value::String(instr.clone());
         }
         if enable_preview_runtime {
             config["experimental"] = serde_json::json!({"enableExperimentalFeatures": true});
@@ -1751,7 +1774,7 @@ async fn update_config(
     let result = serde_json::json!({
         "id": id,
         "status": "config_updated",
-        "instructions": instructions,
+        "instructions": resolved_instructions.as_deref(),
         "enablePreviewRuntime": enable_preview_runtime,
     });
     output::render_object(cli, &result, "status");
@@ -2329,13 +2352,23 @@ async fn upload_fewshots(
     let content = std::fs::read_to_string(file)
         .map_err(|e| anyhow::anyhow!("Failed to read file '{file}': {e}"))?;
 
-    let items: Vec<Value> = serde_json::from_str(&content).map_err(|e| {
-        FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            format!("Invalid JSON in '{file}': {e}"),
-            r#"Expected format: [{"question":"...","query":"..."}] or {"question":"...","query":"..."} per line"#,
-        )
-    })?;
+    // Detect format by file extension
+    let ext = std::path::Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let items: Vec<Value> = if ext == "csv" || ext == "tsv" {
+        parse_fewshots_csv(&content, file)?
+    } else {
+        serde_json::from_str(&content).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid JSON in '{file}': {e}"),
+                r#"Expected JSON format: [{"question":"...","query":"..."}] or use .csv file with question,query columns"#,
+            )
+        })?
+    };
 
     if items.is_empty() {
         return Err(
@@ -2774,6 +2807,86 @@ fn extract_fewshots_for_datasource(parts: &[Value], datasource: &str) -> Result<
         }
     }
     Ok(Vec::new())
+}
+
+/// Parse few-shot examples from a CSV/TSV file.
+///
+/// Expects columns named `question` and `query` (case-insensitive headers).
+/// TSV is auto-detected from `.tsv` extension.
+fn parse_fewshots_csv(content: &str, file: &str) -> Result<Vec<Value>> {
+    let ext = std::path::Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let delimiter = if ext == "tsv" { b'\t' } else { b',' };
+
+    let mut reader = csv::ReaderBuilder::new()
+        .delimiter(delimiter)
+        .has_headers(true)
+        .flexible(true)
+        .from_reader(content.as_bytes());
+
+    // Find column indices for "question" and "query" (case-insensitive)
+    let headers = reader.headers().map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Failed to parse CSV headers in '{file}': {e}"),
+            "CSV must have a header row with 'question' and 'query' columns",
+        )
+    })?;
+
+    let question_idx = headers
+        .iter()
+        .position(|h| h.eq_ignore_ascii_case("question"));
+    let query_idx = headers
+        .iter()
+        .position(|h| h.eq_ignore_ascii_case("query") || h.eq_ignore_ascii_case("answer"));
+
+    let question_idx = question_idx.ok_or_else(|| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("CSV file '{file}' is missing a 'question' column header"),
+            format!(
+                "Found columns: {}. Expected: question,query",
+                headers.iter().collect::<Vec<_>>().join(", ")
+            ),
+        )
+    })?;
+    let query_idx = query_idx.ok_or_else(|| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("CSV file '{file}' is missing a 'query' (or 'answer') column header"),
+            format!(
+                "Found columns: {}. Expected: question,query",
+                headers.iter().collect::<Vec<_>>().join(", ")
+            ),
+        )
+    })?;
+
+    let mut items = Vec::new();
+    for (i, record) in reader.records().enumerate() {
+        let record = record.map_err(|e| {
+            FabioError::new(
+                ErrorCode::InvalidInput,
+                format!("Failed to parse CSV row {i} in '{file}': {e}"),
+            )
+        })?;
+
+        let question = record.get(question_idx).unwrap_or("").trim();
+        let query = record.get(query_idx).unwrap_or("").trim();
+
+        if question.is_empty() || query.is_empty() {
+            continue; // Skip empty rows
+        }
+
+        items.push(serde_json::json!({
+            "question": question,
+            "query": query,
+        }));
+    }
+
+    Ok(items)
 }
 
 /// Map a Fabric item type to the data agent datasource type string.
@@ -3532,5 +3645,55 @@ mod tests {
 
         let count = set_table_selection(&mut elements, &["orders"], false, true);
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn parse_csv_fewshots_basic() {
+        let csv = "question,query\nHow many?,SELECT COUNT(*) FROM t\nMax price?,SELECT MAX(price) FROM p\n";
+        let items = super::parse_fewshots_csv(csv, "test.csv").unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["question"], "How many?");
+        assert_eq!(items[0]["query"], "SELECT COUNT(*) FROM t");
+        assert_eq!(items[1]["question"], "Max price?");
+    }
+
+    #[test]
+    fn parse_csv_fewshots_case_insensitive_headers() {
+        let csv = "Question,Query\nTest?,SELECT 1\n";
+        let items = super::parse_fewshots_csv(csv, "test.csv").unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["question"], "Test?");
+    }
+
+    #[test]
+    fn parse_csv_fewshots_answer_column() {
+        // 'answer' is an alias for 'query' column
+        let csv = "question,answer\nHow many?,SELECT COUNT(*) FROM t\n";
+        let items = super::parse_fewshots_csv(csv, "test.csv").unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["query"], "SELECT COUNT(*) FROM t");
+    }
+
+    #[test]
+    fn parse_csv_fewshots_tsv() {
+        let tsv = "question\tquery\nHow many?\tSELECT COUNT(*) FROM t\n";
+        let items = super::parse_fewshots_csv(tsv, "data.tsv").unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["question"], "How many?");
+    }
+
+    #[test]
+    fn parse_csv_fewshots_missing_question_column() {
+        let csv = "prompt,query\nHow?,SELECT 1\n";
+        let err = super::parse_fewshots_csv(csv, "bad.csv").unwrap_err();
+        assert!(err.to_string().contains("question"));
+    }
+
+    #[test]
+    fn parse_csv_fewshots_skips_empty_rows() {
+        let csv =
+            "question,query\nHow many?,SELECT COUNT(*) FROM t\n,\nMax?,SELECT MAX(x) FROM y\n";
+        let items = super::parse_fewshots_csv(csv, "test.csv").unwrap();
+        assert_eq!(items.len(), 2);
     }
 }
