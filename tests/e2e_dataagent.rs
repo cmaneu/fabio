@@ -1628,3 +1628,183 @@ fn dataagent_datasource_fewshot_lifecycle() {
         .success();
     eprintln!("  Done. Datasource + fewshot lifecycle complete.");
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_list_elements_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    // list-elements on nonexistent agent → NOT_FOUND
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "list-elements",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--datasource",
+            "TestLH",
+        ])
+        .assert();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("NOT_FOUND") || stderr.contains("not found") || stderr.contains("404"),
+        "Expected NOT_FOUND error, got: {stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_describe_element_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "describe-element",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--datasource",
+            "TestLH",
+            "--path",
+            "dbo.orders.total_amount",
+            "--description",
+            "Total order amount in USD",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "data-agent describe-element");
+    assert_eq!(data["details"]["path"], "dbo.orders.total_amount");
+    assert_eq!(data["details"]["description"], "Total order amount in USD");
+}
+
+/// Test list-elements and describe-element against a live agent with datasource.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_elements_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("da_elem_test");
+
+    // Step 1: Create agent
+    eprintln!("[1/5] Creating agent...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let agent_id = data["id"].as_str().unwrap().to_string();
+
+    // Step 2: Add datasource
+    eprintln!("[2/5] Adding datasource...");
+    fabio()
+        .args([
+            "data-agent",
+            "add-datasource",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--artifact",
+            &cfg.source_lakehouse,
+            "--artifact-type",
+            "Lakehouse",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    // Step 3: List elements (should show schema at minimum)
+    eprintln!("[3/5] Listing elements...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "list-elements",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &cfg.source_lakehouse,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let count = extract_count(&json);
+    eprintln!("  Found {count} elements");
+    // May be 0 if no schema discovered, but command succeeded
+    assert!(json.get("data").is_some());
+
+    // Step 4: If elements exist, try describe-element
+    if count > 0 {
+        let data = extract_data(&json);
+        let elements = data.as_array().unwrap();
+        // Find the first element with a path
+        let first_path = elements[0]["path"].as_str().unwrap_or("dbo");
+
+        eprintln!("[4/5] Setting description on '{first_path}'...");
+        let assert = fabio()
+            .args([
+                "data-agent",
+                "describe-element",
+                "--workspace",
+                &cfg.source_workspace,
+                "--id",
+                &agent_id,
+                "--datasource",
+                &cfg.source_lakehouse,
+                "--path",
+                first_path,
+                "--description",
+                "Test description from e2e",
+            ])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+            .success();
+
+        let json = parse_json(&assert);
+        let data = extract_data(&json);
+        assert_eq!(data["status"], "description_set");
+        eprintln!("  Description set successfully");
+    } else {
+        eprintln!("[4/5] Skipping describe-element (no elements discovered)");
+    }
+
+    // Step 5: Cleanup
+    eprintln!("[5/5] Cleaning up...");
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .assert()
+        .success();
+    eprintln!("  Done. Elements lifecycle complete.");
+}
