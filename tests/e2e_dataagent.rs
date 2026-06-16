@@ -1808,3 +1808,297 @@ fn dataagent_elements_lifecycle() {
         .success();
     eprintln!("  Done. Elements lifecycle complete.");
 }
+
+/// Comprehensive lifecycle test covering show-datasource, update-config (live),
+/// upload-fewshots (live with CSV), and select-tables (live).
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_advanced_management_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("da_adv_test");
+
+    // ─── Create agent ────────────────────────────────────────────────────────
+    eprintln!("[1/8] Creating agent...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_secs(180))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let agent_id = data["id"].as_str().unwrap().to_string();
+    eprintln!("  Created: {agent_id}");
+
+    // ─── update-config live (set instructions + preview runtime) ─────────────
+    eprintln!("[2/8] Updating config with instructions...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "update-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--instructions",
+            "Answer questions about sales data. Use SQL for lakehouse tables.",
+            "--enable-preview-runtime",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "config_updated");
+    assert_eq!(data["enablePreviewRuntime"], true);
+    eprintln!("  Config updated");
+
+    // Verify via get-config
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "get-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["enablePreviewRuntime"], true);
+    let instr = data["instructions"].as_str().unwrap_or("");
+    assert!(
+        instr.contains("sales data"),
+        "Expected instructions to contain 'sales data', got: {instr}"
+    );
+    eprintln!("  get-config verified: instructions + preview runtime");
+
+    // ─── Add datasource ──────────────────────────────────────────────────────
+    eprintln!("[3/8] Adding datasource...");
+    fabio()
+        .args([
+            "data-agent",
+            "add-datasource",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--artifact",
+            &cfg.source_lakehouse,
+            "--artifact-type",
+            "Lakehouse",
+            "--instructions",
+            "Contains product catalog and order history",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+    eprintln!("  Datasource added");
+
+    // ─── show-datasource ─────────────────────────────────────────────────────
+    eprintln!("[4/8] Showing datasource...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "show-datasource",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &cfg.source_lakehouse,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["type"], "lakehouse_tables");
+    assert_eq!(data["artifactId"], cfg.source_lakehouse);
+    eprintln!("  show-datasource OK: type={}", data["type"]);
+
+    // ─── upload-fewshots from CSV ────────────────────────────────────────────
+    eprintln!("[5/8] Uploading fewshots from CSV...");
+    let csv_content = "question,query\nHow many products?,SELECT COUNT(*) FROM products\nMost expensive?,SELECT TOP 1 product_name FROM products ORDER BY price DESC\n";
+    let csv_path = "/tmp/opencode/e2e_fewshots.csv";
+    std::fs::write(csv_path, csv_content).unwrap();
+
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "upload-fewshots",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &cfg.source_lakehouse,
+            "--file",
+            csv_path,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "fewshots_uploaded");
+    assert_eq!(data["added"], 2);
+    assert_eq!(data["renamed"], 0);
+    eprintln!("  Uploaded 2 fewshots from CSV");
+
+    std::fs::remove_file(csv_path).ok();
+
+    // Verify fewshots
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "list-fewshots",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &cfg.source_lakehouse,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let count = extract_count(&json);
+    assert_eq!(count, 2, "Expected 2 fewshots after upload");
+    eprintln!("  Verified: {count} fewshots");
+
+    // ─── Upload duplicate fewshots (test rename logic) ───────────────────────
+    eprintln!("[6/8] Uploading duplicate fewshot (tests rename)...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "add-fewshot",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &cfg.source_lakehouse,
+            "--question",
+            "How many products?",
+            "--answer",
+            "SELECT COUNT(*) FROM products WHERE active = 1",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "fewshot_added");
+    let saved_q = data["question"].as_str().unwrap_or("");
+    assert!(
+        saved_q.contains("[1]"),
+        "Expected duplicate to be renamed with [1], got: {saved_q}"
+    );
+    eprintln!("  Duplicate renamed to: {saved_q}");
+
+    // ─── select-tables (unselect all, then select specific) ──────────────────
+    eprintln!("[7/8] Testing select-tables...");
+
+    // First check if there are elements to select
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "list-elements",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &cfg.source_lakehouse,
+        ])
+        .timeout(std::time::Duration::from_secs(60))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let elem_count = extract_count(&json);
+
+    if elem_count > 0 {
+        // Unselect all tables
+        let assert = fabio()
+            .args([
+                "data-agent",
+                "select-tables",
+                "--workspace",
+                &cfg.source_workspace,
+                "--id",
+                &agent_id,
+                "--datasource",
+                &cfg.source_lakehouse,
+                "--all-tables",
+                "--unselect",
+            ])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+            .success();
+
+        let json = parse_json(&assert);
+        let data = extract_data(&json);
+        assert_eq!(data["status"], "tables_unselected");
+        let modified = data["modified"].as_u64().unwrap_or(0);
+        eprintln!("  Unselected {modified} tables");
+
+        // Select all back
+        let assert = fabio()
+            .args([
+                "data-agent",
+                "select-tables",
+                "--workspace",
+                &cfg.source_workspace,
+                "--id",
+                &agent_id,
+                "--datasource",
+                &cfg.source_lakehouse,
+                "--all-tables",
+            ])
+            .timeout(std::time::Duration::from_secs(120))
+            .assert()
+            .success();
+
+        let json = parse_json(&assert);
+        let data = extract_data(&json);
+        assert_eq!(data["status"], "tables_selected");
+        eprintln!("  Re-selected all tables");
+    } else {
+        eprintln!("  Skipping select-tables (no elements discovered)");
+    }
+
+    // ─── Cleanup ─────────────────────────────────────────────────────────────
+    eprintln!("[8/8] Cleaning up...");
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .assert()
+        .success();
+    eprintln!("  Done. Advanced management lifecycle complete.");
+}
