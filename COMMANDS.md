@@ -229,10 +229,23 @@ fabio data-agent show        Show data agent details
 fabio data-agent create      Create a new data agent
 fabio data-agent update      Update name/description
 fabio data-agent delete      Delete a data agent
-fabio data-agent query       Chat with a published data agent
+fabio data-agent query       Chat with a published data agent (--stage, --timeout)
+fabio data-agent get-config       Get agent config (instructions, preview runtime, datasources)
+fabio data-agent update-config    Update agent config (--instructions, --instructions-file, --enable-preview-runtime)
+fabio data-agent list-datasources List configured data sources
+fabio data-agent show-datasource  Show data source details
+fabio data-agent add-datasource   Add a data source (auto-type detection from artifact)
+fabio data-agent remove-datasource Remove a data source
+fabio data-agent select-tables    Select/unselect tables (--tables, --all-tables, --unselect)
+fabio data-agent list-elements    List elements (tables/columns with selection state and descriptions)
+fabio data-agent describe-element Set/clear description on a table or column (--path, --description)
+fabio data-agent list-fewshots    List few-shot examples for a data source
+fabio data-agent add-fewshot      Add a question/answer pair (--question, --answer)
+fabio data-agent remove-fewshot   Remove a few-shot by ID
+fabio data-agent upload-fewshots  Bulk upload few-shots from JSON or CSV file
 fabio data-agent get-definition   Get definition (configuration, data sources)
 fabio data-agent update-definition Update definition (instructions, data sources)
-fabio data-agent publish     Publish a data agent (promotes draft to published)
+fabio data-agent publish     Publish a data agent (--to-m365 for M365 Copilot Agent Store)
 
 fabio ontology list          List ontologies
 fabio ontology show          Show ontology details

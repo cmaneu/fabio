@@ -689,29 +689,132 @@ fabio apache-airflow-job get-environment --workspace $WS --id $AJ
 # Create a data agent
 fabio data-agent create --workspace $WS --name "SalesAssistant"
 
-# Configure with data source, table metadata, and few-shot examples
-fabio data-agent update-definition --workspace $WS --id $DA --content '{
-  "definition": {
-    "parts": [
-      {"path": "Files/Config/data_agent.json", "payload": "<base64>", "payloadType": "InlineBase64"},
-      {"path": "Files/Config/draft/stage_config.json", "payload": "<base64>", "payloadType": "InlineBase64"},
-      {"path": "Files/Config/draft/lakehouse-SalesLH/datasource.json", "payload": "<base64>", "payloadType": "InlineBase64"},
-      {"path": "Files/Config/draft/lakehouse-SalesLH/fewshots.json", "payload": "<base64>", "payloadType": "InlineBase64"}
-    ]
-  }
-}'
+# ─── Configuration ─────────────────────────────────────────────────
+# Set AI instructions (inline or from file)
+fabio data-agent update-config --workspace $WS --id $DA \
+  --instructions "Answer questions about sales data. Use SQL for lakehouse tables."
 
+# Load instructions from a file (useful for multi-line instructions)
+fabio data-agent update-config --workspace $WS --id $DA \
+  --instructions-file instructions.txt
+
+# Enable preview runtime (agentic NL2SQL reasoning path)
+fabio data-agent update-config --workspace $WS --id $DA --enable-preview-runtime
+
+# Read current config
+fabio data-agent get-config --workspace $WS --id $DA
+
+# ─── Datasource Management ────────────────────────────────────────
+# Add a lakehouse as data source (auto-detects type from artifact)
+fabio data-agent add-datasource --workspace $WS --id $DA \
+  --artifact "SalesLakehouse"
+
+# Add with explicit type and instructions
+fabio data-agent add-datasource --workspace $WS --id $DA \
+  --artifact $LAKEHOUSE_ID --artifact-type Lakehouse \
+  --instructions "Contains product catalog and order history"
+
+# Add a warehouse from another workspace
+fabio data-agent add-datasource --workspace $WS --id $DA \
+  --artifact "AnalyticsWarehouse" --artifact-workspace $OTHER_WS
+
+# List configured data sources
+fabio data-agent list-datasources --workspace $WS --id $DA
+
+# Show details of a specific data source
+fabio data-agent show-datasource --workspace $WS --id $DA --datasource "SalesLakehouse"
+
+# Remove a data source
+fabio data-agent remove-datasource --workspace $WS --id $DA --datasource "SalesLakehouse"
+
+# ─── Table Selection ──────────────────────────────────────────────
+# Select specific tables
+fabio data-agent select-tables --workspace $WS --id $DA \
+  --datasource $LH_ID --tables "orders,products,customers"
+
+# Select all tables
+fabio data-agent select-tables --workspace $WS --id $DA \
+  --datasource $LH_ID --all-tables
+
+# Unselect specific tables
+fabio data-agent select-tables --workspace $WS --id $DA \
+  --datasource $LH_ID --tables "staging_raw" --unselect
+
+# ─── Element Descriptions ─────────────────────────────────────────
+# List all elements (tables/columns) with selection state
+fabio data-agent list-elements --workspace $WS --id $DA --datasource $LH_ID
+
+# Set a description on a table
+fabio data-agent describe-element --workspace $WS --id $DA \
+  --datasource $LH_ID --path "dbo.orders" \
+  --description "Customer orders with amounts and shipping dates"
+
+# Set a description on a column
+fabio data-agent describe-element --workspace $WS --id $DA \
+  --datasource $LH_ID --path "dbo.orders.total_amount" \
+  --description "Total order value in USD including tax"
+
+# Clear a description
+fabio data-agent describe-element --workspace $WS --id $DA \
+  --datasource $LH_ID --path "dbo.orders.total_amount"
+
+# ─── Few-shot Examples ────────────────────────────────────────────
+# Add a single example
+fabio data-agent add-fewshot --workspace $WS --id $DA \
+  --datasource $LH_ID \
+  --question "Who is the top customer by revenue?" \
+  --answer "SELECT TOP 1 customer_name, SUM(total_amount) as revenue FROM orders GROUP BY customer_name ORDER BY revenue DESC"
+
+# Bulk upload from JSON file
+# File format: [{"question":"...", "query":"..."}]
+fabio data-agent upload-fewshots --workspace $WS --id $DA \
+  --datasource $LH_ID --file fewshots.json
+
+# Bulk upload from CSV file (columns: question, query)
+fabio data-agent upload-fewshots --workspace $WS --id $DA \
+  --datasource $LH_ID --file fewshots.csv
+
+# List few-shot examples
+fabio data-agent list-fewshots --workspace $WS --id $DA --datasource $LH_ID
+
+# Remove a few-shot by ID
+fabio data-agent remove-fewshot --workspace $WS --id $DA \
+  --datasource $LH_ID --fewshot-id $FEWSHOT_ID
+
+# ─── Publishing & Querying ────────────────────────────────────────
 # Publish the agent (activates the chat endpoint — no portal needed)
 fabio data-agent publish --workspace $WS --id $DA --description "v1.0 production"
 
-# Query the agent
+# Publish to Microsoft 365 Copilot Agent Store
+fabio data-agent publish --workspace $WS --id $DA --to-m365
+
+# Query the published agent
 fabio data-agent query --workspace $WS --id $DA \
-  --published-url "https://api.fabric.microsoft.com/v1/workspaces/$WS/dataagents/$DA/aiassistant/openai" \
   --prompt "Who is the top customer by revenue?"
 
+# Query with explicit published URL
+fabio data-agent query --workspace $WS --id $DA \
+  --published-url "https://api.fabric.microsoft.com/v1/workspaces/$WS/dataagents/$DA/aiassistant/openai" \
+  --prompt "What is the most expensive product?"
+
+# Query the draft (sandbox) agent before publishing
+fabio data-agent query --workspace $WS --id $DA \
+  --stage sandbox --prompt "Test: how many orders?"
+
+# Query with custom timeout and execution steps
+fabio data-agent query --workspace $WS --id $DA \
+  --prompt "Complex query..." --timeout 600 --show-steps
+
 # Pipe questions from stdin
-echo "How many orders were placed last month?" | fabio data-agent query --workspace $WS --id $DA \
-  --published-url "https://api.fabric.microsoft.com/v1/workspaces/$WS/dataagents/$DA/aiassistant/openai"
+echo "How many orders were placed last month?" | \
+  fabio data-agent query --workspace $WS --id $DA
+
+# ─── Low-level Definition (advanced) ──────────────────────────────
+# Get raw definition (all parts base64-encoded)
+fabio data-agent get-definition --workspace $WS --id $DA
+
+# Update with raw definition JSON
+fabio data-agent update-definition --workspace $WS --id $DA --file definition.json
 ```
 
 ## ML Models

@@ -20,7 +20,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Item type coverage | ~20 commands | 74 command groups |
 | SQL query execution | No | Warehouse, SQL Database, Lakehouse (T-SQL via TDS) |
 | KQL query execution | No | KQL Database and Eventhouse queries |
-| Data Agent interaction | No | Create, publish, and query Data Agents (chat) |
+| Data Agent interaction | No | Create, configure, publish, and query Data Agents (22 subcommands: datasource/fewshot/config management, chat with `--stage`/`--timeout`) |
 | Git integration | No | Full lifecycle: connect, status, commit, pull, switch branch |
 | Notebook run | `job run` with `--wait`/`--timeout` | Run with `--wait`, `--timeout`, `--parameters`, cancel |
 | Bulk operations | No | `item bulk-create`, `item bulk-delete` (parallel) |
@@ -48,7 +48,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 
 ### What fabio adds beyond both
 
-- **AI-native interactions** — create and query Data Agents, execute KQL for real-time intelligence, NL-to-KQL translation
+- **AI-native interactions** — create, configure, and query Data Agents (datasource management, few-shot examples, table descriptions, preview runtime); execute KQL for real-time intelligence, NL-to-KQL translation
 - **Self-correcting error hints** — every error includes a `hint` field with the exact corrected command, valid enum values, or the logical next step so agents can retry without consulting docs
 - **Self-improving** — when new Fabric REST APIs are detected, fabio auto-implements support for new commands and item types
 - **Terraform-like convergence** — re-running `deploy apply` on a synced workspace produces zero API calls

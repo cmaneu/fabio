@@ -394,6 +394,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **SQL Database**: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
 - **SQL Database import**: Reads CSV/JSON files, infers column types (Int/BigInt/Float/Bit/Date/NVarChar), generates CREATE TABLE + batched INSERTs via TDS. Supports --drop-if-exists, --no-create-table, --batch-size.
 - **SQL Endpoint**: list/show/connection-string/query/refresh-metadata/get-audit-settings/update-audit-settings/set-audit-actions (read-only companion to lakehouses)
+- **Data Agent**: list/show/create/update/delete/query/get-definition/update-definition/publish (22 subcommands), get-config/update-config (instructions + preview runtime), add/remove/list/show-datasource (auto-type detection from artifact), select-tables (toggle table selection), list-elements/describe-element (table/column descriptions), add/remove/list-fewshots/upload-fewshots (JSON + CSV/TSV bulk upload, duplicate detection with `[N]` suffix rename), query `--stage sandbox|production` + `--timeout`, publish `--to-m365`
 - **Variable Library**: list/show/create/update/delete/get-definition/update-definition (variables.json + settings.json)
 - **Event Schema Set**: list/show/create/update/delete/get-definition/update-definition (EventSchemaSetDefinition.json)
 - **User Data Function**: list/show/create/update/delete/get-definition/update-definition (Python runtime)
@@ -528,7 +529,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/warehouse.rs`: list/show/create/update/delete/query/connection-string (endpoint resolved, stdin/file/flag SQL input)
 - `src/commands/sql_database.rs`: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
 - `src/commands/tds_utils.rs`: Shared TDS utilities (resolve_sql_input, parse_connection_string, execute_and_render_sql, column_value_to_json)
-- `src/commands/dataagent.rs`: list/show/create/update/delete/query/get-definition/update-definition/publish
+- `src/commands/dataagent.rs`: list/show/create/update/delete/query/get-definition/update-definition/publish + get-config/update-config, add/remove/list/show-datasource, select-tables, list-elements/describe-element, add/remove/list-fewshots/upload-fewshots
 - `src/commands/git.rs`: status/commit/pull/connect/disconnect/initialize/switch/connection/credentials/show-tracked
 - `src/commands/ontology.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings/upload-staging-library
@@ -615,7 +616,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `tests/e2e_notebook.rs`: Notebook create/get-definition/run/run --wait/status/stop/delete/strip-output tests
 - `tests/e2e_warehouse.rs`: Warehouse list/show/query/query-stdin tests
 - `tests/e2e_sql_database.rs`: SQL Database CRUD + query + import tests
-- `tests/e2e_dataagent.rs`: Data agent tests
+- `tests/e2e_dataagent.rs`: Data agent tests (34 tests: CRUD, query, definition, publish, datasource lifecycle, fewshot lifecycle, elements lifecycle, config, CSV upload, dry-run validations)
 - `tests/e2e_git.rs`: Git command group tests
 - `tests/e2e_ontology.rs`: Ontology CRUD + definition tests
 - `tests/e2e_agent_native.rs`: Agent-native compliance tests (principles 1-10)
@@ -823,6 +824,22 @@ The release workflow (`.github/workflows/release.yml`) handles tagged version im
 - **Service principal + managed identity support**: Data Agent create/update/delete now supports service principals and managed identities (not just delegated user tokens).
 - **Schema version 2.1.0**: Current `data_agent.json` uses `$schema: "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/dataAgent/2.1.0/schema.json"`. Simplified form `"2.1.0"` also accepted in the `$schema` field.
 - **`publish_info.json` format**: `{"$schema":"https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/publishInfo/1.0.0/schema.json","description":"<publish description>"}`. The description is optional text captured at publish time.
+- **Official Python SDK (`fabric-data-agent-sdk`)**: Published at `https://pypi.org/project/fabric-data-agent-sdk/` (v0.1.24a0 as of Jun 2026, MIT license, maintained by Microsoft). Two main entry points: data plane via OpenAI SDK for conversational interaction, management plane for CRUD. Source repo: `https://msdata.visualstudio.com/DefaultCollection/A365/_git/SynapseML-Agent-SDK`.
+- **Internal workload management API**: The Python SDK uses an internal API at `{wl_host}/webapi/capacities/{capacityId}/workloads/ML/AISkill/Automatic/workspaces/{workspaceId}/dataagents/{dataAgentId}/management/...`. Endpoints: `GET/PATCH .../configuration` (ETag-based concurrency), `GET/POST/PUT/DELETE .../datasources/{id}`, `GET/POST .../datasources/{id}/fewshots`, `GET/PUT .../publishing`, `PUT .../deploy`. Uses `x-ms-ai-aiskill-stage: sandbox|production` and `If-Match` ETag headers. fabio implements equivalent functionality via the public `getDefinition`/`updateDefinition` API instead.
+- **M365 Copilot Agent Store publishing**: The SDK publishes to M365 via `POST {wl_host}/webapi/capacities/{capacityId}/workloads/ML/DataAgent/Automatic/v1/workspaces/{workspaceId}/dataagents/{dataAgentId}/metaosapppackage` with body `{"scope": "Shared"}`. Requires 201 response. Called after standard publish completes. fabio implements this via `--to-m365` flag on `data-agent publish`.
+- **Schema discovery endpoint**: The SDK auto-discovers artifact schemas via `GET {wl_host}/webapi/capacities/{capacityId}/workloads/ML/AISkill/Automatic/v1/workspaces/{dsWorkspaceId}/artifacts/{artifactId}/schema?responseSource=live&dataSourceType={type}`. Returns full table/column/type tree for lakehouse, warehouse, KQL, semantic model, ontology, and graph data sources.
+- **Datasource type mapping**: SDK maps Fabric item types to internal datasource types: `Lakehouse` → `lakehouse_tables`, `KQLDatabase` → `kusto`, `Warehouse` → `data_warehouse`, `SemanticModel` → `semantic_model`, `Ontology` → `ontology`, `GraphModel` → `graph`. Additionally supports `MirroredDatabase` → `mirrored_database` and `SQLDatabase` → `sql_database` (since SDK v0.1.18).
+- **Configurable datasource types**: Only `lakehouse_tables`, `data_warehouse`, and `kusto` support `update_configuration()` (instructions, schema_mode, user_description). Other types are read-only after creation.
+- **Description-enabled element types**: Descriptions can be set on `lakehouse_tables.table`, `lakehouse_tables.column`, `lakehouse_tables.view`, `warehouse_tables.table`, `warehouse_tables.column`, `warehouse_tables.view`, `mirrored_database.table`, `mirrored_database.column`, `mirrored_database.view`, `sql_database.table`, `sql_database.column`, `sql_database.view`.
+- **Selectable element types**: Only table-level elements can be selected/unselected: `semantic_model.table`, `lakehouse_tables.table`, `warehouse_tables.table`, `kusto.table`. Columns and measures are not independently selectable via the UX or SDK.
+- **Preview runtime feature**: `experimental.enableExperimentalFeatures: true` in `stage_config.json` enables the "preview runtime" — an agentic NL2SQL reasoning path. The SDK renamed the parameter from `enable_experimental_features` to `enable_preview_runtime` in v0.1.24a0 for consistency with the UI label.
+- **Few-shot evaluation (SDK-only, not in fabio)**: The SDK provides LLM-based few-shot quality validation via the Fabric-internal `gpt-4.1` model: quality scoring (clarity, mapping, relatedness), conflict detection between examples (semantic analysis), and batch evaluation with ground truth comparison. These features require the internal workload LLM endpoint and are not exposed via any public REST API.
+- **Ground truth evaluation (SDK-only, not in fabio)**: The SDK evaluates data agent answers against expected results: `evaluate_data_agent(df, agent_name)` runs parallel evaluations with multiple repeats, stores results in Delta tables, and generates summary reports (per-question success rate, failed thread URLs).
+- **Max 5 datasources per agent**: Official limit documented in Microsoft Learn.
+- **Max 100 fewshot examples per datasource**: Official limit documented in Microsoft Learn.
+- **Response cap**: Agent responses are capped at 25 rows and 25 columns maximum.
+- **Cross-region limitation**: The agent workspace capacity must be in the same region as the data source workspace capacity. Cross-region queries fail.
+- **`--query` flag naming conflict**: The global `--query` JMESPath flag conflicts with using `--query` for SQL/KQL on `add-fewshot`. fabio uses `--answer` (with `--sql` visible alias) to avoid the conflict.
 
 ## Semantic Model API Behaviors Discovered
 - **TMDL vs model.bim**: Direct Lake semantic models REQUIRE TMDL format (v4.0 pbism). The older model.bim JSON format (compat level 1550) does NOT support DirectLake mode partitions.
