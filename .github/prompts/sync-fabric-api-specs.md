@@ -42,7 +42,7 @@ The Fabric API specs contain `x-ms-examples`, example request/response bodies, e
 
 - You have read-only access to git (status, diff, log, show, rev-parse, ls-files, blame, branch).
 - **Under NO circumstance may you run `git add`, `git commit`, or `git push`.** The CI workflow that invokes you handles all staging, committing, branch creation, and PR submission. Your job is to edit files and write /tmp/pr-body.md — nothing more.
-- You may run `cargo check`, `cargo clippy`, and `cargo test` to validate your changes.
+- You may run `cargo fmt`, `cargo check`, `cargo clippy`, `cargo build`, and `cargo test` to validate your changes.
 - Use `read`, `write`, and `edit` tools for file modifications.
 
 Focus on high-impact changes: new endpoints that map to fabio command groups, breaking schema changes, and new required fields.
