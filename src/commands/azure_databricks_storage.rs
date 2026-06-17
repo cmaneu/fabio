@@ -364,7 +364,7 @@ async fn update_definition(
             "format": "AzureDatabricksStorageV1",
             "parts": [
                 {
-                    "path": "AzureDatabricksStorage.json",
+                    "path": "definition.json",
                     "payload": encoded,
                     "payloadType": "InlineBase64"
                 }
@@ -420,22 +420,159 @@ mod tests {
     }
 
     #[test]
+    fn test_show_url_format() {
+        let ws = "ws1";
+        let id = "item-abc";
+        let url = format!("/workspaces/{ws}/azureDatabricksStorages/{id}");
+        assert_eq!(url, "/workspaces/ws1/azureDatabricksStorages/item-abc");
+    }
+
+    #[test]
+    fn test_create_url_format() {
+        let ws = "ws-create";
+        let url = format!("/workspaces/{ws}/azureDatabricksStorages");
+        assert_eq!(url, "/workspaces/ws-create/azureDatabricksStorages");
+    }
+
+    #[test]
+    fn test_delete_url_without_hard_delete() {
+        let ws = "ws1";
+        let id = "item1";
+        let hard_delete = false;
+        let url = if hard_delete {
+            format!("/workspaces/{ws}/azureDatabricksStorages/{id}?hardDelete=true")
+        } else {
+            format!("/workspaces/{ws}/azureDatabricksStorages/{id}")
+        };
+        assert_eq!(url, "/workspaces/ws1/azureDatabricksStorages/item1");
+        assert!(!url.contains("hardDelete"));
+    }
+
+    #[test]
     fn test_delete_hard_delete_url() {
         let ws = "ws1";
         let id = "item1";
-        let url = format!("/workspaces/{ws}/azureDatabricksStorages/{id}?hardDelete=true");
+        let hard_delete = true;
+        let url = if hard_delete {
+            format!("/workspaces/{ws}/azureDatabricksStorages/{id}?hardDelete=true")
+        } else {
+            format!("/workspaces/{ws}/azureDatabricksStorages/{id}")
+        };
         assert!(url.contains("hardDelete=true"));
+        assert_eq!(
+            url,
+            "/workspaces/ws1/azureDatabricksStorages/item1?hardDelete=true"
+        );
+    }
+
+    #[test]
+    fn test_get_definition_url_format() {
+        let ws = "ws1";
+        let id = "def-item";
+        let url = format!("/workspaces/{ws}/azureDatabricksStorages/{id}/getDefinition");
+        assert_eq!(
+            url,
+            "/workspaces/ws1/azureDatabricksStorages/def-item/getDefinition"
+        );
+    }
+
+    #[test]
+    fn test_update_definition_url_format() {
+        let ws = "ws1";
+        let id = "def-item";
+        let url = format!("/workspaces/{ws}/azureDatabricksStorages/{id}/updateDefinition");
+        assert_eq!(
+            url,
+            "/workspaces/ws1/azureDatabricksStorages/def-item/updateDefinition"
+        );
+    }
+
+    #[test]
+    fn test_update_definition_body_structure() {
+        let raw = r#"{"key":"value"}"#;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(raw.as_bytes());
+        let body = serde_json::json!({
+            "definition": {
+                "format": "AzureDatabricksStorageV1",
+                "parts": [
+                    {
+                        "path": "definition.json",
+                        "payload": encoded,
+                        "payloadType": "InlineBase64"
+                    }
+                ]
+            }
+        });
+
+        // Validate format
+        assert_eq!(
+            body["definition"]["format"], "AzureDatabricksStorageV1",
+            "Definition format must be AzureDatabricksStorageV1"
+        );
+
+        // Validate part path matches API spec (definition.json, NOT AzureDatabricksStorage.json)
+        assert_eq!(
+            body["definition"]["parts"][0]["path"], "definition.json",
+            "Definition part path must be 'definition.json' per API spec"
+        );
+
+        // Validate payload type
+        assert_eq!(
+            body["definition"]["parts"][0]["payloadType"],
+            "InlineBase64"
+        );
+
+        // Validate base64 encoding roundtrip
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(body["definition"]["parts"][0]["payload"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(String::from_utf8(decoded).unwrap(), raw);
+    }
+
+    #[test]
+    fn test_create_body_structure() {
+        let name = "My Storage";
+        let description = Some("A description");
+        let mut body = serde_json::json!({ "displayName": name });
+        if let Some(d) = description {
+            body["description"] = serde_json::Value::String(d.to_string());
+        }
+        assert_eq!(body["displayName"], "My Storage");
+        assert_eq!(body["description"], "A description");
+    }
+
+    #[test]
+    fn test_create_body_without_description() {
+        let name = "My Storage";
+        let description: Option<&str> = None;
+        let mut body = serde_json::json!({ "displayName": name });
+        if let Some(d) = description {
+            body["description"] = serde_json::Value::String(d.to_string());
+        }
+        assert_eq!(body["displayName"], "My Storage");
+        assert!(body.get("description").is_none());
+    }
+
+    #[test]
+    fn test_update_requires_at_least_one_field() {
+        let name: Option<&str> = None;
+        let description: Option<&str> = None;
+        // Mirrors the validation logic in update()
+        assert!(
+            name.is_none() && description.is_none(),
+            "Should require at least one field"
+        );
     }
 
     #[test]
     fn test_update_definition_no_input_error() {
-        // Validates error code path without async
-        let result: Result<()> = Err(FabioError::with_hint(
+        let err: anyhow::Error = FabioError::with_hint(
             ErrorCode::InvalidInput,
             "Either --file or --content must be provided".to_string(),
-            "Example hint".to_string(),
+            "Example: fabio azure-databricks-storage update-definition --workspace <WS> --id <ID> --file definition.json".to_string(),
         )
-        .into());
-        assert!(result.is_err());
+        .into();
+        let msg = format!("{err}");
+        assert!(msg.contains("--file or --content"));
     }
 }

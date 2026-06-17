@@ -319,3 +319,87 @@ fn data_pipeline_update_schedule_requires_body() {
         "Expected error about missing body, got: {stderr}"
     );
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn data_pipeline_update_schedule_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "data-pipeline",
+            "update-schedule",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--schedule-id",
+            "00000000-0000-0000-0000-000000000002",
+            "--content",
+            r#"{"enabled":true,"configuration":{"type":"Cron","interval":10}}"#,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(
+        json["data"]["would_execute"],
+        "data-pipeline update-schedule"
+    );
+    // Verify the body content is in the dry-run details
+    assert_eq!(json["data"]["details"]["enabled"], true);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn data_pipeline_get_schedule_invalid_returns_error() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "data-pipeline",
+            "get-schedule",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--schedule-id",
+            "00000000-0000-0000-0000-ffffffffffff",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("NOT_FOUND") || stderr.contains("API_ERROR") || stderr.contains("error"),
+        "Expected error for invalid schedule ID, got: {stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn data_pipeline_get_instance_invalid_returns_error() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "data-pipeline",
+            "get-instance",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--instance-id",
+            "00000000-0000-0000-0000-ffffffffffff",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("NOT_FOUND") || stderr.contains("API_ERROR") || stderr.contains("error"),
+        "Expected error for invalid instance ID, got: {stderr}"
+    );
+}

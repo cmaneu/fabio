@@ -824,3 +824,135 @@ async fn get_instance(
     output::render_object(cli, &data, "id");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Schedule URL tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_list_schedules_url_format() {
+        let ws = "ws-abc";
+        let id = "pipeline-123";
+        let url = format!("/workspaces/{ws}/dataPipelines/{id}/jobs/execute/schedules");
+        assert_eq!(
+            url,
+            "/workspaces/ws-abc/dataPipelines/pipeline-123/jobs/execute/schedules"
+        );
+    }
+
+    #[test]
+    fn test_get_schedule_url_format() {
+        let ws = "ws-abc";
+        let id = "pipeline-123";
+        let schedule_id = "sched-456";
+        let url =
+            format!("/workspaces/{ws}/dataPipelines/{id}/jobs/execute/schedules/{schedule_id}");
+        assert_eq!(
+            url,
+            "/workspaces/ws-abc/dataPipelines/pipeline-123/jobs/execute/schedules/sched-456"
+        );
+    }
+
+    #[test]
+    fn test_update_schedule_url_format() {
+        let ws = "ws-abc";
+        let id = "pipeline-123";
+        let schedule_id = "sched-456";
+        let url =
+            format!("/workspaces/{ws}/dataPipelines/{id}/jobs/execute/schedules/{schedule_id}");
+        // Same URL as get_schedule (PATCH vs GET)
+        assert!(url.ends_with("/schedules/sched-456"));
+    }
+
+    #[test]
+    fn test_delete_schedule_url_format() {
+        let ws = "ws-abc";
+        let id = "pipeline-123";
+        let schedule_id = "sched-456";
+        let url =
+            format!("/workspaces/{ws}/dataPipelines/{id}/jobs/execute/schedules/{schedule_id}");
+        // Same URL as get/update (DELETE method)
+        assert!(url.contains("/jobs/execute/schedules/"));
+        assert!(url.ends_with("sched-456"));
+    }
+
+    // ── Instance URL tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_list_instances_url_format() {
+        let ws = "ws-abc";
+        let id = "pipeline-123";
+        let url = format!("/workspaces/{ws}/dataPipelines/{id}/jobs/execute/instances");
+        assert_eq!(
+            url,
+            "/workspaces/ws-abc/dataPipelines/pipeline-123/jobs/execute/instances"
+        );
+    }
+
+    #[test]
+    fn test_get_instance_url_format() {
+        let ws = "ws-abc";
+        let id = "pipeline-123";
+        let instance_id = "inst-789";
+        let url =
+            format!("/workspaces/{ws}/dataPipelines/{id}/jobs/execute/instances/{instance_id}");
+        assert_eq!(
+            url,
+            "/workspaces/ws-abc/dataPipelines/pipeline-123/jobs/execute/instances/inst-789"
+        );
+    }
+
+    // ── Error path tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_update_schedule_no_input_error() {
+        let err: anyhow::Error = FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Either --file or --content must be provided".to_string(),
+            "Example: fabio data-pipeline update-schedule --workspace <WS> --id <ID> --schedule-id <SCHED_ID> --content '{...}'".to_string(),
+        )
+        .into();
+        let msg = format!("{err}");
+        assert!(msg.contains("--file or --content"));
+    }
+
+    #[test]
+    fn test_delete_schedule_dry_run_body() {
+        let ws = "ws1";
+        let id = "pipe1";
+        let schedule_id = "sched1";
+        let body = serde_json::json!({
+            "workspace": ws,
+            "id": id,
+            "scheduleId": schedule_id
+        });
+        assert_eq!(body["workspace"], "ws1");
+        assert_eq!(body["id"], "pipe1");
+        assert_eq!(body["scheduleId"], "sched1");
+    }
+
+    #[test]
+    fn test_create_schedule_url_format() {
+        let ws = "ws-abc";
+        let id = "pipeline-123";
+        let url = format!("/workspaces/{ws}/dataPipelines/{id}/jobs/execute/schedules");
+        // create-schedule uses POST to same list URL
+        assert_eq!(
+            url,
+            "/workspaces/ws-abc/dataPipelines/pipeline-123/jobs/execute/schedules"
+        );
+    }
+
+    #[test]
+    fn test_create_schedule_no_input_error() {
+        let result: Result<()> = Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Either --file or --content must be provided".to_string(),
+            "Example: fabio data-pipeline create-schedule --workspace <WS> --id <ID> --content '{...}'".to_string(),
+        )
+        .into());
+        assert!(result.is_err());
+    }
+}

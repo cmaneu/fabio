@@ -26,3 +26,96 @@ fn mirrored_catalog_list_returns_array() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert!(json["data"].is_array());
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn mirrored_catalog_create_requires_definition() {
+    let cfg = TestConfig::from_env();
+    // Mirrored catalog create without definition should fail with a clear error
+    let assert = fabio()
+        .args([
+            "mirrored-catalog",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "mc_test_no_def",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("MissingDefinition")
+            || stderr.contains("requires a definition")
+            || stderr.contains("API_ERROR"),
+        "Expected error about missing definition, got: {stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn mirrored_catalog_dry_run_create() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "mirrored-catalog",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "mc_dry_run",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "mirrored-catalog create");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn mirrored_catalog_dry_run_delete() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "mirrored-catalog",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "mirrored-catalog delete");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn mirrored_catalog_show_invalid_id_returns_error() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "mirrored-catalog",
+            "show",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-ffffffffffff",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("NOT_FOUND") || stderr.contains("API_ERROR") || stderr.contains("error"),
+        "Expected error for invalid ID, got: {stderr}"
+    );
+}
