@@ -19,6 +19,7 @@ pub const DEPLOY_ORDER: &[&str] = &[
     "WarehouseSnapshot",
     "MirroredDatabase",
     "MirroredAzureDatabricksCatalog",
+    "AzureDatabricksStorage",
     "Lakehouse",
     "SQLDatabase",
     "CosmosDbDatabase",
@@ -236,8 +237,8 @@ mod tests {
         // Guard against accidental additions/removals — update this if DEPLOY_ORDER changes
         assert_eq!(
             DEPLOY_ORDER.len(),
-            45,
-            "DEPLOY_ORDER should have 45 entries; update this test if intentionally changed"
+            46,
+            "DEPLOY_ORDER should have 46 entries; update this test if intentionally changed"
         );
     }
 

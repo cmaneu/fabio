@@ -1803,6 +1803,7 @@ fn read_json_input(file: Option<&str>, content: Option<&str>, command: &str) -> 
 
 /// Known Fabric item types for error hints.
 const KNOWN_ITEM_TYPES: &[&str] = &[
+    "AzureDatabricksStorage",
     "CopyJob",
     "Dashboard",
     "DataAgent",

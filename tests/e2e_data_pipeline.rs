@@ -151,3 +151,171 @@ fn data_pipeline_update_requires_field() {
     let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
     assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn data_pipeline_list_schedules_returns_array() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("dp_sched");
+
+    // Create a pipeline to test schedule listing
+    let assert = fabio()
+        .args([
+            "data-pipeline",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let dp_id = json["data"]["id"].as_str().unwrap().to_string();
+
+    // List schedules (should be empty initially)
+    let assert = fabio()
+        .args([
+            "data-pipeline",
+            "list-schedules",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &dp_id,
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(json["data"].is_array());
+
+    // Cleanup
+    fabio()
+        .args([
+            "data-pipeline",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &dp_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn data_pipeline_list_instances_returns_array() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("dp_inst");
+
+    // Create a pipeline to test instance listing
+    let assert = fabio()
+        .args([
+            "data-pipeline",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let dp_id = json["data"]["id"].as_str().unwrap().to_string();
+
+    // List instances (should be empty initially)
+    let assert = fabio()
+        .args([
+            "data-pipeline",
+            "list-instances",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &dp_id,
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(json["data"].is_array());
+
+    // Cleanup
+    fabio()
+        .args([
+            "data-pipeline",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &dp_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn data_pipeline_delete_schedule_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "data-pipeline",
+            "delete-schedule",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--schedule-id",
+            "00000000-0000-0000-0000-000000000002",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(
+        json["data"]["would_execute"],
+        "data-pipeline delete-schedule"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn data_pipeline_update_schedule_requires_body() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "data-pipeline",
+            "update-schedule",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--schedule-id",
+            "00000000-0000-0000-0000-000000000002",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("INVALID_INPUT")
+            || stderr.contains("--file")
+            || stderr.contains("--content"),
+        "Expected error about missing body, got: {stderr}"
+    );
+}

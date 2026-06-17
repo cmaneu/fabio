@@ -1,17 +1,18 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
-    admin, anomaly_detector, apache_airflow_job, app_backend, auth, capacity, catalog, connection,
-    context, copy_job, cosmos_db_database, dashboard, data_build_tool_job, data_pipeline,
-    dataagent, dataflow, datamart, deploy, deployment_pipeline, digital_twin_builder,
-    digital_twin_builder_flow, domain, environment, event_schema_set, eventhouse, eventstream,
-    feedback, gateway, git, graph_model, graph_query_set, graphql_api, item, job_scheduler, jobs,
-    kql_dashboard, kql_database, kql_queryset, lakehouse, lro, managed_private_endpoint, map,
-    mirrored_catalog, mirrored_database, mirrored_databricks_catalog, mirrored_warehouse,
-    ml_experiment, ml_model, mounted_data_factory, notebook, onelake_security, ontology,
-    operations_agent, org_app, org_app_audience, paginated_report, profile, reflex, report, rest,
-    rti, semantic_model, snowflake_database, spark, spark_job_definition, sql_database,
-    sql_endpoint, user_data_function, variable_library, warehouse, warehouse_snapshot, workspace,
+    admin, anomaly_detector, apache_airflow_job, app_backend, auth, azure_databricks_storage,
+    capacity, catalog, connection, context, copy_job, cosmos_db_database, dashboard,
+    data_build_tool_job, data_pipeline, dataagent, dataflow, datamart, deploy, deployment_pipeline,
+    digital_twin_builder, digital_twin_builder_flow, domain, environment, event_schema_set,
+    eventhouse, eventstream, feedback, gateway, git, graph_model, graph_query_set, graphql_api,
+    item, job_scheduler, jobs, kql_dashboard, kql_database, kql_queryset, lakehouse, lro,
+    managed_private_endpoint, map, mirrored_catalog, mirrored_database,
+    mirrored_databricks_catalog, mirrored_warehouse, ml_experiment, ml_model, mounted_data_factory,
+    notebook, onelake_security, ontology, operations_agent, org_app, org_app_audience,
+    paginated_report, profile, reflex, report, rest, rti, semantic_model, snowflake_database,
+    spark, spark_job_definition, sql_database, sql_endpoint, user_data_function, variable_library,
+    warehouse, warehouse_snapshot, workspace,
 };
 
 /// Agent-native CLI for managing Microsoft Fabric artifacts and data.
@@ -431,20 +432,26 @@ pub enum Command {
         #[command(subcommand)]
         command: app_backend::AppBackendCommand,
     },
+    /// Manage Azure Databricks storage items (Fabric integration with Azure Databricks)
+    #[command(name = "azure-databricks-storage", display_order = 62)]
+    AzureDatabricksStorage {
+        #[command(subcommand)]
+        command: azure_databricks_storage::AzureDatabricksStorageCommand,
+    },
     /// Manage data build tool jobs (dbt-style transformations) [preview]
-    #[command(name = "data-build-tool-job", display_order = 62)]
+    #[command(name = "data-build-tool-job", display_order = 63)]
     DataBuildToolJob {
         #[command(subcommand)]
         command: data_build_tool_job::DataBuildToolJobCommand,
     },
     /// Manage org apps (organizational Power Apps)
-    #[command(name = "org-app", display_order = 63)]
+    #[command(name = "org-app", display_order = 64)]
     OrgApp {
         #[command(subcommand)]
         command: org_app::OrgAppCommand,
     },
     /// Manage org app audiences (audience definitions for org apps)
-    #[command(name = "org-app-audience", display_order = 64)]
+    #[command(name = "org-app-audience", display_order = 65)]
     OrgAppAudience {
         #[command(subcommand)]
         command: org_app_audience::OrgAppAudienceCommand,

@@ -3,6 +3,7 @@ pub mod anomaly_detector;
 pub mod apache_airflow_job;
 pub mod app_backend;
 pub mod auth;
+pub mod azure_databricks_storage;
 pub mod capacity;
 pub mod catalog;
 pub mod connection;
@@ -202,6 +203,9 @@ pub async fn execute(cli: Cli) -> Result<()> {
             anomaly_detector::execute(&cli, &client, command).await
         }
         Command::AppBackend { command } => app_backend::execute(&cli, &client, command).await,
+        Command::AzureDatabricksStorage { command } => {
+            azure_databricks_storage::execute(&cli, &client, command).await
+        }
         Command::DataBuildToolJob { command } => {
             data_build_tool_job::execute(&cli, &client, command).await
         }

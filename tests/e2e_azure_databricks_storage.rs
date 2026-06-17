@@ -1,0 +1,203 @@
+//! End-to-end integration tests for `fabio azure-databricks-storage` commands.
+
+use assert_cmd::Command;
+use serial_test::serial;
+
+mod common;
+use common::TestConfig;
+
+fn fabio() -> Command {
+    Command::cargo_bin("fabio").unwrap()
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn azure_databricks_storage_list_returns_array() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "azure-databricks-storage",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(json["data"].is_array());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn azure_databricks_storage_dry_run_create() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "azure-databricks-storage",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "test-ads",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(
+        json["data"]["would_execute"],
+        "azure-databricks-storage create"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn azure_databricks_storage_dry_run_delete() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "azure-databricks-storage",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(
+        json["data"]["would_execute"],
+        "azure-databricks-storage delete"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn azure_databricks_storage_dry_run_delete_hard() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "azure-databricks-storage",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--hard-delete",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(
+        json["data"]["would_execute"],
+        "azure-databricks-storage delete"
+    );
+    assert_eq!(json["data"]["details"]["hardDelete"], true);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn azure_databricks_storage_update_requires_field() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "azure-databricks-storage",
+            "update",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("INVALID_INPUT")
+            || stderr.contains("--name")
+            || stderr.contains("--description"),
+        "Expected error about missing fields, got: {stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn azure_databricks_storage_dry_run_update_definition() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "azure-databricks-storage",
+            "update-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--content",
+            r#"{"key":"value"}"#,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(
+        json["data"]["would_execute"],
+        "azure-databricks-storage update-definition"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn azure_databricks_storage_create_and_delete() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("ads_test");
+
+    // Create
+    let assert = fabio()
+        .args([
+            "azure-databricks-storage",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let item_id = json["data"]["id"].as_str().unwrap().to_string();
+    assert!(!item_id.is_empty());
+
+    // Delete
+    let assert = fabio()
+        .args([
+            "azure-databricks-storage",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &item_id,
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["status"], "deleted");
+}

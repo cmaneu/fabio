@@ -148,8 +148,101 @@ pub enum DataPipelineCommand {
         #[arg(long)]
         content: Option<String>,
     },
+    /// List execute schedules for a data pipeline
+    #[command(name = "list-schedules", display_order = 11)]
+    ListSchedules {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data pipeline ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Get a specific execute schedule for a data pipeline
+    #[command(name = "get-schedule", display_order = 12)]
+    GetSchedule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data pipeline ID
+        #[arg(long)]
+        id: String,
+
+        /// Schedule ID
+        #[arg(long)]
+        schedule_id: String,
+    },
+    /// Update an execute schedule for a data pipeline
+    #[command(name = "update-schedule", display_order = 13)]
+    UpdateSchedule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data pipeline ID
+        #[arg(long)]
+        id: String,
+
+        /// Schedule ID
+        #[arg(long)]
+        schedule_id: String,
+
+        /// JSON file with updated schedule configuration
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline JSON updated schedule configuration
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Delete an execute schedule for a data pipeline
+    #[command(name = "delete-schedule", display_order = 14)]
+    DeleteSchedule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data pipeline ID
+        #[arg(long)]
+        id: String,
+
+        /// Schedule ID
+        #[arg(long)]
+        schedule_id: String,
+    },
+
+    // ── Job instances ─────────────────────────────────────────────────────
+    /// List execute job instances for a data pipeline
+    #[command(name = "list-instances", display_order = 15)]
+    ListInstances {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data pipeline ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Get a specific execute job instance for a data pipeline
+    #[command(name = "get-instance", display_order = 16)]
+    GetInstance {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data pipeline ID
+        #[arg(long)]
+        id: String,
+
+        /// Job instance ID
+        #[arg(long)]
+        instance_id: String,
+    },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(
     cli: &Cli,
     client: &FabricClient,
@@ -222,6 +315,45 @@ pub async fn execute(
             )
             .await
         }
+        DataPipelineCommand::ListSchedules { workspace, id } => {
+            list_schedules(cli, client, workspace, id).await
+        }
+        DataPipelineCommand::GetSchedule {
+            workspace,
+            id,
+            schedule_id,
+        } => get_schedule(cli, client, workspace, id, schedule_id).await,
+        DataPipelineCommand::UpdateSchedule {
+            workspace,
+            id,
+            schedule_id,
+            file,
+            content,
+        } => {
+            update_schedule(
+                cli,
+                client,
+                workspace,
+                id,
+                schedule_id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        DataPipelineCommand::DeleteSchedule {
+            workspace,
+            id,
+            schedule_id,
+        } => delete_schedule(cli, client, workspace, id, schedule_id).await,
+        DataPipelineCommand::ListInstances { workspace, id } => {
+            list_instances(cli, client, workspace, id).await
+        }
+        DataPipelineCommand::GetInstance {
+            workspace,
+            id,
+            instance_id,
+        } => get_instance(cli, client, workspace, id, instance_id).await,
     }
 }
 
@@ -540,5 +672,155 @@ async fn create_schedule(
     } else {
         output::render_object(cli, &data, "id");
     }
+    Ok(())
+}
+
+async fn list_schedules(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/dataPipelines/{id}/jobs/execute/schedules"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["id", "enabled", "createdDateTime"],
+        &["ID", "ENABLED", "CREATED"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn get_schedule(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    schedule_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/dataPipelines/{id}/jobs/execute/schedules/{schedule_id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-pipeline get-schedule", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn update_schedule(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    schedule_id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let body: Value = match (file, content) {
+        (Some(path), _) => {
+            let raw = std::fs::read_to_string(path)
+                .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?;
+            serde_json::from_str(&raw)?
+        }
+        (_, Some(c)) => serde_json::from_str(c)?,
+        (None, None) => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Either --file or --content must be provided".to_string(),
+                "Example: fabio data-pipeline update-schedule --workspace <WS> --id <ID> --schedule-id <SCHED_ID> --content '{...}'".to_string(),
+            )
+            .into());
+        }
+    };
+
+    if output::dry_run_guard(cli, "data-pipeline update-schedule", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(
+            &format!(
+                "/workspaces/{workspace}/dataPipelines/{id}/jobs/execute/schedules/{schedule_id}"
+            ),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-pipeline update-schedule", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn delete_schedule(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    schedule_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "data-pipeline delete-schedule",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "scheduleId": schedule_id
+        }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .delete(&format!(
+            "/workspaces/{workspace}/dataPipelines/{id}/jobs/execute/schedules/{schedule_id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-pipeline delete-schedule", "Contributor"))?;
+
+    let obj = serde_json::json!({ "id": schedule_id, "status": "deleted" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn list_instances(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/dataPipelines/{id}/jobs/execute/instances"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["id", "status", "invokeType", "startTimeUtc", "endTimeUtc"],
+        &["ID", "STATUS", "INVOKE", "START", "END"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn get_instance(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    instance_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/dataPipelines/{id}/jobs/execute/instances/{instance_id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-pipeline get-instance", "Contributor"))?;
+    output::render_object(cli, &data, "id");
     Ok(())
 }
