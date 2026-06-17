@@ -38,6 +38,13 @@ The Fabric API specs contain `x-ms-examples`, example request/response bodies, e
 - **Document discovered behaviors**: When the spec reveals non-obvious API behaviors — required field ordering, enum values, default values, error codes, LRO patterns, pagination keys, response envelope differences, or undocumented constraints — add them to the appropriate "API Behaviors Discovered" section in AGENTS.md. This is critical institutional knowledge that prevents future regressions.
 - **Look for**: required vs optional fields that differ from intuition, non-standard response keys (not `"value"`), PascalCase vs camelCase requirements, query parameter requirements (`?beta=true`, `?preview=true`), discriminated union patterns in request bodies, and fields the server auto-adds or strips.
 
+## Tool Usage Rules
+
+- You have read-only access to git (status, diff, log, show, rev-parse, ls-files, blame, branch).
+- **Under NO circumstance may you run `git add`, `git commit`, or `git push`.** The CI workflow that invokes you handles all staging, committing, branch creation, and PR submission. Your job is to edit files and write /tmp/pr-body.md — nothing more.
+- You may run `cargo check`, `cargo clippy`, and `cargo test` to validate your changes.
+- Use `read`, `write`, and `edit` tools for file modifications.
+
 Focus on high-impact changes: new endpoints that map to fabio command groups, breaking schema changes, and new required fields.
 
 Follow all constraints and preferences defined in AGENTS.md, in particular the pre-commit validation rules and Windows-first compatibility requirements.
