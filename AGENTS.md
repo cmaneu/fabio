@@ -329,7 +329,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 
 ## Progress
 ### Done
-- **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, context, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, data-build-tool-job, org-app, org-app-audience, rti, rest, profile, jobs, feedback, operation, agent-context, upgrade
+- **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, context, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, azure-databricks-storage, data-build-tool-job, org-app, org-app-audience, rti, rest, profile, jobs, feedback, operation, agent-context, upgrade
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain, CSV, TSV formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (JMESPath expression — see jmespath.org), `--quiet` (suppresses stdout), `--verbose/-v` (HTTP/LRO/auth diagnostics on stderr), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`, `--lro-timeout`
@@ -354,7 +354,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **Git integration**: status, commit, pull, connect, disconnect, initialize, switch (branch), connection/credentials management, show-tracked
 - **Ontology management**: list, show, create, update, delete, get-definition, update-definition (RDF file support, --dir for Fabric definition format, --decode for readable output)
 - **Environment**: list, show, create, update, delete, publish, cancel-publish, get-spark-settings, get-staging-spark-settings, upload-staging-library
-- **Data Pipeline**: list, show, create, update, delete, run (triggers Pipeline job)
+- **Data Pipeline**: list, show, create, update, delete, run (triggers Pipeline job), create-schedule, list-schedules, get-schedule, update-schedule, delete-schedule, list-instances, get-instance
 - **Eventhouse**: list, show, create, update, delete
 - **Eventstream**: list, show, create, update, delete, get-definition, update-definition, get-topology, pause, resume, get/pause/resume-source, get-source-connection, get/pause/resume-destination, get-destination-connection, add-source, add-destination
 - **KQL Database**: list, show, create, update, delete, get-definition, update-definition (ReadWrite/ReadOnlyFollowing)
@@ -409,6 +409,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **Admin**: 49 subcommands (tenant settings, tags, workloads, workspaces, items, users, domains, labels, sharing links, external data shares, network policies)
 - **Apache Airflow Job**: list/show/create/update/delete/get-definition/update-definition, start-environment/stop-environment/get-environment, list-files/get-file/upload-file/delete-file, get-compute/get-workspace-settings/deploy-requirements
 - **App Backend**: list/show/create/update/delete (`--hard-delete` support, create uses LRO, update requires `--name` and/or `--description`)
+- **Azure Databricks Storage**: list/show/create/update/delete/get-definition/update-definition (Fabric integration with Azure Databricks, definition format `AzureDatabricksStorageV1`, part path `definition.json`)
 - **Data Build Tool Job**: list/show/create/update/delete/get-definition/update-definition/run (with --wait/--timeout/--cancel-on-timeout) [preview]
 - **OrgApp**: list/show/create/update/delete/get-definition/update-definition (Organizational App)
 - **OrgAppAudience**: list/show/create/update/delete/get-definition/update-definition (Org App Audience)
@@ -443,7 +444,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **CSV/TSV output**: Global `--output csv|tsv` on all commands; RFC 4180 quoting via `format_csv_value()`
 - **Deploy validate**: Local-only pre-flight checks on source directory (validates .platform files, item types, definition structure, logical ID references); no API calls required
 - **Deploy fabric-cicd full compatibility**: Parses .children/ KQL database discovery, .pbi/ directory exclusion, creationPayload from .platform metadata, SparkJobDefinitionV2 format auto-detection, Report byPath→byConnection transform, notebook part ordering (.py before .json), ItemDisplayNameNotAvailableYet retry (up to 5 min), binary file skip, .platform included as definition part but excluded from content hash for idempotency
-- **1657 Rust tests** (915 unit + 742 offline/E2E integration), zero clippy warnings, rustfmt clean
+- **1672 Rust tests** (927 unit + 745 offline/E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~16 MB, stripped, full LTO, panic=abort
@@ -533,7 +534,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/git.rs`: status/commit/pull/connect/disconnect/initialize/switch/connection/credentials/show-tracked
 - `src/commands/ontology.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings/upload-staging-library
-- `src/commands/data_pipeline.rs`: list/show/create/update/delete/run
+- `src/commands/data_pipeline.rs`: list/show/create/update/delete/run, create-schedule, list-schedules/get-schedule/update-schedule/delete-schedule, list-instances/get-instance
 - `src/commands/report.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/semantic_model.rs`: list/show/create/update/delete/get-definition/update-definition + query/refresh/bind-connection/unbind-connection/takeover + list-parameters/update-parameters/list-datasources/update-datasources/list-users/add-user/delete-user/refresh-status/list-upstream/clone/export-pbix/import-pbix
 - `src/commands/eventhouse.rs`: list/show/create/update/delete
@@ -583,6 +584,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/gateway.rs`: list/show/create/update/delete, members, role assignments, check-status/check-member-status/restart/shutdown (VNet gateways)
 - `src/commands/admin.rs`: 49 subcommands for tenant administration
 - `src/commands/apache_airflow_job.rs`: CRUD + environment lifecycle + file ops + compute settings
+- `src/commands/azure_databricks_storage.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json, AzureDatabricksStorageV1 format)
 - `src/commands/mirrored_catalog.rs`: CRUD + definition + mirroring operations
 - `src/commands/mirrored_databricks_catalog.rs`: CRUD + definition + discover/refresh/status
 - `src/commands/mirrored_warehouse.rs`: list only (tenant feature flag blocks mutations)
@@ -624,7 +626,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `tests/e2e_sync.rs`: Lakehouse sync tests (24 tests: basic copy, skip unchanged, delete, checksum, parallel, rename detection, dedup, include/exclude, size-only, no-overwrite, force, max-delete, existing, remove-source-files, local-to-remote sync)
 - `tests/e2e_connection.rs`: Connection CRUD + list-supported-types tests
 - `tests/e2e_environment.rs`: Environment CRUD tests
-- `tests/e2e_data_pipeline.rs`: Data pipeline CRUD + run tests
+- `tests/e2e_data_pipeline.rs`: Data pipeline CRUD + run + schedule/instance tests
 - `tests/e2e_eventhouse.rs`: Eventhouse CRUD tests
 - `tests/e2e_eventstream.rs`: Eventstream CRUD tests
 - `tests/e2e_kql_database.rs`: KQL database tests
@@ -653,6 +655,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `tests/e2e_fabric_cicd_compat.rs`: fabric-cicd compatibility tests (11 tests: validate source directory, nested folders, workspace ID replacement, parameter substitution, selective filtering, config file YAML, init-params scan)
 - `tests/e2e_gateway.rs`: Gateway CRUD + role assignment + lifecycle tests
 - `tests/e2e_apache_airflow_job.rs`: Apache Airflow job CRUD + environment + file ops tests
+- `tests/e2e_azure_databricks_storage.rs`: Azure Databricks storage CRUD + definition + lifecycle tests
 - `tests/e2e_mirrored_catalog.rs`: Mirrored catalog tests
 - `tests/e2e_mirrored_databricks_catalog.rs`: Mirrored Databricks catalog tests
 - `tests/e2e_mirrored_warehouse.rs`: Mirrored warehouse tests
@@ -1718,6 +1721,9 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Run job type**: `POST /workspaces/{ws}/items/{id}/jobs/instances?jobType=Pipeline` (PascalCase `Pipeline`).
 - **Definition file**: Uses `/workspaces/{ws}/dataPipelines/{id}/getDefinition` and `/updateDefinition`. Both LRO.
 - **Schedule management**: `POST /workspaces/{ws}/dataPipelines/{id}/jobs/execute/schedules` creates a schedule. Note: uses `/jobs/execute/schedules` (not `/jobs/Pipeline/schedules`).
+- **Schedule CRUD**: Full lifecycle at `/workspaces/{ws}/dataPipelines/{id}/jobs/execute/schedules/{scheduleId}`. GET (show), PATCH (update), DELETE (remove). List returns `{"value": [...]}` with `id`, `enabled`, `createdDateTime`, `configuration`, `owner` fields.
+- **Schedule configuration types**: `Cron` (with `interval` in minutes), `Weekly` (with `weekdays` array + `times` array), `Daily`. All include `startDateTime`, `endDateTime`, `localTimeZoneId`.
+- **Job instances**: `GET /workspaces/{ws}/dataPipelines/{id}/jobs/execute/instances` lists execution history. Individual instance at `.../instances/{instanceId}`. Fields: `id`, `itemId`, `jobType`, `invokeType` (Manual/Scheduled), `status`, `rootActivityId`, `startTimeUtc`, `endTimeUtc`, `failureReason`.
 - **Create is LRO**: `POST /workspaces/{ws}/dataPipelines` with `poll: true`.
 
 ## KQL Database API Behaviors Discovered
@@ -1995,6 +2001,18 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Hard delete support**: Delete supports `--hard-delete`, which appends `?hardDelete=true` and bypasses recycle bin behavior.
 - **Agent-context coverage**: `fabio agent-context` now includes a full `app-backend` schema (mutability, async create, and `--hard-delete` bool flag metadata).
 - **Endpoint patterns**: `/workspaces/{ws}/appBackends` and `/workspaces/{ws}/appBackends/{id}`.
+
+## Azure Databricks Storage API Behaviors Discovered
+- **Item type**: `AzureDatabricksStorage` (Fabric integration with Azure Databricks for storage management).
+- **Endpoint pattern**: `/workspaces/{ws}/azureDatabricksStorages/{id}`.
+- **Definition format**: `AzureDatabricksStorageV1`. Definition file path is `definition.json` (NOT `AzureDatabricksStorage.json` — the API spec examples explicitly use `definition.json`).
+- **Create is LRO**: Returns 202, requires polling. Supports optional `definition`, `folderId`, `sensitivityLabelSettings` in request body.
+- **getDefinition is LRO**: Returns 202 or 200. Response includes `definition.json` + `.platform` parts.
+- **updateDefinition is LRO**: Supports `?updateMetadata=true` query parameter. Body: `{"definition":{"format":"AzureDatabricksStorageV1","parts":[{"path":"definition.json","payload":"<base64>","payloadType":"InlineBase64"}]}}`.
+- **Delete returns 200**: Not LRO. Supports `?hardDelete=true`.
+- **Feature availability is workspace-specific**: The feature may be enabled on some workspaces but not others within the same tenant. `FeatureNotAvailable` (403) is returned on workspaces where the feature is not active.
+- **Registered in DEPLOY_ORDER**: Position after `MirroredAzureDatabricksCatalog`, before `Lakehouse` (position 6 in storage tier).
+- **Response fields**: Standard item fields (`id`, `displayName`, `description`, `type`, `workspaceId`). No `properties` or `attributes` observed.
 
 ## Gateway API Behaviors Discovered
 - **Tenant-level scope**: `GET /gateways` (no workspace prefix). Individual: `GET /gateways/{id}`.

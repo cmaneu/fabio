@@ -285,6 +285,12 @@ fabio data-pipeline run      Run a data pipeline
 fabio data-pipeline get-definition   Get pipeline definition
 fabio data-pipeline update-definition Update pipeline definition
 fabio data-pipeline create-schedule  Create a pipeline schedule
+fabio data-pipeline list-schedules   List execute schedules
+fabio data-pipeline get-schedule     Get a specific execute schedule
+fabio data-pipeline update-schedule  Update an execute schedule
+fabio data-pipeline delete-schedule  Delete an execute schedule
+fabio data-pipeline list-instances   List execute job instances
+fabio data-pipeline get-instance     Get a specific execute job instance
 
 fabio copy-job list          List copy jobs
 fabio copy-job show          Show copy job details
@@ -311,6 +317,14 @@ fabio app-backend show       Show app backend details
 fabio app-backend create     Create an app backend (LRO)
 fabio app-backend update     Update app backend properties (name/description)
 fabio app-backend delete     Delete an app backend (--hard-delete for permanent)
+
+fabio azure-databricks-storage list   List Azure Databricks storage items
+fabio azure-databricks-storage show   Show item details
+fabio azure-databricks-storage create Create an Azure Databricks storage item (LRO)
+fabio azure-databricks-storage update Update item properties (name/description)
+fabio azure-databricks-storage delete Delete an item (--hard-delete for permanent)
+fabio azure-databricks-storage get-definition   Get definition (LRO)
+fabio azure-databricks-storage update-definition Update definition (AzureDatabricksStorageV1)
 
 fabio data-build-tool-job list List data build tool jobs [preview]
 fabio data-build-tool-job show Show data build tool job details

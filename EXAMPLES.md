@@ -316,12 +316,38 @@ fabio report update-definition --workspace $WS --id $RPT \
 fabio data-pipeline create --workspace $WS --name "Daily-ETL"
 fabio data-pipeline run --workspace $WS --id $DP
 
-# Schedule a pipeline
+# Schedule a pipeline (Cron every 10 minutes)
 fabio data-pipeline create-schedule --workspace $WS --id $DP \
-  --content '{"enabled":true,"configuration":{"type":"Daily","startTime":"06:00"}}'
+  --content '{"enabled":true,"configuration":{"type":"Cron","interval":10,"startDateTime":"2026-01-01T00:00:00","endDateTime":"2026-12-31T23:59:00","localTimeZoneId":"Central Standard Time"}}'
 
-# Check pipeline run status
-fabio job-scheduler list-instances --workspace $WS --id $DP --job-type Pipeline -o table
+# List and manage schedules
+fabio data-pipeline list-schedules --workspace $WS --id $DP
+fabio data-pipeline get-schedule --workspace $WS --id $DP --schedule-id $SCHED_ID
+fabio data-pipeline update-schedule --workspace $WS --id $DP --schedule-id $SCHED_ID \
+  --content '{"enabled":false}'
+fabio data-pipeline delete-schedule --workspace $WS --id $DP --schedule-id $SCHED_ID
+
+# List execution history
+fabio data-pipeline list-instances --workspace $WS --id $DP -o table
+fabio data-pipeline get-instance --workspace $WS --id $DP --instance-id $INST_ID
+```
+
+## Azure Databricks Storage
+
+```bash
+# List Azure Databricks storage items
+fabio azure-databricks-storage list --workspace $WS
+
+# Create an Azure Databricks storage item
+fabio azure-databricks-storage create --workspace $WS --name "My Databricks Storage"
+
+# Get and update definition
+fabio azure-databricks-storage get-definition --workspace $WS --id $ADS_ID --decode
+fabio azure-databricks-storage update-definition --workspace $WS --id $ADS_ID \
+  --file definition.json
+
+# Delete (with hard-delete option)
+fabio azure-databricks-storage delete --workspace $WS --id $ADS_ID --hard-delete
 ```
 
 ## Git integration (CI/CD)

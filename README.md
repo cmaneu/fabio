@@ -17,7 +17,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Design philosophy | Interactive-first (shell with `cd`/`ls`) | Agent-native (non-interactive, structured output) |
 | CI/CD deployment | Wraps fabric-cicd library | Native engine with content-hash diffing |
 | Default output | Human text | JSON (machine-parseable by default) |
-| Item type coverage | ~20 commands | 74 command groups |
+| Item type coverage | ~20 commands | 76 command groups |
 | SQL query execution | No | Warehouse, SQL Database, Lakehouse (T-SQL via TDS) |
 | KQL query execution | No | KQL Database and Eventhouse queries |
 | Data Agent interaction | No | Create, configure, publish, and query Data Agents (22 subcommands: datasource/fewshot/config management, chat with `--stage`/`--timeout`) |
@@ -42,7 +42,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Local validation | No | `deploy validate` (no API calls needed) |
 | Parameter scaffolding | No | `deploy init-params` (scans/diffs GUIDs automatically) |
 | Output format | Python logs | JSON envelope (stdout/stderr separation) |
-| Item types supported | 27 (deploy only) | 45 (deploy) + 74 command groups (full CRUD, query, run) |
+| Item types supported | 27 (deploy only) | 46 (deploy) + 76 command groups (full CRUD, query, run) |
 | Selective filtering | Feature-flagged, limited | `--exclude-regex`, `--include-items`, `--include-folders` |
 | Runtime | Python 3.9+ (pip install) | Single Rust binary, no runtime |
 
@@ -205,7 +205,7 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 
 ## Commands
 
-See [COMMANDS.md](COMMANDS.md) for the full list of 74 command groups and 790+ subcommands.
+See [COMMANDS.md](COMMANDS.md) for the full list of 76 command groups and 830+ subcommands.
 
 If you are an AI agent, run `fabio agent-context` to get a machine-readable command schema with flags, types, mutability, and examples.
 
@@ -251,7 +251,7 @@ Supported credential sources (in priority order):
 
 ## Shell Completions
 
-Generate tab-completion scripts for your shell. Completions cover all 74 command groups, 790+ subcommands, and their flags.
+Generate tab-completion scripts for your shell. Completions cover all 76 command groups, 830+ subcommands, and their flags.
 
 ### Bash
 
@@ -364,7 +364,7 @@ cargo fmt
 
 ### Project Stats
 
-- **74 command groups** with **790+ subcommands**
+- **76 command groups** with **830+ subcommands**
 - **1562 tests** (841 unit + 721 offline/E2E integration)
 - Zero clippy warnings, zero unsafe code
 
