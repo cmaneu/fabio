@@ -111,7 +111,7 @@ jobs:
           export SPEC_COMMITS="$(cat /tmp/spec-commits.txt)"
           PROMPT=$(envsubst '${SPEC_CHANGES_SUMMARY} ${SPEC_COMMITS}' < .github/prompts/sync-fabric-api-specs.md)
           copilot -p "$PROMPT" \
-            --allow-tool='shell(git:*)' \
+            --allow-tool='shell(git:status,diff,log,show,rev-parse,ls-files,blame,branch)' \
             --allow-tool='shell(cargo:*)' \
             --allow-tool='shell(cat:*)' \
             --allow-tool='shell(ls:*)' \
@@ -159,7 +159,7 @@ jobs:
           $BUILD_ERRORS
 
           Run 'cargo check' and 'cargo clippy -- -D warnings' after fixing to confirm the build passes." \
-            --allow-tool='shell(git:*)' \
+            --allow-tool='shell(git:status,diff,log,show,rev-parse,ls-files,blame,branch)' \
             --allow-tool='shell(cargo:*)' \
             --allow-tool='shell(cat:*)' \
             --allow-tool='shell(ls:*)' \
