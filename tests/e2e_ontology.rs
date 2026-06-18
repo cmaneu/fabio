@@ -2847,3 +2847,85 @@ fn context_tenant_full_format_dry_run_produces_correct_structure() {
         .assert()
         .success();
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn context_tenant_owl_format_valid_structure() {
+    let cfg = TestConfig::from_env();
+    let tmp = std::env::temp_dir().join("fabio_e2e_owl_format.jsonld");
+
+    let output = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            &cfg.source_workspace,
+            "--format",
+            "owl",
+            "--output-file",
+            &tmp.display().to_string(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["format"], "owl");
+    assert!(data["nodes"].as_u64().unwrap() > 0);
+
+    // Verify it's valid OWL JSON-LD
+    let content = std::fs::read_to_string(&tmp).unwrap();
+    let doc: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert!(doc.get("@context").is_some(), "Should have @context");
+    let graph = doc["@graph"].as_array().unwrap();
+    let has_owl_class = graph.iter().any(|n| n["@type"] == "owl:Class");
+    let has_owl_prop = graph.iter().any(|n| n["@type"] == "owl:DatatypeProperty");
+    assert!(has_owl_class, "Should have owl:Class nodes");
+    assert!(has_owl_prop, "Should have owl:DatatypeProperty nodes");
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn context_tenant_rdf_format_valid_structure() {
+    let cfg = TestConfig::from_env();
+    let tmp = std::env::temp_dir().join("fabio_e2e_rdf_format.rdf");
+
+    let output = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            &cfg.source_workspace,
+            "--format",
+            "rdf",
+            "--output-file",
+            &tmp.display().to_string(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["format"], "rdf");
+
+    // Verify it's valid RDF/XML with OWL elements
+    let content = std::fs::read_to_string(&tmp).unwrap();
+    assert!(content.starts_with("<?xml"), "Should be XML");
+    assert!(content.contains("owl:Class"), "Should have owl:Class");
+    assert!(
+        content.contains("owl:DatatypeProperty"),
+        "Should have properties"
+    );
+    assert!(content.contains("rdf:RDF"), "Should have RDF root");
+    // Should NOT have instance data (that's the 'full' format)
+    assert!(
+        !content.contains("rdf:Description"),
+        "Schema-only format should not have instances"
+    );
+
+    let _ = std::fs::remove_file(&tmp);
+}
