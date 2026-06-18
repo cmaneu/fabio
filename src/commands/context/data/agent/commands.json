@@ -4380,6 +4380,80 @@
         "mutates": true,
         "returns": "object"
       },
+      "add-sample-source": {
+        "description": "Add a sample data source (SampleData type with auto-created stream)",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--name": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "add-derived-stream": {
+        "description": "Add a derived/filtered stream between existing nodes",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--input-node": {
+            "required": true,
+            "type": "string"
+          },
+          "--name": {
+            "required": true,
+            "type": "string"
+          },
+          "--properties": {
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "validate": {
+        "description": "Validate an eventstream definition (client-side checks, no API call with --file)",
+        "flags": {
+          "--file": {
+            "description": "Local JSON definition file",
+            "type": "string"
+          },
+          "--id": {
+            "type": "string"
+          },
+          "--workspace": {
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "list-components": {
+        "description": "List available eventstream component types (sources, destinations)",
+        "flags": {
+          "--category": {
+            "description": "Filter: source, destination, all",
+            "type": "enum",
+            "values": ["source", "destination", "all"]
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
       "create": {
         "description": "Create an eventstream",
         "flags": {
@@ -6542,6 +6616,197 @@
         },
         "mutates": true,
         "returns": "void"
+      },
+      "list-entities": {
+        "description": "List entities (tables, materialized views, external tables, functions) in a database",
+        "flags": {
+          "--entity-type": {
+            "description": "Filter: table, materialized-view, external-table, function",
+            "type": "string"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--query-uri": {
+            "description": "Override Kusto query URI",
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "describe": {
+        "description": "Get schema for all entities in a database (all columns in all tables)",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--query-uri": {
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "describe-entity": {
+        "description": "Get detailed schema for a specific entity (table, view, function)",
+        "flags": {
+          "--entity-name": {
+            "required": true,
+            "type": "string"
+          },
+          "--entity-type": {
+            "description": "Entity type: table (default), materialized-view, external-table, function",
+            "type": "string"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--query-uri": {
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "sample": {
+        "description": "Sample N rows from a table, materialized view, external table, or function",
+        "flags": {
+          "--count": {
+            "description": "Number of rows (default: 10)",
+            "type": "integer"
+          },
+          "--entity-name": {
+            "required": true,
+            "type": "string"
+          },
+          "--entity-type": {
+            "description": "Entity type: table (default), materialized-view, external-table, function",
+            "type": "string"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--query-uri": {
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "ingest": {
+        "description": "Ingest inline CSV data into a KQL table",
+        "flags": {
+          "--data": {
+            "description": "CSV data (inline, @file, or stdin)",
+            "type": "string"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--query-uri": {
+            "type": "string"
+          },
+          "--table": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "show-queryplan": {
+        "description": "Show execution plan for a KQL query without running it",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--kql": {
+            "description": "KQL query to analyze",
+            "type": "string"
+          },
+          "--query-uri": {
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "diagnostics": {
+        "description": "Run cluster diagnostics (capacity, health, ingestion failures)",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--query-uri": {
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "deeplink": {
+        "description": "Generate a deeplink URL for a KQL query in Fabric portal or ADX Web Explorer",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--kql": {
+            "description": "KQL query to embed in the URL",
+            "required": true,
+            "type": "string"
+          },
+          "--query-uri": {
+            "type": "string"
+          },
+          "--style": {
+            "description": "Link style: auto, fabric, adx",
+            "type": "enum",
+            "values": ["auto", "fabric", "adx"]
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },
@@ -9591,6 +9856,60 @@
             "type": "string"
           },
           "--name": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "create-trigger": {
+        "description": "Create a trigger with auto-generated Reflex definition (KQL source + email/Teams alert)",
+        "flags": {
+          "--action": {
+            "description": "Alert action type",
+            "required": true,
+            "type": "enum",
+            "values": ["email", "teams"]
+          },
+          "--condition": {
+            "description": "KQL condition expression",
+            "required": true,
+            "type": "string"
+          },
+          "--database": {
+            "description": "KQL database name",
+            "required": true,
+            "type": "string"
+          },
+          "--eventhouse-id": {
+            "description": "Eventhouse item ID",
+            "required": true,
+            "type": "string"
+          },
+          "--interval": {
+            "description": "Query interval in seconds (default: 60)",
+            "type": "integer"
+          },
+          "--message": {
+            "description": "Custom alert message",
+            "type": "string"
+          },
+          "--name": {
+            "required": true,
+            "type": "string"
+          },
+          "--recipients": {
+            "description": "Comma-separated email addresses",
+            "required": true,
+            "type": "string"
+          },
+          "--table": {
+            "description": "KQL table to monitor",
             "required": true,
             "type": "string"
           },

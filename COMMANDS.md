@@ -445,6 +445,10 @@ fabio eventstream pause-destination Pause a destination
 fabio eventstream resume-destination Resume a destination
 fabio eventstream add-source Add a source (fetches definition, merges, updates)
 fabio eventstream add-destination Add a destination (same pattern)
+fabio eventstream add-sample-source Add a sample data source (high-level helper)
+fabio eventstream add-derived-stream Add a derived/filtered stream between nodes
+fabio eventstream validate   Validate definition (client-side checks, no API call with --file)
+fabio eventstream list-components List available source/destination component types
 
 fabio kql-database list      List KQL databases
 fabio kql-database show      Show KQL database details
@@ -452,6 +456,14 @@ fabio kql-database create    Create a KQL database (--eventhouse-id)
 fabio kql-database update    Update KQL database properties
 fabio kql-database delete    Delete a KQL database
 fabio kql-database query     Execute KQL queries (--kql)
+fabio kql-database list-entities List entities (tables, views, external tables, functions)
+fabio kql-database describe  Get schema for all entities in a database
+fabio kql-database describe-entity Get detailed schema for a specific entity
+fabio kql-database sample    Sample N rows from a table/view/function (--count)
+fabio kql-database ingest    Inline CSV ingestion into a table (--table --data)
+fabio kql-database show-queryplan Show execution plan without running a query
+fabio kql-database diagnostics Run cluster diagnostics (capacity, health, ingestion)
+fabio kql-database deeplink  Generate Fabric portal or ADX Web Explorer URL
 fabio kql-database get-definition   Get definition
 fabio kql-database update-definition Update definition
 fabio kql-database list-shortcuts   List shortcuts in a KQL database
@@ -484,7 +496,8 @@ fabio reflex update          Update reflex properties
 fabio reflex delete          Delete a reflex
 fabio reflex get-definition  Get definition (ReflexEntities.json)
 fabio reflex update-definition Update definition
-fabio reflex configure-kql-source Configure a KQL data source
+fabio reflex create-trigger  Create trigger with auto-generated entities (--table --condition --action --recipients)
+fabio reflex configure-kql-source Configure a KQL data source (portal-only)
 
 fabio anomaly-detector list  List anomaly detectors
 fabio anomaly-detector show  Show anomaly detector details

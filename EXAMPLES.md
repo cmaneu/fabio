@@ -293,10 +293,47 @@ fabio kql-database query --workspace $WS --id $KDB \
 fabio kql-database query --workspace $WS --id $KDB \
   --kql ".create table SensorEvents ingestion json mapping 'JsonMapping' '[{\"column\":\"DeviceId\",\"path\":\"$.deviceId\"},{\"column\":\"Temperature\",\"path\":\"$.temperature\"},{\"column\":\"Timestamp\",\"path\":\"$.timestamp\"}]'"
 
-# Create an eventstream with a custom endpoint source
+# Schema discovery — list all entities, describe schema, sample data
+fabio kql-database list-entities --workspace $WS --id $KDB
+fabio kql-database list-entities --workspace $WS --id $KDB --entity-type table
+fabio kql-database describe --workspace $WS --id $KDB
+fabio kql-database describe-entity --workspace $WS --id $KDB --entity-name SensorEvents
+fabio kql-database sample --workspace $WS --id $KDB --entity-name SensorEvents --count 5
+
+# Inline ingestion for quick testing
+fabio kql-database ingest --workspace $WS --id $KDB --table SensorEvents \
+  --data "DeviceId,Temperature,Timestamp\ndev-001,23.5,2026-06-18T10:00:00Z"
+
+# Execution plan analysis (before running expensive queries)
+fabio kql-database show-queryplan --workspace $WS --id $KDB \
+  --kql "SensorEvents | summarize avg(Temperature) by bin(Timestamp, 1h)"
+
+# Cluster health diagnostics
+fabio kql-database diagnostics --workspace $WS --id $KDB
+
+# Generate deeplink for Fabric portal or ADX Web Explorer
+fabio kql-database deeplink --workspace $WS --id $KDB \
+  --kql "SensorEvents | where Temperature > 30 | take 100"
+
+# Create an eventstream with a sample data source
 fabio eventstream create --workspace $WS --name "SensorIngestion"
+fabio eventstream add-sample-source --workspace $WS --id $ES --name "test-data"
+
+# Add a custom endpoint source for production
 fabio eventstream add-source --workspace $WS --id $ES \
   --name "app-source" --source-type CustomEndpoint
+
+# Add a derived (filtered) stream
+fabio eventstream add-derived-stream --workspace $WS --id $ES \
+  --name "high-temp-stream" --input-node "app-source-stream"
+
+# Validate an eventstream definition before applying
+fabio eventstream validate --file my-eventstream-def.json
+fabio eventstream validate --workspace $WS --id $ES
+
+# List available source and destination types
+fabio eventstream list-components --category source
+fabio eventstream list-components --category destination
 
 # Add an Eventhouse destination (DirectIngestion with pre-created mapping)
 fabio eventstream add-destination --workspace $WS --id $ES \
@@ -312,6 +349,38 @@ fabio kql-database query --workspace $WS --id $KDB \
 
 # Run a saved queryset tab
 fabio kql-queryset run --workspace $WS --id $QS --tab "Hourly Summary"
+```
+
+## Data Activator (Reflex) Triggers
+
+```bash
+# Create a trigger that emails when a condition is met (auto-generates full entity hierarchy)
+fabio reflex create-trigger --workspace $WS \
+  --name "Flood Alert Illinois" \
+  --eventhouse-id $EH \
+  --database "WeatherDB" \
+  --table "StormEvents" \
+  --condition "State == 'ILLINOIS' and EventType == 'Flood'" \
+  --action email \
+  --recipients "ops@company.com,alerts@company.com" \
+  --interval 120
+
+# Create a Teams notification trigger
+fabio reflex create-trigger --workspace $WS \
+  --name "High Temperature Alert" \
+  --eventhouse-id $EH \
+  --database "SensorDB" \
+  --table "SensorEvents" \
+  --condition "Temperature > 50" \
+  --action teams \
+  --recipients "team@company.com" \
+  --message "Temperature threshold exceeded!"
+
+# List existing reflexes
+fabio reflex list --workspace $WS
+
+# Get the generated definition to inspect or modify
+fabio reflex get-definition --workspace $WS --id $REFLEX --decode
 ```
 
 ## Semantic Models and Reports

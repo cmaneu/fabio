@@ -386,12 +386,12 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **Environment**: list, show, create, update, delete, publish, cancel-publish, get-spark-settings, get-staging-spark-settings, upload-staging-library
 - **Data Pipeline**: list, show, create, update, delete, run (triggers Pipeline job), create-schedule, list-schedules, get-schedule, update-schedule, delete-schedule, list-instances, get-instance
 - **Eventhouse**: list, show, create, update, delete
-- **Eventstream**: list, show, create, update, delete, get-definition, update-definition, get-topology, pause, resume, get/pause/resume-source, get-source-connection, get/pause/resume-destination, get-destination-connection, add-source, add-destination
-- **KQL Database**: list, show, create, update, delete, get-definition, update-definition (ReadWrite/ReadOnlyFollowing)
+- **Eventstream**: list, show, create, update, delete, get-definition, update-definition, get-topology, pause, resume, get/pause/resume-source, get-source-connection, get/pause/resume-destination, get-destination-connection, add-source, add-destination, add-sample-source, add-derived-stream, validate, list-components
+- **KQL Database**: list, show, create, update, delete, query, get-definition, update-definition, list-entities, describe, describe-entity, sample, ingest, show-queryplan, diagnostics, deeplink, list-shortcuts, create-shortcut, get-shortcut, delete-shortcut, bulk-create-shortcuts (ReadWrite/ReadOnlyFollowing)
 - **KQL Queryset**: list, show, create, update, delete, get-definition, update-definition, run (executes saved query tabs against configured data source)
 - **KQL Dashboard**: list, show, create, update, delete, get-definition, update-definition (RealTimeDashboard.json)
 - **Mirrored Database**: list, show, create, update, delete, get/update-definition, start, stop, status, table-status
-- **Reflex**: list, show, create, update, delete, get-definition, update-definition (Data Activator triggers)
+- **Reflex**: list, show, create, update, delete, get-definition, update-definition, create-trigger (auto-generates full entity hierarchy from simple flags: KQL source + email/Teams alerts)
 - **ML Model**: list, show, create, update, delete (CRUD only, no definition support)
 - **ML Experiment**: list, show, create, update, delete (CRUD only, no definition support)
 - **Copy Job**: list, show, create, update, delete, get-definition, update-definition, reset (data movement)
@@ -568,12 +568,15 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/report.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/semantic_model.rs`: list/show/create/update/delete/get-definition/update-definition + query/refresh/bind-connection/unbind-connection/takeover + list-parameters/update-parameters/list-datasources/update-datasources/list-users/add-user/delete-user/refresh-status/list-upstream/clone/export-pbix/import-pbix
 - `src/commands/eventhouse.rs`: list/show/create/update/delete
-- `src/commands/eventstream.rs`: list/show/create/update/delete/get-definition/update-definition
-- `src/commands/kql_database.rs`: list/show/create/update/delete/get-definition/update-definition
+- `src/commands/eventstream/mod.rs`: list/show/create/update/delete/get-definition/update-definition/get-topology/pause/resume/sources/destinations
+- `src/commands/eventstream/builder.rs`: add-source/add-destination/add-sample-source/add-derived-stream/validate/list-components
+- `src/commands/kql_database/mod.rs`: list/show/create/update/delete/get-definition/update-definition/shortcuts
+- `src/commands/kql_database/intelligence.rs`: query/list-entities/describe/describe-entity/sample/ingest/show-queryplan/diagnostics/deeplink
+- `src/commands/kql_utils.rs`: Shared KQL utilities (resolve_kql_input, resolve_query_uri, execute_kql, parse v1/v2 responses, render results)
 - `src/commands/kql_queryset.rs`: CRUD + get-definition/update-definition + run (fetch definition, select tab, execute against Kusto REST API)
 - `src/commands/kql_dashboard.rs`: list/show/create/update/delete/get-definition/update-definition (RealTimeDashboard.json)
 - `src/commands/mirrored_database.rs`: list/show/create/update/delete/get-definition/update-definition/start/stop/status/table-status
-- `src/commands/reflex.rs`: list/show/create/update/delete/get-definition/update-definition (Data Activator)
+- `src/commands/reflex.rs`: list/show/create/update/delete/get-definition/update-definition/create-trigger (Data Activator)
 - `src/commands/ml_model.rs`: list/show/create/update/delete (CRUD only)
 - `src/commands/ml_experiment.rs`: list/show/create/update/delete (CRUD only)
 - `src/commands/copy_job.rs`: list/show/create/update/delete/get-definition/update-definition/reset
@@ -1786,6 +1789,11 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Shortcuts**: `GET /workspaces/{ws}/items/{id}/shortcuts` lists shortcuts on KQL databases.
 - **Create types**: `ReadWrite` and `ReadOnlyFollowing`. ReadWrite requires `--eventhouse-id` in creation payload. ReadOnlyFollowing requires source database reference.
 - **Get/Update definition are LRO**: Both use `poll: true` at type-specific endpoints.
+- **Schema discovery (`.show database schema as json`)**: Returns nested JSON: `{"Databases":{"<db-id>":{"Tables":{...},"Functions":{...},"MaterializedViews":{...},"ExternalTables":{...}}}}`. The top-level key is the database GUID (not display name). Tables include `OrderedColumns` with `Name`, `Type` (System.X), `CslType` (KQL type).
+- **Inline ingestion (`.ingest inline into table`)**: Accepts CSV data after `<|` separator. Limited to ~4MB payload. Returns extent info on success. Requires management endpoint (v1/rest/mgmt).
+- **Query plan (`.show queryplan <| query`)**: Returns execution plan rows with operator tree, estimated row counts, concurrency hints. Uses management endpoint.
+- **Cluster diagnostics**: `.show capacity`, `.show cluster`, `.show diagnostics` are independent commands. Each may fail independently due to permissions (Fabric KQL databases may restrict some admin commands). The `diagnostics` command aggregates results gracefully, reporting errors per section.
+- **Deeplink URL patterns**: Fabric KQL databases use `https://app.fabric.microsoft.com/groups/{ws}/kqlDatabases/{id}?query={encoded}&database={name}`. ADX clusters use `https://dataexplorer.azure.com/clusters/{uri}/databases/{db}?query={encoded}`. Auto-detection uses URI pattern: `.kusto.fabric.microsoft.com` → Fabric, `.kusto.windows.net` → ADX.
 
 ## OneLake Security API Behaviors Discovered
 - **Upsert-all pattern**: `PUT /workspaces/{ws}/items/{id}/dataAccessRoles` replaces ALL roles atomically. There is no individual role create/update endpoint.
