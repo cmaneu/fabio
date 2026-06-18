@@ -155,10 +155,16 @@ pub(super) async fn execute(
     let json_value = match params.format {
         ContextFormat::Graph => serde_json::to_value(&final_graph)?,
         ContextFormat::Jsonld => format_as_jsonld(&final_graph),
+        ContextFormat::Owl => format_as_owl_jsonld(&final_graph),
     };
 
     if let Some(file_path) = params.output_file {
-        let content = serde_json::to_string_pretty(&serde_json::json!({"data": json_value}))?;
+        let content = if matches!(params.format, ContextFormat::Owl) {
+            // OWL format: write bare JSON-LD (no envelope) for direct ontology import
+            serde_json::to_string_pretty(&json_value)?
+        } else {
+            serde_json::to_string_pretty(&serde_json::json!({"data": json_value}))?
+        };
         std::fs::write(file_path, content)?;
         let report = serde_json::json!({
             "status": "written",
@@ -166,6 +172,7 @@ pub(super) async fn execute(
             "format": match params.format {
                 ContextFormat::Graph => "graph",
                 ContextFormat::Jsonld => "jsonld",
+                ContextFormat::Owl => "owl",
             },
             "nodes": final_graph.summary.total_nodes,
             "edges": final_graph.summary.total_edges,
@@ -1014,6 +1021,101 @@ fn format_as_jsonld(graph: &ContextGraph) -> Value {
     serde_json::json!({
         "@context": context,
         "@graph": resources
+    })
+}
+
+/// Format the context graph as OWL JSON-LD — directly importable by `fabio ontology import`.
+///
+/// Produces `owl:Class` for each unique item type, `owl:DatatypeProperty` for common
+/// fields (id, name, workspaceId), and `owl:ObjectProperty` for each unique relationship type.
+fn format_as_owl_jsonld(graph: &ContextGraph) -> Value {
+    let base = "http://fabric.microsoft.com/ontology/";
+    let mut owl_graph: Vec<Value> = Vec::new();
+
+    // Collect unique item types as OWL classes
+    let mut types: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for node in &graph.nodes {
+        types.insert(&node.item_type);
+    }
+
+    for item_type in &types {
+        let uri = format!("{base}{item_type}");
+        owl_graph.push(serde_json::json!({
+            "@id": uri,
+            "@type": "owl:Class",
+            "rdfs:label": *item_type,
+        }));
+
+        // Add standard properties for each class
+        owl_graph.push(serde_json::json!({
+            "@id": format!("{base}{}_itemId", item_type.to_lowercase()),
+            "@type": "owl:DatatypeProperty",
+            "rdfs:label": "itemId",
+            "rdfs:domain": {"@id": &uri},
+            "rdfs:range": {"@id": "http://www.w3.org/2001/XMLSchema#string"},
+            "ont:isIdentifier": true,
+            "ont:propertyType": "string",
+        }));
+        owl_graph.push(serde_json::json!({
+            "@id": format!("{base}{}_name", item_type.to_lowercase()),
+            "@type": "owl:DatatypeProperty",
+            "rdfs:label": "name",
+            "rdfs:domain": {"@id": &uri},
+            "rdfs:range": {"@id": "http://www.w3.org/2001/XMLSchema#string"},
+            "ont:propertyType": "string",
+        }));
+        owl_graph.push(serde_json::json!({
+            "@id": format!("{base}{}_workspaceId", item_type.to_lowercase()),
+            "@type": "owl:DatatypeProperty",
+            "rdfs:label": "workspaceId",
+            "rdfs:domain": {"@id": &uri},
+            "rdfs:range": {"@id": "http://www.w3.org/2001/XMLSchema#string"},
+            "ont:propertyType": "string",
+        }));
+    }
+
+    // Collect unique relationship types and their source/target class pairs
+    let mut rel_pairs: std::collections::BTreeMap<&str, (&str, &str)> =
+        std::collections::BTreeMap::new();
+    for edge in &graph.edges {
+        if rel_pairs.contains_key(edge.relationship.as_str()) {
+            continue;
+        }
+        // Find source and target node types
+        let source_type = graph
+            .nodes
+            .iter()
+            .find(|n| n.id == edge.source)
+            .map_or("Unknown", |n| n.item_type.as_str());
+        let target_type = graph
+            .nodes
+            .iter()
+            .find(|n| n.id == edge.target)
+            .map_or("Unknown", |n| n.item_type.as_str());
+        rel_pairs.insert(&edge.relationship, (source_type, target_type));
+    }
+
+    for (rel_name, (source_type, target_type)) in &rel_pairs {
+        if *rel_name == "workspace" || *rel_name == "workspace_ref" {
+            continue; // Skip generic workspace edges
+        }
+        owl_graph.push(serde_json::json!({
+            "@id": format!("{base}{}", relationship_to_camel(rel_name)),
+            "@type": "owl:ObjectProperty",
+            "rdfs:label": *rel_name,
+            "rdfs:domain": {"@id": format!("{base}{source_type}")},
+            "rdfs:range": {"@id": format!("{base}{target_type}")},
+        }));
+    }
+
+    serde_json::json!({
+        "@context": {
+            "owl": "http://www.w3.org/2002/07/owl#",
+            "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+            "xsd": "http://www.w3.org/2001/XMLSchema#",
+            "ont": base,
+        },
+        "@graph": owl_graph
     })
 }
 
