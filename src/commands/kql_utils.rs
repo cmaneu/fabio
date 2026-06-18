@@ -1,0 +1,500 @@
+//! Shared utilities for KQL/Kusto query execution and response parsing.
+//!
+//! Used by `kql_database`, `kql_queryset`, and other commands that need to
+//! execute KQL queries against Kusto endpoints.
+
+use std::io::{self, Read};
+
+use anyhow::Result;
+use reqwest::header::AUTHORIZATION;
+use serde_json::Value;
+
+use crate::client::{self, FabricClient};
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
+
+// ─── Input Resolution ────────────────────────────────────────────────────────
+
+/// Resolve KQL text from multiple input sources:
+/// - `Some("text")` — use inline text directly
+/// - `Some("@path")` — read from file at path
+/// - `None` — read from stdin (fails if empty)
+pub fn resolve_kql_input(kql: Option<&str>) -> Result<String> {
+    match kql {
+        Some(s) if s.starts_with('@') => {
+            let file_path = &s[1..];
+            std::fs::read_to_string(file_path).map_err(|e| {
+                FabioError::not_found(format!("KQL file not found: {file_path}: {e}")).into()
+            })
+        }
+        Some(s) => Ok(s.to_string()),
+        None => {
+            let mut buf = String::new();
+            io::stdin().read_to_string(&mut buf).map_err(|e| {
+                FabioError::new(
+                    ErrorCode::ApiError,
+                    format!("Failed to read KQL from stdin: {e}"),
+                )
+            })?;
+            if buf.trim().is_empty() {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "No KQL provided. Use --kql, @file, or pipe KQL via stdin.".to_string(),
+                    "Example: fabio kql-database query --workspace <WS> --id <ID> --kql \"MyTable | take 10\"".to_string(),
+                )
+                .into());
+            }
+            Ok(buf)
+        }
+    }
+}
+
+// ─── Query URI Resolution ────────────────────────────────────────────────────
+
+/// Resolve the Kusto query URI and database name for a KQL database.
+/// Tries the item properties first; falls back to user-provided override.
+pub async fn resolve_query_uri(
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    override_uri: Option<&str>,
+) -> Result<(String, String)> {
+    // Get the KQL database metadata
+    let data = client
+        .get(&format!("/workspaces/{workspace}/kqlDatabases/{id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "kql-database query", "Viewer"))?;
+
+    let db_name = data
+        .get("displayName")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+
+    // If user provided a query URI override, validate and use it
+    if let Some(uri) = override_uri {
+        client::validate_trusted_url(uri, "--query-uri")?;
+        let uri = uri.trim_end_matches('/').to_string();
+        return Ok((uri, db_name));
+    }
+
+    // Try to extract query URI from properties
+    let properties = data.get("properties");
+
+    // Try known property paths
+    let query_uri = properties
+        .and_then(|p| p.get("queryServiceUri"))
+        .and_then(Value::as_str)
+        .or_else(|| {
+            properties
+                .and_then(|p| p.get("queryUri"))
+                .and_then(Value::as_str)
+        })
+        .or_else(|| {
+            properties
+                .and_then(|p| p.get("databaseUrl"))
+                .and_then(Value::as_str)
+        })
+        .or_else(|| {
+            // Try parentEventhouseItemId-based URI construction
+            properties
+                .and_then(|p| p.get("parentEventhouseItemId"))
+                .and_then(Value::as_str)
+                .map(|_| {
+                    // Cannot construct URI without region; fall through to error
+                    ""
+                })
+                .filter(|s| !s.is_empty())
+        });
+
+    if let Some(uri) = query_uri {
+        let uri = uri.trim_end_matches('/').to_string();
+        if !uri.is_empty() {
+            // Validate URI from API properties against trusted domains
+            client::validate_trusted_url(&uri, "queryServiceUri (from database properties)")?;
+            return Ok((uri, db_name));
+        }
+    }
+
+    Err(FabioError::with_hint(
+        ErrorCode::NotFound,
+        "Could not determine Kusto query URI from database properties.".to_string(),
+        "Provide the query URI manually with --query-uri. Find it in Fabric portal: \
+         KQL Database → Database details → Query URI. \
+         Example: fabio kql-database query --workspace <WS> --id <ID> --query-uri https://<id>.<region>.kusto.fabric.microsoft.com --kql \"T | take 10\""
+            .to_string(),
+    )
+    .into())
+}
+
+// ─── Query Execution ─────────────────────────────────────────────────────────
+
+/// Execute a KQL query against a Kusto endpoint. Returns parsed rows and column names.
+///
+/// Automatically routes management commands (starting with `.`) to `/v1/rest/mgmt`
+/// and data queries to `/v2/rest/query`.
+pub async fn execute_kql(
+    client: &FabricClient,
+    kusto_uri: &str,
+    db_name: &str,
+    kql_text: &str,
+) -> Result<(Vec<Value>, Vec<String>)> {
+    // Acquire token scoped to the Kusto query URI
+    let scope = format!("{kusto_uri}/.default");
+    let token = client.require_token_for_scope(&scope).await?;
+
+    // Management commands (starting with '.') use /v1/rest/mgmt; queries use /v2/rest/query
+    let is_mgmt = kql_text.trim_start().starts_with('.');
+    let url = if is_mgmt {
+        format!("{kusto_uri}/v1/rest/mgmt")
+    } else {
+        format!("{kusto_uri}/v2/rest/query")
+    };
+    let body = serde_json::json!({
+        "db": db_name,
+        "csl": kql_text,
+    });
+
+    let resp = client
+        .http()
+        .post(&url)
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .header("Content-Type", "application/json; charset=utf-8")
+        .header("Accept", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| {
+            FabioError::new(
+                ErrorCode::NetworkError,
+                format!("Kusto request failed: {e}"),
+            )
+        })?;
+
+    let status = resp.status();
+    let resp_text = resp.text().await.map_err(|e| {
+        FabioError::new(
+            ErrorCode::ApiError,
+            format!("Failed to read Kusto response: {e}"),
+        )
+    })?;
+
+    if !status.is_success() {
+        return Err(FabioError::with_hint(
+            ErrorCode::ApiError,
+            format!("Kusto query failed (HTTP {status}): {resp_text}"),
+            "Verify the KQL database is accessible and the query syntax is valid.".to_string(),
+        )
+        .into());
+    }
+
+    // Parse response: v1 (mgmt) returns {"Tables":[...]}, v2 (query) returns array of frames
+    let parsed: Value = serde_json::from_str(&resp_text).map_err(|e| {
+        FabioError::new(
+            ErrorCode::ApiError,
+            format!("Failed to parse Kusto response: {e}"),
+        )
+    })?;
+
+    if is_mgmt {
+        parse_kusto_v1_response(&parsed)
+    } else {
+        parse_kusto_v2_response(&parsed)
+    }
+}
+
+// ─── Response Parsing ────────────────────────────────────────────────────────
+
+/// Parse Kusto v1 response format (used by management commands via `/v1/rest/mgmt`).
+///
+/// The v1 format is: `{"Tables": [{"TableName": "...", "Columns": [...], "Rows": [[...], ...]}]}`
+/// We take the first table as the primary result.
+pub fn parse_kusto_v1_response(resp: &Value) -> Result<(Vec<Value>, Vec<String>)> {
+    let tables = resp
+        .get("Tables")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            FabioError::new(
+                ErrorCode::ApiError,
+                "Unexpected Kusto v1 response: missing 'Tables' array.".to_string(),
+            )
+        })?;
+
+    // Use the first table as primary result
+    let Some(table) = tables.first() else {
+        return Ok((Vec::new(), Vec::new()));
+    };
+
+    let columns: Vec<String> =
+        table
+            .get("Columns")
+            .and_then(Value::as_array)
+            .map_or_else(Vec::new, |cols| {
+                cols.iter()
+                    .filter_map(|c| {
+                        c.get("ColumnName")
+                            .and_then(Value::as_str)
+                            .map(String::from)
+                    })
+                    .collect()
+            });
+
+    if columns.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+
+    let rows: Vec<Value> =
+        table
+            .get("Rows")
+            .and_then(Value::as_array)
+            .map_or_else(Vec::new, |rows| {
+                rows.iter()
+                    .map(|row| {
+                        let mut obj = serde_json::Map::new();
+                        if let Some(row_arr) = row.as_array() {
+                            for (i, val) in row_arr.iter().enumerate() {
+                                let col_name = columns
+                                    .get(i)
+                                    .cloned()
+                                    .unwrap_or_else(|| format!("column{i}"));
+                                obj.insert(col_name, val.clone());
+                            }
+                        }
+                        Value::Object(obj)
+                    })
+                    .collect()
+            });
+
+    Ok((rows, columns))
+}
+
+/// Parse Kusto v2 response format into rows and column names.
+///
+/// The v2 format is a JSON array of frames:
+/// - `DataSetHeader` — dataset metadata
+/// - `DataTable` — result table(s) (look for `TableKind: "PrimaryResult"`)
+/// - `DataSetCompletion` — final status
+pub fn parse_kusto_v2_response(frames: &Value) -> Result<(Vec<Value>, Vec<String>)> {
+    let frame_array = frames.as_array().ok_or_else(|| {
+        FabioError::new(
+            ErrorCode::ApiError,
+            "Unexpected Kusto response format: expected JSON array of frames.".to_string(),
+        )
+    })?;
+
+    // Find the PrimaryResult frame
+    let primary_frame = frame_array
+        .iter()
+        .find(|f| {
+            f.get("FrameType").and_then(Value::as_str) == Some("DataTable")
+                && f.get("TableKind").and_then(Value::as_str) == Some("PrimaryResult")
+        })
+        .or_else(|| {
+            // Fallback: first DataTable frame
+            frame_array
+                .iter()
+                .find(|f| f.get("FrameType").and_then(Value::as_str) == Some("DataTable"))
+        });
+
+    let Some(frame) = primary_frame else {
+        // Check if there's an error in the completion frame
+        if let Some(completion) = frame_array
+            .iter()
+            .find(|f| f.get("FrameType").and_then(Value::as_str) == Some("DataSetCompletion"))
+        {
+            if completion.get("HasErrors").and_then(Value::as_bool) == Some(true) {
+                let error_msg = completion
+                    .get("OneApiErrors")
+                    .map_or("Unknown Kusto error", |e| {
+                        e.as_str().unwrap_or("Unknown Kusto error")
+                    });
+                return Err(FabioError::new(
+                    ErrorCode::ApiError,
+                    format!("Kusto query error: {error_msg}"),
+                )
+                .into());
+            }
+        }
+        return Ok((Vec::new(), Vec::new()));
+    };
+
+    // Extract column names
+    let columns: Vec<String> =
+        frame
+            .get("Columns")
+            .and_then(Value::as_array)
+            .map_or_else(Vec::new, |cols| {
+                cols.iter()
+                    .filter_map(|c| {
+                        c.get("ColumnName")
+                            .and_then(Value::as_str)
+                            .map(String::from)
+                    })
+                    .collect()
+            });
+
+    if columns.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+
+    // Extract rows and convert to JSON objects
+    let rows: Vec<Value> =
+        frame
+            .get("Rows")
+            .and_then(Value::as_array)
+            .map_or_else(Vec::new, |rows| {
+                rows.iter()
+                    .map(|row| {
+                        let mut obj = serde_json::Map::new();
+                        if let Some(row_arr) = row.as_array() {
+                            for (i, val) in row_arr.iter().enumerate() {
+                                let col_name = columns
+                                    .get(i)
+                                    .cloned()
+                                    .unwrap_or_else(|| format!("column{i}"));
+                                obj.insert(col_name, val.clone());
+                            }
+                        }
+                        Value::Object(obj)
+                    })
+                    .collect()
+            });
+
+    Ok((rows, columns))
+}
+
+// ─── Output Helpers ──────────────────────────────────────────────────────────
+
+/// Render KQL query results using the standard output system.
+/// Shows an empty-result message when no rows are returned.
+pub fn render_kql_results(cli: &crate::cli::Cli, rows: &[Value], columns: &[String]) {
+    if rows.is_empty() {
+        let obj = serde_json::json!({
+            "rows_returned": 0,
+            "message": "Query executed successfully (no results returned)."
+        });
+        crate::output::render_object(cli, &obj, "message");
+    } else {
+        let col_refs: Vec<&str> = columns.iter().map(String::as_str).collect();
+        crate::output::render_list(cli, rows, &col_refs, &col_refs, &columns[0]);
+    }
+}
+
+// ─── Unit Tests ──────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_resolve_kql_input_inline() {
+        let result = resolve_kql_input(Some("print x=42")).unwrap();
+        assert_eq!(result, "print x=42");
+    }
+
+    #[test]
+    fn test_resolve_kql_input_file() {
+        let tmp = std::env::temp_dir().join("fabio_test_kql_input.kql");
+        std::fs::write(&tmp, ".show tables").unwrap();
+        let arg = format!("@{}", tmp.display());
+        let result = resolve_kql_input(Some(&arg)).unwrap();
+        assert_eq!(result, ".show tables");
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn test_resolve_kql_input_file_not_found() {
+        let result = resolve_kql_input(Some("@/nonexistent/path.kql"));
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("not found"));
+    }
+
+    #[test]
+    fn test_parse_v1_basic() {
+        let resp = json!({
+            "Tables": [{
+                "TableName": "Table_0",
+                "Columns": [
+                    {"ColumnName": "Name", "DataType": "String"},
+                    {"ColumnName": "Count", "DataType": "Int64"}
+                ],
+                "Rows": [["Alice", 10], ["Bob", 20]]
+            }]
+        });
+        let (rows, columns) = parse_kusto_v1_response(&resp).unwrap();
+        assert_eq!(columns, vec!["Name", "Count"]);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["Name"], "Alice");
+        assert_eq!(rows[0]["Count"], 10);
+        assert_eq!(rows[1]["Name"], "Bob");
+    }
+
+    #[test]
+    fn test_parse_v1_empty_tables() {
+        let resp = json!({"Tables": []});
+        let (rows, columns) = parse_kusto_v1_response(&resp).unwrap();
+        assert!(rows.is_empty());
+        assert!(columns.is_empty());
+    }
+
+    #[test]
+    fn test_parse_v1_missing_tables() {
+        let resp = json!({"error": "bad"});
+        let result = parse_kusto_v1_response(&resp);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_v2_primary_result() {
+        let frames = json!([
+            {"FrameType": "DataSetHeader", "IsProgressive": false},
+            {
+                "FrameType": "DataTable",
+                "TableKind": "PrimaryResult",
+                "Columns": [{"ColumnName": "x", "ColumnType": "int"}],
+                "Rows": [[42]]
+            },
+            {"FrameType": "DataSetCompletion", "HasErrors": false}
+        ]);
+        let (rows, columns) = parse_kusto_v2_response(&frames).unwrap();
+        assert_eq!(columns, vec!["x"]);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["x"], 42);
+    }
+
+    #[test]
+    fn test_parse_v2_error_completion() {
+        let frames = json!([
+            {"FrameType": "DataSetHeader"},
+            {"FrameType": "DataSetCompletion", "HasErrors": true, "OneApiErrors": "Bad query"}
+        ]);
+        let result = parse_kusto_v2_response(&frames);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Bad query"));
+    }
+
+    #[test]
+    fn test_parse_v2_not_array() {
+        let resp = json!({"error": "not frames"});
+        let result = parse_kusto_v2_response(&resp);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("expected JSON array")
+        );
+    }
+
+    #[test]
+    fn test_parse_v2_no_datatable_no_error() {
+        let frames = json!([
+            {"FrameType": "DataSetHeader"},
+            {"FrameType": "DataSetCompletion", "HasErrors": false}
+        ]);
+        let (rows, columns) = parse_kusto_v2_response(&frames).unwrap();
+        assert!(rows.is_empty());
+        assert!(columns.is_empty());
+    }
+}

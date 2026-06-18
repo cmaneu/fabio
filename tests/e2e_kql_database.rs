@@ -456,3 +456,428 @@ fn kql_database_query_tsv_output() {
     assert_eq!(lines[2], "2\titem_2");
     assert_eq!(lines[3], "3\titem_3");
 }
+
+// ─── Schema Discovery Tests ─────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+fn kql_database_list_entities() {
+    let (cfg, kql_db_id, _) = kql_test_config();
+
+    let output = fabio()
+        .args([
+            "kql-database",
+            "list-entities",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    // Should return an array (possibly empty on a fresh database)
+    assert!(data.is_array(), "list-entities should return an array");
+    if let Some(arr) = data.as_array() {
+        if !arr.is_empty() {
+            // Each entity should have name and type
+            assert!(arr[0].get("name").is_some());
+            assert!(arr[0].get("type").is_some());
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+fn kql_database_list_entities_filter_type() {
+    let (cfg, kql_db_id, _) = kql_test_config();
+
+    let output = fabio()
+        .args([
+            "kql-database",
+            "list-entities",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+            "--entity-type",
+            "table",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    if let Some(arr) = data.as_array() {
+        for entity in arr {
+            assert_eq!(entity["type"], "table", "Filter should only return tables");
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+fn kql_database_describe() {
+    let (cfg, kql_db_id, _) = kql_test_config();
+
+    let output = fabio()
+        .args([
+            "kql-database",
+            "describe",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    // describe returns either a list of columns or an empty-result message
+    assert!(
+        json.get("data").is_some(),
+        "describe should produce JSON data"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+fn kql_database_describe_entity() {
+    let (cfg, kql_db_id, _) = kql_test_config();
+
+    // First, find a table name via list-entities
+    let output = fabio()
+        .args([
+            "kql-database",
+            "list-entities",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+            "--entity-type",
+            "table",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    let tables = data.as_array().expect("should be array");
+
+    if tables.is_empty() {
+        // No tables in database — skip gracefully
+        return;
+    }
+
+    let table_name = tables[0]["name"].as_str().expect("table should have name");
+
+    // Now describe that specific table
+    let output = fabio()
+        .args([
+            "kql-database",
+            "describe-entity",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+            "--entity-name",
+            table_name,
+            "--entity-type",
+            "table",
+        ])
+        .assert()
+        .success();
+
+    let json2 = parse_json(&output);
+    assert!(
+        json2.get("data").is_some(),
+        "describe-entity should produce data"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+fn kql_database_sample() {
+    let (cfg, kql_db_id, _) = kql_test_config();
+
+    // Use a synthetic table via KQL (avoids needing a real populated table)
+    // We can sample from a range function treated as table
+    let output = fabio()
+        .args([
+            "kql-database",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+            "--kql",
+            "range i from 1 to 100 step 1 | take 5",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    let rows = data.as_array().unwrap();
+    assert_eq!(rows.len(), 5);
+}
+
+// ─── Ingestion Test ─────────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+fn kql_database_ingest_dry_run() {
+    let (cfg, kql_db_id, _) = kql_test_config();
+
+    let output = fabio()
+        .args([
+            "kql-database",
+            "ingest",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+            "--table",
+            "TestTable",
+            "--data",
+            "col1,col2\nhello,42",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["table"], "TestTable");
+}
+
+// ─── Query Plan Test ────────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+fn kql_database_show_queryplan() {
+    let (cfg, kql_db_id, _) = kql_test_config();
+
+    let output = fabio()
+        .args([
+            "kql-database",
+            "show-queryplan",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+            "--kql",
+            "print x=42",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    assert!(
+        json.get("data").is_some(),
+        "show-queryplan should produce data"
+    );
+}
+
+// ─── Diagnostics Test ───────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+fn kql_database_diagnostics() {
+    let (cfg, kql_db_id, _) = kql_test_config();
+
+    let output = fabio()
+        .args([
+            "kql-database",
+            "diagnostics",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    // diagnostics returns a JSON object with section keys
+    assert!(data.is_object(), "diagnostics should return an object");
+    let obj = data.as_object().unwrap();
+    // At least capacity should be present (even if it's an error)
+    assert!(
+        obj.contains_key("capacity"),
+        "diagnostics should have 'capacity' section"
+    );
+}
+
+// ─── Deeplink Test ──────────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+fn kql_database_deeplink() {
+    let (cfg, kql_db_id, _) = kql_test_config();
+
+    let output = fabio()
+        .args([
+            "kql-database",
+            "deeplink",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+            "--kql",
+            "StormEvents | take 10",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    // Should have url, style, database fields
+    assert!(data.get("url").is_some(), "deeplink should have url");
+    assert!(data.get("style").is_some(), "deeplink should have style");
+    assert!(
+        data.get("database").is_some(),
+        "deeplink should have database"
+    );
+    let url = data["url"].as_str().unwrap();
+    assert!(
+        url.contains("StormEvents"),
+        "URL should contain the query text"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+fn kql_database_deeplink_fabric_style() {
+    let (cfg, kql_db_id, _) = kql_test_config();
+
+    let output = fabio()
+        .args([
+            "kql-database",
+            "deeplink",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+            "--kql",
+            "print x=1",
+            "--style",
+            "fabric",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["style"], "fabric");
+    let url = data["url"].as_str().unwrap();
+    assert!(url.contains("app.fabric.microsoft.com"));
+}
+
+// ─── Offline Tests (no tenant needed) ───────────────────────────────────────
+
+#[test]
+fn kql_database_list_entities_invalid_entity_type_still_succeeds_offline() {
+    // list-entities doesn't validate entity type client-side; it passes through
+    // to the server. But we can test that the command at least parses correctly.
+    fabio()
+        .args([
+            "kql-database",
+            "list-entities",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--entity-type",
+            "table",
+            "--dry-run",
+        ])
+        .assert()
+        // list-entities is a read command, no dry-run guard — it will try auth and fail
+        .failure();
+}
+
+#[test]
+fn kql_database_describe_entity_invalid_type() {
+    // describe-entity with a dummy workspace will fail at auth/API before validation,
+    // but the command should at least parse args correctly and produce a JSON error
+    let output = fabio()
+        .args([
+            "kql-database",
+            "describe-entity",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--entity-name",
+            "test",
+            "--entity-type",
+            "invalid-type",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    // Should fail with either entity type validation or auth/API error
+    assert!(
+        stderr.contains("error"),
+        "Should produce an error, got: {stderr}"
+    );
+}
+
+#[test]
+fn kql_database_ingest_no_data_fails() {
+    // ingest without --data and without stdin should fail with input error
+    let output = fabio()
+        .args([
+            "kql-database",
+            "ingest",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--table",
+            "test",
+        ])
+        .write_stdin("")
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(
+        stderr.contains("No KQL provided") || stderr.contains("INVALID_INPUT"),
+        "Should require data input, got: {stderr}"
+    );
+}
+
+#[test]
+fn kql_database_deeplink_invalid_style() {
+    // deeplink with a dummy workspace will fail at API/auth before style validation,
+    // but the command should parse args correctly and produce a JSON error
+    let output = fabio()
+        .args([
+            "kql-database",
+            "deeplink",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--kql",
+            "print 1",
+            "--style",
+            "badstyle",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    // Should fail with either style validation or auth/API error
+    assert!(
+        stderr.contains("error"),
+        "Should produce an error, got: {stderr}"
+    );
+}

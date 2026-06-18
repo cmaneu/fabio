@@ -37,6 +37,7 @@ pub mod jobs;
 pub mod kql_dashboard;
 pub mod kql_database;
 pub mod kql_queryset;
+pub mod kql_utils;
 pub mod lakehouse;
 pub mod lro;
 pub mod managed_private_endpoint;
