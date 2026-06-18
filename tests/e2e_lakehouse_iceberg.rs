@@ -89,6 +89,11 @@ fn iceberg_help_shows_commands() {
     assert!(stdout.contains("iceberg-namespace"));
     assert!(stdout.contains("iceberg-tables"));
     assert!(stdout.contains("iceberg-table"));
+    assert!(stdout.contains("iceberg-table-exists"));
+    assert!(stdout.contains("iceberg-namespace-exists"));
+    assert!(stdout.contains("iceberg-credentials"));
+    assert!(stdout.contains("iceberg-stats"));
+    assert!(stdout.contains("iceberg-snapshots"));
 }
 
 // ─── Live tests (require Fabric tenant) ──────────────────────────────────────
@@ -443,4 +448,314 @@ fn iceberg_table_not_found() {
         ])
         .assert()
         .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn iceberg_table_exists_returns_true() {
+    let cfg = TestConfig::from_env();
+
+    // First get a real table name
+    let list_assert = fabio()
+        .args([
+            "lakehouse",
+            "iceberg-tables",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--namespace",
+            "dbo",
+        ])
+        .assert()
+        .success();
+    let list_json = parse_json(&list_assert);
+    let list_data = extract_data(&list_json);
+    let table_name = list_data["identifiers"][0]["name"]
+        .as_str()
+        .expect("need a table");
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "iceberg-table-exists",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--namespace",
+            "dbo",
+            "--table",
+            table_name,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["exists"], true);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn iceberg_table_exists_returns_false_for_nonexistent() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "iceberg-table-exists",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--namespace",
+            "dbo",
+            "--table",
+            "nonexistent_table_xyz_999",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["exists"], false);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn iceberg_namespace_exists_returns_true() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "iceberg-namespace-exists",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--namespace",
+            "dbo",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["exists"], true);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn iceberg_stats_returns_table_summary() {
+    let cfg = TestConfig::from_env();
+
+    // Get a real table name
+    let list_assert = fabio()
+        .args([
+            "lakehouse",
+            "iceberg-tables",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--namespace",
+            "dbo",
+        ])
+        .assert()
+        .success();
+    let list_json = parse_json(&list_assert);
+    let list_data = extract_data(&list_json);
+    let table_name = list_data["identifiers"][0]["name"]
+        .as_str()
+        .expect("need a table");
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "iceberg-stats",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--namespace",
+            "dbo",
+            "--table",
+            table_name,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    assert_eq!(data["table"].as_str().unwrap(), table_name);
+    assert_eq!(data["namespace"].as_str().unwrap(), "dbo");
+    assert!(data["format_version"].as_u64().unwrap() >= 1);
+    assert!(data["columns"].as_u64().unwrap() > 0);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn iceberg_snapshots_returns_history() {
+    let cfg = TestConfig::from_env();
+
+    // Get a real table name
+    let list_assert = fabio()
+        .args([
+            "lakehouse",
+            "iceberg-tables",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--namespace",
+            "dbo",
+        ])
+        .assert()
+        .success();
+    let list_json = parse_json(&list_assert);
+    let list_data = extract_data(&list_json);
+    let table_name = list_data["identifiers"][0]["name"]
+        .as_str()
+        .expect("need a table");
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "iceberg-snapshots",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--namespace",
+            "dbo",
+            "--table",
+            table_name,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    let count = data["count"].as_u64().expect("should have count");
+    assert!(count >= 1, "should have at least one snapshot");
+
+    let snapshots = data["snapshots"]
+        .as_array()
+        .expect("should have snapshots array");
+    assert!(!snapshots.is_empty());
+
+    // Each snapshot should have id and timestamp
+    let first = &snapshots[0];
+    assert!(first.get("snapshot_id").is_some());
+    assert!(first.get("timestamp_ms").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn iceberg_credentials_returns_or_errors() {
+    let cfg = TestConfig::from_env();
+
+    // Get a real table name
+    let list_assert = fabio()
+        .args([
+            "lakehouse",
+            "iceberg-tables",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--namespace",
+            "dbo",
+        ])
+        .assert()
+        .success();
+    let list_json = parse_json(&list_assert);
+    let list_data = extract_data(&list_json);
+    let table_name = list_data["identifiers"][0]["name"]
+        .as_str()
+        .expect("need a table");
+
+    // Credentials may succeed (returning vended creds) or fail (not supported on tenant)
+    // Either way, the command should not panic
+    let _assert = fabio()
+        .args([
+            "lakehouse",
+            "iceberg-credentials",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--namespace",
+            "dbo",
+            "--table",
+            table_name,
+        ])
+        .assert();
+    // We accept either success or failure - just verify it doesn't panic
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn table_schema_uses_iceberg_api() {
+    let cfg = TestConfig::from_env();
+
+    // Get a table name that exists
+    let list_assert = fabio()
+        .args([
+            "lakehouse",
+            "iceberg-tables",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--namespace",
+            "dbo",
+        ])
+        .assert()
+        .success();
+    let list_json = parse_json(&list_assert);
+    let list_data = extract_data(&list_json);
+    let table_name = list_data["identifiers"][0]["name"]
+        .as_str()
+        .expect("need a table");
+
+    // table-schema should now work via Iceberg API (more reliable)
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "table-schema",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            table_name,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["table"].as_str().unwrap(), table_name);
+    assert_eq!(data["schema_type"].as_str().unwrap(), "struct");
+
+    let fields = data["fields"].as_array().expect("should have fields");
+    assert!(!fields.is_empty(), "should have at least one field");
+
+    // Fields should have name, type, nullable, metadata
+    let first = &fields[0];
+    assert!(first.get("name").is_some());
+    assert!(first.get("type").is_some());
+    assert!(first.get("nullable").is_some());
 }

@@ -616,6 +616,53 @@ impl FabricClient {
         handle_response(resp).await
     }
 
+    /// HEAD from the `OneLake` Table API. Returns `true` if 204/200, `false` if 404.
+    /// Uses storage-scoped auth. Retries once on 401.
+    pub async fn head_onelake_table_api(&self, path: &str) -> Result<bool> {
+        let token = self.require_storage_auth().await?;
+        let url = self.onelake_table_url(path);
+
+        verbose::trace_request("HEAD", &url, None);
+        let start = std::time::Instant::now();
+
+        let resp = self
+            .http
+            .head(&url)
+            .header(AUTHORIZATION, &token)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_storage_token().await;
+            let token = self.require_storage_auth().await?;
+            let resp = self
+                .http
+                .head(&url)
+                .header(AUTHORIZATION, &token)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
+            return Ok(resp.status().is_success());
+        }
+
+        if resp.status() == StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+        if resp.status().is_success() {
+            return Ok(true);
+        }
+        // For other errors, parse and propagate
+        Err(FabioError::new(
+            ErrorCode::ApiError,
+            format!("HEAD {} returned {}", url, resp.status()),
+        )
+        .into())
+    }
+
     /// List files in `OneLake` via DFS. Retries once on 401.
     pub async fn list_onelake_files(
         &self,

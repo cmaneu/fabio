@@ -140,6 +140,11 @@ fabio lakehouse iceberg-namespaces   List table namespaces (schemas) via Iceberg
 fabio lakehouse iceberg-namespace    Get namespace metadata via Iceberg REST Catalog
 fabio lakehouse iceberg-tables       List tables in a namespace via Iceberg REST Catalog
 fabio lakehouse iceberg-table        Get full table definition (schema, partitions, snapshots) via Iceberg REST Catalog
+fabio lakehouse iceberg-table-exists Check if a table exists (lightweight HEAD, no body)
+fabio lakehouse iceberg-namespace-exists Check if a namespace exists (lightweight HEAD, no body)
+fabio lakehouse iceberg-credentials  Load vended storage credentials scoped to a table
+fabio lakehouse iceberg-stats        Show table statistics (records, files, size, compression)
+fabio lakehouse iceberg-snapshots    Show snapshot history (operations, record counts, timestamps)
 fabio lakehouse list-livy-sessions   List Livy sessions
 fabio lakehouse get-livy-session     Get Livy session details
 

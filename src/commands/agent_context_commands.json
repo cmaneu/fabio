@@ -7423,8 +7423,66 @@
         "mutates": false,
         "returns": "object"
       },
+      "iceberg-table-exists": {
+        "description": "Check if a table exists via Iceberg REST Catalog (lightweight HEAD, returns {exists: bool})",
+        "example": "fabio lakehouse iceberg-table-exists --workspace <WS> --id <ID> --namespace dbo --table customers",
+        "flags": {
+          "--id": { "description": "Lakehouse ID", "required": true, "type": "string" },
+          "--namespace": { "description": "Namespace name", "required": true, "type": "string" },
+          "--table": { "description": "Table name", "required": true, "type": "string" },
+          "--workspace": { "description": "Workspace ID", "required": true, "type": "string" }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "iceberg-namespace-exists": {
+        "description": "Check if a namespace exists via Iceberg REST Catalog (lightweight HEAD, returns {exists: bool})",
+        "example": "fabio lakehouse iceberg-namespace-exists --workspace <WS> --id <ID> --namespace dbo",
+        "flags": {
+          "--id": { "description": "Lakehouse ID", "required": true, "type": "string" },
+          "--namespace": { "description": "Namespace name", "required": true, "type": "string" },
+          "--workspace": { "description": "Workspace ID", "required": true, "type": "string" }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "iceberg-credentials": {
+        "description": "Load vended storage credentials scoped to a specific table (for external tools like DuckDB, Polars)",
+        "example": "fabio lakehouse iceberg-credentials --workspace <WS> --id <ID> --namespace dbo --table customers",
+        "flags": {
+          "--id": { "description": "Lakehouse ID", "required": true, "type": "string" },
+          "--namespace": { "description": "Namespace name", "required": true, "type": "string" },
+          "--table": { "description": "Table name", "required": true, "type": "string" },
+          "--workspace": { "description": "Workspace ID", "required": true, "type": "string" }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "iceberg-stats": {
+        "description": "Show table statistics from latest Iceberg snapshot (records, files, size, compression, source format)",
+        "example": "fabio lakehouse iceberg-stats --workspace <WS> --id <ID> --namespace dbo --table customers",
+        "flags": {
+          "--id": { "description": "Lakehouse ID", "required": true, "type": "string" },
+          "--namespace": { "description": "Namespace name", "required": true, "type": "string" },
+          "--table": { "description": "Table name", "required": true, "type": "string" },
+          "--workspace": { "description": "Workspace ID", "required": true, "type": "string" }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "iceberg-snapshots": {
+        "description": "Show full snapshot history with operations and record counts",
+        "example": "fabio lakehouse iceberg-snapshots --workspace <WS> --id <ID> --namespace dbo --table customers",
+        "flags": {
+          "--id": { "description": "Lakehouse ID", "required": true, "type": "string" },
+          "--namespace": { "description": "Namespace name", "required": true, "type": "string" },
+          "--table": { "description": "Table name", "required": true, "type": "string" },
+          "--workspace": { "description": "Workspace ID", "required": true, "type": "string" }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "update": {
-        "description": "Update lakehouse properties",
         "flags": {
           "--description": {
             "type": "string"

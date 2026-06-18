@@ -839,6 +839,102 @@ pub enum LakehouseCommand {
         table: String,
     },
 
+    /// Check if a table exists via the Iceberg REST Catalog (lightweight HEAD)
+    #[command(display_order = 79)]
+    IcebergTableExists {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Namespace name (e.g. "dbo")
+        #[arg(long)]
+        namespace: String,
+
+        /// Table name
+        #[arg(long)]
+        table: String,
+    },
+
+    /// Check if a namespace exists via the Iceberg REST Catalog (lightweight HEAD)
+    #[command(display_order = 79)]
+    IcebergNamespaceExists {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Namespace name (e.g. "dbo")
+        #[arg(long)]
+        namespace: String,
+    },
+
+    /// Load vended storage credentials scoped to a specific table
+    #[command(display_order = 79)]
+    IcebergCredentials {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Namespace name (e.g. "dbo")
+        #[arg(long)]
+        namespace: String,
+
+        /// Table name
+        #[arg(long)]
+        table: String,
+    },
+
+    /// Show table statistics from the latest Iceberg snapshot (record/file counts, size)
+    #[command(display_order = 79)]
+    IcebergStats {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Namespace name (e.g. "dbo")
+        #[arg(long)]
+        namespace: String,
+
+        /// Table name
+        #[arg(long)]
+        table: String,
+    },
+
+    /// Show snapshot history for a table via the Iceberg REST Catalog
+    #[command(display_order = 79)]
+    IcebergSnapshots {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Namespace name (e.g. "dbo")
+        #[arg(long)]
+        namespace: String,
+
+        /// Table name
+        #[arg(long)]
+        table: String,
+    },
+
     // ── Livy Sessions ────────────────────────────────────────────────────
     /// List Livy sessions for a lakehouse
     #[command(display_order = 80)]
@@ -1315,6 +1411,35 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             namespace,
             table,
         } => iceberg_table(cli, client, workspace, id, namespace, table).await,
+        LakehouseCommand::IcebergTableExists {
+            workspace,
+            id,
+            namespace,
+            table,
+        } => iceberg_table_exists(cli, client, workspace, id, namespace, table).await,
+        LakehouseCommand::IcebergNamespaceExists {
+            workspace,
+            id,
+            namespace,
+        } => iceberg_namespace_exists(cli, client, workspace, id, namespace).await,
+        LakehouseCommand::IcebergCredentials {
+            workspace,
+            id,
+            namespace,
+            table,
+        } => iceberg_credentials(cli, client, workspace, id, namespace, table).await,
+        LakehouseCommand::IcebergStats {
+            workspace,
+            id,
+            namespace,
+            table,
+        } => iceberg_stats(cli, client, workspace, id, namespace, table).await,
+        LakehouseCommand::IcebergSnapshots {
+            workspace,
+            id,
+            namespace,
+            table,
+        } => iceberg_snapshots(cli, client, workspace, id, namespace, table).await,
         LakehouseCommand::ListLivySessions { workspace, id } => {
             list_livy_sessions(cli, client, workspace, id).await
         }
@@ -4734,6 +4859,82 @@ async fn table_schema(
     id: &str,
     table: &str,
 ) -> Result<()> {
+    // Try the Iceberg REST Catalog first (more reliable, no checkpoint issues)
+    if let Ok(schema) = table_schema_via_iceberg(client, workspace, id, table).await {
+        let result = serde_json::json!({
+            "table": table,
+            "schema_type": "struct",
+            "fields": schema,
+        });
+        output::render_object(cli, &result, "table");
+        return Ok(());
+    }
+
+    // Fallback: Parse Delta log files from OneLake DFS
+    table_schema_via_delta_log(cli, client, workspace, id, table).await
+}
+
+/// Try to get table schema via the Iceberg REST Catalog API.
+/// Returns the fields array on success, or an error if the API is unavailable.
+async fn table_schema_via_iceberg(
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    table: &str,
+) -> Result<Vec<Value>> {
+    let wh = iceberg_warehouse(workspace, id);
+    let encoded_table = urlencoding::encode(table);
+    let path = format!("iceberg/v1/{wh}/namespaces/dbo/tables/{encoded_table}");
+    let result = client.get_onelake_table_api(&path).await?;
+
+    let metadata = result
+        .get("metadata")
+        .ok_or_else(|| FabioError::new(ErrorCode::ApiError, "No metadata in response"))?;
+    let current_schema_id = metadata
+        .get("current-schema-id")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let schemas = metadata
+        .get("schemas")
+        .and_then(|s| s.as_array())
+        .ok_or_else(|| FabioError::new(ErrorCode::ApiError, "No schemas in metadata"))?;
+
+    let active_schema = schemas
+        .iter()
+        .find(|s| s.get("schema-id").and_then(Value::as_u64).unwrap_or(0) == current_schema_id)
+        .or_else(|| schemas.last())
+        .ok_or_else(|| FabioError::new(ErrorCode::ApiError, "No schema found"))?;
+
+    let fields = active_schema
+        .get("fields")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    // Convert Iceberg field format to match existing Delta log output format
+    let converted: Vec<Value> = fields
+        .iter()
+        .map(|f| {
+            serde_json::json!({
+                "name": f.get("name").unwrap_or(&Value::Null),
+                "type": f.get("type").unwrap_or(&Value::Null),
+                "nullable": !f.get("required").and_then(Value::as_bool).unwrap_or(false),
+                "metadata": {}
+            })
+        })
+        .collect();
+
+    Ok(converted)
+}
+
+/// Fallback: parse schema from Delta log commit files.
+async fn table_schema_via_delta_log(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    table: &str,
+) -> Result<()> {
     // List from root (no directory param) to avoid the DFS virtual lakehouse-in-lakehouse
     // view that doubles top-level dirs when a directory param is specified.
     let files = client
@@ -4917,6 +5118,218 @@ async fn iceberg_table(
     let path = format!("iceberg/v1/{wh}/namespaces/{encoded_ns}/tables/{encoded_table}");
     let result = client.get_onelake_table_api(&path).await?;
     output::render_object(cli, &result, "metadata");
+    Ok(())
+}
+
+async fn iceberg_table_exists(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    namespace: &str,
+    table: &str,
+) -> Result<()> {
+    let wh = iceberg_warehouse(workspace, id);
+    let encoded_ns = urlencoding::encode(namespace);
+    let encoded_table = urlencoding::encode(table);
+    let path = format!("iceberg/v1/{wh}/namespaces/{encoded_ns}/tables/{encoded_table}");
+    let exists = client.head_onelake_table_api(&path).await?;
+    output::render_object(cli, &serde_json::json!({"exists": exists}), "exists");
+    Ok(())
+}
+
+async fn iceberg_namespace_exists(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    namespace: &str,
+) -> Result<()> {
+    let wh = iceberg_warehouse(workspace, id);
+    let encoded_ns = urlencoding::encode(namespace);
+    let path = format!("iceberg/v1/{wh}/namespaces/{encoded_ns}");
+    let exists = client.head_onelake_table_api(&path).await?;
+    output::render_object(cli, &serde_json::json!({"exists": exists}), "exists");
+    Ok(())
+}
+
+async fn iceberg_credentials(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    namespace: &str,
+    table: &str,
+) -> Result<()> {
+    let wh = iceberg_warehouse(workspace, id);
+    let encoded_ns = urlencoding::encode(namespace);
+    let encoded_table = urlencoding::encode(table);
+    let path =
+        format!("iceberg/v1/{wh}/namespaces/{encoded_ns}/tables/{encoded_table}/credentials");
+    let result = client.get_onelake_table_api(&path).await?;
+    output::render_object(cli, &result, "config");
+    Ok(())
+}
+
+async fn iceberg_stats(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    namespace: &str,
+    table: &str,
+) -> Result<()> {
+    let wh = iceberg_warehouse(workspace, id);
+    let encoded_ns = urlencoding::encode(namespace);
+    let encoded_table = urlencoding::encode(table);
+    let path = format!("iceberg/v1/{wh}/namespaces/{encoded_ns}/tables/{encoded_table}");
+    let result = client.get_onelake_table_api(&path).await?;
+
+    // Extract stats from the metadata
+    let metadata = result.get("metadata").unwrap_or(&result);
+    let format_version = metadata
+        .get("format-version")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let current_schema_id = metadata
+        .get("current-schema-id")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+
+    // Count columns in the current schema
+    let columns = metadata
+        .get("schemas")
+        .and_then(|s| s.as_array())
+        .and_then(|schemas| {
+            schemas.iter().find(|s| {
+                s.get("schema-id").and_then(Value::as_u64).unwrap_or(0) == current_schema_id
+            })
+        })
+        .and_then(|schema| schema.get("fields"))
+        .and_then(|f| f.as_array())
+        .map_or(0, Vec::len);
+
+    // Extract latest snapshot summary
+    let latest_snapshot = metadata
+        .get("snapshots")
+        .and_then(|s| s.as_array())
+        .and_then(|snaps| snaps.last());
+
+    let summary = latest_snapshot.and_then(|s| s.get("summary"));
+
+    let total_records = summary
+        .and_then(|s| s.get("total-records"))
+        .and_then(|v| v.as_str())
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(0);
+    let total_files = summary
+        .and_then(|s| s.get("total-data-files"))
+        .and_then(|v| v.as_str())
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(0);
+    let total_size = summary
+        .and_then(|s| s.get("total-files-size"))
+        .and_then(|v| v.as_str())
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(0);
+
+    // Extract compression and source format from properties
+    let properties = metadata.get("properties");
+    let compression = properties
+        .and_then(|p| p.get("write.parquet.compression-codec"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let source_format = properties
+        .and_then(|p| p.get("XTABLE_METADATA"))
+        .and_then(|v| v.as_str())
+        .and_then(|s| serde_json::from_str::<Value>(s).ok())
+        .and_then(|v| v.get("sourceTableFormat").cloned())
+        .and_then(|v| v.as_str().map(String::from))
+        .unwrap_or_default();
+
+    let last_updated = latest_snapshot
+        .and_then(|s| s.get("timestamp-ms"))
+        .and_then(Value::as_u64);
+
+    let mut stats = serde_json::json!({
+        "table": table,
+        "namespace": namespace,
+        "format_version": format_version,
+        "current_schema_id": current_schema_id,
+        "columns": columns,
+        "total_records": total_records,
+        "total_data_files": total_files,
+        "total_size_bytes": total_size,
+        "compression": compression,
+    });
+
+    if !source_format.is_empty() {
+        stats["source_format"] = Value::String(source_format);
+    }
+    if let Some(ts) = last_updated {
+        stats["last_updated_ms"] = Value::Number(ts.into());
+    }
+
+    output::render_object(cli, &stats, "table");
+    Ok(())
+}
+
+async fn iceberg_snapshots(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    namespace: &str,
+    table: &str,
+) -> Result<()> {
+    let wh = iceberg_warehouse(workspace, id);
+    let encoded_ns = urlencoding::encode(namespace);
+    let encoded_table = urlencoding::encode(table);
+    let path = format!("iceberg/v1/{wh}/namespaces/{encoded_ns}/tables/{encoded_table}");
+    let result = client.get_onelake_table_api(&path).await?;
+
+    let metadata = result.get("metadata").unwrap_or(&result);
+    let snapshots = metadata
+        .get("snapshots")
+        .and_then(|s| s.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    // Build a concise snapshot history
+    let history: Vec<Value> = snapshots
+        .iter()
+        .map(|snap| {
+            let summary = snap.get("summary");
+            let mut entry = serde_json::json!({
+                "snapshot_id": snap.get("snapshot-id"),
+                "timestamp_ms": snap.get("timestamp-ms"),
+            });
+            if let Some(s) = summary {
+                if let Some(op) = s.get("operation") {
+                    entry["operation"] = op.clone();
+                }
+                if let Some(v) = s.get("added-records") {
+                    entry["added_records"] = v.clone();
+                }
+                if let Some(v) = s.get("total-records") {
+                    entry["total_records"] = v.clone();
+                }
+                if let Some(v) = s.get("added-data-files") {
+                    entry["added_data_files"] = v.clone();
+                }
+                if let Some(v) = s.get("total-data-files") {
+                    entry["total_data_files"] = v.clone();
+                }
+                if let Some(v) = s.get("total-files-size") {
+                    entry["total_size_bytes"] = v.clone();
+                }
+            }
+            entry
+        })
+        .collect();
+
+    let output_val = serde_json::json!({"snapshots": history, "count": history.len()});
+    output::render_object(cli, &output_val, "snapshots");
     Ok(())
 }
 

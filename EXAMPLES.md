@@ -170,6 +170,18 @@ fabio lakehouse iceberg-table --workspace $WS --id $LH --namespace dbo --table c
 # Extract just the column names and types using --query (JMESPath)
 fabio lakehouse iceberg-table --workspace $WS --id $LH --namespace dbo --table sales \
   --query "metadata.schemas[-1].fields[].{name: name, type: type}"
+
+# Check if a table exists (lightweight, no metadata transfer)
+fabio lakehouse iceberg-table-exists --workspace $WS --id $LH --namespace dbo --table sales
+
+# Get table statistics (records, files, size) without SQL
+fabio lakehouse iceberg-stats --workspace $WS --id $LH --namespace dbo --table sales
+
+# View snapshot history (who wrote when, record counts)
+fabio lakehouse iceberg-snapshots --workspace $WS --id $LH --namespace dbo --table sales
+
+# Get scoped storage credentials for external tools (DuckDB, Polars, PyArrow)
+fabio lakehouse iceberg-credentials --workspace $WS --id $LH --namespace dbo --table sales
 ```
 
 ## Notebooks

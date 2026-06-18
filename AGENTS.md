@@ -345,6 +345,8 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **Shortcuts**: Create/get/delete OneLake, ADLS Gen2, S3 shortcuts
 - **Lakehouse table maintenance**: optimize-table (V-Order + Z-Order via Jobs API), vacuum-table (retention period formatting), table-schema (Delta log parsing from OneLake DFS)
 - **OneLake Iceberg REST Catalog**: iceberg-config, iceberg-namespaces, iceberg-namespace, iceberg-tables, iceberg-table (Apache Iceberg REST Catalog v1 at `https://onelake.table.fabric.microsoft.com` — provides full table metadata: schema, partitions, sort-orders, snapshots, properties; uses storage-scoped auth)
+- **OneLake Iceberg extended**: iceberg-table-exists, iceberg-namespace-exists (HEAD checks), iceberg-credentials (vended storage tokens for external tools), iceberg-stats (record/file/size summary from latest snapshot), iceberg-snapshots (full snapshot history with operations and record counts)
+- **Enhanced table-schema**: Uses Iceberg REST Catalog as primary backend (more reliable than Delta log parsing), falls back to DFS `_delta_log` parsing when Table API is unavailable
 - **Notebook run**: Captures job instance ID from Location header, status/stop via Jobs API
 - **Notebook `--wait` flag**: Polls job status every 5s until Completed/Failed/Cancelled, with configurable `--timeout` (default 600s)
 - **Item copy/move**: getDefinition LRO + create in dest workspace LRO; move = copy + delete source
@@ -526,7 +528,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/auth.rs`: login (device code + browser PKCE + service principal: secret/certificate/federated token), logout, status
 - `src/commands/workspace.rs`: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
 - `src/commands/item.rs`: 18 subcommands (CRUD + copy/move + definitions + list-connections + exists/url/inspect + bulk-create/bulk-delete + move-to-folder + create-external-data-share)
-- `src/commands/lakehouse.rs`: 28 subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut, optimize-table, vacuum-table, table-schema, iceberg-config, iceberg-namespaces, iceberg-namespace, iceberg-tables, iceberg-table, query)
+- `src/commands/lakehouse.rs`: 33 subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut, optimize-table, vacuum-table, table-schema, iceberg-config, iceberg-namespaces, iceberg-namespace, iceberg-tables, iceberg-table, iceberg-table-exists, iceberg-namespace-exists, iceberg-credentials, iceberg-stats, iceberg-snapshots, query)
 - `src/commands/notebook.rs`: create/get-definition (with --strip-output)/run (with --wait/--timeout/--parameters/--compute-type/--execution-data)/status/stop/delete
 - `src/commands/warehouse.rs`: list/show/create/update/delete/query/connection-string (endpoint resolved, stdin/file/flag SQL input)
 - `src/commands/sql_database.rs`: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
@@ -794,6 +796,9 @@ The release workflow (`.github/workflows/release.yml`) handles tagged version im
 - **Delta-to-Iceberg via UniForm/XTable**: Table properties include `XTABLE_METADATA` with `sourceTableFormat: "DELTA"`, confirming Delta tables are exposed as Iceberg via Microsoft's XTable (formerly OneTable) integration. The `iceberg-version` in snapshot summary shows `Apache Iceberg 1.10.1`.
 - **Table API is read-only for now**: The config endpoint lists POST/DELETE endpoints in `endpoints` array, but write operations may not be available in all tenants (preview feature). Read operations (GET) work universally.
 - **Table API env override**: `FABIO_ONELAKE_TABLE_ENDPOINT` overrides the base URL (for sovereign clouds or testing environments).
+- **Table API HEAD for existence checks**: `HEAD /iceberg/v1/{prefix}/namespaces/{ns}` and `HEAD .../tables/{table}` return 204 (exists) or 404 (not found). No response body. Lightweight alternative to GET.
+- **Table API credentials endpoint**: `GET /iceberg/v1/{prefix}/namespaces/{ns}/tables/{table}/credentials` returns vended storage credentials scoped to a specific table's location. Enables external tools (DuckDB, Polars) to read table data directly.
+- **Table API snapshot summary fields**: Each snapshot's `summary` object contains: `operation` (append/overwrite/delete), `added-records`, `total-records`, `added-data-files`, `total-data-files`, `total-files-size`, `iceberg-version`. These enable client-side stats extraction without additional API calls.
 
 ## Data Agent API Behaviors Discovered
 - **Definition schema is minimal**: The `getDefinition`/`updateDefinition` API only controls `$schema`, `aiInstructions`, and `experimental` fields. Data sources are NOT configured through definitions — they are managed internally by Fabric (portal-only).
