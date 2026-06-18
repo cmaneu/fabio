@@ -440,6 +440,23 @@ pub enum LakehouseCommand {
         itemize: bool,
     },
 
+    // ── Directory ──────────────────────────────────────────────────────
+    /// Create a directory in a lakehouse (DFS)
+    #[command(display_order = 29)]
+    CreateDirectory {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Directory path to create (e.g. "Files/staging/incoming")
+        #[arg(short, long)]
+        path: String,
+    },
+
     // ── Delete ───────────────────────────────────────────────────────────
     /// Delete a file from a lakehouse
     #[command(display_order = 30)]
@@ -1095,6 +1112,13 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
         )
         .await
         .map_err(|e| enrich_forbidden(e, "lakehouse copy-file", "Contributor")),
+        LakehouseCommand::CreateDirectory {
+            workspace,
+            id,
+            path,
+        } => create_directory(cli, client, workspace, id, path)
+            .await
+            .map_err(|e| enrich_forbidden(e, "lakehouse create-directory", "Contributor")),
         LakehouseCommand::DeleteFile {
             workspace,
             id,
@@ -2146,6 +2170,18 @@ async fn copy_file(
 
     let summary = BatchSummary::from_results(&results, &item_names);
     render_batch_result(cli, &summary, "copied")
+}
+
+async fn create_directory(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    path: &str,
+) -> Result<()> {
+    let result = client.create_onelake_directory(workspace, id, path).await?;
+    output::render_object(cli, &result, "status");
+    Ok(())
 }
 
 async fn delete_file(

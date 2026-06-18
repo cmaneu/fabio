@@ -120,6 +120,7 @@ fabio lakehouse vacuum-table Remove old files (retention period)
 fabio lakehouse copy-file    Copy files between lakehouses (glob, parallel)
 fabio lakehouse move-file    Move files (atomic rename for same-item, copy+delete for cross-item)
 fabio lakehouse delete-file  Delete a file
+fabio lakehouse create-directory Create a directory in a lakehouse (DFS)
 fabio lakehouse copy-table   Copy a table between lakehouses
 fabio lakehouse move-table   Move a table (atomic rename for same-item, copy+delete for cross-item)
 fabio lakehouse delete-table Delete a table

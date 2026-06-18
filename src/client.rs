@@ -2204,6 +2204,65 @@ impl FabricClient {
     }
 
     /// Delete a directory recursively from `OneLake` via DFS. Retries once on 401.
+    /// Create a directory in `OneLake` via DFS PUT with `?resource=directory`.
+    /// Retries once on 401.
+    pub async fn create_onelake_directory(
+        &self,
+        workspace: &str,
+        item: &str,
+        path: &str,
+    ) -> Result<Value> {
+        validate_uuid(workspace, "workspace")?;
+        validate_uuid(item, "item")?;
+        let token = self.require_storage_auth().await?;
+        let encoded_path = encode_onelake_path(path);
+        let url = self.onelake_dfs_url(
+            workspace,
+            &format!("{item}/{encoded_path}?resource=directory"),
+        );
+
+        verbose::trace_request("PUT", &url, None);
+        let start = std::time::Instant::now();
+
+        let resp = self
+            .http
+            .put(&url)
+            .header(AUTHORIZATION, &token)
+            .header("Content-Length", "0")
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_storage_token().await;
+            let token = self.require_storage_auth().await?;
+            let resp = self
+                .http
+                .put(&url)
+                .header(AUTHORIZATION, &token)
+                .header("Content-Length", "0")
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            if !resp.status().is_success() {
+                let status = resp.status().as_u16();
+                let text = resp.text().await.unwrap_or_default();
+                return Err(FabioError::from_status(status, text).into());
+            }
+        } else if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(FabioError::from_status(status, text).into());
+        }
+
+        Ok(serde_json::json!({
+            "path": path,
+            "status": "created"
+        }))
+    }
+
     pub async fn delete_onelake_directory(
         &self,
         workspace: &str,

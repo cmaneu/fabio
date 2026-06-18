@@ -1,5 +1,5 @@
 //! End-to-end integration tests for `fabio lakehouse` file operations
-//! (copy-file, move-file, delete-file).
+//! (copy-file, move-file, delete-file, create-directory).
 
 mod common;
 
@@ -140,12 +140,134 @@ fn lakehouse_move_file_within_workspace() {
             "--workspace",
             &cfg.source_workspace,
             "--id",
-            &cfg.source_lakehouse,
+            &cfg.dest_lakehouse,
             "--path",
             &dst_path,
         ])
         .assert()
         .success();
+}
+
+// ─── create-directory ────────────────────────────────────────────────────────
+
+#[test]
+fn lakehouse_create_directory_missing_path() {
+    fabio()
+        .args([
+            "lakehouse",
+            "create-directory",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_create_directory_creates_and_cleanup() {
+    let cfg = TestConfig::from_env();
+    let dir_path = "Files/test-mkdir-e2e-auto";
+
+    // Create the directory
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "create-directory",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--path",
+            dir_path,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "created");
+    assert_eq!(data["path"], dir_path);
+
+    // Idempotent: creating again should also succeed (DFS PUT is idempotent)
+    fabio()
+        .args([
+            "lakehouse",
+            "create-directory",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--path",
+            dir_path,
+        ])
+        .assert()
+        .success();
+
+    // Cleanup
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-file",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--path",
+            dir_path,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_create_nested_directory() {
+    let cfg = TestConfig::from_env();
+    let dir_path = "Files/test-nested/sub1/sub2";
+
+    // Create nested directory (DFS should create intermediate dirs)
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "create-directory",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--path",
+            dir_path,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "created");
+
+    // Cleanup: just delete leaf dirs bottom-up (best-effort)
+    for path in &[
+        "Files/test-nested/sub1/sub2",
+        "Files/test-nested/sub1",
+        "Files/test-nested",
+    ] {
+        let _ = fabio()
+            .args([
+                "lakehouse",
+                "delete-file",
+                "--workspace",
+                &cfg.source_workspace,
+                "--id",
+                &cfg.source_lakehouse,
+                "--path",
+                path,
+            ])
+            .assert();
+    }
 }
 
 #[test]
