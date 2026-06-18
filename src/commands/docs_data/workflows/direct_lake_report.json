@@ -1,0 +1,19 @@
+{
+  "name": "Direct Lake Semantic Model + Report",
+  "description": "Create a Direct Lake semantic model from lakehouse Delta tables and bind a report for zero-copy analytics.",
+  "prerequisites": ["Authenticated via fabio auth login", "Workspace with F2+ capacity", "TMDL files prepared"],
+  "steps": [
+    {"step_number": 1, "command": "fabio lakehouse create --workspace $WS_ID --name \"SalesLakehouse\"", "description": "Create lakehouse for Delta tables."},
+    {"step_number": 2, "command": "fabio lakehouse upload --workspace $WS_ID --id $LH_ID --source ./sales.csv --dest Files/staging/sales.csv", "description": "Upload source data."},
+    {"step_number": 3, "command": "fabio lakehouse load-table --workspace $WS_ID --id $LH_ID --table sales --path Files/staging/sales.csv --mode Overwrite --format Csv --header true", "description": "Load CSV into Delta table."},
+    {"step_number": 4, "command": "fabio semantic-model create --workspace $WS_ID --name \"SalesModel\" --file ./tmdl/model.tmdl --file ./tmdl/definition/tables/sales.tmdl --file ./tmdl/definition.pbism", "description": "Create Direct Lake semantic model from TMDL."},
+    {"step_number": 5, "command": "fabio semantic-model refresh --workspace $WS_ID --id $SM_ID", "description": "Frame the model (required before DAX queries work)."},
+    {"step_number": 6, "command": "fabio semantic-model takeover --workspace $WS_ID --id $SM_ID", "description": "Optional: enable portal editing."},
+    {"step_number": 7, "command": "fabio report create --workspace $WS_ID --name \"Sales Report\" --dataset $SM_ID", "description": "Create report bound to the semantic model."}
+  ],
+  "tips": [
+    "TMDL is required for Direct Lake; model.bim cannot express directLake partitions.",
+    "definition.pbism must use version 4.2 with Fabric schema URL.",
+    "Use --query 'data.id' to extract created item IDs from each step."
+  ]
+}

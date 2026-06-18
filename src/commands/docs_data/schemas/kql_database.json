@@ -1,0 +1,34 @@
+{
+  "type": "KQLDatabase",
+  "description": "Kusto Query Language database for real-time analytics. Must belong to an Eventhouse",
+  "create_command": "fabio kql-database create --workspace <WS> --name <NAME> --eventhouse-id <EH_ID>",
+  "definition_format": null,
+  "definition_parts": [
+    {"path": "KQLDatabaseProperties.json", "description": "Database configuration (retention, caching policies)"}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}",
+    "creationPayload": {
+      "databaseType": "ReadWrite",
+      "parentEventhouseItemId": "{{eventhouse_id}}"
+    }
+  },
+  "flags": {
+    "--eventhouse-id": "Parent Eventhouse item ID (required for ReadWrite)",
+    "--database-type": "ReadWrite (default) or ReadOnlyFollowing"
+  },
+  "notes": [
+    "ReadWrite requires --eventhouse-id in creation payload",
+    "ReadOnlyFollowing requires source database reference instead",
+    "Query endpoint uses Kusto REST API (not Fabric API) with token scoped to cluster URI",
+    "Management commands (.create table, etc.) use /v1/rest/mgmt endpoint",
+    "Data queries use /v2/rest/query endpoint",
+    "Query URI resolved from properties.queryServiceUri"
+  ],
+  "related_commands": [
+    "fabio kql-database query --workspace <WS> --id <ID> --kql <QUERY>",
+    "fabio kql-database get-definition --workspace <WS> --id <ID>",
+    "fabio kql-database update-definition --workspace <WS> --id <ID> --file <FILE>",
+    "fabio kql-database list --workspace <WS>"
+  ]
+}

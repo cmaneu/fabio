@@ -1,0 +1,34 @@
+{
+  "type": "Ontology",
+  "description": "Knowledge graph schema with entity types, relationship types, and data bindings to lakehouses",
+  "create_command": "fabio ontology create --workspace <WS> --name <NAME>",
+  "definition_format": null,
+  "definition_parts": [
+    {"path": "definition.json", "description": "Root definition (usually {})"},
+    {"path": "EntityTypes/<ID>/definition.json", "description": "Entity type with properties, namespace must be 'usertypes'"},
+    {"path": "EntityTypes/<ID>/DataBindings/<UUID>.json", "description": "Data binding linking entity to lakehouse table"},
+    {"path": "RelationshipTypes/<ID>/definition.json", "description": "Relationship between entity types (source/target)"}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "Ontology display name",
+    "--description": "Optional description",
+    "--dir": "Directory with Fabric ontology structure (EntityTypes/, RelationshipTypes/)",
+    "--decode": "Add decodedPayload field to get-definition output"
+  },
+  "notes": [
+    "Data binding sourceType must be FIRST key in sourceTableProperties (JSON key ordering matters!)",
+    "Data binding IDs must be valid UUIDs (non-UUID values are silently dropped)",
+    "Property value types: String, Boolean, DateTime, Object, BigInt, Double",
+    "Entity type required: id, namespace ('usertypes'), name, namespaceType ('Custom')",
+    "getDefinition/updateDefinition are both LRO"
+  ],
+  "related_commands": [
+    "fabio ontology get-definition --workspace <WS> --id <ID> [--decode]",
+    "fabio ontology update-definition --workspace <WS> --id <ID> --dir <DIR>",
+    "fabio ontology list --workspace <WS>",
+    "fabio ontology delete --workspace <WS> --id <ID>"
+  ]
+}

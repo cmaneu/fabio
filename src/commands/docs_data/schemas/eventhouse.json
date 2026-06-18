@@ -1,0 +1,29 @@
+{
+  "type": "Eventhouse",
+  "description": "Container for KQL databases. Provides the Kusto engine for real-time intelligence",
+  "create_command": "fabio eventhouse create --workspace <WS> --name <NAME>",
+  "definition_format": null,
+  "definition_parts": [
+    {"path": "EventhouseProperties.json", "description": "Eventhouse configuration properties"}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "Eventhouse display name",
+    "--description": "Optional description"
+  },
+  "notes": [
+    "Create is LRO (can take 30-60 seconds)",
+    "No definition needed for basic creation",
+    "After creation, create KQL databases inside it with --eventhouse-id",
+    "Definition file is EventhouseProperties.json (PascalCase)",
+    "getDefinition is LRO"
+  ],
+  "related_commands": [
+    "fabio eventhouse list --workspace <WS>",
+    "fabio eventhouse show --workspace <WS> --id <ID>",
+    "fabio eventhouse delete --workspace <WS> --id <ID>",
+    "fabio kql-database create --workspace <WS> --name <NAME> --eventhouse-id <EH_ID>"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "type": "SQLDatabase",
+  "description": "Fabric SQL Database with full T-SQL support (requires F4+ capacity)",
+  "create_command": "fabio sql-database create --workspace <WS> --name <NAME>",
+  "definition_format": "dacpac or sqlproj",
+  "definition_parts": [],
+  "creation_body_template": {
+    "displayName": "{{name}}",
+    "creationPayload": {
+      "creationMode": "New",
+      "backupRetentionDays": 7
+    }
+  },
+  "flags": {
+    "--name": "Database display name",
+    "--creation-mode": "New (default), Restore, or RestoreDeletedDatabase",
+    "--backup-retention-days": "Backup retention (default 7)",
+    "--collation": "Database collation",
+    "--source-workspace": "Source workspace for Restore mode",
+    "--source-id": "Source database ID for Restore mode",
+    "--restore-point": "ISO 8601 timestamp for point-in-time restore"
+  },
+  "notes": [
+    "REQUIRES F4+ capacity (F2 fails with error 18456 State 240 on TDS)",
+    "Creation modes: New (fresh), Restore (point-in-time), RestoreDeletedDatabase",
+    "Auto-creates a companion SQLEndpoint item",
+    "Import command: reads CSV/JSON, infers types, generates CREATE TABLE + batched INSERTs",
+    "Hard delete: --hard-delete permanently removes (vs soft delete for restore)",
+    "connection-string resolves serverFqdn from properties automatically"
+  ],
+  "related_commands": [
+    "fabio sql-database query --workspace <WS> --id <ID> --sql <QUERY>",
+    "fabio sql-database connection-string --workspace <WS> --id <ID>",
+    "fabio sql-database import --workspace <WS> --id <ID> --file <CSV> --table <NAME>",
+    "fabio sql-database list --workspace <WS>",
+    "fabio sql-database delete --workspace <WS> --id <ID> [--hard-delete]"
+  ]
+}

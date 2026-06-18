@@ -1,0 +1,19 @@
+{
+  "command": "fabio lakehouse list-tables --workspace $WS_ID --id $LH_ID",
+  "description": "Lists all Delta tables in a lakehouse with name, type, and format.",
+  "response": {
+    "data": [
+      {"name": "customers", "type": "Managed", "format": "delta"},
+      {"name": "orders", "type": "Managed", "format": "delta"},
+      {"name": "products", "type": "Managed", "format": "delta"},
+      {"name": "order_items", "type": "Managed", "format": "delta"}
+    ],
+    "count": 4
+  },
+  "query_examples": [
+    {"query": "data[].name", "description": "Extract all table names as a flat array."},
+    {"query": "data[?name=='orders']", "description": "Find a specific table by name."},
+    {"query": "count", "description": "Get the total number of tables."},
+    {"query": "data[0].name", "description": "Get the first table name."}
+  ]
+}

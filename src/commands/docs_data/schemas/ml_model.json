@@ -1,0 +1,26 @@
+{
+  "type": "MLModel",
+  "description": "Machine learning model registry item (CRUD only, no definition support)",
+  "create_command": "fabio ml-model create --workspace <WS> --name <NAME>",
+  "definition_format": null,
+  "definition_parts": [],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "Model display name",
+    "--description": "Optional description"
+  },
+  "notes": [
+    "CRUD only - no getDefinition/updateDefinition support",
+    "Create is LRO",
+    "Models are registered and managed through Spark/MLflow code, not REST definitions",
+    "Use Notebooks with MLflow tracking to log models to this registry item"
+  ],
+  "related_commands": [
+    "fabio ml-model list --workspace <WS>",
+    "fabio ml-model show --workspace <WS> --id <ID>",
+    "fabio ml-model update --workspace <WS> --id <ID> --name <NEW_NAME>",
+    "fabio ml-model delete --workspace <WS> --id <ID>"
+  ]
+}

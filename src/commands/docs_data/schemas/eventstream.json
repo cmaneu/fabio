@@ -1,0 +1,31 @@
+{
+  "type": "Eventstream",
+  "description": "Real-time event routing with sources, destinations, streams, and operators",
+  "create_command": "fabio eventstream create --workspace <WS> --name <NAME>",
+  "definition_format": null,
+  "definition_parts": [
+    {"path": "eventstream.json", "description": "Topology with sources, destinations, streams, operators, and compatibilityLevel"},
+    {"path": "eventstreamProperties.json", "description": "Retention (1-90 days) and throughput level (Low/Medium/High)"}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "Eventstream display name"
+  },
+  "notes": [
+    "Topology is graph-based: nodes reference each other via inputNodes arrays",
+    "Source types: CustomEndpoint, AzureEventHub, SampleData, AmazonKinesis, etc.",
+    "Destination types: Eventhouse, Lakehouse, CustomEndpoint, Activator",
+    "Eventhouse destination itemId must be KQL Database ID (not Eventhouse ID)",
+    "Use add-source/add-destination helpers to avoid manual definition crafting",
+    "compatibilityLevel should be '1.1'"
+  ],
+  "related_commands": [
+    "fabio eventstream add-source --workspace <WS> --id <ID> --name <N> --source-type CustomEndpoint",
+    "fabio eventstream add-destination --workspace <WS> --id <ID> --name <N> --destination-type Eventhouse --input-node <NODE> --properties <JSON>",
+    "fabio eventstream get-source-connection --workspace <WS> --id <ID> --source-id <SID>",
+    "fabio eventstream pause --workspace <WS> --id <ID>",
+    "fabio eventstream resume --workspace <WS> --id <ID>"
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "type": "Connection",
+  "description": "Tenant-level shared connection to external data sources (not workspace-scoped)",
+  "create_command": "fabio connection create --content <JSON>",
+  "definition_format": null,
+  "definition_parts": [],
+  "creation_body_template": {
+    "displayName": "{{name}}",
+    "connectivityType": "ShareableCloud",
+    "connectionDetails": {
+      "type": "{{connection_type}}",
+      "creationMethod": "{{method}}",
+      "parameters": [{"dataType": "Text", "name": "server", "value": "{{server}}"}]
+    },
+    "credentialDetails": {
+      "singleSignOnType": "None",
+      "connectionEncryption": "NotEncrypted",
+      "skipTestConnection": false,
+      "credentials": {"credentialType": "{{cred_type}}"}
+    },
+    "privacyLevel": "Organizational"
+  },
+  "flags": {
+    "--content": "Full connection JSON body (inline or @file)"
+  },
+  "notes": [
+    "Tenant-level scope: endpoints at /connections/{id} (NO workspace prefix)",
+    "Connectivity types: ShareableCloud, OnPremises, VirtualNetworkGateway, PersonalCloud",
+    "Credential types: Basic, OAuth2, Key, Anonymous, ServicePrincipal, WorkspaceIdentity",
+    "Privacy levels: None, Public, Organizational, Private",
+    "Parameters provided as JSON object are converted to array format automatically",
+    "list-supported-types returns all available connection type definitions"
+  ],
+  "related_commands": [
+    "fabio connection list",
+    "fabio connection show --id <ID>",
+    "fabio connection update --id <ID> --content <JSON>",
+    "fabio connection delete --id <ID>",
+    "fabio connection list-supported-types"
+  ]
+}

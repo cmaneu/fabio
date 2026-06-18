@@ -918,6 +918,11 @@ fabio operation get-result   Get result of a completed operation
 
 fabio agent-context          Machine-readable command schema for AI agents
 
+fabio docs list              List available documentation topics
+fabio docs item-schema <TYPE>  Show definition schema for an item type (Notebook, DataPipeline, etc.)
+fabio docs workflow <NAME>   Show a multi-step workflow recipe (rti-pipeline, cicd-deploy, etc.)
+fabio docs output-example <GROUP> <CMD>  Show example output for a command
+
 fabio upgrade             Update fabio to the latest release from GitHub
 fabio upgrade --check     Only check if an update is available
 fabio upgrade --target-version <VER>  Install a specific version

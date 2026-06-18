@@ -1,0 +1,33 @@
+{
+  "type": "Notebook",
+  "description": "Jupyter notebook for Spark/Python code execution in Fabric",
+  "create_command": "fabio notebook create --workspace <WS> --name <NAME> --source <FILE>",
+  "definition_format": "ipynb",
+  "definition_parts": [
+    {"path": "notebook-content.py", "description": "Python source code (cells separated by '# CELL ********************' markers)"}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}",
+    "type": "Notebook"
+  },
+  "flags": {
+    "--source": "Path to .py or .ipynb file",
+    "--lakehouse": "Lakehouse ID to bind as default lakehouse",
+    "--lakehouse-name": "Display name of the lakehouse",
+    "--lakehouse-workspace": "Workspace ID containing the lakehouse"
+  },
+  "notes": [
+    "Cell source in ipynb must be array of strings (one per line with \\n), not a single string",
+    "Use --strip-output on get-definition to remove cell outputs/execution_count",
+    "Run with --wait to poll until completion (default timeout 600s)",
+    "--lakehouse injects trident metadata for default lakehouse binding",
+    "Spark cold start on small capacity can take 2-5 minutes"
+  ],
+  "related_commands": [
+    "fabio notebook run --workspace <WS> --id <ID> [--wait] [--timeout 600]",
+    "fabio notebook get-definition --workspace <WS> --id <ID> [--strip-output]",
+    "fabio notebook status --workspace <WS> --id <ID> --job-id <JOB>",
+    "fabio notebook stop --workspace <WS> --id <ID> --job-id <JOB>",
+    "fabio notebook delete --workspace <WS> --id <ID>"
+  ]
+}

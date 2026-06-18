@@ -1,0 +1,19 @@
+{
+  "name": "Data Agent Creation and Configuration",
+  "description": "Create a Data Agent, connect to a lakehouse, configure tables, add few-shots, test, and publish.",
+  "prerequisites": ["Authenticated via fabio auth login", "Workspace with F2+ capacity", "Lakehouse with populated tables"],
+  "steps": [
+    {"step_number": 1, "command": "fabio data-agent create --workspace $WS_ID --name \"SalesAgent\"", "description": "Create a new Data Agent."},
+    {"step_number": 2, "command": "fabio data-agent add-datasource --workspace $WS_ID --id $AGENT_ID --artifact-id $LH_ID --artifact-workspace $WS_ID --name \"SalesLH\" --type lakehouse_tables", "description": "Connect agent to lakehouse."},
+    {"step_number": 3, "command": "fabio data-agent select-tables --workspace $WS_ID --id $AGENT_ID --datasource-name \"SalesLH\" --tables orders,customers,products", "description": "Select queryable tables."},
+    {"step_number": 4, "command": "fabio data-agent add-fewshot --workspace $WS_ID --id $AGENT_ID --datasource-name \"SalesLH\" --question \"Top 5 customers by revenue?\" --answer \"SELECT TOP 5 ...\"", "description": "Add few-shot example."},
+    {"step_number": 5, "command": "fabio data-agent query --workspace $WS_ID --id $AGENT_ID --stage sandbox --question \"How many orders last month?\"", "description": "Test in sandbox mode."},
+    {"step_number": 6, "command": "fabio data-agent publish --workspace $WS_ID --id $AGENT_ID", "description": "Publish to production."}
+  ],
+  "tips": [
+    "Max 5 datasources per agent, 100 fewshots per datasource.",
+    "Use --stage production on query to test published version.",
+    "Use fabio data-agent upload-fewshots --file examples.csv for bulk loading.",
+    "Use fabio data-agent describe-element to add column descriptions."
+  ]
+}

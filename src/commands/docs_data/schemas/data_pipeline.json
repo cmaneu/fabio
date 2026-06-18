@@ -1,0 +1,30 @@
+{
+  "type": "DataPipeline",
+  "description": "Orchestration pipeline with activities (Copy, Notebook, ForEach, etc.)",
+  "create_command": "fabio data-pipeline create --workspace <WS> --name <NAME>",
+  "definition_format": null,
+  "definition_parts": [
+    {"path": "pipeline-content.json", "description": "Pipeline JSON with activities array, parameters, and annotations"}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "Pipeline display name",
+    "--description": "Optional description"
+  },
+  "notes": [
+    "Create is LRO (returns 202, polls until complete)",
+    "Run with: fabio data-pipeline run --workspace <WS> --id <ID>",
+    "Job type for run is 'Pipeline' (PascalCase)",
+    "Supports schedule management (create-schedule, list-schedules, etc.)",
+    "Definition getDefinition/updateDefinition are both LRO"
+  ],
+  "related_commands": [
+    "fabio data-pipeline run --workspace <WS> --id <ID>",
+    "fabio data-pipeline get-definition --workspace <WS> --id <ID>",
+    "fabio data-pipeline update-definition --workspace <WS> --id <ID> --file <FILE>",
+    "fabio data-pipeline create-schedule --workspace <WS> --id <ID> --content <JSON>",
+    "fabio data-pipeline list-instances --workspace <WS> --id <ID>"
+  ]
+}

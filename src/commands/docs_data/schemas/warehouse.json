@@ -1,0 +1,29 @@
+{
+  "type": "Warehouse",
+  "description": "Synapse Data Warehouse with full T-SQL support and TDS connectivity",
+  "create_command": "fabio warehouse create --workspace <WS> --name <NAME>",
+  "definition_format": null,
+  "definition_parts": [],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "Warehouse display name",
+    "--description": "Optional description"
+  },
+  "notes": [
+    "Create is LRO",
+    "No definition parts needed for creation",
+    "Query via TDS: connection string is <id>.datawarehouse.fabric.microsoft.com",
+    "Supports three-part naming for cross-database queries within same workspace",
+    "SQL input accepts inline --sql, @file path, or stdin piping",
+    "connection-string command resolves the endpoint automatically"
+  ],
+  "related_commands": [
+    "fabio warehouse query --workspace <WS> --id <ID> --sql <QUERY>",
+    "fabio warehouse connection-string --workspace <WS> --id <ID>",
+    "fabio warehouse list --workspace <WS>",
+    "fabio warehouse show --workspace <WS> --id <ID>",
+    "fabio warehouse delete --workspace <WS> --id <ID>"
+  ]
+}

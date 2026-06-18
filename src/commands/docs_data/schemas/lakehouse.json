@@ -1,0 +1,31 @@
+{
+  "type": "Lakehouse",
+  "description": "Delta Lake storage with SQL analytics endpoint. Core storage artifact in Fabric",
+  "create_command": "fabio lakehouse create --workspace <WS> --name <NAME> [--enable-schemas]",
+  "definition_format": null,
+  "definition_parts": [],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "Lakehouse display name",
+    "--enable-schemas": "Enable multi-schema lakehouse (adds creationPayload.enableSchemas=true)",
+    "--description": "Optional description"
+  },
+  "notes": [
+    "Create is LRO (202, polls until complete)",
+    "No definition parts needed for creation (empty definition)",
+    "Tables are Delta format under Tables/ path",
+    "Files stored under Files/ path",
+    "Auto-creates a companion SQL analytics endpoint",
+    "Use --enable-schemas for multi-schema support (cannot be changed after creation)"
+  ],
+  "related_commands": [
+    "fabio lakehouse tables --workspace <WS> --id <ID>",
+    "fabio lakehouse upload --workspace <WS> --id <ID> --source <FILE> --dest-path <PATH>",
+    "fabio lakehouse load-table --workspace <WS> --id <ID> --table <NAME> --path <FILE> --format Csv",
+    "fabio lakehouse query --workspace <WS> --id <ID> --sql <QUERY>",
+    "fabio lakehouse sync --source-workspace <WS> --source-id <ID> --dest-workspace <WS> --dest-id <ID>",
+    "fabio lakehouse create-shortcut --workspace <WS> --id <ID> --name <NAME> --path <PATH> --target <JSON>"
+  ]
+}

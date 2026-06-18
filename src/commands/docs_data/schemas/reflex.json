@@ -1,0 +1,31 @@
+{
+  "type": "Reflex",
+  "description": "Data Activator triggers and alerts based on real-time data conditions",
+  "create_command": "fabio reflex create --workspace <WS> --name <NAME>",
+  "definition_format": "json",
+  "definition_parts": [
+    {"path": "ReflexEntities.json", "description": "JSON array of entity objects (containers, sources, views, rules)"}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "Reflex display name",
+    "--description": "Optional description"
+  },
+  "notes": [
+    "Entity types: container-v1, simulatorSource-v1, kqlSource-v1, realTimeHubSource-v1, fabricItemAction-v1, timeSeriesView-v1",
+    "timeSeriesView-v1 subtypes via definition.type: Event, Object, Attribute, Rule",
+    "updateDefinition does NOT accept 'format' field (unlike create)",
+    "updateDefinition returns 200 immediately (not LRO) for valid definitions",
+    "Hierarchy: Container -> Source -> Event View -> Object -> Attributes + Rules",
+    "Rule actions: TeamsMessage, EmailMessage, FabricItemInvocation",
+    "Use AttributeTrigger for programmatic rules (EventTrigger requires portal setup)"
+  ],
+  "related_commands": [
+    "fabio reflex get-definition --workspace <WS> --id <ID>",
+    "fabio reflex update-definition --workspace <WS> --id <ID> --file <FILE>",
+    "fabio reflex list --workspace <WS>",
+    "fabio reflex delete --workspace <WS> --id <ID>"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "type": "MLExperiment",
+  "description": "Machine learning experiment tracking item (CRUD only, no definition support)",
+  "create_command": "fabio ml-experiment create --workspace <WS> --name <NAME>",
+  "definition_format": null,
+  "definition_parts": [],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "Experiment display name",
+    "--description": "Optional description"
+  },
+  "notes": [
+    "CRUD only - no getDefinition/updateDefinition support",
+    "Create is LRO",
+    "Experiments track runs/metrics via Spark/MLflow, not REST definitions",
+    "Use Notebooks with MLflow to log runs, parameters, and metrics"
+  ],
+  "related_commands": [
+    "fabio ml-experiment list --workspace <WS>",
+    "fabio ml-experiment show --workspace <WS> --id <ID>",
+    "fabio ml-experiment update --workspace <WS> --id <ID> --name <NEW_NAME>",
+    "fabio ml-experiment delete --workspace <WS> --id <ID>"
+  ]
+}

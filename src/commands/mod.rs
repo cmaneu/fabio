@@ -77,6 +77,7 @@ pub mod upgrade;
 
 mod agent_context;
 mod completions;
+pub mod docs;
 
 use anyhow::Result;
 
@@ -239,6 +240,10 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Rest { command } => rest::execute(&cli, &client, command).await,
         Command::Rti { command } => rti::execute(&cli, &client, command).await,
         Command::AgentContext => agent_context::execute(&cli),
+        Command::Docs { command } => {
+            docs::execute(&cli, command);
+            Ok(())
+        }
         Command::Upgrade {
             check,
             target_version,

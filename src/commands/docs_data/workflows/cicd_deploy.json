@@ -1,0 +1,18 @@
+{
+  "name": "CI/CD Deployment Workflow",
+  "description": "Export definitions, parameterize for environments, plan and apply with content-hash convergence.",
+  "prerequisites": ["Authenticated via fabio auth login", "Source workspace with items", "Target workspace with capacity", "parameters.json (optional)"],
+  "steps": [
+    {"step_number": 1, "command": "fabio deploy export --workspace \"Development\" --dir ./export --overwrite", "description": "Export item definitions to local directory."},
+    {"step_number": 2, "command": "fabio deploy init-params --source ./export --out ./parameters.json", "description": "Scan for GUIDs and generate parameter template.", "notes": "Edit to fill environment-specific values."},
+    {"step_number": 3, "command": "fabio deploy plan --source ./export --workspace \"Production\" --parameters ./parameters.json --env prod", "description": "Generate changeset (create/update/delete/skip)."},
+    {"step_number": 4, "command": "fabio deploy plan ... --query 'data.summary'", "description": "Review summary counts."},
+    {"step_number": 5, "command": "fabio deploy apply --source ./export --workspace \"Production\" --parameters ./parameters.json --env prod", "description": "Execute the deployment."},
+    {"step_number": 6, "command": "fabio deploy plan ... --query 'data.summary'", "description": "Re-plan to verify convergence (all skip)."}
+  ],
+  "tips": [
+    "Use --dry-run on apply to preview without changes.",
+    "Use --delete-orphans to remove workspace items not in source.",
+    "Use --query 'data.changes[?action==`Create`].name' to list items being created."
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "type": "DataAgent",
+  "description": "AI-powered natural language to SQL/KQL agent with datasources and few-shot examples",
+  "create_command": "fabio data-agent create --workspace <WS> --name <NAME>",
+  "definition_format": null,
+  "definition_parts": [
+    {"path": "Files/Config/data_agent.json", "description": "Schema version reference (dataAgent/2.1.0)"},
+    {"path": "Files/Config/draft/stage_config.json", "description": "AI instructions and experimental settings"},
+    {"path": "Files/Config/draft/<type>-<Name>/datasource.json", "description": "Data source configuration per artifact"},
+    {"path": "Files/Config/draft/<type>-<Name>/fewshots.json", "description": "Few-shot Q&A examples per data source"},
+    {"path": "Files/Config/publish_info.json", "description": "Publish metadata (added on publish)"}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "Agent display name",
+    "--description": "Optional description"
+  },
+  "notes": [
+    "Datasources managed via add-datasource/remove-datasource subcommands",
+    "Max 5 datasources per agent, max 100 fewshots per datasource",
+    "Publish copies draft/* to published/* and adds publish_info.json",
+    "Query with --stage sandbox (draft) or production (published)",
+    "Datasource types: lakehouse_tables, data_warehouse, kusto, semantic_model, graph",
+    "Full definition required for datasource persistence (not single-part updates)"
+  ],
+  "related_commands": [
+    "fabio data-agent add-datasource --workspace <WS> --id <ID> --artifact-id <AID> --artifact-workspace <AWS>",
+    "fabio data-agent query --workspace <WS> --id <ID> --question <Q> [--stage sandbox]",
+    "fabio data-agent publish --workspace <WS> --id <ID>",
+    "fabio data-agent add-fewshot --workspace <WS> --id <ID> --datasource <DS> --question <Q> --answer <SQL>",
+    "fabio data-agent select-tables --workspace <WS> --id <ID> --datasource <DS> --tables <T1,T2>"
+  ]
+}

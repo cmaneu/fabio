@@ -1,0 +1,32 @@
+{
+  "type": "GraphQLApi",
+  "description": "GraphQL API endpoint backed by Fabric data sources (lakehouse, warehouse, SQL database)",
+  "create_command": "fabio graphql-api create --workspace <WS> --name <NAME>",
+  "definition_format": null,
+  "definition_parts": [
+    {"path": "graphql-definition.json", "description": "Datasources array with sourceItemId, sourceWorkspaceId, sourceType, and objects with field mappings"},
+    {"path": "schema.graphql", "description": "GraphQL schema (generated after datasource is configured)"}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "API display name",
+    "--description": "Optional description"
+  },
+  "notes": [
+    "Create is LRO (uses POST /graphqlApis endpoint)",
+    "updateDefinition is LRO",
+    "No schema.graphql in initial definition until a datasource is configured",
+    "sourceType values: SqlAnalyticsEndpoint (lakehouse), Warehouse, SqlDatabase",
+    "sourceItemId is the SQL analytics endpoint ID (not lakehouse/warehouse item ID)",
+    "Query endpoint: POST /graphqlApis/{id}/graphql with {\"query\":\"...\"}",
+    "Introspection (__schema) blocked by default unless tenant setting enabled"
+  ],
+  "related_commands": [
+    "fabio graphql-api get-definition --workspace <WS> --id <ID>",
+    "fabio graphql-api update-definition --workspace <WS> --id <ID> --file <FILE>",
+    "fabio graphql-api list --workspace <WS>",
+    "fabio graphql-api delete --workspace <WS> --id <ID>"
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "command": "fabio workspace list",
+  "description": "Lists all workspaces accessible to the authenticated user.",
+  "response": {
+    "data": [
+      {
+        "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "displayName": "Development",
+        "description": "Dev workspace for analytics team",
+        "type": "Workspace",
+        "capacityId": "f9e8d7c6-b5a4-3210-fedc-ba9876543210",
+        "capacityRegion": "westeurope"
+      },
+      {
+        "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+        "displayName": "Production",
+        "description": "",
+        "type": "Workspace",
+        "capacityId": "f9e8d7c6-b5a4-3210-fedc-ba9876543210",
+        "capacityRegion": "westeurope"
+      },
+      {
+        "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+        "displayName": "Sandbox",
+        "description": "Experimentation workspace",
+        "type": "Workspace",
+        "capacityId": null,
+        "capacityRegion": null
+      }
+    ],
+    "count": 3
+  },
+  "query_examples": [
+    {"query": "data[].displayName", "description": "List all workspace names."},
+    {"query": "data[?capacityId!=null].displayName", "description": "Workspaces with capacity assigned."},
+    {"query": "data[?displayName=='Production'].id | [0]", "description": "Get the Production workspace ID."},
+    {"query": "data[?capacityRegion=='westeurope'] | length(@)", "description": "Count workspaces in West Europe."}
+  ]
+}

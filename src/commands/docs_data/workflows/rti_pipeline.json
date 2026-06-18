@@ -1,0 +1,22 @@
+{
+  "name": "Real-Time Intelligence Pipeline",
+  "description": "Ingest events via EventStream into Eventhouse KQL Database.",
+  "prerequisites": ["Authenticated", "F2+ capacity", "Workspace assigned"],
+  "steps": [
+    {"step_number": 1, "command": "fabio workspace create --name \"rti-ws\"", "description": "Create workspace."},
+    {"step_number": 2, "command": "fabio workspace assign-capacity --id $WS --capacity $CAP", "description": "Assign capacity."},
+    {"step_number": 3, "command": "fabio eventhouse create --workspace $WS --name \"SensorEH\"", "description": "Create Eventhouse."},
+    {"step_number": 4, "command": "fabio kql-database create --workspace $WS --name \"DB\" --eventhouse-id $EH", "description": "Create KQL DB."},
+    {"step_number": 5, "command": "fabio kql-database query --workspace $WS --id $DB --kql \".create table Events (DeviceId:string,Temp:real,Ts:datetime)\"", "description": "Create table."},
+    {"step_number": 6, "command": "fabio kql-database query --workspace $WS --id $DB --kql \".create-or-alter table Events ingestion json mapping 'M' '[...]'\"", "description": "Create map."},
+    {"step_number": 7, "command": "fabio eventstream create --workspace $WS --name \"Stream\"", "description": "Create EventStream."},
+    {"step_number": 8, "command": "fabio eventstream add-source --workspace $WS --id $ES --name \"src\" --source-type CustomEndpoint", "description": "Add source."},
+    {"step_number": 9, "command": "fabio eventstream add-destination --workspace $WS --id $ES --name \"dest\" --destination-type Eventhouse --input-node \"src-stream\" --properties '{...}'", "description": "Route to KQL DB (itemId=DB ID, tableName, mapping)."},
+    {"step_number": 10, "command": "fabio kql-database query --workspace $WS --id $DB --kql \"Events | take 10\"", "description": "Verify."}
+  ],
+  "tips": [
+    "itemId must be KQL Database ID, not Eventhouse ID.",
+    "DirectIngestion needs table+mapping; ProcessedIngestion auto-creates.",
+    "Get conn: fabio eventstream get-source-connection"
+  ]
+}

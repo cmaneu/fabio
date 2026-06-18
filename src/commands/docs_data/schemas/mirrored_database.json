@@ -1,0 +1,30 @@
+{
+  "type": "MirroredDatabase",
+  "description": "Database mirroring from external sources (Azure SQL, Cosmos DB, Snowflake, etc.) into Fabric",
+  "create_command": "fabio mirrored-database create --workspace <WS> --name <NAME>",
+  "definition_format": null,
+  "definition_parts": [
+    {"path": "mirroring.json", "description": "Mirroring configuration with source database connection and table mappings"}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "Mirrored database display name",
+    "--description": "Optional description"
+  },
+  "notes": [
+    "Create uses type-specific endpoint POST /mirroredDatabases (not generic /items)",
+    "Create is LRO",
+    "Start/stop mirroring: POST .../startMirroring and .../stopMirroring with empty body {}",
+    "Status endpoints use GET (not POST): GET .../getMirroringStatus",
+    "getDefinition/updateDefinition are both LRO"
+  ],
+  "related_commands": [
+    "fabio mirrored-database start --workspace <WS> --id <ID>",
+    "fabio mirrored-database stop --workspace <WS> --id <ID>",
+    "fabio mirrored-database status --workspace <WS> --id <ID>",
+    "fabio mirrored-database table-status --workspace <WS> --id <ID>",
+    "fabio mirrored-database get-definition --workspace <WS> --id <ID>"
+  ]
+}

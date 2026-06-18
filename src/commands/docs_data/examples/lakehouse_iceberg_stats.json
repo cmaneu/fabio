@@ -1,0 +1,24 @@
+{
+  "command": "fabio lakehouse iceberg-stats --workspace $WS_ID --id $LH_ID --namespace dbo --table orders",
+  "description": "Returns summary statistics from the latest Iceberg snapshot (record count, file count, total size).",
+  "response": {
+    "data": {
+      "table": "orders",
+      "namespace": "dbo",
+      "snapshot_id": 1938475620183746,
+      "timestamp_ms": 1718700000000,
+      "operation": "append",
+      "total_records": 24850,
+      "total_data_files": 4,
+      "total_files_size": 1048576,
+      "added_records": 500,
+      "added_data_files": 1
+    }
+  },
+  "query_examples": [
+    {"query": "data.total_records", "description": "Get the total number of records."},
+    {"query": "data.total_files_size", "description": "Get total size in bytes."},
+    {"query": "data.operation", "description": "Get the last operation type (append/overwrite/delete)."},
+    {"query": "data.{records: total_records, files: total_data_files, size_bytes: total_files_size}", "description": "Project a custom summary object."}
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "type": "SemanticModel",
+  "description": "Power BI semantic model (dataset) for analytics. Supports Direct Lake (TMDL) and Import (model.bim)",
+  "create_command": "fabio semantic-model create --workspace <WS> --name <NAME> --file <TMDL_OR_BIM>",
+  "definition_format": "TMDL (Direct Lake) or model.bim (Import)",
+  "definition_parts": [
+    {"path": "definition.pbism", "description": "Required entry point. TMDL: {\"version\":\"4.2\",\"settings\":{}} with schema URL. model.bim: {\"version\":\"3.0\"}"},
+    {"path": "model.tmdl", "description": "TMDL: model-level settings and expressions"},
+    {"path": "definition/tables/<Name>.tmdl", "description": "TMDL: one file per table with columns/measures/partitions"},
+    {"path": "model.bim", "description": "Import: full tabular model JSON (compatibilityLevel 1604, powerBI_V3)"}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}",
+    "type": "SemanticModel"
+  },
+  "flags": {
+    "--file": "Path to .tmdl files or model.bim",
+    "--connection": "SQL Analytics Endpoint ID for Direct Lake binding"
+  },
+  "notes": [
+    "Direct Lake REQUIRES TMDL format (model.bim cannot express directLake partitions)",
+    "model.bim MUST use compatibilityLevel 1604 and powerBI_V3",
+    "After creation, call refresh to frame Direct Lake: fabio semantic-model refresh",
+    "Call takeover to make editable in portal: fabio semantic-model takeover",
+    "definition.pbism is ALWAYS required regardless of format"
+  ],
+  "related_commands": [
+    "fabio semantic-model refresh --workspace <WS> --id <ID>",
+    "fabio semantic-model query --workspace <WS> --id <ID> --dax <QUERY>",
+    "fabio semantic-model takeover --workspace <WS> --id <ID>",
+    "fabio semantic-model bind-connection --workspace <WS> --id <ID> --connection-id <CID>",
+    "fabio semantic-model get-definition --workspace <WS> --id <ID>"
+  ]
+}

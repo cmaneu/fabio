@@ -1,0 +1,17 @@
+{
+  "name": "Lakehouse ETL Data Pipeline",
+  "description": "Create a lakehouse, develop a notebook with ETL logic, run it, verify results, and schedule recurring execution.",
+  "prerequisites": ["Authenticated via fabio auth login", "Workspace with F2+ capacity", "Source data files available"],
+  "steps": [
+    {"step_number": 1, "command": "fabio lakehouse create --workspace $WS_ID --name \"ETLLakehouse\"", "description": "Create target lakehouse."},
+    {"step_number": 2, "command": "fabio notebook create --workspace $WS_ID --name \"DailyETL\" --file ./etl.py --lakehouse $LH_ID", "description": "Create notebook bound to lakehouse.", "notes": "--lakehouse injects trident metadata for default lakehouse binding."},
+    {"step_number": 3, "command": "fabio notebook run --workspace $WS_ID --id $NB_ID --wait --timeout 1200", "description": "Execute notebook, wait up to 20 min."},
+    {"step_number": 4, "command": "fabio lakehouse list-tables --workspace $WS_ID --id $LH_ID", "description": "Verify ETL created expected tables."},
+    {"step_number": 5, "command": "fabio job-scheduler create-schedule --workspace $WS_ID --id $NB_ID --job-type RunNotebook --content '{\"configuration\":{\"type\":\"Cron\",\"interval\":1440,\"startDateTime\":\"2025-01-01T06:00:00Z\",\"localTimeZoneId\":\"UTC\"},\"enabled\":true}'", "description": "Schedule daily at 06:00 UTC."}
+  ],
+  "tips": [
+    "Use --parameters for notebook run parameters.",
+    "First Spark run takes 2-5 min (cold start) on small capacity.",
+    "Use --query 'data.status' to check run result."
+  ]
+}

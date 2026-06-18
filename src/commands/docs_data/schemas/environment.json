@@ -1,0 +1,31 @@
+{
+  "type": "Environment",
+  "description": "Spark environment with libraries and compute settings. Uses staging/publish workflow",
+  "create_command": "fabio environment create --workspace <WS> --name <NAME>",
+  "definition_format": null,
+  "definition_parts": [
+    {"path": "environment.metadata.json", "description": "Environment metadata and configuration"}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "Environment display name",
+    "--description": "Optional description"
+  },
+  "notes": [
+    "Create is LRO",
+    "Changes are staged first, then published as separate step",
+    "Publish is fire-and-forget: POST .../staging/publish with empty body",
+    "Spark settings: GET .../sparkcompute (published) vs GET .../staging/sparkcompute (pending)",
+    "Library upload: POST .../staging/libraries/{libraryName} with octet-stream body",
+    "Cancel publish available if publish is in progress"
+  ],
+  "related_commands": [
+    "fabio environment publish --workspace <WS> --id <ID>",
+    "fabio environment cancel-publish --workspace <WS> --id <ID>",
+    "fabio environment get-spark-settings --workspace <WS> --id <ID>",
+    "fabio environment get-staging-spark-settings --workspace <WS> --id <ID>",
+    "fabio environment upload-staging-library --workspace <WS> --id <ID> --file <FILE>"
+  ]
+}

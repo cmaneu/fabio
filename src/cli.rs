@@ -555,6 +555,12 @@ pub enum Command {
     /// Machine-readable CLI schema for agent introspection
     #[command(name = "agent-context", display_order = 65)]
     AgentContext,
+    /// Offline documentation for AI agents (item schemas, workflows, output examples)
+    #[command(display_order = 65)]
+    Docs {
+        #[command(subcommand)]
+        command: crate::commands::docs::DocsCommand,
+    },
     /// Upgrade fabio to the latest release from GitHub
     #[command(display_order = 66)]
     Upgrade {

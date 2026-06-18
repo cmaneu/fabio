@@ -1,0 +1,34 @@
+{
+  "command": "fabio lakehouse iceberg-table --workspace $WS_ID --id $LH_ID --namespace dbo --table orders",
+  "description": "Full Apache Iceberg table metadata: schema, partitions, snapshots, properties.",
+  "response": {
+    "data": {
+      "format-version": 2,
+      "table-uuid": "a3c7e1f2-4b89-4d12-9e56-7f8a1b2c3d4e",
+      "location": "abfss://c4d5e6f7@onelake.dfs.fabric.microsoft.com/b1c2d3e4/Tables/dbo/orders",
+      "schemas": [{
+        "schema-id": 0,
+        "type": "struct",
+        "fields": [
+          {"id": 1, "name": "order_id", "type": "long", "required": true},
+          {"id": 2, "name": "customer_id", "type": "long", "required": true},
+          {"id": 3, "name": "order_date", "type": "date", "required": false},
+          {"id": 4, "name": "amount", "type": "decimal(10,2)", "required": false},
+          {"id": 5, "name": "status", "type": "string", "required": false}
+        ]
+      }],
+      "current-schema-id": 0,
+      "partition-specs": [{"spec-id": 0, "fields": []}],
+      "sort-orders": [{"order-id": 0, "fields": []}],
+      "properties": {"delta.columnMapping.mode": "name"},
+      "current-snapshot-id": 1938475620183746,
+      "snapshots": [{"snapshot-id": 1938475620183746, "timestamp-ms": 1718700000000, "summary": {"operation": "append", "total-records": "24850", "total-data-files": "4"}}]
+    }
+  },
+  "query_examples": [
+    {"query": "data.schemas[0].fields[].name", "description": "List all column names."},
+    {"query": "data.schemas[0].fields[?required==`true`].name", "description": "Required columns only."},
+    {"query": "data.snapshots[-1].summary.\"total-records\"", "description": "Record count from latest snapshot."},
+    {"query": "data.properties", "description": "All table properties."}
+  ]
+}

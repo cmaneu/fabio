@@ -1,0 +1,29 @@
+{
+  "type": "SparkJobDefinition",
+  "description": "Spark batch job with main file, arguments, and Spark configuration",
+  "create_command": "fabio spark-job-definition create --workspace <WS> --name <NAME>",
+  "definition_format": "SparkJobDefinitionV2",
+  "definition_parts": [
+    {"path": "SparkJobDefinitionV2.json", "description": "Job configuration with mainFile, args, language, spark conf"}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "Job definition display name",
+    "--description": "Optional description"
+  },
+  "notes": [
+    "Create is LRO",
+    "getDefinition/updateDefinition use type-specific endpoints (not generic items)",
+    "Run job type is 'sparkjob' (lowercase)",
+    "Format auto-detected as SparkJobDefinitionV2 when .platform lacks definitionFormat",
+    "Definition JSON includes mainFile path, arguments array, language, and Spark properties"
+  ],
+  "related_commands": [
+    "fabio spark-job-definition run --workspace <WS> --id <ID> [--wait]",
+    "fabio spark-job-definition get-definition --workspace <WS> --id <ID>",
+    "fabio spark-job-definition update-definition --workspace <WS> --id <ID> --file <FILE>",
+    "fabio spark-job-definition list --workspace <WS>"
+  ]
+}

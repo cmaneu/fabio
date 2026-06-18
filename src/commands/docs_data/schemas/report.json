@@ -1,0 +1,35 @@
+{
+  "type": "Report",
+  "description": "Power BI report bound to a semantic model. Supports PBIR and PBIR-Legacy formats",
+  "create_command": "fabio report create --workspace <WS> --name <NAME> --dataset <SEMANTIC_MODEL_ID>",
+  "definition_format": "PBIR-Legacy (report.json) or PBIR (definition/ folder)",
+  "definition_parts": [
+    {"path": "definition.pbir", "description": "REQUIRED. Semantic model binding (pbiModelDatabaseName = semantic model UUID)"},
+    {"path": "report.json", "description": "PBIR-Legacy: all pages and visuals in one file"},
+    {"path": "definition/version.json", "description": "PBIR: version metadata (version must be semver like '4.0.0')"},
+    {"path": "definition/report.json", "description": "PBIR: report-level settings and theme"},
+    {"path": "definition/pages/pages.json", "description": "PBIR: page ordering"}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}",
+    "type": "Report"
+  },
+  "flags": {
+    "--dataset": "Semantic model ID to bind (auto-generates definition.pbir + blank report.json)",
+    "--file": "Path to definition.pbir file",
+    "--report-json": "Path to report.json (PBIR-Legacy)"
+  },
+  "notes": [
+    "--dataset is the simplest path: auto-generates both definition files",
+    "definition.pbir is ALWAYS required for update-definition (even if only updating visuals)",
+    "PBIR-Legacy with prototypeQuery is REQUIRED for visuals that render data",
+    "PBIR format visuals store correctly but do NOT render data programmatically",
+    "updateDefinition can switch formats (PBIR <-> PBIR-Legacy)"
+  ],
+  "related_commands": [
+    "fabio report get-definition --workspace <WS> --id <ID>",
+    "fabio report update-definition --workspace <WS> --id <ID> --file <PBIR> --report-json <JSON>",
+    "fabio report list --workspace <WS>",
+    "fabio report delete --workspace <WS> --id <ID>"
+  ]
+}
