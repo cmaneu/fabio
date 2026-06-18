@@ -1255,6 +1255,33 @@ fabio context tenant --workspace $WS --deep --format jsonld --output-file contex
 # JSON-LD output has @context vocabulary + @graph with typed resources
 # Each item becomes: {"@id": "urn:fabric:item:<uuid>", "@type": "fabric:Notebook", ...}
 # Edges are inlined as typed properties: {"fabric:defaultLakehouse": {"@id": "urn:fabric:item:<uuid>"}}
+
+# ── OWL schema output (for Fabric Ontology import) ──
+
+# Export as OWL JSON-LD (one owl:Class per item type, importable to Fabric Ontology)
+fabio context tenant --workspace $WS --format owl --output-file tenant-schema.jsonld
+fabio ontology import --workspace $WS --id $ONTOLOGY_ID --file tenant-schema.jsonld
+
+# Export as OWL RDF/XML (same schema, compatible with Ontology Playground)
+fabio context tenant --workspace $WS --format rdf --output-file tenant-schema.rdf
+fabio ontology import --workspace $WS --id $ONTOLOGY_ID --file tenant-schema.rdf
+
+# ── Import instance data into Fabric (KQL graph) ──
+
+# The jsonld/graph formats contain instance data (actual items + relationships).
+# To query them in Fabric, ingest into a KQL database as tables:
+fabio context tenant --workspace $WS --deep --format graph --output-file graph.json
+
+# Then extract nodes/edges and ingest (see KQL database examples)
+# fabio kql-database ingest --workspace $WS --id $KDB --table FabricNodes --data @nodes.csv
+# fabio kql-database ingest --workspace $WS --id $KDB --table FabricEdges --data @edges.csv
+# Then query with: FabricEdges | make-graph source --> target with FabricNodes on id
+
+# ── Format comparison ──
+#   graph  = instance data, native arrays (merge, JMESPath, agents)
+#   jsonld = instance data, RDF JSON-LD (triple stores, SPARQL)
+#   owl    = schema only, OWL JSON-LD (fabio ontology import)
+#   rdf    = schema only, OWL RDF/XML (fabio ontology import, Ontology Playground)
 ```
 
 ## Self-update

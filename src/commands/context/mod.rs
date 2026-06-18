@@ -22,14 +22,14 @@ use crate::output;
 /// Output format for context graph.
 #[derive(Debug, Clone, Copy, Default, clap::ValueEnum)]
 pub enum ContextFormat {
-    /// Default graph format (nodes/edges/workspaces/summary)
+    /// Native format: nodes/edges/workspaces/summary arrays (for fabio `--merge`, `JMESPath`, agents)
     #[default]
     Graph,
-    /// JSON-LD format (RDF-compatible with @context and @graph)
+    /// JSON-LD instance data: actual items as RDF resources (for triple stores, SPARQL endpoints)
     Jsonld,
-    /// OWL JSON-LD format (importable by `fabio ontology import`)
+    /// OWL schema as JSON-LD: type definitions importable by `fabio ontology import --file`
     Owl,
-    /// OWL RDF/XML format (importable by `fabio ontology import` and Ontology Playground)
+    /// OWL schema as RDF/XML: type definitions importable by `fabio ontology import --file` and Ontology Playground
     Rdf,
 }
 
@@ -102,7 +102,11 @@ pub enum ContextCommand {
         #[arg(long)]
         no_properties: bool,
 
-        /// Output format: graph (default), jsonld, owl (JSON-LD for ontology import), or rdf (RDF/XML for ontology import)
+        /// Output format:
+        ///   graph (default) — native arrays for fabio merge/query;
+        ///   jsonld — instance data as RDF for triple stores;
+        ///   owl — OWL schema as JSON-LD for `fabio ontology import`;
+        ///   rdf — OWL schema as RDF/XML for `fabio ontology import` and Ontology Playground
         #[arg(long, value_enum, default_value = "graph")]
         format: ContextFormat,
 
