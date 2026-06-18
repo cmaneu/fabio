@@ -1,0 +1,16 @@
+{
+  "command": "fabio kql-database ingest --workspace $WS_ID --id $KDB_ID --table SensorEvents --data \"DeviceId,Temperature,Timestamp\\ndev-001,23.5,2026-06-18T10:00:00Z\\ndev-002,19.8,2026-06-18T10:01:00Z\"",
+  "description": "Ingests inline CSV data into a KQL table using .ingest inline command. Limited to ~4MB payload. Use @file to read from disk.",
+  "response": {
+    "data": {
+      "status": "ingested",
+      "table": "SensorEvents",
+      "data_size_bytes": 95
+    }
+  },
+  "notes": "Input sources: --data 'csv text', --data @file.csv, or pipe via stdin. The command constructs '.ingest inline into table [T] <| data' and sends it to the management endpoint.",
+  "query_examples": [
+    {"query": "data.status", "description": "Check ingestion status."},
+    {"query": "data.data_size_bytes", "description": "Get the size of data ingested."}
+  ]
+}

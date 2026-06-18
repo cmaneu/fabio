@@ -1,0 +1,21 @@
+{
+  "command": "fabio kql-database list-entities --workspace $WS_ID --id $KDB_ID",
+  "description": "Lists all entities (tables, materialized views, external tables, functions) in a KQL database.",
+  "response": {
+    "data": [
+      {"name": "StormEvents", "type": "table"},
+      {"name": "SensorReadings", "type": "table"},
+      {"name": "HourlySummary", "type": "materialized-view"},
+      {"name": "ExternalLogs", "type": "external-table"},
+      {"name": "GetTopEvents", "type": "function"}
+    ],
+    "count": 5
+  },
+  "notes": "Use --entity-type to filter: table, materialized-view, external-table, function.",
+  "query_examples": [
+    {"query": "data[?type=='table'].name", "description": "Get only table names."},
+    {"query": "data[?type=='function'].name", "description": "Get only function names."},
+    {"query": "length(data)", "description": "Count total entities."},
+    {"query": "data | sort_by(@, &name)", "description": "Sort entities alphabetically."}
+  ]
+}

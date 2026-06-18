@@ -1,0 +1,31 @@
+{
+  "command": "fabio kql-database diagnostics --workspace $WS_ID --id $KDB_ID",
+  "description": "Runs a suite of cluster diagnostic commands and returns a unified summary. Each section runs independently — permission failures on one section don't block others.",
+  "response": {
+    "data": {
+      "capacity": [
+        {"Resource": "Ingestions", "Total": 128, "Consumed": 3, "Remaining": 125},
+        {"Resource": "Queries", "Total": 500, "Consumed": 12, "Remaining": 488}
+      ],
+      "cluster": [
+        {"NodeId": "node01", "Address": "10.0.0.1", "State": "Running", "IsLeader": true}
+      ],
+      "principal_roles": [
+        {"Role": "Admin", "PrincipalType": "AadUser", "PrincipalDisplayName": "user@tenant.com"}
+      ],
+      "diagnostics": [
+        {"IsHealthy": true, "MachineTotal": 1, "Utilization": 0.15}
+      ],
+      "ingestion_failures": [
+        {"Table": "SensorData", "FailureKind": "Transient", "Count": 2}
+      ]
+    }
+  },
+  "notes": "Sections that fail due to permissions return {\"error\": \"...\"} instead of an array. All 5 sections (capacity, cluster, principal_roles, diagnostics, ingestion_failures) are attempted independently.",
+  "query_examples": [
+    {"query": "data.capacity", "description": "Get resource capacity slots."},
+    {"query": "data.ingestion_failures", "description": "Get recent ingestion failures (last 24h)."},
+    {"query": "data.principal_roles[?Role=='Admin']", "description": "Find admin principals."},
+    {"query": "data.capacity[?Resource=='Ingestions'].Remaining | [0]", "description": "Get remaining ingestion slots."}
+  ]
+}

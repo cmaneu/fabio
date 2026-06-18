@@ -1,0 +1,23 @@
+{
+  "command": "fabio eventstream validate --file eventstream-definition.json",
+  "description": "Validates an eventstream definition locally (no API call). Checks node references, duplicate names, required fields, and topology connectivity.",
+  "response": {
+    "data": {
+      "valid": false,
+      "errors": [
+        "Node 'kql-sink' references non-existent inputNode 'missing-stream'.",
+        "Duplicate node name: 'source1'"
+      ],
+      "warnings": [
+        "No destinations defined."
+      ]
+    }
+  },
+  "notes": "Use --file for local-only validation (no auth required). Use --workspace + --id to fetch and validate the live definition from the server.",
+  "query_examples": [
+    {"query": "data.valid", "description": "Check if definition is valid (true/false)."},
+    {"query": "data.errors", "description": "Get validation errors."},
+    {"query": "data.warnings", "description": "Get validation warnings."},
+    {"query": "length(data.errors)", "description": "Count number of errors."}
+  ]
+}

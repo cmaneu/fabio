@@ -51,4 +51,32 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         "deploy/plan",
         include_str!("data/examples/deploy_plan.json"),
     ),
+    (
+        "kql-database/list-entities",
+        include_str!("data/examples/kql_database_list_entities.json"),
+    ),
+    (
+        "kql-database/diagnostics",
+        include_str!("data/examples/kql_database_diagnostics.json"),
+    ),
+    (
+        "kql-database/deeplink",
+        include_str!("data/examples/kql_database_deeplink.json"),
+    ),
+    (
+        "kql-database/ingest",
+        include_str!("data/examples/kql_database_ingest.json"),
+    ),
+    (
+        "eventstream/validate",
+        include_str!("data/examples/eventstream_validate.json"),
+    ),
+    (
+        "eventstream/list-components",
+        include_str!("data/examples/eventstream_list_components.json"),
+    ),
+    (
+        "reflex/create-trigger",
+        include_str!("data/examples/reflex_create_trigger.json"),
+    ),
 ];

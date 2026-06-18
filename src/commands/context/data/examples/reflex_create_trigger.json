@@ -1,0 +1,40 @@
+{
+  "command": "fabio reflex create-trigger --workspace $WS_ID --name \"Flood Alert\" --eventhouse-id $EH_ID --database WeatherDB --table StormEvents --condition \"State == 'ILLINOIS' and EventType == 'Flood'\" --action email --recipients \"ops@company.com,alerts@company.com\" --interval 120",
+  "description": "Creates a Reflex item with a fully auto-generated trigger definition. Builds 5 entities (container, event, object, attribute, rule) from simple parameters — no manual JSON crafting required.",
+  "response": {
+    "data": {
+      "id": "b3c4d5e6-f7a8-9012-bcde-f01234567890",
+      "name": "Flood Alert",
+      "status": "trigger_created",
+      "action": "email",
+      "table": "StormEvents",
+      "condition": "State == 'ILLINOIS' and EventType == 'Flood'",
+      "recipients": ["ops@company.com", "alerts@company.com"]
+    }
+  },
+  "notes": "The command creates the Reflex item first (LRO), then pushes the auto-generated ReflexEntities.json definition. If the definition push fails (known KQL source limitation), the item is still created and reported with status 'created_but_definition_failed'. Supports --action email or --action teams. Use --dry-run to preview the planned entities without creating anything.",
+  "dry_run_response": {
+    "data": {
+      "dry_run": true,
+      "would_execute": "reflex create-trigger",
+      "hint": "Remove --dry-run to execute this operation.",
+      "details": {
+        "workspace": "1619af1e-c97a-43f8-8f1e-c1990b0b3914",
+        "name": "Flood Alert",
+        "eventhouse_id": "9b3b6a66-7c0c-4fd6-8465-6d63e42df579",
+        "database": "WeatherDB",
+        "table": "StormEvents",
+        "condition": "State == 'ILLINOIS' and EventType == 'Flood'",
+        "action": "email",
+        "recipients": ["ops@company.com", "alerts@company.com"],
+        "interval_seconds": 120,
+        "entity_count": 5
+      }
+    }
+  },
+  "query_examples": [
+    {"query": "data.id", "description": "Get the created Reflex item ID."},
+    {"query": "data.status", "description": "Check creation status (trigger_created or created_but_definition_failed)."},
+    {"query": "data.recipients", "description": "Get the configured recipient list."}
+  ]
+}

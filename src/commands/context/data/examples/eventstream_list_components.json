@@ -1,0 +1,29 @@
+{
+  "command": "fabio eventstream list-components --category source",
+  "description": "Lists available eventstream component types with descriptions. Filter by category: source, destination, or all (default).",
+  "response": {
+    "data": [
+      {"type": "CustomEndpoint", "category": "source", "description": "Custom app endpoint (Event Hub-compatible)"},
+      {"type": "AzureEventHub", "category": "source", "description": "Azure Event Hub"},
+      {"type": "AzureIoTHub", "category": "source", "description": "Azure IoT Hub"},
+      {"type": "SampleData", "category": "source", "description": "Built-in sample/simulated data"},
+      {"type": "AmazonKinesis", "category": "source", "description": "Amazon Kinesis Data Streams"},
+      {"type": "ApacheKafka", "category": "source", "description": "Apache Kafka cluster"},
+      {"type": "ConfluentCloud", "category": "source", "description": "Confluent Cloud Kafka"},
+      {"type": "GooglePubSub", "category": "source", "description": "Google Cloud Pub/Sub"},
+      {"type": "AzureSQLDBCDC", "category": "source", "description": "Azure SQL Database CDC"},
+      {"type": "MySQLCDC", "category": "source", "description": "MySQL Change Data Capture"},
+      {"type": "PostgreSQLCDC", "category": "source", "description": "PostgreSQL Change Data Capture"},
+      {"type": "FabricWorkspaceItemEvents", "category": "source", "description": "Fabric workspace item events"},
+      {"type": "FabricJobEvents", "category": "source", "description": "Fabric job events"},
+      {"type": "FabricOneLakeEvents", "category": "source", "description": "Fabric OneLake events"}
+    ],
+    "count": 14
+  },
+  "notes": "Use --category destination to see destination types (Eventhouse, Lakehouse, CustomEndpoint, Activator). Use --category all for both.",
+  "query_examples": [
+    {"query": "data[].type", "description": "Get just the type names."},
+    {"query": "data[?category=='source'].type", "description": "Filter to source types only."},
+    {"query": "length(data)", "description": "Count available components."}
+  ]
+}

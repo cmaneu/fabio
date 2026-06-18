@@ -1,0 +1,17 @@
+{
+  "command": "fabio kql-database deeplink --workspace $WS_ID --id $KDB_ID --kql \"StormEvents | where State == 'TEXAS' | take 100\"",
+  "description": "Generates a deeplink URL to open a KQL query in the Fabric portal query workbench or ADX Web Explorer. Auto-detects cluster type from URI.",
+  "response": {
+    "data": {
+      "url": "https://app.fabric.microsoft.com/groups/1619af1e-c97a-43f8-8f1e-c1990b0b3914/kqlDatabases/a4fde4fd-dbfe-4b26-9e9d-41cb64775a5c?query=StormEvents%20%7C%20where%20State%20%3D%3D%20%27TEXAS%27%20%7C%20take%20100&database=WeatherDB",
+      "style": "fabric",
+      "database": "WeatherDB"
+    }
+  },
+  "notes": "Use --style fabric|adx to override auto-detection. ADX style generates https://dataexplorer.azure.com/... URLs.",
+  "query_examples": [
+    {"query": "data.url", "description": "Get the deeplink URL to open in a browser."},
+    {"query": "data.style", "description": "Get the detected link style (fabric or adx)."},
+    {"query": "data.database", "description": "Get the database name."}
+  ]
+}
