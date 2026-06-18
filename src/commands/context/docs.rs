@@ -3,31 +3,9 @@ use serde_json::{Value, json};
 use crate::cli::Cli;
 use crate::output;
 
-// ─── Public entry points (called from context.rs) ────────────────────────────
-
-pub fn list_topics_public(cli: &Cli) {
-    list_topics(cli);
-}
-
-pub fn item_schema_public(cli: &Cli, item_type: &str) {
-    item_schema(cli, item_type);
-}
-
-pub fn workflow_public(cli: &Cli, name: &str) {
-    workflow(cli, name);
-}
-
-pub fn best_practices_public(cli: &Cli, topic: &str) {
-    best_practices(cli, topic);
-}
-
-pub fn output_example_public(cli: &Cli, group: &str, command: &str) {
-    output_example(cli, group, command);
-}
-
 // ─── List ────────────────────────────────────────────────────────────────────
 
-fn list_topics(cli: &Cli) {
+pub(super) fn list_topics(cli: &Cli) {
     let topics = json!({
         "item_schemas": ITEM_SCHEMAS.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
         "workflows": WORKFLOWS.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
@@ -45,7 +23,7 @@ fn list_topics(cli: &Cli) {
 
 // ─── Item Schema ─────────────────────────────────────────────────────────────
 
-fn item_schema(cli: &Cli, item_type: &str) {
+pub(super) fn item_schema(cli: &Cli, item_type: &str) {
     let normalized = item_type.to_lowercase().replace(['-', '_'], "");
     if let Some(content) = find_entry(ITEM_SCHEMAS, &normalized) {
         let val: Value =
@@ -64,7 +42,7 @@ fn item_schema(cli: &Cli, item_type: &str) {
 
 // ─── Workflow ─────────────────────────────────────────────────────────────────
 
-fn workflow(cli: &Cli, name: &str) {
+pub(super) fn workflow(cli: &Cli, name: &str) {
     let normalized = name.to_lowercase().replace(['-', '_'], "");
     if let Some(content) = find_entry(WORKFLOWS, &normalized) {
         let val: Value =
@@ -83,7 +61,7 @@ fn workflow(cli: &Cli, name: &str) {
 
 // ─── Output Example ──────────────────────────────────────────────────────────
 
-fn output_example(cli: &Cli, group: &str, command: &str) {
+pub(super) fn output_example(cli: &Cli, group: &str, command: &str) {
     let key = format!("{group}/{command}");
     let normalized = key.to_lowercase().replace(['-', '_'], "");
     if let Some(content) = find_entry(OUTPUT_EXAMPLES, &normalized) {
@@ -103,7 +81,7 @@ fn output_example(cli: &Cli, group: &str, command: &str) {
 
 // ─── Best Practices ──────────────────────────────────────────────────────────
 
-fn best_practices(cli: &Cli, topic: &str) {
+pub(super) fn best_practices(cli: &Cli, topic: &str) {
     let normalized = topic.to_lowercase().replace(['-', '_'], "");
     if let Some(content) = find_entry(BEST_PRACTICES, &normalized) {
         let val: Value =
@@ -134,111 +112,72 @@ fn find_entry<'a>(entries: &[(&str, &'a str)], normalized_key: &str) -> Option<&
 
 /// Item type to JSON schema/template showing the creation body structure.
 const ITEM_SCHEMAS: &[(&str, &str)] = &[
-    (
-        "Notebook",
-        include_str!("context_data/schemas/notebook.json"),
-    ),
+    ("Notebook", include_str!("data/schemas/notebook.json")),
     (
         "DataPipeline",
-        include_str!("context_data/schemas/data_pipeline.json"),
+        include_str!("data/schemas/data_pipeline.json"),
     ),
     (
         "SemanticModel",
-        include_str!("context_data/schemas/semantic_model.json"),
+        include_str!("data/schemas/semantic_model.json"),
     ),
-    (
-        "Lakehouse",
-        include_str!("context_data/schemas/lakehouse.json"),
-    ),
+    ("Lakehouse", include_str!("data/schemas/lakehouse.json")),
     (
         "KQLDatabase",
-        include_str!("context_data/schemas/kql_database.json"),
+        include_str!("data/schemas/kql_database.json"),
     ),
-    (
-        "Eventhouse",
-        include_str!("context_data/schemas/eventhouse.json"),
-    ),
-    (
-        "Eventstream",
-        include_str!("context_data/schemas/eventstream.json"),
-    ),
-    (
-        "Environment",
-        include_str!("context_data/schemas/environment.json"),
-    ),
-    (
-        "Warehouse",
-        include_str!("context_data/schemas/warehouse.json"),
-    ),
-    ("Report", include_str!("context_data/schemas/report.json")),
-    (
-        "DataAgent",
-        include_str!("context_data/schemas/data_agent.json"),
-    ),
+    ("Eventhouse", include_str!("data/schemas/eventhouse.json")),
+    ("Eventstream", include_str!("data/schemas/eventstream.json")),
+    ("Environment", include_str!("data/schemas/environment.json")),
+    ("Warehouse", include_str!("data/schemas/warehouse.json")),
+    ("Report", include_str!("data/schemas/report.json")),
+    ("DataAgent", include_str!("data/schemas/data_agent.json")),
     (
         "SparkJobDefinition",
-        include_str!("context_data/schemas/spark_job_definition.json"),
+        include_str!("data/schemas/spark_job_definition.json"),
     ),
-    (
-        "GraphQLApi",
-        include_str!("context_data/schemas/graphql_api.json"),
-    ),
-    (
-        "CopyJob",
-        include_str!("context_data/schemas/copy_job.json"),
-    ),
-    (
-        "Dataflow",
-        include_str!("context_data/schemas/dataflow.json"),
-    ),
+    ("GraphQLApi", include_str!("data/schemas/graphql_api.json")),
+    ("CopyJob", include_str!("data/schemas/copy_job.json")),
+    ("Dataflow", include_str!("data/schemas/dataflow.json")),
     (
         "MirroredDatabase",
-        include_str!("context_data/schemas/mirrored_database.json"),
+        include_str!("data/schemas/mirrored_database.json"),
     ),
-    ("Reflex", include_str!("context_data/schemas/reflex.json")),
-    (
-        "MLModel",
-        include_str!("context_data/schemas/ml_model.json"),
-    ),
+    ("Reflex", include_str!("data/schemas/reflex.json")),
+    ("MLModel", include_str!("data/schemas/ml_model.json")),
     (
         "MLExperiment",
-        include_str!("context_data/schemas/ml_experiment.json"),
+        include_str!("data/schemas/ml_experiment.json"),
     ),
-    (
-        "Ontology",
-        include_str!("context_data/schemas/ontology.json"),
-    ),
+    ("Ontology", include_str!("data/schemas/ontology.json")),
     (
         "SQLDatabase",
-        include_str!("context_data/schemas/sql_database.json"),
+        include_str!("data/schemas/sql_database.json"),
     ),
-    (
-        "Connection",
-        include_str!("context_data/schemas/connection.json"),
-    ),
+    ("Connection", include_str!("data/schemas/connection.json")),
 ];
 
 /// Workflow name to JSON recipe with ordered steps.
 const WORKFLOWS: &[(&str, &str)] = &[
     (
         "rti-pipeline",
-        include_str!("context_data/workflows/rti_pipeline.json"),
+        include_str!("data/workflows/rti_pipeline.json"),
     ),
     (
         "direct-lake-report",
-        include_str!("context_data/workflows/direct_lake_report.json"),
+        include_str!("data/workflows/direct_lake_report.json"),
     ),
     (
         "cicd-deploy",
-        include_str!("context_data/workflows/cicd_deploy.json"),
+        include_str!("data/workflows/cicd_deploy.json"),
     ),
     (
         "lakehouse-etl",
-        include_str!("context_data/workflows/lakehouse_etl.json"),
+        include_str!("data/workflows/lakehouse_etl.json"),
     ),
     (
         "data-agent-setup",
-        include_str!("context_data/workflows/data_agent_setup.json"),
+        include_str!("data/workflows/data_agent_setup.json"),
     ),
 ];
 
@@ -246,27 +185,24 @@ const WORKFLOWS: &[(&str, &str)] = &[
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
         "lakehouse/list-tables",
-        include_str!("context_data/examples/lakehouse_list_tables.json"),
+        include_str!("data/examples/lakehouse_list_tables.json"),
     ),
     (
         "lakehouse/iceberg-table",
-        include_str!("context_data/examples/lakehouse_iceberg_table.json"),
+        include_str!("data/examples/lakehouse_iceberg_table.json"),
     ),
     (
         "lakehouse/iceberg-stats",
-        include_str!("context_data/examples/lakehouse_iceberg_stats.json"),
+        include_str!("data/examples/lakehouse_iceberg_stats.json"),
     ),
     (
         "workspace/list",
-        include_str!("context_data/examples/workspace_list.json"),
+        include_str!("data/examples/workspace_list.json"),
     ),
-    (
-        "item/list",
-        include_str!("context_data/examples/item_list.json"),
-    ),
+    ("item/list", include_str!("data/examples/item_list.json")),
     (
         "deploy/plan",
-        include_str!("context_data/examples/deploy_plan.json"),
+        include_str!("data/examples/deploy_plan.json"),
     ),
 ];
 
@@ -274,15 +210,15 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
 const BEST_PRACTICES: &[(&str, &str)] = &[
     (
         "throttling",
-        include_str!("context_data/best_practices/throttling.json"),
+        include_str!("data/best_practices/throttling.json"),
     ),
-    ("lro", include_str!("context_data/best_practices/lro.json")),
+    ("lro", include_str!("data/best_practices/lro.json")),
     (
         "pagination",
-        include_str!("context_data/best_practices/pagination.json"),
+        include_str!("data/best_practices/pagination.json"),
     ),
     (
         "admin-apis",
-        include_str!("context_data/best_practices/admin_apis.json"),
+        include_str!("data/best_practices/admin_apis.json"),
     ),
 ];

@@ -76,8 +76,6 @@ pub mod workspace;
 pub mod upgrade;
 
 mod completions;
-pub mod context_agent;
-pub mod context_docs;
 
 use anyhow::Result;
 

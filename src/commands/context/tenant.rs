@@ -1,16 +1,13 @@
-//! Scan Fabric tenant workspaces to build a relationship graph. as a relationship graph.
+//! Scan Fabric tenant workspaces to build a relationship graph.
 //!
 //! Builds a graph of workspace items (nodes) and their relationships (edges)
-//! by inspecting item properties, definitions, and connections. Designed to
-//! provide structured context for coding agents and external applications.
+//! by inspecting item properties, definitions, and connections.
 
 use std::collections::{BTreeMap, HashSet};
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
 use base64::prelude::{BASE64_STANDARD, Engine as _};
-use clap::Subcommand;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -22,104 +19,7 @@ use crate::client::FabricClient;
 use crate::output;
 use crate::verbose;
 
-// ── CLI definition ──────────────────────────────────────────────────────────
-
-/// Output format for context graph.
-#[derive(Debug, Clone, Copy, Default, clap::ValueEnum)]
-pub enum ContextFormat {
-    /// Default graph format (nodes/edges/workspaces/summary)
-    #[default]
-    Graph,
-    /// JSON-LD format (RDF-compatible @graph with @context vocabulary)
-    Jsonld,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum ContextCommand {
-    /// Machine-readable CLI schema for agent introspection (flags, types, mutability, examples)
-    #[command(display_order = 0)]
-    Agent,
-
-    /// Show the definition schema/template for a Fabric item type
-    #[command(display_order = 1)]
-    Schema {
-        /// Item type (e.g. `Notebook`, `DataPipeline`, `SemanticModel`)
-        #[arg(name = "TYPE")]
-        item_type: String,
-    },
-
-    /// Show a multi-step workflow recipe
-    #[command(display_order = 2)]
-    Workflow {
-        /// Workflow name (use `fabio context list` to see available workflows)
-        #[arg(name = "NAME")]
-        name: String,
-    },
-
-    /// Show best-practices guidance for a topic
-    #[command(display_order = 3)]
-    BestPractices {
-        /// Topic name (`throttling`, `lro`, `pagination`, `admin-apis`)
-        #[arg(name = "TOPIC")]
-        topic: String,
-    },
-
-    /// Show example output for a command (response shape + `JMESPath` tips)
-    #[command(display_order = 4)]
-    Examples {
-        /// Command group (e.g. `lakehouse`, `workspace`, `item`)
-        #[arg(name = "GROUP")]
-        group: String,
-
-        /// Subcommand (e.g. `list-tables`, `iceberg-table`, `list`)
-        #[arg(name = "COMMAND")]
-        command: String,
-    },
-
-    /// List all available documentation topics (schemas, workflows, examples, best-practices)
-    #[command(display_order = 5)]
-    List,
-
-    /// Scan your Fabric tenant — build a relationship graph from workspace(s)
-    #[command(display_order = 10)]
-    Tenant {
-        /// Workspace ID(s) or name(s) to scan (repeatable)
-        #[arg(short, long, env = "FABIO_WORKSPACE", num_args = 1..)]
-        workspace: Vec<String>,
-
-        /// Fetch item definitions to discover embedded references (slower)
-        #[arg(long)]
-        deep: bool,
-
-        /// Also fetch item connections
-        #[arg(long)]
-        include_connections: bool,
-
-        /// Filter to specific item types (comma-separated, case-insensitive)
-        #[arg(long)]
-        item_types: Option<String>,
-
-        /// Skip type-specific detail fetching (fast inventory-only mode)
-        #[arg(long)]
-        no_properties: bool,
-
-        /// Output format: graph (default) or jsonld (RDF-compatible)
-        #[arg(long, value_enum, default_value = "graph")]
-        format: ContextFormat,
-
-        /// Merge results into an existing graph file (incremental extraction)
-        #[arg(long)]
-        merge: Option<PathBuf>,
-
-        /// Write output to a file instead of stdout
-        #[arg(long)]
-        output_file: Option<PathBuf>,
-
-        /// Max concurrency for API calls (default: auto-scaled to CPU count)
-        #[arg(long)]
-        concurrency: Option<usize>,
-    },
-}
+use super::ContextFormat;
 
 // ── Graph data model ────────────────────────────────────────────────────────
 
@@ -177,76 +77,25 @@ struct ContextGraph {
     summary: GraphSummary,
 }
 
-// ── Dispatch ────────────────────────────────────────────────────────────────
-
-pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand) -> Result<()> {
-    match command {
-        ContextCommand::Agent => {
-            super::context_agent::execute(cli);
-            Ok(())
-        }
-        ContextCommand::Schema { item_type } => {
-            super::context_docs::item_schema_public(cli, item_type);
-            Ok(())
-        }
-        ContextCommand::Workflow { name } => {
-            super::context_docs::workflow_public(cli, name);
-            Ok(())
-        }
-        ContextCommand::BestPractices { topic } => {
-            super::context_docs::best_practices_public(cli, topic);
-            Ok(())
-        }
-        ContextCommand::Examples { group, command } => {
-            super::context_docs::output_example_public(cli, group, command);
-            Ok(())
-        }
-        ContextCommand::List => {
-            super::context_docs::list_topics_public(cli);
-            Ok(())
-        }
-        ContextCommand::Tenant {
-            workspace,
-            deep,
-            include_connections,
-            item_types,
-            no_properties,
-            format,
-            merge,
-            output_file,
-            concurrency,
-        } => {
-            let params = ExtractParams {
-                workspaces: workspace,
-                deep: *deep,
-                include_connections: *include_connections,
-                item_types_filter: item_types.as_deref(),
-                no_properties: *no_properties,
-                format: *format,
-                merge: merge.as_deref(),
-                output_file: output_file.as_deref(),
-                concurrency: concurrency.unwrap_or_else(crate::parallel::default_concurrency),
-            };
-            extract(cli, client, &params).await
-        }
-    }
-}
-
 // ── Main extraction logic ───────────────────────────────────────────────────
 
-struct ExtractParams<'a> {
-    workspaces: &'a [String],
-    deep: bool,
-    include_connections: bool,
-    item_types_filter: Option<&'a str>,
-    no_properties: bool,
-    format: ContextFormat,
-    merge: Option<&'a std::path::Path>,
-    output_file: Option<&'a std::path::Path>,
-    concurrency: usize,
+pub(super) struct ExtractParams<'a> {
+    pub(super) workspaces: &'a [String],
+    pub(super) deep: bool,
+    pub(super) include_connections: bool,
+    pub(super) item_types_filter: Option<&'a str>,
+    pub(super) no_properties: bool,
+    pub(super) format: ContextFormat,
+    pub(super) merge: Option<&'a std::path::Path>,
+    pub(super) output_file: Option<&'a std::path::Path>,
+    pub(super) concurrency: usize,
 }
 
-async fn extract(cli: &Cli, client: &FabricClient, params: &ExtractParams<'_>) -> Result<()> {
+pub(super) async fn execute(
+    cli: &Cli,
+    client: &FabricClient,
+    params: &ExtractParams<'_>,
+) -> Result<()> {
     if params.workspaces.is_empty() {
         bail!("At least one --workspace is required");
     }
