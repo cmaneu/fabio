@@ -182,27 +182,27 @@ struct ContextGraph {
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand) -> Result<()> {
     match command {
         ContextCommand::Agent => {
-            super::agent_context::execute(cli);
+            super::context_agent::execute(cli);
             Ok(())
         }
         ContextCommand::Schema { item_type } => {
-            super::docs::item_schema_public(cli, item_type);
+            super::context_docs::item_schema_public(cli, item_type);
             Ok(())
         }
         ContextCommand::Workflow { name } => {
-            super::docs::workflow_public(cli, name);
+            super::context_docs::workflow_public(cli, name);
             Ok(())
         }
         ContextCommand::BestPractices { topic } => {
-            super::docs::best_practices_public(cli, topic);
+            super::context_docs::best_practices_public(cli, topic);
             Ok(())
         }
         ContextCommand::Examples { group, command } => {
-            super::docs::output_example_public(cli, group, command);
+            super::context_docs::output_example_public(cli, group, command);
             Ok(())
         }
         ContextCommand::List => {
-            super::docs::list_topics_public(cli);
+            super::context_docs::list_topics_public(cli);
             Ok(())
         }
         ContextCommand::Extract {

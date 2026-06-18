@@ -134,72 +134,93 @@ fn find_entry<'a>(entries: &[(&str, &'a str)], normalized_key: &str) -> Option<&
 
 /// Item type to JSON schema/template showing the creation body structure.
 const ITEM_SCHEMAS: &[(&str, &str)] = &[
-    ("Notebook", include_str!("docs_data/schemas/notebook.json")),
+    (
+        "Notebook",
+        include_str!("context_docs_data/schemas/notebook.json"),
+    ),
     (
         "DataPipeline",
-        include_str!("docs_data/schemas/data_pipeline.json"),
+        include_str!("context_docs_data/schemas/data_pipeline.json"),
     ),
     (
         "SemanticModel",
-        include_str!("docs_data/schemas/semantic_model.json"),
+        include_str!("context_docs_data/schemas/semantic_model.json"),
     ),
     (
         "Lakehouse",
-        include_str!("docs_data/schemas/lakehouse.json"),
+        include_str!("context_docs_data/schemas/lakehouse.json"),
     ),
     (
         "KQLDatabase",
-        include_str!("docs_data/schemas/kql_database.json"),
+        include_str!("context_docs_data/schemas/kql_database.json"),
     ),
     (
         "Eventhouse",
-        include_str!("docs_data/schemas/eventhouse.json"),
+        include_str!("context_docs_data/schemas/eventhouse.json"),
     ),
     (
         "Eventstream",
-        include_str!("docs_data/schemas/eventstream.json"),
+        include_str!("context_docs_data/schemas/eventstream.json"),
     ),
     (
         "Environment",
-        include_str!("docs_data/schemas/environment.json"),
+        include_str!("context_docs_data/schemas/environment.json"),
     ),
     (
         "Warehouse",
-        include_str!("docs_data/schemas/warehouse.json"),
+        include_str!("context_docs_data/schemas/warehouse.json"),
     ),
-    ("Report", include_str!("docs_data/schemas/report.json")),
+    (
+        "Report",
+        include_str!("context_docs_data/schemas/report.json"),
+    ),
     (
         "DataAgent",
-        include_str!("docs_data/schemas/data_agent.json"),
+        include_str!("context_docs_data/schemas/data_agent.json"),
     ),
     (
         "SparkJobDefinition",
-        include_str!("docs_data/schemas/spark_job_definition.json"),
+        include_str!("context_docs_data/schemas/spark_job_definition.json"),
     ),
     (
         "GraphQLApi",
-        include_str!("docs_data/schemas/graphql_api.json"),
+        include_str!("context_docs_data/schemas/graphql_api.json"),
     ),
-    ("CopyJob", include_str!("docs_data/schemas/copy_job.json")),
-    ("Dataflow", include_str!("docs_data/schemas/dataflow.json")),
+    (
+        "CopyJob",
+        include_str!("context_docs_data/schemas/copy_job.json"),
+    ),
+    (
+        "Dataflow",
+        include_str!("context_docs_data/schemas/dataflow.json"),
+    ),
     (
         "MirroredDatabase",
-        include_str!("docs_data/schemas/mirrored_database.json"),
+        include_str!("context_docs_data/schemas/mirrored_database.json"),
     ),
-    ("Reflex", include_str!("docs_data/schemas/reflex.json")),
-    ("MLModel", include_str!("docs_data/schemas/ml_model.json")),
+    (
+        "Reflex",
+        include_str!("context_docs_data/schemas/reflex.json"),
+    ),
+    (
+        "MLModel",
+        include_str!("context_docs_data/schemas/ml_model.json"),
+    ),
     (
         "MLExperiment",
-        include_str!("docs_data/schemas/ml_experiment.json"),
+        include_str!("context_docs_data/schemas/ml_experiment.json"),
     ),
-    ("Ontology", include_str!("docs_data/schemas/ontology.json")),
+    (
+        "Ontology",
+        include_str!("context_docs_data/schemas/ontology.json"),
+    ),
     (
         "SQLDatabase",
-        include_str!("docs_data/schemas/sql_database.json"),
+        include_str!("context_docs_data/schemas/sql_database.json"),
     ),
     (
         "Connection",
-        include_str!("docs_data/schemas/connection.json"),
+        include_str!("context_docs_data/schemas/connection.json"),
     ),
 ];
 
@@ -207,23 +228,23 @@ const ITEM_SCHEMAS: &[(&str, &str)] = &[
 const WORKFLOWS: &[(&str, &str)] = &[
     (
         "rti-pipeline",
-        include_str!("docs_data/workflows/rti_pipeline.json"),
+        include_str!("context_docs_data/workflows/rti_pipeline.json"),
     ),
     (
         "direct-lake-report",
-        include_str!("docs_data/workflows/direct_lake_report.json"),
+        include_str!("context_docs_data/workflows/direct_lake_report.json"),
     ),
     (
         "cicd-deploy",
-        include_str!("docs_data/workflows/cicd_deploy.json"),
+        include_str!("context_docs_data/workflows/cicd_deploy.json"),
     ),
     (
         "lakehouse-etl",
-        include_str!("docs_data/workflows/lakehouse_etl.json"),
+        include_str!("context_docs_data/workflows/lakehouse_etl.json"),
     ),
     (
         "data-agent-setup",
-        include_str!("docs_data/workflows/data_agent_setup.json"),
+        include_str!("context_docs_data/workflows/data_agent_setup.json"),
     ),
 ];
 
@@ -231,27 +252,27 @@ const WORKFLOWS: &[(&str, &str)] = &[
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
         "lakehouse/list-tables",
-        include_str!("docs_data/examples/lakehouse_list_tables.json"),
+        include_str!("context_docs_data/examples/lakehouse_list_tables.json"),
     ),
     (
         "lakehouse/iceberg-table",
-        include_str!("docs_data/examples/lakehouse_iceberg_table.json"),
+        include_str!("context_docs_data/examples/lakehouse_iceberg_table.json"),
     ),
     (
         "lakehouse/iceberg-stats",
-        include_str!("docs_data/examples/lakehouse_iceberg_stats.json"),
+        include_str!("context_docs_data/examples/lakehouse_iceberg_stats.json"),
     ),
     (
         "workspace/list",
-        include_str!("docs_data/examples/workspace_list.json"),
+        include_str!("context_docs_data/examples/workspace_list.json"),
     ),
     (
         "item/list",
-        include_str!("docs_data/examples/item_list.json"),
+        include_str!("context_docs_data/examples/item_list.json"),
     ),
     (
         "deploy/plan",
-        include_str!("docs_data/examples/deploy_plan.json"),
+        include_str!("context_docs_data/examples/deploy_plan.json"),
     ),
 ];
 
@@ -259,15 +280,18 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
 const BEST_PRACTICES: &[(&str, &str)] = &[
     (
         "throttling",
-        include_str!("docs_data/best_practices/throttling.json"),
+        include_str!("context_docs_data/best_practices/throttling.json"),
     ),
-    ("lro", include_str!("docs_data/best_practices/lro.json")),
+    (
+        "lro",
+        include_str!("context_docs_data/best_practices/lro.json"),
+    ),
     (
         "pagination",
-        include_str!("docs_data/best_practices/pagination.json"),
+        include_str!("context_docs_data/best_practices/pagination.json"),
     ),
     (
         "admin-apis",
-        include_str!("docs_data/best_practices/admin_apis.json"),
+        include_str!("context_docs_data/best_practices/admin_apis.json"),
     ),
 ];

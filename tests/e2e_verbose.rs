@@ -49,7 +49,7 @@ fn verbose_with_dry_run_produces_no_http_trace() {
 }
 
 #[test]
-fn verbose_does_not_affect_stdout_of_agent_context() {
+fn verbose_does_not_affect_stdout_of_context_agent() {
     // context agent is offline (no HTTP) — stdout should still be valid JSON
     let assert = fabio()
         .args(["--verbose", "context", "agent"])
