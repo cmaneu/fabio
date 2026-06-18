@@ -7313,6 +7313,116 @@
         "mutates": false,
         "returns": "object"
       },
+      "iceberg-config": {
+        "description": "Get Iceberg REST Catalog configuration (available endpoints and warehouse prefix)",
+        "example": "fabio lakehouse iceberg-config --workspace <WS> --id <ID>",
+        "flags": {
+          "--id": {
+            "description": "Lakehouse ID",
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "description": "Workspace ID",
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "iceberg-namespaces": {
+        "description": "List table namespaces (schemas) via the Iceberg REST Catalog",
+        "example": "fabio lakehouse iceberg-namespaces --workspace <WS> --id <ID>",
+        "flags": {
+          "--id": {
+            "description": "Lakehouse ID",
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "description": "Workspace ID",
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "iceberg-namespace": {
+        "description": "Get metadata for a specific namespace via the Iceberg REST Catalog",
+        "example": "fabio lakehouse iceberg-namespace --workspace <WS> --id <ID> --namespace dbo",
+        "flags": {
+          "--id": {
+            "description": "Lakehouse ID",
+            "required": true,
+            "type": "string"
+          },
+          "--namespace": {
+            "description": "Namespace name (e.g. dbo)",
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "description": "Workspace ID",
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "iceberg-tables": {
+        "description": "List tables in a namespace via the Iceberg REST Catalog",
+        "example": "fabio lakehouse iceberg-tables --workspace <WS> --id <ID> --namespace dbo",
+        "flags": {
+          "--id": {
+            "description": "Lakehouse ID",
+            "required": true,
+            "type": "string"
+          },
+          "--namespace": {
+            "description": "Namespace name (e.g. dbo)",
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "description": "Workspace ID",
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "iceberg-table": {
+        "description": "Get full table definition (schema, partitions, snapshots, properties) via Iceberg REST Catalog",
+        "example": "fabio lakehouse iceberg-table --workspace <WS> --id <ID> --namespace dbo --table customers",
+        "flags": {
+          "--id": {
+            "description": "Lakehouse ID",
+            "required": true,
+            "type": "string"
+          },
+          "--namespace": {
+            "description": "Namespace name (e.g. dbo)",
+            "required": true,
+            "type": "string"
+          },
+          "--table": {
+            "description": "Table name",
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "description": "Workspace ID",
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "update": {
         "description": "Update lakehouse properties",
         "flags": {

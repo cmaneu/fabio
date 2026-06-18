@@ -135,6 +135,11 @@ fabio lakehouse create-materialized-views-schedule Create refresh schedule
 fabio lakehouse update-materialized-views-schedule Update refresh schedule
 fabio lakehouse delete-materialized-views-schedule Delete refresh schedule
 fabio lakehouse run-table-maintenance Run table maintenance job
+fabio lakehouse iceberg-config       Get Iceberg REST Catalog configuration (endpoints, prefix)
+fabio lakehouse iceberg-namespaces   List table namespaces (schemas) via Iceberg REST Catalog
+fabio lakehouse iceberg-namespace    Get namespace metadata via Iceberg REST Catalog
+fabio lakehouse iceberg-tables       List tables in a namespace via Iceberg REST Catalog
+fabio lakehouse iceberg-table        Get full table definition (schema, partitions, snapshots) via Iceberg REST Catalog
 fabio lakehouse list-livy-sessions   List Livy sessions
 fabio lakehouse get-livy-session     Get Livy session details
 

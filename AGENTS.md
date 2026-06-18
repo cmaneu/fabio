@@ -344,6 +344,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **Server-side table copy/move/delete**: Root listing + prefix filter, per-file Blob copy, recursive DFS delete; same-item table moves use atomic directory rename
 - **Shortcuts**: Create/get/delete OneLake, ADLS Gen2, S3 shortcuts
 - **Lakehouse table maintenance**: optimize-table (V-Order + Z-Order via Jobs API), vacuum-table (retention period formatting), table-schema (Delta log parsing from OneLake DFS)
+- **OneLake Iceberg REST Catalog**: iceberg-config, iceberg-namespaces, iceberg-namespace, iceberg-tables, iceberg-table (Apache Iceberg REST Catalog v1 at `https://onelake.table.fabric.microsoft.com` — provides full table metadata: schema, partitions, sort-orders, snapshots, properties; uses storage-scoped auth)
 - **Notebook run**: Captures job instance ID from Location header, status/stop via Jobs API
 - **Notebook `--wait` flag**: Polls job status every 5s until Completed/Failed/Cancelled, with configurable `--timeout` (default 600s)
 - **Item copy/move**: getDefinition LRO + create in dest workspace LRO; move = copy + delete source
@@ -525,7 +526,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/auth.rs`: login (device code + browser PKCE + service principal: secret/certificate/federated token), logout, status
 - `src/commands/workspace.rs`: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
 - `src/commands/item.rs`: 18 subcommands (CRUD + copy/move + definitions + list-connections + exists/url/inspect + bulk-create/bulk-delete + move-to-folder + create-external-data-share)
-- `src/commands/lakehouse.rs`: 23 subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut, optimize-table, vacuum-table, table-schema, query)
+- `src/commands/lakehouse.rs`: 28 subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut, optimize-table, vacuum-table, table-schema, iceberg-config, iceberg-namespaces, iceberg-namespace, iceberg-tables, iceberg-table, query)
 - `src/commands/notebook.rs`: create/get-definition (with --strip-output)/run (with --wait/--timeout/--parameters/--compute-type/--execution-data)/status/stop/delete
 - `src/commands/warehouse.rs`: list/show/create/update/delete/query/connection-string (endpoint resolved, stdin/file/flag SQL input)
 - `src/commands/sql_database.rs`: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
@@ -615,6 +616,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `tests/e2e_lakehouse_files.rs`: File copy/move/delete tests
 - `tests/e2e_lakehouse_tables.rs`: Table load/copy/move/delete tests
 - `tests/e2e_lakehouse_shortcuts.rs`: Shortcut create/get/delete tests
+- `tests/e2e_lakehouse_iceberg.rs`: Iceberg REST Catalog tests (config, namespaces, tables, schema)
 - `tests/e2e_notebook.rs`: Notebook create/get-definition/run/run --wait/status/stop/delete/strip-output tests
 - `tests/e2e_warehouse.rs`: Warehouse list/show/query/query-stdin tests
 - `tests/e2e_sql_database.rs`: SQL Database CRUD + query + import tests
@@ -782,6 +784,16 @@ The release workflow (`.github/workflows/release.yml`) handles tagged version im
 - **DFS listing fields**: Returns `name`, `contentLength`, `etag`, `lastModified`, `creationTime` (Windows FILETIME ticks), `owner`, `group`, `permissions`, `expiryTime`. Does NOT include Content-MD5 — requires per-file HEAD requests.
 - **Notebook Jobs API**: `POST /workspaces/{ws}/items/{id}/jobs/instances?jobType=RunNotebook` returns 202 + Location header with job instance URL. Status endpoint returns `NotStarted`, `InProgress`, `Completed`, `Failed`, `Cancelled`. Cancel via `POST .../cancel`.
 - **Spark cold start on small capacity**: First notebook run can take 2-5 minutes to transition from `NotStarted` to `InProgress` due to Spark session allocation.
+- **OneLake Table API (Iceberg REST Catalog)**: Available at `https://onelake.table.fabric.microsoft.com/iceberg/v1/...`. Uses storage-scoped auth (`https://storage.azure.com/.default`). Standard Apache Iceberg REST Catalog v1 protocol.
+- **Table API warehouse identifier**: `{workspaceId}/{itemId}` (both URI-encoded). Used in URL path segments and as `?warehouse=` query parameter.
+- **Table API config response**: Returns `endpoints` array listing available operations (13 endpoints including CRUD for tables and namespaces), plus `overrides.prefix` matching the workspace/item path.
+- **Table API namespaces**: Standard lakehouses expose a single `dbo` namespace. Multi-schema lakehouses may expose additional namespaces. Response: `{"namespaces": [["dbo"]], "next-page-token": null}`.
+- **Table API namespace properties**: Each namespace has a `location` property pointing to the OneLake storage path (e.g., `{wsId}/{itemId}/Tables/dbo`).
+- **Table API table listing**: Response: `{"identifiers": [{"name": "tableName", "namespace": ["dbo"]}], "next-page-token": null}`. Lists all Delta tables that OneLake exposes as Iceberg.
+- **Table API table metadata**: Returns full Apache Iceberg `TableMetadata` (format-version 2): `schemas` (full column definitions with id/name/type/required), `partition-specs`, `sort-orders`, `snapshots` (with manifest lists), `properties` (compression codec, write paths), `metadata-location` (abfss:// path to metadata JSON).
+- **Delta-to-Iceberg via UniForm/XTable**: Table properties include `XTABLE_METADATA` with `sourceTableFormat: "DELTA"`, confirming Delta tables are exposed as Iceberg via Microsoft's XTable (formerly OneTable) integration. The `iceberg-version` in snapshot summary shows `Apache Iceberg 1.10.1`.
+- **Table API is read-only for now**: The config endpoint lists POST/DELETE endpoints in `endpoints` array, but write operations may not be available in all tenants (preview feature). Read operations (GET) work universally.
+- **Table API env override**: `FABIO_ONELAKE_TABLE_ENDPOINT` overrides the base URL (for sovereign clouds or testing environments).
 
 ## Data Agent API Behaviors Discovered
 - **Definition schema is minimal**: The `getDefinition`/`updateDefinition` API only controls `$schema`, `aiInstructions`, and `experimental` fields. Data sources are NOT configured through definitions — they are managed internally by Fabric (portal-only).

@@ -762,6 +762,83 @@ pub enum LakehouseCommand {
         table: String,
     },
 
+    // ── Iceberg REST Catalog (OneLake Table API) ──────────────────────
+    /// Get Iceberg REST Catalog configuration for a lakehouse
+    #[command(display_order = 74)]
+    IcebergConfig {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+    },
+
+    /// List table namespaces (schemas) via the Iceberg REST Catalog
+    #[command(display_order = 75)]
+    IcebergNamespaces {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+    },
+
+    /// Get metadata for a specific namespace via the Iceberg REST Catalog
+    #[command(display_order = 76)]
+    IcebergNamespace {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Namespace name (e.g. "dbo")
+        #[arg(long)]
+        namespace: String,
+    },
+
+    /// List tables in a namespace via the Iceberg REST Catalog
+    #[command(display_order = 77)]
+    IcebergTables {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Namespace name (e.g. "dbo")
+        #[arg(long)]
+        namespace: String,
+    },
+
+    /// Get table definition (schema, partitions, properties) via the Iceberg REST Catalog
+    #[command(display_order = 78)]
+    IcebergTable {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Namespace name (e.g. "dbo")
+        #[arg(long)]
+        namespace: String,
+
+        /// Table name
+        #[arg(long)]
+        table: String,
+    },
+
     // ── Livy Sessions ────────────────────────────────────────────────────
     /// List Livy sessions for a lakehouse
     #[command(display_order = 80)]
@@ -1216,6 +1293,28 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             id,
             table,
         } => table_schema(cli, client, workspace, id, table).await,
+        LakehouseCommand::IcebergConfig { workspace, id } => {
+            iceberg_config(cli, client, workspace, id).await
+        }
+        LakehouseCommand::IcebergNamespaces { workspace, id } => {
+            iceberg_namespaces(cli, client, workspace, id).await
+        }
+        LakehouseCommand::IcebergNamespace {
+            workspace,
+            id,
+            namespace,
+        } => iceberg_namespace(cli, client, workspace, id, namespace).await,
+        LakehouseCommand::IcebergTables {
+            workspace,
+            id,
+            namespace,
+        } => iceberg_tables(cli, client, workspace, id, namespace).await,
+        LakehouseCommand::IcebergTable {
+            workspace,
+            id,
+            namespace,
+            table,
+        } => iceberg_table(cli, client, workspace, id, namespace, table).await,
         LakehouseCommand::ListLivySessions { workspace, id } => {
             list_livy_sessions(cli, client, workspace, id).await
         }
@@ -4742,6 +4841,85 @@ async fn table_schema(
     .into())
 }
 
+// ─── Iceberg REST Catalog (OneLake Table API) ────────────────────────────────
+
+/// Build the Iceberg warehouse identifier (`{workspace}/{item}`) used in URL paths.
+fn iceberg_warehouse(workspace: &str, id: &str) -> String {
+    format!(
+        "{}/{}",
+        urlencoding::encode(workspace),
+        urlencoding::encode(id)
+    )
+}
+
+async fn iceberg_config(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let wh = iceberg_warehouse(workspace, id);
+    let path = format!("iceberg/v1/config?warehouse={wh}");
+    let result = client.get_onelake_table_api(&path).await?;
+    output::render_object(cli, &result, "defaults");
+    Ok(())
+}
+
+async fn iceberg_namespaces(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let wh = iceberg_warehouse(workspace, id);
+    let path = format!("iceberg/v1/{wh}/namespaces");
+    let result = client.get_onelake_table_api(&path).await?;
+    output::render_object(cli, &result, "namespaces");
+    Ok(())
+}
+
+async fn iceberg_namespace(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    namespace: &str,
+) -> Result<()> {
+    let wh = iceberg_warehouse(workspace, id);
+    let encoded_ns = urlencoding::encode(namespace);
+    let path = format!("iceberg/v1/{wh}/namespaces/{encoded_ns}");
+    let result = client.get_onelake_table_api(&path).await?;
+    output::render_object(cli, &result, "namespace");
+    Ok(())
+}
+
+async fn iceberg_tables(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    namespace: &str,
+) -> Result<()> {
+    let wh = iceberg_warehouse(workspace, id);
+    let encoded_ns = urlencoding::encode(namespace);
+    let path = format!("iceberg/v1/{wh}/namespaces/{encoded_ns}/tables");
+    let result = client.get_onelake_table_api(&path).await?;
+    output::render_object(cli, &result, "identifiers");
+    Ok(())
+}
+
+async fn iceberg_table(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    namespace: &str,
+    table: &str,
+) -> Result<()> {
+    let wh = iceberg_warehouse(workspace, id);
+    let encoded_ns = urlencoding::encode(namespace);
+    let encoded_table = urlencoding::encode(table);
+    let path = format!("iceberg/v1/{wh}/namespaces/{encoded_ns}/tables/{encoded_table}");
+    let result = client.get_onelake_table_api(&path).await?;
+    output::render_object(cli, &result, "metadata");
+    Ok(())
+}
+
 // ─── Livy Sessions ───────────────────────────────────────────────────────────
 
 async fn list_livy_sessions(
@@ -5661,5 +5839,26 @@ mod tests {
     fn parse_size_with_whitespace() {
         assert_eq!(parse_size_value(" 100 ").unwrap(), 100);
         assert_eq!(parse_size_value(" 5M ").unwrap(), 5 * 1024 * 1024);
+    }
+
+    // ─── iceberg_warehouse ──────────────────────────────────────────────
+
+    #[test]
+    fn iceberg_warehouse_plain_guids() {
+        let result = iceberg_warehouse(
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "bbbbbbbb-5555-6666-7777-888888888888",
+        );
+        assert_eq!(
+            result,
+            "aaaaaaaa-1111-2222-3333-444444444444/bbbbbbbb-5555-6666-7777-888888888888"
+        );
+    }
+
+    #[test]
+    fn iceberg_warehouse_encodes_special_chars() {
+        // If workspace or item had special chars they'd be encoded
+        let result = iceberg_warehouse("ws with spaces", "item/slash");
+        assert_eq!(result, "ws%20with%20spaces/item%2Fslash");
     }
 }

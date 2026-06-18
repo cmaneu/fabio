@@ -68,6 +68,13 @@ static ONELAKE_BLOB_URL: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
+static ONELAKE_TABLE_URL: LazyLock<String> = LazyLock::new(|| {
+    env_or_default(
+        "FABIO_ONELAKE_TABLE_ENDPOINT",
+        "https://onelake.table.fabric.microsoft.com",
+    )
+});
+
 static ARM_BASE_URL: LazyLock<String> =
     LazyLock::new(|| env_or_default("FABIO_ARM_ENDPOINT", "https://management.azure.com"));
 
@@ -289,6 +296,14 @@ impl FabricClient {
         } else {
             format!("{}/{workspace}/{suffix}", *ONELAKE_BLOB_URL)
         }
+    }
+
+    /// Construct a `OneLake` Table API URL (Iceberg REST Catalog).
+    ///
+    /// If `FABIO_ONELAKE_TABLE_ENDPOINT` is set, that value is used directly.
+    #[allow(clippy::unused_self)] // keep &self for consistency and future private link support
+    fn onelake_table_url(&self, path: &str) -> String {
+        format!("{}/{path}", *ONELAKE_TABLE_URL)
     }
 
     /// Ensure we have a valid Fabric API token (auto-refreshes if near expiry).
@@ -560,6 +575,45 @@ impl FabricClient {
         }
 
         Ok(resp.bytes().await?.to_vec())
+    }
+
+    // ── OneLake Table API (Iceberg REST Catalog) ──────────────────────
+
+    /// GET from the `OneLake` Table API (Iceberg REST Catalog) at
+    /// `https://onelake.table.fabric.microsoft.com/iceberg/v1/...`.
+    /// Uses storage-scoped auth. Retries once on 401.
+    pub async fn get_onelake_table_api(&self, path: &str) -> Result<Value> {
+        let token = self.require_storage_auth().await?;
+        let url = self.onelake_table_url(path);
+
+        verbose::trace_request("GET", &url, None);
+        let start = std::time::Instant::now();
+
+        let resp = self
+            .http
+            .get(&url)
+            .header(AUTHORIZATION, &token)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_storage_token().await;
+            let token = self.require_storage_auth().await?;
+            let resp = self
+                .http
+                .get(&url)
+                .header(AUTHORIZATION, &token)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
+            return handle_response(resp).await;
+        }
+
+        handle_response(resp).await
     }
 
     /// List files in `OneLake` via DFS. Retries once on 401.

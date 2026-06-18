@@ -152,6 +152,24 @@ fabio lakehouse run-table-maintenance --workspace $WS --id $LH
 
 # Trigger materialized view refresh
 fabio lakehouse refresh-materialized-views --workspace $WS --id $LH
+
+# ── Iceberg REST Catalog (table metadata without Spark/SQL) ──
+
+# Get catalog configuration (available endpoints)
+fabio lakehouse iceberg-config --workspace $WS --id $LH
+
+# List table namespaces (schemas)
+fabio lakehouse iceberg-namespaces --workspace $WS --id $LH
+
+# List tables in the dbo namespace
+fabio lakehouse iceberg-tables --workspace $WS --id $LH --namespace dbo
+
+# Get full table metadata (schema, partitions, snapshots, properties)
+fabio lakehouse iceberg-table --workspace $WS --id $LH --namespace dbo --table customers
+
+# Extract just the column names and types using --query (JMESPath)
+fabio lakehouse iceberg-table --workspace $WS --id $LH --namespace dbo --table sales \
+  --query "metadata.schemas[-1].fields[].{name: name, type: type}"
 ```
 
 ## Notebooks
