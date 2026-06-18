@@ -136,6 +136,29 @@ pub enum OntologyCommand {
         #[arg(long)]
         update_metadata: bool,
     },
+    /// Import an OWL ontology (RDF/XML or JSON-LD) and convert to Fabric format
+    ///
+    /// Parses `owl:Class` to `EntityTypes`, `DatatypeProperties` to properties,
+    /// `ObjectProperties` to `RelationshipTypes`. Compatible with Ontology Playground
+    /// catalogue `.rdf` files.
+    #[command(display_order = 10)]
+    Import {
+        /// Workspace ID (push to Fabric; omit for local export only)
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: Option<String>,
+
+        /// Ontology ID (required when pushing to Fabric)
+        #[arg(long)]
+        id: Option<String>,
+
+        /// Path to OWL file (.rdf, .owl for RDF/XML; .jsonld for JSON-LD)
+        #[arg(long)]
+        file: String,
+
+        /// Export converted definition to a local directory
+        #[arg(long)]
+        output_dir: Option<String>,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand) -> Result<()> {
@@ -208,6 +231,22 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
         )
         .await
         .map_err(|e| enrich_forbidden(e, "ontology update-definition", "Contributor")),
+        OntologyCommand::Import {
+            workspace,
+            id,
+            file,
+            output_dir,
+        } => {
+            crate::commands::ontology_import::import_owl(
+                cli,
+                client,
+                workspace.as_deref(),
+                id.as_deref(),
+                file,
+                output_dir.as_deref(),
+            )
+            .await
+        }
     }
 }
 

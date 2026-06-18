@@ -52,6 +52,7 @@ pub mod mounted_data_factory;
 pub mod notebook;
 pub mod onelake_security;
 pub mod ontology;
+pub mod ontology_import;
 pub mod operations_agent;
 pub mod org_app;
 pub mod org_app_audience;
