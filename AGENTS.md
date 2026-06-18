@@ -101,9 +101,9 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
    - **Relevant Files**: Add new source files, test files, or config files.
    - **API Behaviors Discovered**: Add a new section or append to an existing one with any runtime behaviors, quirks, or undocumented API details encountered (response formats, required fields, error codes, LRO patterns, etc.).
 
-2. **`src/commands/context_agent.rs`** — Update the machine-readable command schema so AI agents can discover the new commands (flags, types, mutability, examples).
+2. **`src/commands/context/agent.rs`** — Update the machine-readable command schema so AI agents can discover the new commands (flags, types, mutability, examples).
 
-   **`src/commands/context_docs.rs` + `context_data/`** — If the new feature introduces an item type, add a schema file in `context_data/schemas/`. If it's part of a multi-step workflow, consider adding a workflow recipe in `context_data/workflows/`.
+   **`src/commands/context/`** — If the new feature introduces an item type, add a schema file in `context/data/schemas/`. If it's part of a multi-step workflow, consider adding a workflow recipe in `context/data/workflows/`.
 
 3. **README.md** — Update the user-facing documentation:
    - Add new commands to the command listing/examples.
@@ -605,8 +605,12 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/profile.rs`: save/use/list/show/delete (named profiles with defaults)
 - `src/commands/jobs.rs`: list/get/prune (local async job ledger)
 - `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
-- `src/commands/context_agent.rs`: Machine-readable command schema for AI agents
-- `src/commands/context_docs.rs`: Offline documentation for AI agents (item schemas, workflows, output examples, best practices)
+- `src/commands/context/agent.rs`: Machine-readable command schema for AI agents
+- `src/commands/context/schemas.rs`: Item definition schemas (22 types)
+- `src/commands/context/workflows.rs`: Multi-step workflow recipes (5 recipes)
+- `src/commands/context/best_practices.rs`: Best-practices guidance (4 topics)
+- `src/commands/context/examples.rs`: Output shape examples (6 commands)
+- `src/commands/context/tenant.rs`: Live workspace graph extraction
 - `src/commands/rest.rs`: Raw REST passthrough (method/path/body/query-params/poll); `resolve_body()` for @file/@- support; `--api powerbi` targets Power BI REST API
 - `src/commands/rti.rs`: nl-to-kql (natural language to KQL translation)
 - `src/commands/data_build_tool_job.rs`: list/show/create/update/delete/get-definition/update-definition/run (with --wait/--timeout/--cancel-on-timeout) [preview]

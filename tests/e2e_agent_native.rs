@@ -11,7 +11,7 @@ use serial_test::serial;
 // =============================================================================
 
 #[test]
-fn agent_context_returns_schema() {
+fn context_agent_returns_schema() {
     let assert = fabio().args(["context", "agent"]).assert().success();
 
     let json = parse_json(&assert);
@@ -42,7 +42,7 @@ fn agent_context_returns_schema() {
 }
 
 #[test]
-fn agent_context_with_json_flag() {
+fn context_agent_with_json_flag() {
     let assert = fabio()
         .args(["--json", "context", "agent"])
         .assert()
@@ -53,7 +53,7 @@ fn agent_context_with_json_flag() {
 }
 
 #[test]
-fn agent_context_with_query_extracts_version() {
+fn context_agent_with_query_extracts_version() {
     let assert = fabio()
         .args(["--query", "schema_version", "context", "agent"])
         .assert()

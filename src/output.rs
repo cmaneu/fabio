@@ -602,7 +602,7 @@ mod tests {
         assert!(matches!(cli.effective_output(), OutputFormat::Tsv));
     }
 
-    /// Helper to construct a Cli for testing (parses args after "fabio agent-context").
+    /// Helper to construct a Cli for testing (parses args after "fabio context agent").
     fn make_test_cli(extra_args: &[&str]) -> Cli {
         const VALID_OUTPUT_VALUES: &str = "json, table, plain, csv, tsv";
 
