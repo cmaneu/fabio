@@ -1869,3 +1869,244 @@ fn ontology_get_definition_without_decode() {
         .assert()
         .success();
 }
+
+// ─── Import Tests ────────────────────────────────────────────────────────────
+
+#[test]
+fn ontology_import_rdf_to_directory() {
+    let rdf = r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+         xmlns:ont="http://example.org/">
+  <owl:Class rdf:about="http://example.org/Sensor"><rdfs:label>Sensor</rdfs:label></owl:Class>
+  <owl:Class rdf:about="http://example.org/Reading"><rdfs:label>Reading</rdfs:label></owl:Class>
+  <owl:DatatypeProperty rdf:about="http://example.org/sensor_id">
+    <rdfs:label>sensorId</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/Sensor"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <ont:isIdentifier rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isIdentifier>
+  </owl:DatatypeProperty>
+  <owl:ObjectProperty rdf:about="http://example.org/produces">
+    <rdfs:label>produces</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/Sensor"/>
+    <rdfs:range rdf:resource="http://example.org/Reading"/>
+  </owl:ObjectProperty>
+</rdf:RDF>"#;
+
+    let tmp_dir = std::env::temp_dir();
+    let rdf_file = tmp_dir.join("fabio_test_import.rdf");
+    let out_dir = tmp_dir.join("fabio_test_import_out");
+    std::fs::write(&rdf_file, rdf).unwrap();
+    let _ = std::fs::remove_dir_all(&out_dir);
+
+    let output = fabio()
+        .args([
+            "ontology",
+            "import",
+            "--file",
+            &rdf_file.display().to_string(),
+            "--output-dir",
+            &out_dir.display().to_string(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "exported");
+    assert_eq!(data["entity_types"], 2);
+    assert_eq!(data["relationship_types"], 1);
+    assert!(out_dir.join("definition.json").exists());
+    assert!(out_dir.join("EntityTypes").exists());
+    assert!(out_dir.join("RelationshipTypes").exists());
+
+    let _ = std::fs::remove_file(&rdf_file);
+    let _ = std::fs::remove_dir_all(&out_dir);
+}
+
+#[test]
+fn ontology_import_jsonld_to_directory() {
+    let jsonld = r#"{"@graph": [
+        {"@id": "http://ex.org/Device", "@type": "owl:Class", "rdfs:label": "Device"},
+        {"@id": "http://ex.org/Event", "@type": "owl:Class", "rdfs:label": "Event"},
+        {"@id": "http://ex.org/emits", "@type": "owl:ObjectProperty", "rdfs:label": "emits",
+         "rdfs:domain": {"@id": "http://ex.org/Device"}, "rdfs:range": {"@id": "http://ex.org/Event"}}
+    ]}"#;
+
+    let tmp_dir = std::env::temp_dir();
+    let file = tmp_dir.join("fabio_test_import.jsonld");
+    let out_dir = tmp_dir.join("fabio_test_import_jsonld_out");
+    std::fs::write(&file, jsonld).unwrap();
+    let _ = std::fs::remove_dir_all(&out_dir);
+
+    let output = fabio()
+        .args([
+            "ontology",
+            "import",
+            "--file",
+            &file.display().to_string(),
+            "--output-dir",
+            &out_dir.display().to_string(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "exported");
+    assert_eq!(data["entity_types"], 2);
+    assert_eq!(data["relationship_types"], 1);
+
+    let _ = std::fs::remove_file(&file);
+    let _ = std::fs::remove_dir_all(&out_dir);
+}
+
+#[test]
+fn ontology_import_dry_run() {
+    let rdf = r#"<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:owl="http://www.w3.org/2002/07/owl#" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"><owl:Class rdf:about="http://ex.org/T"><rdfs:label>T</rdfs:label></owl:Class></rdf:RDF>"#;
+    let tmp = std::env::temp_dir().join("fabio_test_import_dryrun.rdf");
+    std::fs::write(&tmp, rdf).unwrap();
+
+    let output = fabio()
+        .args([
+            "ontology",
+            "import",
+            "--file",
+            &tmp.display().to_string(),
+            "--output-dir",
+            "/tmp/unused",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["entity_types"], 1);
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn ontology_import_missing_file_fails() {
+    fabio()
+        .args([
+            "ontology",
+            "import",
+            "--file",
+            "/nonexistent/path.rdf",
+            "--output-dir",
+            "/tmp/x",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn ontology_import_no_output_no_workspace_fails() {
+    let tmp = std::env::temp_dir().join("fabio_test_noout.rdf");
+    std::fs::write(&tmp, "<?xml version=\"1.0\"?><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"/>").unwrap();
+
+    let output = fabio()
+        .args(["ontology", "import", "--file", &tmp.display().to_string()])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(stderr.contains("--workspace") || stderr.contains("--output-dir"));
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ontology_import_rdf_live() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("ont_import");
+
+    let output = fabio()
+        .args([
+            "ontology",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    let ont_id = extract_data(&json)["id"].as_str().unwrap().to_string();
+
+    let rdf = r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:owl="http://www.w3.org/2002/07/owl#" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:xsd="http://www.w3.org/2001/XMLSchema#" xmlns:ont="http://example.org/">
+  <owl:Class rdf:about="http://example.org/Vehicle"><rdfs:label>Vehicle</rdfs:label></owl:Class>
+  <owl:Class rdf:about="http://example.org/Trip"><rdfs:label>Trip</rdfs:label></owl:Class>
+  <owl:DatatypeProperty rdf:about="http://example.org/vehicle_vin">
+    <rdfs:label>vin</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/Vehicle"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <ont:isIdentifier rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isIdentifier>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="http://example.org/vehicle_name">
+    <rdfs:label>name</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/Vehicle"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="http://example.org/trip_id">
+    <rdfs:label>tripId</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/Trip"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <ont:isIdentifier rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isIdentifier>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="http://example.org/trip_name">
+    <rdfs:label>destination</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/Trip"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+  </owl:DatatypeProperty>
+  <owl:ObjectProperty rdf:about="http://example.org/makes">
+    <rdfs:label>makes</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/Vehicle"/>
+    <rdfs:range rdf:resource="http://example.org/Trip"/>
+  </owl:ObjectProperty>
+</rdf:RDF>"#;
+    let tmp = std::env::temp_dir().join("fabio_e2e_import.rdf");
+    std::fs::write(&tmp, rdf).unwrap();
+
+    let output = fabio()
+        .args([
+            "ontology",
+            "import",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--file",
+            &tmp.display().to_string(),
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "imported");
+    assert_eq!(data["entity_types"], 2);
+    assert_eq!(data["relationship_types"], 1);
+
+    // Cleanup
+    fabio()
+        .args([
+            "ontology",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--hard",
+        ])
+        .assert()
+        .success();
+    let _ = std::fs::remove_file(&tmp);
+}

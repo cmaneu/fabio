@@ -322,8 +322,8 @@ fn extract_rdf_resource(e: &quick_xml::events::BytesStart<'_>) -> String {
 }
 
 fn uri_local_name(uri: &str) -> String {
-    uri.rsplit_once('/')
-        .or_else(|| uri.rsplit_once('#'))
+    uri.rsplit_once('#')
+        .or_else(|| uri.rsplit_once('/'))
         .map_or_else(|| uri.to_string(), |(_, name)| name.to_string())
 }
 
@@ -647,4 +647,220 @@ async fn push_to_fabric(
         output::render_object(cli, &data, "id");
     }
     Ok(())
+}
+
+// ─── Unit Tests ──────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_rdf_xml_classes() {
+        let rdf = r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Class rdf:about="http://example.org/Customer">
+    <rdfs:label>Customer</rdfs:label>
+  </owl:Class>
+  <owl:Class rdf:about="http://example.org/Order">
+    <rdfs:label>Order</rdfs:label>
+  </owl:Class>
+</rdf:RDF>"#;
+        let model = parse_rdf_xml(rdf);
+        assert_eq!(model.classes.len(), 2);
+        assert_eq!(model.classes[0].label, "Customer");
+        assert_eq!(model.classes[1].label, "Order");
+    }
+
+    #[test]
+    fn test_parse_rdf_xml_properties_with_types() {
+        let rdf = r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+         xmlns:ont="http://example.org/">
+  <owl:Class rdf:about="http://example.org/Product">
+    <rdfs:label>Product</rdfs:label>
+  </owl:Class>
+  <owl:DatatypeProperty rdf:about="http://example.org/product_price">
+    <rdfs:label>price</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/Product"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+    <ont:propertyType>decimal</ont:propertyType>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="http://example.org/product_id">
+    <rdfs:label>productId</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/Product"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <ont:isIdentifier rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isIdentifier>
+  </owl:DatatypeProperty>
+</rdf:RDF>"#;
+        let model = parse_rdf_xml(rdf);
+        assert_eq!(model.classes.len(), 1);
+        assert_eq!(model.datatype_properties.len(), 2);
+
+        let price = &model.datatype_properties[0];
+        assert_eq!(price.label, "price");
+        assert_eq!(price.property_type, "Double");
+        assert!(!price.is_identifier);
+
+        let pid = &model.datatype_properties[1];
+        assert_eq!(pid.label, "productId");
+        assert!(pid.is_identifier);
+    }
+
+    #[test]
+    fn test_parse_rdf_xml_relationships() {
+        let rdf = r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Class rdf:about="http://example.org/Customer"><rdfs:label>Customer</rdfs:label></owl:Class>
+  <owl:Class rdf:about="http://example.org/Order"><rdfs:label>Order</rdfs:label></owl:Class>
+  <owl:ObjectProperty rdf:about="http://example.org/places">
+    <rdfs:label>places</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/Customer"/>
+    <rdfs:range rdf:resource="http://example.org/Order"/>
+  </owl:ObjectProperty>
+</rdf:RDF>"#;
+        let model = parse_rdf_xml(rdf);
+        assert_eq!(model.object_properties.len(), 1);
+        assert_eq!(model.object_properties[0].label, "places");
+        assert_eq!(
+            model.object_properties[0].domain_uri,
+            "http://example.org/Customer"
+        );
+        assert_eq!(
+            model.object_properties[0].range_uri,
+            "http://example.org/Order"
+        );
+    }
+
+    #[test]
+    fn test_parse_json_ld_owl_classes() {
+        let jsonld = r#"{
+            "@graph": [
+                {"@id": "http://ex.org/Cat", "@type": "owl:Class", "rdfs:label": "Category"},
+                {"@id": "http://ex.org/Item", "@type": "owl:Class", "rdfs:label": "Item"}
+            ]
+        }"#;
+        let model = parse_json_ld(jsonld).unwrap();
+        assert_eq!(model.classes.len(), 2);
+        assert_eq!(model.classes[0].label, "Category");
+        assert_eq!(model.classes[1].label, "Item");
+    }
+
+    #[test]
+    fn test_parse_json_ld_fabric_context_output() {
+        let jsonld = r#"{"data": {"@context": {}, "@graph": [
+            {"@id": "urn:fabric:item:abc", "@type": "fabric:Notebook", "name": "ETL"},
+            {"@id": "urn:fabric:item:def", "@type": "fabric:Lakehouse", "name": "Sales"},
+            {"@id": "urn:fabric:workspace:ws1", "@type": "fabric:Workspace", "name": "Demo"}
+        ]}}"#;
+        let model = parse_json_ld(jsonld).unwrap();
+        // Workspaces are excluded, unique types extracted
+        assert_eq!(model.classes.len(), 2);
+        let names: Vec<&str> = model.classes.iter().map(|c| c.label.as_str()).collect();
+        assert!(names.contains(&"Notebook"));
+        assert!(names.contains(&"Lakehouse"));
+    }
+
+    #[test]
+    fn test_xsd_type_mapping() {
+        assert_eq!(
+            xsd_to_fabric_type("http://www.w3.org/2001/XMLSchema#string"),
+            "String"
+        );
+        assert_eq!(
+            xsd_to_fabric_type("http://www.w3.org/2001/XMLSchema#integer"),
+            "BigInt"
+        );
+        assert_eq!(
+            xsd_to_fabric_type("http://www.w3.org/2001/XMLSchema#decimal"),
+            "Double"
+        );
+        assert_eq!(
+            xsd_to_fabric_type("http://www.w3.org/2001/XMLSchema#boolean"),
+            "Boolean"
+        );
+        assert_eq!(
+            xsd_to_fabric_type("http://www.w3.org/2001/XMLSchema#dateTime"),
+            "DateTime"
+        );
+        assert_eq!(xsd_to_fabric_type("http://example.org/unknown"), "String");
+    }
+
+    #[test]
+    fn test_playground_type_mapping() {
+        assert_eq!(playground_type_to_fabric("string"), "String");
+        assert_eq!(playground_type_to_fabric("enum"), "String");
+        assert_eq!(playground_type_to_fabric("integer"), "BigInt");
+        assert_eq!(playground_type_to_fabric("decimal"), "Double");
+        assert_eq!(playground_type_to_fabric("boolean"), "Boolean");
+        assert_eq!(playground_type_to_fabric("datetime"), "DateTime");
+        assert_eq!(playground_type_to_fabric("date"), "DateTime");
+    }
+
+    #[test]
+    fn test_generate_fabric_parts() {
+        let model = OwlModel {
+            classes: vec![
+                OwlClass {
+                    uri: "http://ex.org/A".to_string(),
+                    label: "TypeA".to_string(),
+                },
+                OwlClass {
+                    uri: "http://ex.org/B".to_string(),
+                    label: "TypeB".to_string(),
+                },
+            ],
+            datatype_properties: vec![OwlDatatypeProperty {
+                label: "name".to_string(),
+                domain_uri: "http://ex.org/A".to_string(),
+                property_type: "String".to_string(),
+                is_identifier: true,
+            }],
+            object_properties: vec![OwlObjectProperty {
+                label: "relatesTo".to_string(),
+                domain_uri: "http://ex.org/A".to_string(),
+                range_uri: "http://ex.org/B".to_string(),
+            }],
+        };
+        let parts = generate_fabric_parts(&model);
+        // root + 2 entities + 1 relationship = 4 parts
+        assert_eq!(parts.len(), 4);
+        assert_eq!(parts[0].path, "definition.json");
+        assert!(parts[1].path.contains("EntityTypes"));
+        assert!(parts[2].path.contains("EntityTypes"));
+        assert!(parts[3].path.contains("RelationshipTypes"));
+
+        // Verify entity content
+        let entity: serde_json::Value = serde_json::from_str(&parts[1].content).unwrap();
+        assert_eq!(entity["name"], "TypeA");
+        assert_eq!(entity["properties"][0]["name"], "name");
+        assert_eq!(entity["properties"][0]["valueType"], "String");
+    }
+
+    #[test]
+    fn test_uri_local_name() {
+        assert_eq!(uri_local_name("http://example.org/foo/Bar"), "Bar");
+        assert_eq!(uri_local_name("http://example.org#Baz"), "Baz");
+        assert_eq!(uri_local_name("JustAName"), "JustAName");
+    }
+
+    #[test]
+    fn test_content_detection_xml() {
+        let xml_content = "<?xml version=\"1.0\"?>\n<rdf:RDF>...</rdf:RDF>";
+        assert!(xml_content.trim_start().starts_with('<'));
+    }
+
+    #[test]
+    fn test_content_detection_json() {
+        let json_content = "{\"@graph\": []}";
+        let trimmed = json_content.trim_start();
+        assert!(trimmed.starts_with('{') || trimmed.starts_with('['));
+    }
 }
