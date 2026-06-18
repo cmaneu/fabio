@@ -34,6 +34,28 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - Installable via `cargo install --git https://github.com/iemejia/fabio.git`
 - **Dependency version freshness** — When introducing a new Cargo dependency or a new GitHub Action, always validate that you are using the most recent available and compatible version. Check crates.io for Rust crates and the action's repository releases/tags for GitHub Actions. Do NOT copy outdated versions from examples or memory — verify against the source of truth before adding. Additionally, reject any dependency with an incompatible license (GPL, LGPL, AGPL, SSPL, or any other copyleft license that would impose restrictions on the project). Only permissive licenses (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0, etc.) are acceptable.
 
+## Command File Structure (MANDATORY)
+
+Any command module that exceeds **1500 lines of code** MUST be refactored into a directory module with one file per logical concern. Follow the pattern established by `context/`, `deploy/`, and `lakehouse/`:
+
+```
+src/commands/<command>/
+├── mod.rs          — Subcommand enum, execute() dispatch, shared helpers
+├── <concern_a>.rs  — Handler functions for one group of subcommands
+├── <concern_b>.rs  — Handler functions for another group
+└── ...
+```
+
+**Rules:**
+- `mod.rs` contains the `<Command>Command` enum, the `execute()` dispatch function, and any helpers shared across submodules.
+- Each submodule file owns handler functions for a cohesive group of subcommands (e.g., CRUD, file ops, table ops).
+- Functions called from `execute()` are `pub(super)`. Internal helpers stay private.
+- Embedded data files (JSON schemas, templates) go in a `data/` subdirectory within the module.
+- When adding new subcommands to an existing directory module, place the handler in the appropriate submodule file — do NOT add it to `mod.rs`.
+- When a single-file command grows past 1500 lines, split it proactively rather than waiting for the next feature addition.
+
+**Current directory modules:** `context/` (7 files), `deploy/` (12 files), `lakehouse/` (10 files).
+
 ## Pre-Commit Validation (MANDATORY)
 
 Before committing ANY change, you MUST run the following validation steps in order and ensure they all pass with zero errors and zero warnings:
