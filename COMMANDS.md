@@ -1,6 +1,6 @@
 # Commands
 
-> **AI agents**: Instead of parsing this file, run `fabio agent-context` to get a machine-readable command schema with flags, types, mutability, and examples. Run `fabio docs list` to discover item schemas, workflow recipes, and best practices.
+> **AI agents**: Instead of parsing this file, run `fabio context agent` to get a machine-readable command schema with flags, types, mutability, and examples. Run `fabio context list` to discover item schemas, workflow recipes, and best practices.
 
 ## Global Flags
 
@@ -161,6 +161,12 @@ fabio capacity check-name    Check capacity name availability
 
 fabio catalog search         Search items across the tenant
 
+fabio context agent          Machine-readable CLI schema for agent introspection
+fabio context schema <TYPE>  Show definition schema for an item type (Notebook, DataPipeline, etc.)
+fabio context workflow <NAME>  Show a multi-step workflow recipe (rti-pipeline, cicd-deploy, etc.)
+fabio context best-practices <TOPIC>  Show best-practices guidance (throttling, lro, pagination, admin-apis)
+fabio context examples <GROUP> <CMD>  Show example output for a command
+fabio context list           List all available documentation topics
 fabio context extract        Extract a graph of items and relationships from workspace(s)
                              Flags: --workspace (repeatable), --deep, --include-connections,
                                     --item-types, --no-properties, --format (graph|jsonld),
@@ -915,13 +921,6 @@ fabio feedback list          List recorded feedback entries
 
 fabio operation get-state    Get state of a long-running operation
 fabio operation get-result   Get result of a completed operation
-
-fabio agent-context          Machine-readable command schema for AI agents
-
-fabio docs list              List available documentation topics
-fabio docs item-schema <TYPE>  Show definition schema for an item type (Notebook, DataPipeline, etc.)
-fabio docs workflow <NAME>   Show a multi-step workflow recipe (rti-pipeline, cicd-deploy, etc.)
-fabio docs output-example <GROUP> <CMD>  Show example output for a command
 
 fabio upgrade             Update fabio to the latest release from GitHub
 fabio upgrade --check     Only check if an update is available

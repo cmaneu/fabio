@@ -1,5 +1,5 @@
 //! End-to-end integration tests for agent-native CLI features:
-//! agent-context, profile, jobs, feedback, --json, --dry-run, --limit, --force.
+//! context agent, profile, jobs, feedback, --json, --dry-run, --limit, --force.
 
 mod common;
 
@@ -7,12 +7,12 @@ use common::{TestConfig, extract_data, fabio, parse_json};
 use serial_test::serial;
 
 // =============================================================================
-// agent-context command (Principle 7: Three-layer introspection)
+// context agent command (Principle 7: Three-layer introspection)
 // =============================================================================
 
 #[test]
 fn agent_context_returns_schema() {
-    let assert = fabio().args(["agent-context"]).assert().success();
+    let assert = fabio().args(["context", "agent"]).assert().success();
 
     let json = parse_json(&assert);
     let data = extract_data(&json);
@@ -43,7 +43,10 @@ fn agent_context_returns_schema() {
 
 #[test]
 fn agent_context_with_json_flag() {
-    let assert = fabio().args(["--json", "agent-context"]).assert().success();
+    let assert = fabio()
+        .args(["--json", "context", "agent"])
+        .assert()
+        .success();
 
     let json = parse_json(&assert);
     assert!(json.get("data").is_some());
@@ -52,7 +55,7 @@ fn agent_context_with_json_flag() {
 #[test]
 fn agent_context_with_query_extracts_version() {
     let assert = fabio()
-        .args(["--query", "schema_version", "agent-context"])
+        .args(["--query", "schema_version", "context", "agent"])
         .assert()
         .success();
 
@@ -352,7 +355,7 @@ fn feedback_list_returns_array() {
 #[test]
 fn quiet_flag_suppresses_output() {
     let assert = fabio()
-        .args(["--quiet", "agent-context"])
+        .args(["--quiet", "context", "agent"])
         .assert()
         .success();
 

@@ -580,12 +580,6 @@
       }
     }
   },
-  "agent-context": {
-    "auth_scope": "local",
-    "description": "Machine-readable CLI schema for agent introspection",
-    "mutates": false,
-    "returns": "object"
-  },
   "anomaly-detector": {
     "auth_scope": "fabric",
     "description": "Manage anomaly detectors",
@@ -1672,9 +1666,60 @@
     }
   },
   "context": {
-    "auth_scope": "fabric",
-    "description": "Extract workspace runtime context as a relationship graph for agent memory",
+    "auth_scope": "mixed",
+    "description": "Agent introspection, offline documentation, and workspace graph extraction",
     "subcommands": {
+      "agent": {
+        "description": "Machine-readable CLI schema for agent introspection (all commands, flags, types, mutability)",
+        "mutates": false,
+        "returns": "object",
+        "notes": "Returns the full command surface as JSON. Call once at session start for tool discovery."
+      },
+      "schema": {
+        "description": "Show definition schema/template for a Fabric item type",
+        "example": "fabio context schema Notebook",
+        "flags": {
+          "TYPE": { "description": "Item type name (case-insensitive)", "required": true, "type": "string" }
+        },
+        "mutates": false,
+        "returns": "object",
+        "notes": "Returns creation body template, definition parts, flags, and tips for the specified item type."
+      },
+      "workflow": {
+        "description": "Show a multi-step workflow recipe",
+        "example": "fabio context workflow direct-lake-report",
+        "flags": {
+          "NAME": { "description": "Workflow name", "required": true, "type": "string" }
+        },
+        "mutates": false,
+        "returns": "object",
+        "notes": "Returns ordered steps with fabio commands for common multi-step tasks."
+      },
+      "best-practices": {
+        "description": "Show best-practices guidance (throttling, lro, pagination, admin-apis)",
+        "example": "fabio context best-practices throttling",
+        "flags": {
+          "TOPIC": { "description": "Topic name", "required": true, "type": "string" }
+        },
+        "mutates": false,
+        "returns": "object",
+        "notes": "Returns operational guidance tailored for agents using fabio as execution layer."
+      },
+      "examples": {
+        "description": "Show example output for a command (response shape + JMESPath tips)",
+        "example": "fabio context examples lakehouse iceberg-table",
+        "flags": {
+          "GROUP": { "description": "Command group", "required": true, "type": "string" },
+          "COMMAND": { "description": "Subcommand name", "required": true, "type": "string" }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "list": {
+        "description": "List all available documentation topics (schemas, workflows, examples, best-practices)",
+        "mutates": false,
+        "returns": "object"
+      },
       "extract": {
         "description": "Extract a graph of items and relationships from workspace(s)",
         "flags": {

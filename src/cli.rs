@@ -142,7 +142,7 @@ pub enum Command {
         #[command(subcommand)]
         command: catalog::CatalogCommand,
     },
-    /// Extract workspace runtime context as a relationship graph
+    /// Agent introspection, offline docs, and workspace graph extraction
     #[command(display_order = 6)]
     Context {
         #[command(subcommand)]
@@ -551,15 +551,6 @@ pub enum Command {
     Rest {
         #[command(subcommand)]
         command: rest::RestCommand,
-    },
-    /// Machine-readable CLI schema for agent introspection
-    #[command(name = "agent-context", display_order = 65)]
-    AgentContext,
-    /// Offline documentation for AI agents (item schemas, workflows, output examples)
-    #[command(display_order = 65)]
-    Docs {
-        #[command(subcommand)]
-        command: crate::commands::docs::DocsCommand,
     },
     /// Upgrade fabio to the latest release from GitHub
     #[command(display_order = 66)]

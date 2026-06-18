@@ -1,63 +1,28 @@
-use clap::Subcommand;
 use serde_json::{Value, json};
 
 use crate::cli::Cli;
 use crate::output;
 
-/// Embedded documentation topics for AI agents.
-/// These are static resources compiled into the binary — no API calls needed.
+// ─── Public entry points (called from context.rs) ────────────────────────────
 
-#[derive(Debug, Subcommand)]
-pub enum DocsCommand {
-    /// List available documentation topics
-    #[command(display_order = 0)]
-    List,
-
-    /// Show the definition schema/template for a Fabric item type
-    #[command(display_order = 1)]
-    ItemSchema {
-        /// Item type (e.g. `Notebook`, `DataPipeline`, `SemanticModel`)
-        #[arg(name = "TYPE")]
-        item_type: String,
-    },
-
-    /// Show a multi-step workflow recipe
-    #[command(display_order = 2)]
-    Workflow {
-        /// Workflow name (use `fabio docs list` to see available workflows)
-        #[arg(name = "NAME")]
-        name: String,
-    },
-
-    /// Show an example output for a command
-    #[command(display_order = 3)]
-    OutputExample {
-        /// Command group (e.g. `lakehouse`, `workspace`, `item`)
-        #[arg(name = "GROUP")]
-        group: String,
-
-        /// Subcommand (e.g. `list-tables`, `iceberg-table`, `list`)
-        #[arg(name = "COMMAND")]
-        command: String,
-    },
-
-    /// Show best-practices guidance for a topic (throttling, lro, pagination, admin-apis)
-    #[command(display_order = 4)]
-    BestPractices {
-        /// Topic name (use `fabio docs list` to see available topics)
-        #[arg(name = "TOPIC")]
-        topic: String,
-    },
+pub fn list_topics_public(cli: &Cli) {
+    list_topics(cli);
 }
 
-pub fn execute(cli: &Cli, command: &DocsCommand) {
-    match command {
-        DocsCommand::List => list_topics(cli),
-        DocsCommand::ItemSchema { item_type } => item_schema(cli, item_type),
-        DocsCommand::Workflow { name } => workflow(cli, name),
-        DocsCommand::OutputExample { group, command } => output_example(cli, group, command),
-        DocsCommand::BestPractices { topic } => best_practices(cli, topic),
-    }
+pub fn item_schema_public(cli: &Cli, item_type: &str) {
+    item_schema(cli, item_type);
+}
+
+pub fn workflow_public(cli: &Cli, name: &str) {
+    workflow(cli, name);
+}
+
+pub fn best_practices_public(cli: &Cli, topic: &str) {
+    best_practices(cli, topic);
+}
+
+pub fn output_example_public(cli: &Cli, group: &str, command: &str) {
+    output_example(cli, group, command);
 }
 
 // ─── List ────────────────────────────────────────────────────────────────────

@@ -14,7 +14,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 4. **Safe retries and explicit mutation boundaries** — `--dry-run` for mutations; idempotency-safe; stable returned IDs.
 5. **Bounded responses** — `--limit` for list commands; default to concise output; truncation metadata in envelope.
 6. **Cross-CLI vocabulary consistency** — Canonical agent verbs: `list`, `show`, `create`, `delete`, `copy`, `move`.
-7. **Three-layer introspection** — `fabio agent-context` provides machine-readable command schema (flags, types, mutability, examples). `fabio docs` provides semantic knowledge (item definition schemas, workflow recipes, output examples, best-practices guidance).
+7. **Three-layer introspection** — `fabio context agent` provides machine-readable command schema (flags, types, mutability, examples). `fabio context` provides semantic knowledge (item definition schemas, workflow recipes, output examples, best-practices guidance).
 8. **Async-aware execution** — `--wait` for async jobs; local job ledger (`fabio jobs list/get/prune`); status polling.
 9. **Persistent identity through profiles** — Named profiles (`fabio profile save/use/list/show/delete`); `--profile` flag.
 10. **Two-way I/O** — Feedback channel (`fabio feedback send/list`); artifact delivery via stdout/file.
@@ -117,7 +117,7 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
 **Rules:**
 - Documentation updates are part of the feature — do NOT commit code without corresponding doc updates.
 - API behaviors discovered during implementation MUST be captured in AGENTS.md (this is critical institutional knowledge for future development).
-- The `agent-context` schema must stay in sync with the actual CLI surface — agents rely on it for discovery.
+- The `context agent` schema must stay in sync with the actual CLI surface — agents rely on it for discovery.
 - The `docs` data files must be updated when new item types or workflows are added — agents rely on them for understanding definition formats and best practices.
 
 ## Testing Requirements (MANDATORY)
@@ -332,7 +332,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 
 ## Progress
 ### Done
-- **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, context, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, azure-databricks-storage, data-build-tool-job, org-app, org-app-audience, rti, rest, profile, jobs, feedback, operation, agent-context, upgrade
+- **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, context, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, azure-databricks-storage, data-build-tool-job, org-app, org-app-audience, rti, rest, profile, jobs, feedback, operation, upgrade
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain, CSV, TSV formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (JMESPath expression — see jmespath.org), `--quiet` (suppresses stdout), `--verbose/-v` (HTTP/LRO/auth diagnostics on stderr), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`, `--lro-timeout`
@@ -393,7 +393,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
   - Principle 4: Safe retries (`--dry-run`)
   - Principle 5: Bounded responses (`--limit`, `--continuation-token`, truncation metadata)
   - Principle 6: Consistent vocabulary (list/show/create/delete/copy/move)
-  - Principle 7: `fabio agent-context` machine-readable schema + `fabio docs` semantic knowledge (item schemas, workflows, best practices)
+  - Principle 7: `fabio context agent` machine-readable schema + `fabio context` semantic knowledge (item schemas, workflows, best practices)
   - Principle 8: Async-aware (`--wait`, jobs ledger)
   - Principle 9: Named profiles (`fabio profile save/use/list/show/delete`)
   - Principle 10: Two-way I/O (`fabio feedback send/list`)
@@ -2020,7 +2020,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Create is LRO**: `POST /workspaces/{ws}/appBackends` returns asynchronous operation semantics and is polled by the CLI.
 - **Update input guard**: Update requires at least one of `--name` or `--description`; otherwise returns `INVALID_INPUT` with a corrective hint.
 - **Hard delete support**: Delete supports `--hard-delete`, which appends `?hardDelete=true` and bypasses recycle bin behavior.
-- **Agent-context coverage**: `fabio agent-context` now includes a full `app-backend` schema (mutability, async create, and `--hard-delete` bool flag metadata).
+- **Agent-context coverage**: `fabio context agent` now includes a full `app-backend` schema (mutability, async create, and `--hard-delete` bool flag metadata).
 - **Endpoint patterns**: `/workspaces/{ws}/appBackends` and `/workspaces/{ws}/appBackends/{id}`.
 
 ## Azure Databricks Storage API Behaviors Discovered

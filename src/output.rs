@@ -619,7 +619,9 @@ mod tests {
             continuation_token: None,
             profile: None,
             lro_timeout: None,
-            command: Command::AgentContext,
+            command: Command::Context {
+                command: crate::commands::context::ContextCommand::Agent,
+            },
         };
 
         let mut i = 0;

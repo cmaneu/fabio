@@ -1,4 +1,3 @@
-use anyhow::Result;
 use serde::Serialize;
 
 use crate::cli::Cli;
@@ -38,7 +37,7 @@ struct ErrorCodeInfo {
     exit_code: u8,
 }
 
-pub fn execute(cli: &Cli) -> Result<()> {
+pub fn execute(cli: &Cli) {
     // Build the JSON object field-by-field to avoid deep serde recursion on the stack.
     // On Windows the default stack is ~1 MB; serde_json::to_value() on a deeply nested
     // 146 KB JSON tree overflows it. By constructing the envelope manually and inserting
@@ -59,30 +58,29 @@ pub fn execute(cli: &Cli) -> Result<()> {
     );
     value.insert(
         "global_flags".to_owned(),
-        serde_json::to_value(global_flags())?,
+        serde_json::to_value(global_flags()).expect("serialize global_flags"),
     );
     value.insert(
         "environment_variables".to_owned(),
-        serde_json::to_value(environment_variables())?,
+        serde_json::to_value(environment_variables()).expect("serialize env_vars"),
     );
     // Large pre-parsed blobs inserted directly — no recursive to_value traversal.
     value.insert("commands".to_owned(), commands_schema());
     value.insert(
         "error_codes".to_owned(),
-        serde_json::to_value(error_codes())?,
+        serde_json::to_value(error_codes()).expect("serialize error_codes"),
     );
     value.insert("job_types".to_owned(), job_types());
     value.insert("definition_paths".to_owned(), definition_paths());
     value.insert(
         "portal_only_operations".to_owned(),
-        serde_json::to_value(portal_only_operations())?,
+        serde_json::to_value(portal_only_operations()).expect("serialize portal_ops"),
     );
     value.insert("workflows".to_owned(), workflows());
     value.insert("output_conventions".to_owned(), output_conventions());
 
     let obj = serde_json::Value::Object(value);
     output::render_object(cli, &obj, "name");
-    Ok(())
 }
 
 fn global_flags() -> Vec<Flag> {

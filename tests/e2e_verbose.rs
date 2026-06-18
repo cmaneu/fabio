@@ -50,9 +50,9 @@ fn verbose_with_dry_run_produces_no_http_trace() {
 
 #[test]
 fn verbose_does_not_affect_stdout_of_agent_context() {
-    // agent-context is offline (no HTTP) — stdout should still be valid JSON
+    // context agent is offline (no HTTP) — stdout should still be valid JSON
     let assert = fabio()
-        .args(["--verbose", "agent-context"])
+        .args(["--verbose", "context", "agent"])
         .assert()
         .success();
 
@@ -60,11 +60,11 @@ fn verbose_does_not_affect_stdout_of_agent_context() {
     // Should still produce the schema
     assert!(json.get("commands").is_some() || json.get("data").is_some());
 
-    // stderr should not have HTTP traces (agent-context is local)
+    // stderr should not have HTTP traces (context agent is local)
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
         !stderr.contains("[verbose][http] -->"),
-        "agent-context should not produce HTTP traces"
+        "context agent should not produce HTTP traces"
     );
 }
 
@@ -72,7 +72,7 @@ fn verbose_does_not_affect_stdout_of_agent_context() {
 fn verbose_and_quiet_together_suppresses_verbose_offline() {
     // Even with --verbose, --quiet should suppress all stderr
     let assert = fabio()
-        .args(["--verbose", "--quiet", "agent-context"])
+        .args(["--verbose", "--quiet", "context", "agent"])
         .assert()
         .success();
 

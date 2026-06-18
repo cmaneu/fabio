@@ -36,8 +36,52 @@ pub enum ContextFormat {
 
 #[derive(Debug, Subcommand)]
 pub enum ContextCommand {
-    /// Extract a graph of items and relationships from workspace(s)
+    /// Machine-readable CLI schema for agent introspection (flags, types, mutability, examples)
+    #[command(display_order = 0)]
+    Agent,
+
+    /// Show the definition schema/template for a Fabric item type
     #[command(display_order = 1)]
+    Schema {
+        /// Item type (e.g. `Notebook`, `DataPipeline`, `SemanticModel`)
+        #[arg(name = "TYPE")]
+        item_type: String,
+    },
+
+    /// Show a multi-step workflow recipe
+    #[command(display_order = 2)]
+    Workflow {
+        /// Workflow name (use `fabio context list` to see available workflows)
+        #[arg(name = "NAME")]
+        name: String,
+    },
+
+    /// Show best-practices guidance for a topic
+    #[command(display_order = 3)]
+    BestPractices {
+        /// Topic name (`throttling`, `lro`, `pagination`, `admin-apis`)
+        #[arg(name = "TOPIC")]
+        topic: String,
+    },
+
+    /// Show example output for a command (response shape + `JMESPath` tips)
+    #[command(display_order = 4)]
+    Examples {
+        /// Command group (e.g. `lakehouse`, `workspace`, `item`)
+        #[arg(name = "GROUP")]
+        group: String,
+
+        /// Subcommand (e.g. `list-tables`, `iceberg-table`, `list`)
+        #[arg(name = "COMMAND")]
+        command: String,
+    },
+
+    /// List all available documentation topics (schemas, workflows, examples, best-practices)
+    #[command(display_order = 5)]
+    List,
+
+    /// Extract a graph of items and relationships from workspace(s)
+    #[command(display_order = 10)]
     Extract {
         /// Workspace ID(s) or name(s) to scan (repeatable)
         #[arg(short, long, env = "FABIO_WORKSPACE", num_args = 1..)]
@@ -137,6 +181,30 @@ struct ContextGraph {
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand) -> Result<()> {
     match command {
+        ContextCommand::Agent => {
+            super::agent_context::execute(cli);
+            Ok(())
+        }
+        ContextCommand::Schema { item_type } => {
+            super::docs::item_schema_public(cli, item_type);
+            Ok(())
+        }
+        ContextCommand::Workflow { name } => {
+            super::docs::workflow_public(cli, name);
+            Ok(())
+        }
+        ContextCommand::BestPractices { topic } => {
+            super::docs::best_practices_public(cli, topic);
+            Ok(())
+        }
+        ContextCommand::Examples { group, command } => {
+            super::docs::output_example_public(cli, group, command);
+            Ok(())
+        }
+        ContextCommand::List => {
+            super::docs::list_topics_public(cli);
+            Ok(())
+        }
         ContextCommand::Extract {
             workspace,
             deep,
