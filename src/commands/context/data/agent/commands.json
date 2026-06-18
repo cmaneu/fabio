@@ -6873,6 +6873,18 @@
         "mutates": true,
         "returns": "void"
       },
+      "create-directory": {
+        "description": "Create a directory in a lakehouse (DFS)",
+        "example": "fabio lakehouse create-directory --workspace <WS> --id <ID> --path Files/staging/incoming",
+        "flags": {
+          "--id": { "description": "Lakehouse ID", "required": true, "type": "string" },
+          "--path": { "description": "Directory path to create", "required": true, "type": "string" },
+          "--workspace": { "description": "Workspace ID", "required": true, "type": "string" }
+        },
+        "mutates": true,
+        "returns": "object",
+        "notes": "Idempotent: creating an existing directory succeeds. Creates intermediate directories automatically."
+      },
       "delete-file": {
         "description": "Delete a file from a lakehouse",
         "destructive": true,
