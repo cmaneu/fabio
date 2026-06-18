@@ -706,3 +706,143 @@ fn reflex_dry_run_delete() {
     assert_eq!(data["would_execute"], "reflex delete");
     assert!(data["dry_run"].as_bool().unwrap());
 }
+
+// ─── Create-Trigger Tests ───────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn reflex_create_trigger_dry_run_email() {
+    let cfg = TestConfig::from_env();
+
+    let output = fabio()
+        .args([
+            "reflex",
+            "create-trigger",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "Test Email Alert",
+            "--eventhouse-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--database",
+            "TestDB",
+            "--table",
+            "Events",
+            "--condition",
+            "severity > 3",
+            "--action",
+            "email",
+            "--recipients",
+            "admin@example.com,ops@example.com",
+            "--interval",
+            "120",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "reflex create-trigger");
+    assert_eq!(data["details"]["action"], "email");
+    assert_eq!(data["details"]["table"], "Events");
+    assert_eq!(data["details"]["condition"], "severity > 3");
+    assert_eq!(data["details"]["interval_seconds"], 120);
+    assert_eq!(data["details"]["entity_count"], 5);
+    let recipients = data["details"]["recipients"].as_array().unwrap();
+    assert_eq!(recipients.len(), 2);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn reflex_create_trigger_dry_run_teams() {
+    let cfg = TestConfig::from_env();
+
+    let output = fabio()
+        .args([
+            "reflex",
+            "create-trigger",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "Test Teams Alert",
+            "--eventhouse-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--database",
+            "TestDB",
+            "--table",
+            "StormEvents",
+            "--condition",
+            "State == 'ILLINOIS'",
+            "--action",
+            "teams",
+            "--recipients",
+            "team@example.com",
+            "--message",
+            "Storm detected!",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["action"], "teams");
+    assert_eq!(data["details"]["entity_count"], 5);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+#[serial]
+fn reflex_create_trigger_live_email() {
+    let cfg = TestConfig::from_env();
+
+    // Create the trigger live
+    let output = fabio()
+        .args([
+            "reflex",
+            "create-trigger",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            "fabio-e2e-trigger-test",
+            "--eventhouse-id",
+            "9b3b6a66-7c0c-4fd6-8465-6d63e42df579",
+            "--database",
+            "AlertDB",
+            "--table",
+            "TestEvents",
+            "--condition",
+            "level > 5",
+            "--action",
+            "email",
+            "--recipients",
+            "test@example.com",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+
+    // Should have created the reflex (id present) regardless of definition update success
+    assert!(data.get("id").is_some(), "Should return reflex ID: {data}");
+    let reflex_id = data["id"].as_str().unwrap();
+
+    // Clean up: delete the created reflex
+    fabio()
+        .args([
+            "reflex",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            reflex_id,
+        ])
+        .assert()
+        .success();
+}

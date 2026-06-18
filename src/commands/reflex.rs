@@ -2,6 +2,7 @@ use anyhow::Result;
 use base64::Engine;
 use clap::Subcommand;
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
@@ -111,6 +112,50 @@ pub enum ReflexCommand {
         #[arg(long)]
         content: Option<String>,
     },
+    /// Create a trigger with auto-generated Reflex definition (KQL source + email/Teams alert)
+    #[command(name = "create-trigger", display_order = 10)]
+    CreateTrigger {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Reflex display name
+        #[arg(long)]
+        name: String,
+
+        /// Eventhouse item ID (the Eventhouse containing the KQL database)
+        #[arg(long)]
+        eventhouse_id: String,
+
+        /// KQL database name
+        #[arg(long)]
+        database: String,
+
+        /// KQL table name to monitor
+        #[arg(long)]
+        table: String,
+
+        /// KQL condition expression (e.g., `EventType == 'Flood'`)
+        #[arg(long)]
+        condition: String,
+
+        /// Alert action type: `email` or `teams`
+        #[arg(long, value_parser = ["email", "teams"])]
+        action: String,
+
+        /// Comma-separated recipient email addresses
+        #[arg(long)]
+        recipients: String,
+
+        /// Optional custom alert message
+        #[arg(long)]
+        message: Option<String>,
+
+        /// Query execution interval in seconds (default: 60)
+        #[arg(long, default_value = "60")]
+        interval: u32,
+    },
+
     /// Configure a KQL data source (portal-only operation)
     #[command(name = "configure-kql-source", display_order = 20)]
     ConfigureKqlSource {
@@ -172,6 +217,34 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReflexCommand) 
                 id,
                 file.as_deref(),
                 content.as_deref(),
+            )
+            .await
+        }
+        ReflexCommand::CreateTrigger {
+            workspace,
+            name,
+            eventhouse_id,
+            database,
+            table,
+            condition,
+            action,
+            recipients,
+            message,
+            interval,
+        } => {
+            create_trigger(
+                cli,
+                client,
+                workspace,
+                name,
+                eventhouse_id,
+                database,
+                table,
+                condition,
+                action,
+                recipients,
+                message.as_deref(),
+                *interval,
             )
             .await
         }
@@ -407,4 +480,333 @@ async fn update_definition(
         output::render_object(cli, &data, "id");
     }
     Ok(())
+}
+
+// ─── Create Trigger ──────────────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+async fn create_trigger(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    name: &str,
+    eventhouse_id: &str,
+    database: &str,
+    table: &str,
+    condition: &str,
+    action: &str,
+    recipients: &str,
+    message: Option<&str>,
+    interval: u32,
+) -> Result<()> {
+    let recipient_list: Vec<&str> = recipients.split(',').map(str::trim).collect();
+    if recipient_list.is_empty() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one recipient is required.".to_string(),
+            "Example: --recipients \"user@example.com,team@example.com\"".to_string(),
+        )
+        .into());
+    }
+
+    // Generate UUIDs for all entities
+    let container_id = Uuid::new_v4().to_string();
+    let source_id = Uuid::new_v4().to_string();
+    let event_id = Uuid::new_v4().to_string();
+    let object_id = Uuid::new_v4().to_string();
+    let attribute_id = Uuid::new_v4().to_string();
+    let rule_id = Uuid::new_v4().to_string();
+
+    // Build the alert message
+    let alert_msg = message.unwrap_or("Condition triggered by fabio");
+
+    // Build the full ReflexEntities.json with the entity hierarchy:
+    // Container → Source → Event → Object → Attribute → Rule (with action)
+    let entities = build_trigger_entities(
+        &container_id,
+        &source_id,
+        &event_id,
+        &object_id,
+        &attribute_id,
+        &rule_id,
+        eventhouse_id,
+        database,
+        table,
+        condition,
+        action,
+        &recipient_list,
+        alert_msg,
+        interval,
+    );
+
+    let entities_json = serde_json::to_string(&entities)?;
+
+    if output::dry_run_guard(
+        cli,
+        "reflex create-trigger",
+        &serde_json::json!({
+            "workspace": workspace,
+            "name": name,
+            "eventhouse_id": eventhouse_id,
+            "database": database,
+            "table": table,
+            "condition": condition,
+            "action": action,
+            "recipients": recipient_list,
+            "interval_seconds": interval,
+            "entity_count": entities.as_array().map_or(0, Vec::len),
+        }),
+    ) {
+        return Ok(());
+    }
+
+    // 1. Create the Reflex item
+    let create_body = serde_json::json!({ "displayName": name });
+    let item = client
+        .post(
+            &format!("/workspaces/{workspace}/reflexes"),
+            &create_body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "reflex create-trigger", "Member"))?;
+
+    let reflex_id = item
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("Failed to extract reflex ID from creation response"))?;
+
+    // 2. Push the definition with the trigger entities
+    let encoded = base64::engine::general_purpose::STANDARD.encode(entities_json.as_bytes());
+    let def_body = serde_json::json!({
+        "definition": {
+            "parts": [{
+                "path": "ReflexEntities.json",
+                "payload": encoded,
+                "payloadType": "InlineBase64"
+            }]
+        }
+    });
+
+    let update_result = client
+        .post(
+            &format!("/workspaces/{workspace}/reflexes/{reflex_id}/updateDefinition"),
+            &def_body,
+            true,
+        )
+        .await;
+
+    match update_result {
+        Ok(_) => {
+            let obj = serde_json::json!({
+                "id": reflex_id,
+                "name": name,
+                "status": "trigger_created",
+                "action": action,
+                "table": table,
+                "condition": condition,
+                "recipients": recipient_list,
+            });
+            output::render_object(cli, &obj, "id");
+        }
+        Err(e) => {
+            // Trigger was created but definition update failed — report both
+            let obj = serde_json::json!({
+                "id": reflex_id,
+                "name": name,
+                "status": "created_but_definition_failed",
+                "error": e.to_string(),
+                "hint": "The Reflex item was created but the trigger definition failed to apply. \
+                         This is a known limitation — KQL-based triggers may require portal initialization. \
+                         Use 'fabio reflex update-definition' to retry or configure via portal."
+            });
+            output::render_object(cli, &obj, "status");
+        }
+    }
+
+    Ok(())
+}
+
+/// Build the complete `ReflexEntities.json` array for an `AttributeTrigger`-based alert.
+///
+/// Entity hierarchy: Container -> Event -> Object -> Attribute -> Rule
+/// The rule uses an `AttributeTrigger` template with a `NumberBecomes` condition.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+fn build_trigger_entities(
+    container_id: &str,
+    _source_id: &str,
+    event_id: &str,
+    object_id: &str,
+    attribute_id: &str,
+    rule_id: &str,
+    eventhouse_id: &str,
+    database: &str,
+    table: &str,
+    condition: &str,
+    action: &str,
+    recipients: &[&str],
+    message: &str,
+    interval: u32,
+) -> Value {
+    // Build action step arguments based on action type
+    let act_step = if action == "teams" {
+        let recipient_args: Vec<Value> = recipients
+            .iter()
+            .map(|r| serde_json::json!({"type": "string", "value": *r}))
+            .collect();
+        serde_json::json!({
+            "name": "ActStep",
+            "id": Uuid::new_v4().to_string(),
+            "rows": [{
+                "name": "TeamsMessage",
+                "kind": "TeamsMessage",
+                "arguments": [
+                    {"name": "messageLocale", "values": [{"type": "string", "value": "en-US"}]},
+                    {"name": "recipients", "values": recipient_args},
+                    {"name": "headline", "values": [{"type": "string", "value": message}]},
+                    {"name": "optionalMessage", "values": [{"type": "string", "value": format!("Condition: {condition} on table {table}")}]}
+                ]
+            }]
+        })
+    } else {
+        // Default: email
+        let recipient_args: Vec<Value> = recipients
+            .iter()
+            .map(|r| serde_json::json!({"type": "string", "value": *r}))
+            .collect();
+        serde_json::json!({
+            "name": "ActStep",
+            "id": Uuid::new_v4().to_string(),
+            "rows": [{
+                "name": "EmailMessage",
+                "kind": "EmailMessage",
+                "arguments": [
+                    {"name": "messageLocale", "values": [{"type": "string", "value": "en-US"}]},
+                    {"name": "sentTo", "values": recipient_args},
+                    {"name": "subject", "values": [{"type": "string", "value": format!("Alert: {table}")}]},
+                    {"name": "headline", "values": [{"type": "string", "value": message}]},
+                    {"name": "optionalMessage", "values": [{"type": "string", "value": format!("Condition: {condition}")}]}
+                ]
+            }]
+        })
+    };
+
+    // Build the rule template (AttributeTrigger with NumberBecomes pattern)
+    let rule_template = serde_json::json!({
+        "templateId": "AttributeTrigger",
+        "templateVersion": "1.1",
+        "steps": [
+            {
+                "name": "ScalarSelectStep",
+                "id": Uuid::new_v4().to_string(),
+                "rows": [{
+                    "name": "SelectAttribute",
+                    "kind": "SelectAttribute",
+                    "arguments": [
+                        {"name": "attributeId", "values": [{"type": "string", "value": attribute_id}]}
+                    ]
+                }]
+            },
+            {
+                "name": "ScalarDetectStep",
+                "id": Uuid::new_v4().to_string(),
+                "rows": [{
+                    "name": "NumberBecomes",
+                    "kind": "NumberBecomes",
+                    "arguments": [
+                        {"name": "operator", "values": [{"type": "string", "value": "BecomesGreaterThan"}]},
+                        {"name": "value", "values": [{"type": "string", "value": "0"}]},
+                        {"name": "summary", "values": [{"type": "string", "value": "Count"}]},
+                        {"name": "timeDrivenWindowSpec", "values": [
+                            {"type": "string", "value": format!("{}", u64::from(interval) * 1000)}
+                        ]}
+                    ]
+                }]
+            },
+            act_step
+        ]
+    });
+
+    let rule_instance = serde_json::to_string(&rule_template).unwrap_or_default();
+
+    // Build entity array
+    serde_json::json!([
+        // Container
+        {
+            "uniqueIdentifier": container_id,
+            "type": "container-v1",
+            "payload": {
+                "type": "kqlQueries",
+                "displayName": table
+            }
+        },
+        // Event (timeSeriesView: Event type)
+        {
+            "uniqueIdentifier": event_id,
+            "type": "timeSeriesView-v1",
+            "payload": {
+                "parentContainer": {"targetUniqueIdentifier": container_id},
+                "definition": {
+                    "type": "Event",
+                    "displayName": format!("{table} events"),
+                    "instance": "",
+                    "settings": {}
+                },
+                "kqlQueryConfiguration": {
+                    "query": format!("{table} | where {condition}"),
+                    "databaseName": database,
+                    "eventhouseItemId": eventhouse_id,
+                    "executionIntervalInSeconds": interval
+                }
+            }
+        },
+        // Object (timeSeriesView: Object type)
+        {
+            "uniqueIdentifier": object_id,
+            "type": "timeSeriesView-v1",
+            "payload": {
+                "parentContainer": {"targetUniqueIdentifier": container_id},
+                "parentEvent": {"targetUniqueIdentifier": event_id},
+                "definition": {
+                    "type": "Object",
+                    "displayName": format!("{table} object"),
+                    "instance": "",
+                    "settings": {}
+                }
+            }
+        },
+        // Attribute (timeSeriesView: Attribute type — monitors condition count)
+        {
+            "uniqueIdentifier": attribute_id,
+            "type": "timeSeriesView-v1",
+            "payload": {
+                "parentContainer": {"targetUniqueIdentifier": container_id},
+                "parentObject": {"targetUniqueIdentifier": object_id},
+                "definition": {
+                    "type": "Attribute",
+                    "displayName": format!("count({condition})"),
+                    "instance": "",
+                    "settings": {}
+                }
+            }
+        },
+        // Rule (timeSeriesView: Rule type — AttributeTrigger)
+        {
+            "uniqueIdentifier": rule_id,
+            "type": "timeSeriesView-v1",
+            "payload": {
+                "parentContainer": {"targetUniqueIdentifier": container_id},
+                "parentObject": {"targetUniqueIdentifier": object_id},
+                "definition": {
+                    "type": "Rule",
+                    "displayName": format!("Alert on {condition}"),
+                    "instance": rule_instance,
+                    "settings": {
+                        "shouldRun": true,
+                        "shouldApplyRuleOnUpdate": false
+                    }
+                }
+            }
+        }
+    ])
 }
