@@ -8,11 +8,11 @@ use serial_test::serial;
 // ── Dry-run tests (offline, no live tenant needed) ──────────────────────────
 
 #[test]
-fn context_extract_dry_run_succeeds() {
+fn context_tenant_dry_run_succeeds() {
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             "00000000-0000-0000-0000-000000000001",
             "--dry-run",
@@ -22,15 +22,15 @@ fn context_extract_dry_run_succeeds() {
     let json = parse_json(&assert);
     let data = json.get("data").expect("missing data");
     assert_eq!(data["dry_run"], true);
-    assert_eq!(data["would_execute"], "context extract");
+    assert_eq!(data["would_execute"], "context tenant");
 }
 
 #[test]
-fn context_extract_dry_run_with_deep() {
+fn context_tenant_dry_run_with_deep() {
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             "00000000-0000-0000-0000-000000000001",
             "--deep",
@@ -46,11 +46,11 @@ fn context_extract_dry_run_with_deep() {
 }
 
 #[test]
-fn context_extract_dry_run_with_connections() {
+fn context_tenant_dry_run_with_connections() {
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             "00000000-0000-0000-0000-000000000001",
             "--include-connections",
@@ -65,11 +65,11 @@ fn context_extract_dry_run_with_connections() {
 }
 
 #[test]
-fn context_extract_dry_run_with_item_types() {
+fn context_tenant_dry_run_with_item_types() {
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             "00000000-0000-0000-0000-000000000001",
             "--item-types",
@@ -85,11 +85,11 @@ fn context_extract_dry_run_with_item_types() {
 }
 
 #[test]
-fn context_extract_dry_run_multiple_workspaces() {
+fn context_tenant_dry_run_multiple_workspaces() {
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             "00000000-0000-0000-0000-000000000001",
             "--workspace",
@@ -106,11 +106,11 @@ fn context_extract_dry_run_multiple_workspaces() {
 }
 
 #[test]
-fn context_extract_dry_run_concurrency_flag() {
+fn context_tenant_dry_run_concurrency_flag() {
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             "00000000-0000-0000-0000-000000000001",
             "--concurrency",
@@ -125,11 +125,11 @@ fn context_extract_dry_run_concurrency_flag() {
 }
 
 #[test]
-fn context_extract_dry_run_no_properties() {
+fn context_tenant_dry_run_no_properties() {
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             "00000000-0000-0000-0000-000000000001",
             "--no-properties",
@@ -144,11 +144,11 @@ fn context_extract_dry_run_no_properties() {
 }
 
 #[test]
-fn context_extract_dry_run_output_file() {
+fn context_tenant_dry_run_output_file() {
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             "00000000-0000-0000-0000-000000000001",
             "--output-file",
@@ -169,11 +169,11 @@ fn context_extract_dry_run_output_file() {
 }
 
 #[test]
-fn context_extract_dry_run_merge() {
+fn context_tenant_dry_run_merge() {
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             "00000000-0000-0000-0000-000000000001",
             "--merge",
@@ -194,11 +194,11 @@ fn context_extract_dry_run_merge() {
 }
 
 #[test]
-fn context_extract_dry_run_format_jsonld() {
+fn context_tenant_dry_run_format_jsonld() {
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             "00000000-0000-0000-0000-000000000001",
             "--format",
@@ -217,15 +217,10 @@ fn context_extract_dry_run_format_jsonld() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn context_extract_returns_graph_structure() {
+fn context_tenant_returns_graph_structure() {
     let config = TestConfig::from_env();
     let assert = fabio()
-        .args([
-            "context",
-            "extract",
-            "--workspace",
-            &config.source_workspace,
-        ])
+        .args(["context", "tenant", "--workspace", &config.source_workspace])
         .assert()
         .success();
     let json = parse_json(&assert);
@@ -247,15 +242,10 @@ fn context_extract_returns_graph_structure() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn context_extract_nodes_have_required_fields() {
+fn context_tenant_nodes_have_required_fields() {
     let config = TestConfig::from_env();
     let assert = fabio()
-        .args([
-            "context",
-            "extract",
-            "--workspace",
-            &config.source_workspace,
-        ])
+        .args(["context", "tenant", "--workspace", &config.source_workspace])
         .assert()
         .success();
     let json = parse_json(&assert);
@@ -286,12 +276,12 @@ fn context_extract_nodes_have_required_fields() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn context_extract_with_item_type_filter() {
+fn context_tenant_with_item_type_filter() {
     let config = TestConfig::from_env();
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             &config.source_workspace,
             "--item-types",
@@ -317,17 +307,12 @@ fn context_extract_with_item_type_filter() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn context_extract_deep_discovers_more_edges() {
+fn context_tenant_deep_discovers_more_edges() {
     let config = TestConfig::from_env();
 
     // Without deep
     let assert_shallow = fabio()
-        .args([
-            "context",
-            "extract",
-            "--workspace",
-            &config.source_workspace,
-        ])
+        .args(["context", "tenant", "--workspace", &config.source_workspace])
         .assert()
         .success();
     let json_shallow = parse_json(&assert_shallow);
@@ -339,7 +324,7 @@ fn context_extract_deep_discovers_more_edges() {
     let assert_deep = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             &config.source_workspace,
             "--deep",
@@ -368,17 +353,12 @@ fn context_extract_deep_discovers_more_edges() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn context_extract_workspace_by_name() {
+fn context_tenant_workspace_by_name() {
     // This test uses the workspace ID env var but resolves it as a name
     // (only works if the workspace listing returns it)
     let config = TestConfig::from_env();
     let assert = fabio()
-        .args([
-            "context",
-            "extract",
-            "--workspace",
-            &config.source_workspace,
-        ])
+        .args(["context", "tenant", "--workspace", &config.source_workspace])
         .assert()
         .success();
     let json = parse_json(&assert);
@@ -391,12 +371,12 @@ fn context_extract_workspace_by_name() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn context_extract_no_properties_is_faster_and_lacks_properties() {
+fn context_tenant_no_properties_is_faster_and_lacks_properties() {
     let config = TestConfig::from_env();
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             &config.source_workspace,
             "--no-properties",
@@ -420,7 +400,7 @@ fn context_extract_no_properties_is_faster_and_lacks_properties() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn context_extract_output_file_writes_graph() {
+fn context_tenant_output_file_writes_graph() {
     let config = TestConfig::from_env();
     let output_path = "/tmp/opencode/e2e_context_output_test.json";
 
@@ -430,7 +410,7 @@ fn context_extract_output_file_writes_graph() {
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             &config.source_workspace,
             "--no-properties",
@@ -460,7 +440,7 @@ fn context_extract_output_file_writes_graph() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn context_extract_merge_incremental() {
+fn context_tenant_merge_incremental() {
     let config = TestConfig::from_env();
     let output_path = "/tmp/opencode/e2e_context_merge_test.json";
     let _ = std::fs::remove_file(output_path);
@@ -469,7 +449,7 @@ fn context_extract_merge_incremental() {
     fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             &config.source_workspace,
             "--no-properties",
@@ -488,7 +468,7 @@ fn context_extract_merge_incremental() {
     fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             &config.dest_workspace,
             "--no-properties",
@@ -521,12 +501,12 @@ fn context_extract_merge_incremental() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn context_extract_format_jsonld_has_context_and_graph() {
+fn context_tenant_format_jsonld_has_context_and_graph() {
     let config = TestConfig::from_env();
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             &config.source_workspace,
             "--format",
@@ -569,7 +549,7 @@ fn context_extract_format_jsonld_has_context_and_graph() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn context_extract_format_jsonld_to_file() {
+fn context_tenant_format_jsonld_to_file() {
     let config = TestConfig::from_env();
     let output_path = "/tmp/opencode/e2e_context_jsonld_test.json";
     let _ = std::fs::remove_file(output_path);
@@ -577,7 +557,7 @@ fn context_extract_format_jsonld_to_file() {
     let assert = fabio()
         .args([
             "context",
-            "extract",
+            "tenant",
             "--workspace",
             &config.source_workspace,
             "--no-properties",

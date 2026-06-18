@@ -167,7 +167,7 @@ fabio context workflow <NAME>  Show a multi-step workflow recipe (rti-pipeline, 
 fabio context best-practices <TOPIC>  Show best-practices guidance (throttling, lro, pagination, admin-apis)
 fabio context examples <GROUP> <CMD>  Show example output for a command
 fabio context list           List all available documentation topics
-fabio context extract        Extract a graph of items and relationships from workspace(s)
+fabio context tenant        Scan your Fabric tenant — build a relationship graph from workspace(s)
                              Flags: --workspace (repeatable), --deep, --include-connections,
                                     --item-types, --no-properties, --format (graph|jsonld),
                                     --merge, --output-file, --concurrency

@@ -1,4 +1,4 @@
-//! Extract runtime context from Fabric workspaces as a relationship graph.
+//! Scan Fabric tenant workspaces to build a relationship graph. as a relationship graph.
 //!
 //! Builds a graph of workspace items (nodes) and their relationships (edges)
 //! by inspecting item properties, definitions, and connections. Designed to
@@ -80,9 +80,9 @@ pub enum ContextCommand {
     #[command(display_order = 5)]
     List,
 
-    /// Extract a graph of items and relationships from workspace(s)
+    /// Scan your Fabric tenant — build a relationship graph from workspace(s)
     #[command(display_order = 10)]
-    Extract {
+    Tenant {
         /// Workspace ID(s) or name(s) to scan (repeatable)
         #[arg(short, long, env = "FABIO_WORKSPACE", num_args = 1..)]
         workspace: Vec<String>,
@@ -205,7 +205,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
             super::context_docs::list_topics_public(cli);
             Ok(())
         }
-        ContextCommand::Extract {
+        ContextCommand::Tenant {
             workspace,
             deep,
             include_connections,
@@ -259,7 +259,7 @@ async fn extract(cli: &Cli, client: &FabricClient, params: &ExtractParams<'_>) -
     // Dry-run: show what would be scanned
     if output::dry_run_guard(
         cli,
-        "context extract",
+        "context tenant",
         &serde_json::json!({
             "workspaces": params.workspaces,
             "deep": params.deep,

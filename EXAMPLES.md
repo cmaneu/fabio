@@ -1124,64 +1124,64 @@ jobs:
 
 ```bash
 # Extract a graph of all items and relationships from a workspace
-fabio context extract --workspace $WS
+fabio context tenant --workspace $WS
 
 # Scan multiple workspaces at once
-fabio context extract --workspace $WS1 --workspace $WS2 --workspace $WS3
+fabio context tenant --workspace $WS1 --workspace $WS2 --workspace $WS3
 
 # Deep mode: fetch definitions to discover embedded references (slower)
-fabio context extract --workspace $WS --deep
+fabio context tenant --workspace $WS --deep
 
 # Include connection objects as graph edges
-fabio context extract --workspace $WS --include-connections
+fabio context tenant --workspace $WS --include-connections
 
 # Full extraction with all discovery layers
-fabio context extract --workspace $WS --deep --include-connections
+fabio context tenant --workspace $WS --deep --include-connections
 
 # Filter to specific item types
-fabio context extract --workspace $WS --item-types "Notebook,Lakehouse,SemanticModel"
+fabio context tenant --workspace $WS --item-types "Notebook,Lakehouse,SemanticModel"
 
 # Fast inventory-only mode (skip property fetching, just list items)
-fabio context extract --workspace $WS --no-properties
+fabio context tenant --workspace $WS --no-properties
 
 # Increase concurrency for large workspaces
-fabio context extract --workspace $WS --deep --concurrency 16
+fabio context tenant --workspace $WS --deep --concurrency 16
 
 # Use workspace name instead of ID
-fabio context extract --workspace "sales-analytics"
+fabio context tenant --workspace "sales-analytics"
 
 # Preview what would be scanned without making API calls
-fabio context extract --workspace $WS --deep --dry-run
+fabio context tenant --workspace $WS --deep --dry-run
 
 # ── Incremental context building ──
 
 # Save graph to a file
-fabio context extract --workspace $WS --deep --output-file context.json
+fabio context tenant --workspace $WS --deep --output-file context.json
 
 # Later: add another workspace to the existing graph (merge)
-fabio context extract --workspace $NEW_WS --deep \
+fabio context tenant --workspace $NEW_WS --deep \
   --merge context.json --output-file context.json
 
 # Build up context workspace by workspace
-fabio context extract --workspace $WS1 --output-file graph.json
-fabio context extract --workspace $WS2 --merge graph.json --output-file graph.json
-fabio context extract --workspace $WS3 --merge graph.json --output-file graph.json
+fabio context tenant --workspace $WS1 --output-file graph.json
+fabio context tenant --workspace $WS2 --merge graph.json --output-file graph.json
+fabio context tenant --workspace $WS3 --merge graph.json --output-file graph.json
 
 # Quick inventory first, then deepen a specific workspace
-fabio context extract --workspace $WS1 --workspace $WS2 --no-properties --output-file graph.json
-fabio context extract --workspace $WS1 --deep --merge graph.json --output-file graph.json
+fabio context tenant --workspace $WS1 --workspace $WS2 --no-properties --output-file graph.json
+fabio context tenant --workspace $WS1 --deep --merge graph.json --output-file graph.json
 
 # Pipe to jq for graph analysis
-fabio context extract --workspace $WS --deep | jq '.data.summary'
-fabio context extract --workspace $WS --deep | jq '.data.edges[] | select(.relationship == "default_lakehouse")'
+fabio context tenant --workspace $WS --deep | jq '.data.summary'
+fabio context tenant --workspace $WS --deep | jq '.data.edges[] | select(.relationship == "default_lakehouse")'
 
 # ── JSON-LD output (RDF-compatible) ──
 
 # Export as JSON-LD for graph databases and SPARQL endpoints
-fabio context extract --workspace $WS --deep --format jsonld
+fabio context tenant --workspace $WS --deep --format jsonld
 
 # Save JSON-LD to file for import into Neptune/Stardog/Jena
-fabio context extract --workspace $WS --deep --format jsonld --output-file context.jsonld
+fabio context tenant --workspace $WS --deep --format jsonld --output-file context.jsonld
 
 # JSON-LD output has @context vocabulary + @graph with typed resources
 # Each item becomes: {"@id": "urn:fabric:item:<uuid>", "@type": "fabric:Notebook", ...}

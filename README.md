@@ -128,7 +128,7 @@ docker run --rm \
 - **Bounded responses** -- `--limit` for list commands; concise default output
 - **Async-aware** -- `--wait` for long-running operations; local job ledger
 - **Discoverable** -- `fabio context agent` provides machine-readable command schema; `fabio context` provides item schemas, workflows, and best practices
-- **Context-aware** -- `fabio context extract` builds a workspace relationship graph for agent memory
+- **Context-aware** -- `fabio context tenant` builds a workspace relationship graph for agent memory
 - **Throttling-aware** -- Bulk/batch APIs preferred; parallel execution with rate-limit retry
 
 ## Quick Start
