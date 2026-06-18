@@ -680,3 +680,47 @@ fn eventstream_add_derived_stream_dry_run() {
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["would_execute"], "eventstream add-derived-stream");
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn eventstream_validate_from_server() {
+    let cfg = TestConfig::from_env();
+
+    // List eventstreams and pick the first one
+    let output = fabio()
+        .args(["eventstream", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    let items = data.as_array().expect("should be array");
+    if items.is_empty() {
+        // No eventstreams in workspace — skip gracefully
+        return;
+    }
+
+    let es_id = items[0]["id"].as_str().expect("should have id");
+
+    // Validate the live definition fetched from server
+    let output = fabio()
+        .args([
+            "eventstream",
+            "validate",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            es_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    // Should return a valid/invalid result (not an error)
+    assert!(
+        data.get("valid").is_some(),
+        "validate should return 'valid' field, got: {data}"
+    );
+}

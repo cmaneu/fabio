@@ -881,3 +881,67 @@ fn kql_database_deeplink_invalid_style() {
         "Should produce an error, got: {stderr}"
     );
 }
+
+// ─── Live Ingest Test ───────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+fn kql_database_ingest_live() {
+    let (cfg, kql_db_id, _) = kql_test_config();
+
+    // 1. Create a temp table
+    let table_name = "fabio_ingest_test_tmp";
+    fabio()
+        .args([
+            "kql-database",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+            "--kql",
+            &format!(".create table ['{table_name}'] (Name: string, Value: int)"),
+        ])
+        .assert()
+        .success();
+
+    // 2. Ingest inline CSV data
+    let output = fabio()
+        .args([
+            "kql-database",
+            "ingest",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+            "--table",
+            table_name,
+            "--data",
+            "Alice,42\nBob,99",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    // Should indicate success (either "ingested" status or ingestion extent info)
+    assert!(
+        data.get("status").is_some() || data.as_array().is_some(),
+        "Ingest should return status or extent info, got: {data}"
+    );
+
+    // 3. Cleanup: drop the temp table
+    fabio()
+        .args([
+            "kql-database",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+            "--kql",
+            &format!(".drop table ['{table_name}']"),
+        ])
+        .assert()
+        .success();
+}
