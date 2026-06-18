@@ -378,6 +378,49 @@ fn fabric_type_to_xsd(t: &str) -> &str {
     }
 }
 
+// ─── Public API for cross-module use ─────────────────────────────────────────
+
+/// Public model struct for building OWL models externally (e.g., from context tenant).
+pub struct OwlModelBuilder {
+    pub classes: Vec<(String, String)>, // (uri, label)
+    pub properties: Vec<(String, String, String, bool)>, // (label, domain_uri, type, is_id)
+    pub relationships: Vec<(String, String, String)>, // (label, domain_uri, range_uri)
+}
+
+/// Serialize an externally-built OWL model to RDF/XML.
+pub fn serialize_rdf_xml_from_model(builder: &OwlModelBuilder) -> String {
+    let model = OwlModel {
+        classes: builder
+            .classes
+            .iter()
+            .map(|(uri, label)| OwlClass {
+                uri: uri.clone(),
+                label: label.clone(),
+            })
+            .collect(),
+        datatype_properties: builder
+            .properties
+            .iter()
+            .map(|(label, domain, ptype, is_id)| OwlDatatypeProperty {
+                label: label.clone(),
+                domain_uri: domain.clone(),
+                property_type: ptype.clone(),
+                is_identifier: *is_id,
+            })
+            .collect(),
+        object_properties: builder
+            .relationships
+            .iter()
+            .map(|(label, domain, range)| OwlObjectProperty {
+                label: label.clone(),
+                domain_uri: domain.clone(),
+                range_uri: range.clone(),
+            })
+            .collect(),
+    };
+    serialize_to_rdf_xml(&model)
+}
+
 // ─── Data Model ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Default)]

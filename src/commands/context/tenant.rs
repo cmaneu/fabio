@@ -152,14 +152,22 @@ pub(super) async fn execute(
     };
 
     // Phase 9: Output — format selection
-    let json_value = match params.format {
-        ContextFormat::Graph => serde_json::to_value(&final_graph)?,
-        ContextFormat::Jsonld => format_as_jsonld(&final_graph),
-        ContextFormat::Owl => format_as_owl_jsonld(&final_graph),
+    let (json_value, raw_content) = match params.format {
+        ContextFormat::Graph => (serde_json::to_value(&final_graph)?, None),
+        ContextFormat::Jsonld => (format_as_jsonld(&final_graph), None),
+        ContextFormat::Owl => (format_as_owl_jsonld(&final_graph), None),
+        ContextFormat::Rdf => {
+            let owl_model = build_owl_model_from_graph(&final_graph);
+            let rdf_xml =
+                crate::commands::ontology_import::serialize_rdf_xml_from_model(&owl_model);
+            (Value::Null, Some(rdf_xml))
+        }
     };
 
     if let Some(file_path) = params.output_file {
-        let content = if matches!(params.format, ContextFormat::Owl) {
+        let content = if let Some(ref raw) = raw_content {
+            raw.clone()
+        } else if matches!(params.format, ContextFormat::Owl) {
             // OWL format: write bare JSON-LD (no envelope) for direct ontology import
             serde_json::to_string_pretty(&json_value)?
         } else {
@@ -173,12 +181,16 @@ pub(super) async fn execute(
                 ContextFormat::Graph => "graph",
                 ContextFormat::Jsonld => "jsonld",
                 ContextFormat::Owl => "owl",
+                ContextFormat::Rdf => "rdf",
             },
             "nodes": final_graph.summary.total_nodes,
             "edges": final_graph.summary.total_edges,
             "workspaces": final_graph.summary.workspaces_scanned,
         });
         output::render_object(cli, &report, "status");
+    } else if let Some(raw) = raw_content {
+        // RDF/XML format: write raw text to stdout
+        print!("{raw}");
     } else {
         output::render_object(cli, &json_value, "summary");
     }
@@ -1117,6 +1129,78 @@ fn format_as_owl_jsonld(graph: &ContextGraph) -> Value {
         },
         "@graph": owl_graph
     })
+}
+
+/// Build an `OwlModelBuilder` from the context graph for RDF/XML serialization.
+fn build_owl_model_from_graph(
+    graph: &ContextGraph,
+) -> crate::commands::ontology_import::OwlModelBuilder {
+    let base = "http://fabric.microsoft.com/ontology/";
+
+    // Unique item types → classes
+    let mut types: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for node in &graph.nodes {
+        types.insert(&node.item_type);
+    }
+
+    let classes: Vec<(String, String)> = types
+        .iter()
+        .map(|t| (format!("{base}{t}"), (*t).to_string()))
+        .collect();
+
+    // Standard properties for each class
+    let mut properties: Vec<(String, String, String, bool)> = Vec::new();
+    for t in &types {
+        let uri = format!("{base}{t}");
+        properties.push((
+            "itemId".to_string(),
+            uri.clone(),
+            "String".to_string(),
+            true,
+        ));
+        properties.push(("name".to_string(), uri.clone(), "String".to_string(), false));
+        properties.push(("workspaceId".to_string(), uri, "String".to_string(), false));
+    }
+
+    // Unique relationships
+    let mut rel_pairs: std::collections::BTreeMap<&str, (&str, &str)> =
+        std::collections::BTreeMap::new();
+    for edge in &graph.edges {
+        if rel_pairs.contains_key(edge.relationship.as_str())
+            || edge.relationship == "workspace"
+            || edge.relationship == "workspace_ref"
+        {
+            continue;
+        }
+        let source_type = graph
+            .nodes
+            .iter()
+            .find(|n| n.id == edge.source)
+            .map_or("Unknown", |n| n.item_type.as_str());
+        let target_type = graph
+            .nodes
+            .iter()
+            .find(|n| n.id == edge.target)
+            .map_or("Unknown", |n| n.item_type.as_str());
+        rel_pairs.insert(&edge.relationship, (source_type, target_type));
+    }
+
+    let relationships: Vec<(String, String, String)> = rel_pairs
+        .iter()
+        .map(|(rel, (src, tgt))| {
+            (
+                (*rel).to_string(),
+                format!("{base}{src}"),
+                format!("{base}{tgt}"),
+            )
+        })
+        .collect();
+
+    crate::commands::ontology_import::OwlModelBuilder {
+        classes,
+        properties,
+        relationships,
+    }
 }
 
 /// Build the JSON-LD `@context` mapping.

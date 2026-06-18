@@ -29,6 +29,8 @@ pub enum ContextFormat {
     Jsonld,
     /// OWL JSON-LD format (importable by `fabio ontology import`)
     Owl,
+    /// OWL RDF/XML format (importable by `fabio ontology import` and Ontology Playground)
+    Rdf,
 }
 
 #[derive(Debug, Subcommand)]
@@ -100,7 +102,7 @@ pub enum ContextCommand {
         #[arg(long)]
         no_properties: bool,
 
-        /// Output format: graph (default), jsonld (RDF-compatible), or owl (importable by ontology import)
+        /// Output format: graph (default), jsonld, owl (JSON-LD for ontology import), or rdf (RDF/XML for ontology import)
         #[arg(long, value_enum, default_value = "graph")]
         format: ContextFormat,
 
