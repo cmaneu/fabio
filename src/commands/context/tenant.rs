@@ -162,6 +162,10 @@ pub(super) async fn execute(
                 crate::commands::ontology_import::serialize_rdf_xml_from_model(&owl_model);
             (Value::Null, Some(rdf_xml))
         }
+        ContextFormat::Full => {
+            let rdf_xml = format_as_full_rdf(&final_graph);
+            (Value::Null, Some(rdf_xml))
+        }
     };
 
     if let Some(file_path) = params.output_file {
@@ -182,6 +186,7 @@ pub(super) async fn execute(
                 ContextFormat::Jsonld => "jsonld",
                 ContextFormat::Owl => "owl",
                 ContextFormat::Rdf => "rdf",
+                ContextFormat::Full => "full",
             },
             "nodes": final_graph.summary.total_nodes,
             "edges": final_graph.summary.total_edges,
@@ -1201,6 +1206,142 @@ fn build_owl_model_from_graph(
         properties,
         relationships,
     }
+}
+
+/// Format as full RDF/XML: OWL schema (classes, properties, relationships) + instance data
+/// (individual items as rdf:Description with typed properties and relationship triples).
+#[allow(clippy::too_many_lines, clippy::write_with_newline)]
+fn format_as_full_rdf(graph: &ContextGraph) -> String {
+    use std::fmt::Write;
+    let base = "http://fabric.microsoft.com/ontology/";
+    let mut s = String::new();
+
+    s.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rdf:RDF\n");
+    let _ = write!(s, "    xml:base=\"{base}\"\n");
+    s.push_str("    xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"\n");
+    s.push_str("    xmlns:rdfs=\"http://www.w3.org/2000/01/rdf-schema#\"\n");
+    s.push_str("    xmlns:owl=\"http://www.w3.org/2002/07/owl#\"\n");
+    s.push_str("    xmlns:xsd=\"http://www.w3.org/2001/XMLSchema#\"\n");
+    let _ = write!(s, "    xmlns:ont=\"{base}\"\n");
+    let _ = write!(s, "    xmlns:fabric=\"{base}\">\n\n");
+
+    // ── Schema: OWL Classes ──
+    s.push_str("    <!-- ====== Schema (OWL Classes) ====== -->\n\n");
+    let mut types: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for node in &graph.nodes {
+        types.insert(&node.item_type);
+    }
+    for t in &types {
+        let _ = write!(
+            s,
+            "    <owl:Class rdf:about=\"{base}{t}\">\n        <rdfs:label>{t}</rdfs:label>\n    </owl:Class>\n\n"
+        );
+    }
+
+    // ── Schema: Properties ──
+    s.push_str("    <!-- ====== Schema (Properties) ====== -->\n\n");
+    for t in &types {
+        let _ = write!(
+            s,
+            "    <owl:DatatypeProperty rdf:about=\"{base}{}_itemId\">\n        <rdfs:label>itemId</rdfs:label>\n        <rdfs:domain rdf:resource=\"{base}{t}\"/>\n        <rdfs:range rdf:resource=\"http://www.w3.org/2001/XMLSchema#string\"/>\n        <ont:isIdentifier rdf:datatype=\"http://www.w3.org/2001/XMLSchema#boolean\">true</ont:isIdentifier>\n        <ont:propertyType>string</ont:propertyType>\n    </owl:DatatypeProperty>\n\n",
+            t.to_lowercase()
+        );
+        let _ = write!(
+            s,
+            "    <owl:DatatypeProperty rdf:about=\"{base}{}_name\">\n        <rdfs:label>name</rdfs:label>\n        <rdfs:domain rdf:resource=\"{base}{t}\"/>\n        <rdfs:range rdf:resource=\"http://www.w3.org/2001/XMLSchema#string\"/>\n        <ont:propertyType>string</ont:propertyType>\n    </owl:DatatypeProperty>\n\n",
+            t.to_lowercase()
+        );
+    }
+
+    // ── Schema: Relationships ──
+    s.push_str("    <!-- ====== Schema (Relationships) ====== -->\n\n");
+    let mut rel_pairs: std::collections::BTreeMap<&str, (&str, &str)> =
+        std::collections::BTreeMap::new();
+    for edge in &graph.edges {
+        if rel_pairs.contains_key(edge.relationship.as_str())
+            || edge.relationship == "workspace"
+            || edge.relationship == "workspace_ref"
+        {
+            continue;
+        }
+        let src = graph
+            .nodes
+            .iter()
+            .find(|n| n.id == edge.source)
+            .map_or("Unknown", |n| n.item_type.as_str());
+        let tgt = graph
+            .nodes
+            .iter()
+            .find(|n| n.id == edge.target)
+            .map_or("Unknown", |n| n.item_type.as_str());
+        rel_pairs.insert(&edge.relationship, (src, tgt));
+    }
+    for (rel, (src, tgt)) in &rel_pairs {
+        let camel = relationship_to_camel(rel);
+        let _ = write!(
+            s,
+            "    <owl:ObjectProperty rdf:about=\"{base}{camel}\">\n        <rdfs:label>{rel}</rdfs:label>\n        <rdfs:domain rdf:resource=\"{base}{src}\"/>\n        <rdfs:range rdf:resource=\"{base}{tgt}\"/>\n    </owl:ObjectProperty>\n\n"
+        );
+    }
+
+    // ── Instances: Items ──
+    s.push_str("    <!-- ====== Instances ====== -->\n\n");
+    for node in &graph.nodes {
+        let _ = write!(
+            s,
+            "    <rdf:Description rdf:about=\"{base}item/{}\">",
+            node.id
+        );
+        let _ = write!(
+            s,
+            "\n        <rdf:type rdf:resource=\"{base}{}\"/>",
+            node.item_type
+        );
+        let _ = write!(
+            s,
+            "\n        <rdfs:label>{}</rdfs:label>",
+            xml_escape(&node.name)
+        );
+        let _ = write!(s, "\n        <fabric:itemId>{}</fabric:itemId>", node.id);
+        let _ = write!(
+            s,
+            "\n        <fabric:workspaceId>{}</fabric:workspaceId>",
+            node.workspace_id
+        );
+        s.push_str("\n    </rdf:Description>\n\n");
+    }
+
+    // ── Instances: Relationship triples ──
+    s.push_str("    <!-- ====== Instance Relationships ====== -->\n\n");
+    for edge in &graph.edges {
+        if edge.relationship == "workspace" || edge.relationship == "workspace_ref" {
+            continue;
+        }
+        let camel = relationship_to_camel(&edge.relationship);
+        let _ = write!(
+            s,
+            "    <rdf:Description rdf:about=\"{base}item/{}\">",
+            edge.source
+        );
+        let _ = write!(
+            s,
+            "\n        <fabric:{camel} rdf:resource=\"{base}item/{}\"/>",
+            edge.target
+        );
+        s.push_str("\n    </rdf:Description>\n\n");
+    }
+
+    s.push_str("</rdf:RDF>\n");
+    s
+}
+
+/// Escape XML special characters.
+fn xml_escape(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 /// Build the JSON-LD `@context` mapping.

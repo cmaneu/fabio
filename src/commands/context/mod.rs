@@ -31,6 +31,8 @@ pub enum ContextFormat {
     Owl,
     /// OWL schema as RDF/XML: type definitions importable by `fabio ontology import --file` and Ontology Playground
     Rdf,
+    /// Full RDF/XML: schema + instances in one file (Ontology Playground + triple stores + Fabric import)
+    Full,
 }
 
 #[derive(Debug, Subcommand)]
