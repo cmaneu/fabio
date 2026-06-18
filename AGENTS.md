@@ -73,8 +73,11 @@ cargo clippy --tests -- -D warnings
 cargo test
 ```
 
+**Local pre-commit hooks (prek):** The project uses [prek](https://prek.j178.dev) — a fast, Rust-native pre-commit runner configured in `prek.toml`. When installed (`cargo install prek && prek install`), it automatically enforces format and lint checks on every `git commit`. The hooks run: trailing-whitespace fix, EOF fixer, TOML/YAML validation, merge-conflict detection, large-file guard (500KB), gitleaks secret scanning, `cargo fmt -- --check`, and `cargo clippy --tests -- -D warnings`. Tests (`cargo test`) are NOT included in the hook (too slow for interactive commits) — run them manually before pushing.
+
 **Rules:**
 - Do NOT commit if any of these steps fail.
+- If prek is available, always let the hooks run on commit. If they reject the commit, fix the issues before retrying. Do NOT bypass hooks with `--no-verify`.
 - Fix all formatting issues (`cargo fmt` to auto-fix), clippy warnings, and test failures before committing.
 - If you add new code, ensure it has no clippy pedantic+nursery warnings.
 - If you modify existing tests or add new tests, verify they pass.
@@ -547,6 +550,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 ## Relevant Files
 - `Cargo.toml`: Project config, dependencies, clippy/lints config, release profile (LTO+strip)
 - `rust-toolchain.toml`: stable channel, rustfmt+clippy components
+- `prek.toml`: Pre-commit hook configuration (prek — Rust-native pre-commit runner)
 - `src/main.rs`: Entry point, `#![recursion_limit = "256"]`, tokio async main, error handling dispatch
 - `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 74 subcommand groups
 - `src/errors.rs`: ErrorCode enum + FabioError struct with thiserror

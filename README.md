@@ -354,6 +354,26 @@ cargo clippy --tests -- -D warnings
 cargo fmt
 ```
 
+### Pre-commit hooks (prek)
+
+The project uses [prek](https://prek.j178.dev) (a fast, Rust-native pre-commit runner) for automated local validation before each commit. Install it and set up the hooks:
+
+```bash
+# Install prek (Rust-native, no Python needed)
+cargo install prek
+
+# Install the git hooks (reads prek.toml)
+prek install
+```
+
+Once installed, every `git commit` automatically runs:
+1. File hygiene (trailing whitespace, EOF fixer, TOML/YAML validation, merge conflict detection, large file guard)
+2. Secret detection via [gitleaks](https://github.com/gitleaks/gitleaks)
+3. `cargo fmt -- --check` (format verification)
+4. `cargo clippy --tests -- -D warnings` (lint with zero warnings)
+
+Configuration: [`prek.toml`](prek.toml)
+
 ### CI/CD
 
 - GitHub Actions CI runs on 6 targets: x64 + arm64 for Linux, macOS, and Windows
