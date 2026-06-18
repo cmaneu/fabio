@@ -1,0 +1,75 @@
+use anyhow::Result;
+
+use crate::cli::Cli;
+use crate::client::FabricClient;
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
+use crate::output;
+
+pub(super) async fn get_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/semanticModels/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model get-definition", "Contributor"))?;
+    output::render_object(cli, &data, "definition");
+    Ok(())
+}
+
+pub(super) async fn update_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    file: &str,
+) -> Result<()> {
+    let content = std::fs::read_to_string(file).map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Failed to read file '{file}': {e}"),
+            "Provide a valid model.bim file path.".to_string(),
+        )
+    })?;
+    let encoded = base64::engine::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        content.as_bytes(),
+    );
+
+    let body = serde_json::json!({
+        "definition": {
+            "parts": [{
+                "path": "model.bim",
+                "payload": encoded,
+                "payloadType": "InlineBase64"
+            }]
+        }
+    });
+
+    if output::dry_run_guard(cli, "semantic-model update-definition", &body) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/semanticModels/{id}/updateDefinition"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model update-definition", "Contributor"))?;
+
+    let obj = serde_json::json!({
+        "id": id,
+        "workspace": workspace,
+        "status": "definition_updated"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}

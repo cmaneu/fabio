@@ -1,0 +1,333 @@
+use anyhow::Result;
+use serde_json::Value;
+
+use crate::cli::Cli;
+use crate::client::FabricClient;
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
+use crate::output;
+
+pub(super) async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/semanticModels"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["displayName", "id", "description"],
+        &["NAME", "ID", "DESCRIPTION"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+pub(super) async fn show(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!("/workspaces/{workspace}/semanticModels/{id}"))
+        .await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+pub(super) async fn create(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    name: &str,
+    description: Option<&str>,
+    file: &str,
+    connection: Option<&str>,
+) -> Result<()> {
+    let content = std::fs::read_to_string(file).map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Failed to read file '{file}': {e}"),
+            "Provide a valid model.bim or .tmdl file path.".to_string(),
+        )
+    })?;
+    let encoded = base64::engine::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        content.as_bytes(),
+    );
+
+    // Detect format from file extension
+    let is_tmdl = std::path::Path::new(file)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("tmdl"));
+
+    let mut parts = vec![serde_json::json!({
+        "path": if is_tmdl { "definition/model.tmdl" } else { "model.bim" },
+        "payload": encoded,
+        "payloadType": "InlineBase64"
+    })];
+
+    // Always include definition.pbism (required by Fabric API)
+    // Version "4.0" for TMDL, "3.0" for model.bim (v3 JSON)
+    let pbism_version = if is_tmdl { "4.0" } else { "3.0" };
+    let pbism = serde_json::json!({ "version": pbism_version });
+    let pbism_encoded = base64::engine::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        pbism.to_string().as_bytes(),
+    );
+    parts.push(serde_json::json!({
+        "path": "definition.pbism",
+        "payload": pbism_encoded,
+        "payloadType": "InlineBase64"
+    }));
+
+    // For TMDL models with --connection, generate the expressions.tmdl
+    if let Some(conn_id) = connection {
+        if is_tmdl {
+            let expr = format!(
+                "expression DatabaseQuery =\n\
+                 \t\tlet\n\
+                 \t\t\tdatabase = Sql.Database(\"placeholder\", \"{conn_id}\")\n\
+                 \t\tin\n\
+                 \t\t\tdatabase\n\
+                 \tlineageTag: 00000000-0000-0000-0000-000000000001"
+            );
+            let expr_encoded = base64::engine::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                expr.as_bytes(),
+            );
+            parts.push(serde_json::json!({
+                "path": "definition/expressions.tmdl",
+                "payload": expr_encoded,
+                "payloadType": "InlineBase64"
+            }));
+        }
+    }
+
+    let mut body = serde_json::json!({
+        "displayName": name,
+        "definition": {
+            "parts": parts
+        }
+    });
+    if let Some(desc) = description {
+        body["description"] = Value::String(desc.to_string());
+    }
+
+    if output::dry_run_guard(
+        cli,
+        "semantic-model create",
+        &serde_json::json!({
+            "workspace": workspace,
+            "displayName": name,
+            "description": description,
+            "file": file,
+            "connection": connection
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/semanticModels"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_create_error(enrich_forbidden(e, "semantic-model create", "Member")))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+pub(super) async fn update(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    name: Option<&str>,
+    description: Option<&str>,
+) -> Result<()> {
+    if name.is_none() && description.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one of --name or --description must be provided".to_string(),
+            "Example: fabio semantic-model update --workspace <WS> --id <ID> --name \"New Name\""
+                .to_string(),
+        )
+        .into());
+    }
+
+    let mut body = serde_json::json!({});
+    if let Some(n) = name {
+        body["displayName"] = Value::String(n.to_string());
+    }
+    if let Some(d) = description {
+        body["description"] = Value::String(d.to_string());
+    }
+
+    if output::dry_run_guard(cli, "semantic-model update", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(
+            &format!("/workspaces/{workspace}/semanticModels/{id}"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model update", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+pub(super) async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "semantic-model delete",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id, "hardDelete": hard_delete
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/semanticModels/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/semanticModels/{id}")
+    };
+
+    client
+        .delete(&url)
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model delete", "Member"))?;
+
+    let obj = serde_json::json!({ "id": id, "status": "deleted" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ─── Error Enrichment ────────────────────────────────────────────────────────
+
+/// Enrich semantic model API errors with actionable hints for common failures.
+///
+/// Intercepts known error patterns and provides corrective guidance so that
+/// agents (and users) can self-correct without searching documentation.
+fn enrich_create_error(err: anyhow::Error) -> anyhow::Error {
+    let Some(fabio_err) = err.downcast_ref::<FabioError>() else {
+        return err;
+    };
+
+    let msg = &fabio_err.message;
+    let msg_lower = msg.to_lowercase();
+
+    // Pattern: "Import from JSON supported for V3 models only"
+    if msg_lower.contains("v3 models only") || msg_lower.contains("import from json") {
+        return FabioError::with_hint(
+            fabio_err.code,
+            msg.clone(),
+            "model.bim must use compatibilityLevel 1604 (not 1550) and include \
+             \"defaultPowerBIDataSourceVersion\": \"powerBI_V3\" in the model object. \
+             Example: {\"compatibilityLevel\": 1604, \"model\": {\"defaultPowerBIDataSourceVersion\": \"powerBI_V3\", ...}}"
+        ).into();
+    }
+
+    // Pattern: TMDL "InvalidValueFormat" for PowerBIDataSourceVersion
+    if msg_lower.contains("invalidvalueformat") && msg_lower.contains("powerbidatasourceversion") {
+        return FabioError::with_hint(
+            fabio_err.code,
+            msg.clone(),
+            "In TMDL, use 'defaultPowerBIDataSourceVersion: powerBI_V3' (with underscore). \
+             The value 'powerBIDataSourceVersion3' is not valid. \
+             Valid values: powerBI_V3.",
+        )
+        .into();
+    }
+
+    // Pattern: TMDL general parsing errors
+    if msg_lower.contains("tmdl format error") {
+        let hint = if msg_lower.contains("line number") {
+            "Check TMDL syntax at the reported line. Common issues: \
+             (1) Use tabs for indentation (not spaces). \
+             (2) Enum values are case-sensitive (e.g., powerBI_V3, not powerbi_v3). \
+             (3) Each table/column/partition needs a lineageTag GUID. \
+             Reference: https://learn.microsoft.com/en-us/power-bi/developer/projects/projects-dataset#tmdl-format"
+        } else {
+            "TMDL parsing failed. Verify file uses tab indentation and valid enum values. \
+             Reference: https://learn.microsoft.com/en-us/power-bi/developer/projects/projects-dataset#tmdl-format"
+        };
+        return FabioError::with_hint(fabio_err.code, msg.clone(), hint).into();
+    }
+
+    // Pattern: Definition parts missing or invalid
+    if msg_lower.contains("definition") && msg_lower.contains("invalid") {
+        return FabioError::with_hint(
+            fabio_err.code,
+            msg.clone(),
+            "Semantic model creation requires: (1) a model definition file (model.bim or .tmdl), \
+             (2) a definition.pbism entry. The CLI auto-generates definition.pbism. \
+             For .bim files use compat 1604 + powerBI_V3. \
+             For .tmdl files ensure 'defaultPowerBIDataSourceVersion: powerBI_V3'.",
+        )
+        .into();
+    }
+
+    // Pattern: DirectLake requires TMDL
+    if msg_lower.contains("directlake") || msg_lower.contains("direct lake") {
+        return FabioError::with_hint(
+            fabio_err.code,
+            msg.clone(),
+            "Direct Lake semantic models require TMDL format (not model.bim). \
+             Use a .tmdl file with partition mode: directLake and provide \
+             --connection <sql-endpoint-id> to bind the lakehouse connection.",
+        )
+        .into();
+    }
+
+    // No known pattern matched — return original error
+    err
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_enrich_create_error_v3_models() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::ApiError,
+            "Import from JSON supported for V3 models only".to_string(),
+        )
+        .into();
+
+        let enriched = enrich_create_error(err);
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert!(fabio_err.hint.as_ref().unwrap().contains("1604"));
+    }
+
+    #[test]
+    fn test_enrich_create_error_tmdl_format() {
+        let err: anyhow::Error = FabioError::new(
+            ErrorCode::ApiError,
+            "TMDL Format Error: Parsing error at line number 5".to_string(),
+        )
+        .into();
+
+        let enriched = enrich_create_error(err);
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert!(fabio_err.hint.as_ref().unwrap().contains("tab"));
+    }
+}
