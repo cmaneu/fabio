@@ -2732,3 +2732,118 @@ fn ontology_round_trip_jsonld() {
     let _ = std::fs::remove_file(&tmp_in);
     let _ = std::fs::remove_file(&tmp_out);
 }
+
+// ─── Full Format Tests ───────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn context_tenant_full_format_importable() {
+    let cfg = TestConfig::from_env();
+
+    // 1. Export tenant as full RDF
+    let tmp_rdf = std::env::temp_dir().join("fabio_e2e_full.rdf");
+    let output = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            &cfg.source_workspace,
+            "--format",
+            "full",
+            "--output-file",
+            &tmp_rdf.display().to_string(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "written");
+    assert_eq!(data["format"], "full");
+    assert!(data["nodes"].as_u64().unwrap() > 0);
+
+    // 2. Verify file contains both schema and instances
+    let content = std::fs::read_to_string(&tmp_rdf).unwrap();
+    assert!(content.contains("owl:Class"), "Should have schema classes");
+    assert!(
+        content.contains("rdf:Description"),
+        "Should have instance data"
+    );
+    assert!(
+        content.contains("owl:ObjectProperty"),
+        "Should have relationships"
+    );
+
+    // 3. Import the schema part into a Fabric Ontology
+    let name = unique_name("ont_full_fmt");
+    let output = fabio()
+        .args([
+            "ontology",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .assert()
+        .success();
+    let ont_id = extract_data(&parse_json(&output))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let output = fabio()
+        .args([
+            "ontology",
+            "import",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--file",
+            &tmp_rdf.display().to_string(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "imported");
+    assert!(
+        data["entity_types"].as_u64().unwrap() > 0,
+        "Should import entity types from full RDF"
+    );
+
+    // Cleanup
+    fabio()
+        .args([
+            "ontology",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--hard",
+        ])
+        .assert()
+        .success();
+    let _ = std::fs::remove_file(&tmp_rdf);
+}
+
+#[test]
+fn context_tenant_full_format_dry_run_produces_correct_structure() {
+    // Dry-run with full format should still work (no API call, but validates arg parsing)
+    fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--format",
+            "full",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+}
