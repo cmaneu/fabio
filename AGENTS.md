@@ -56,6 +56,8 @@ src/commands/<command>/
 
 **Current directory modules:** `context/` (7 files), `deploy/` (12 files), `lakehouse/` (10 files).
 
+**Scope:** This rule applies only to `src/commands/` source files. E2E test files (`tests/e2e_*.rs`) are NOT subject to the 1500-line limit — a single test file per command group is the preferred structure.
+
 ## Pre-Commit Validation (MANDATORY)
 
 Before committing ANY change, you MUST run the following validation steps in order and ensure they all pass with zero errors and zero warnings:
