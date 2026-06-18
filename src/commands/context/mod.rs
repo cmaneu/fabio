@@ -1,16 +1,21 @@
 //! Agent introspection, offline docs, and workspace graph extraction.
 
 mod agent;
-mod docs;
+mod best_practices;
+mod examples;
+mod schemas;
 pub mod tenant;
+mod workflows;
 
 use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Subcommand;
+use serde_json::json;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::output;
 
 // ── CLI definition ──────────────────────────────────────────────────────────
 
@@ -120,23 +125,23 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
             Ok(())
         }
         ContextCommand::Schema { item_type } => {
-            docs::item_schema(cli, item_type);
+            schemas::execute(cli, item_type);
             Ok(())
         }
         ContextCommand::Workflow { name } => {
-            docs::workflow(cli, name);
+            workflows::execute(cli, name);
             Ok(())
         }
         ContextCommand::BestPractices { topic } => {
-            docs::best_practices(cli, topic);
+            best_practices::execute(cli, topic);
             Ok(())
         }
         ContextCommand::Examples { group, command } => {
-            docs::output_example(cli, group, command);
+            examples::execute(cli, group, command);
             Ok(())
         }
         ContextCommand::List => {
-            docs::list_topics(cli);
+            list_topics(cli);
             Ok(())
         }
         ContextCommand::Tenant {
@@ -164,4 +169,30 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
             tenant::execute(cli, client, &params).await
         }
     }
+}
+
+// ─── Shared helpers ──────────────────────────────────────────────────────────
+
+fn list_topics(cli: &Cli) {
+    let topics = json!({
+        "item_schemas": schemas::list_names(),
+        "workflows": workflows::list_names(),
+        "output_examples": examples::list_names(),
+        "best_practices": best_practices::list_names(),
+        "usage": {
+            "schema": "fabio context schema <TYPE>",
+            "workflow": "fabio context workflow <NAME>",
+            "examples": "fabio context examples <GROUP> <COMMAND>",
+            "best_practices": "fabio context best-practices <TOPIC>"
+        }
+    });
+    output::render_object(cli, &topics, "item_schemas");
+}
+
+/// Find an entry in a static lookup table using normalized key matching.
+fn find_entry<'a>(entries: &[(&str, &'a str)], normalized_key: &str) -> Option<&'a str> {
+    entries
+        .iter()
+        .find(|(name, _)| name.to_lowercase().replace(['-', '_'], "") == *normalized_key)
+        .map(|(_, content)| *content)
 }
