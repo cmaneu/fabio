@@ -1,0 +1,39 @@
+{
+  "topic": "admin-apis",
+  "title": "Admin vs Standard Commands in fabio",
+  "summary": "fabio has both workspace-scoped commands (for regular users) and admin commands (for Fabric administrators). Use admin commands only when explicitly needed.",
+  "command_scopes": {
+    "workspace_scoped": "Most commands operate within a workspace you have access to (Member/Contributor/Admin role). Example: fabio lakehouse list --workspace $WS",
+    "tenant_scoped": "Some commands operate at tenant level without a workspace: connection, capacity, deployment-pipeline, domain. These use your Fabric permissions.",
+    "admin_scoped": "The 'fabio admin' command group (49 subcommands) requires Fabric Administrator role. These operate across ALL workspaces and resources in the tenant."
+  },
+  "when_to_use_admin": [
+    "Listing ALL workspaces across the tenant (not just ones you're a member of)",
+    "Managing tenant settings (enable/disable features)",
+    "Auditing: listing users, sharing links, external data shares",
+    "Tag management (create/update/delete organization tags)",
+    "Domain management (create domains, assign workspaces)",
+    "Granting temporary admin access to workspaces you don't own"
+  ],
+  "when_NOT_to_use_admin": [
+    "Listing/managing items in YOUR workspaces — use 'fabio item list'",
+    "Creating/deleting resources — use workspace-scoped commands",
+    "Reading data or definitions — use standard item commands",
+    "Managing workspace roles — use 'fabio workspace add-role'"
+  ],
+  "standard_alternatives": {
+    "admin list-workspaces": "fabio workspace list (shows workspaces you have access to)",
+    "admin list-items": "fabio item list --workspace $WS (items in a specific workspace)",
+    "admin show-workspace-users": "fabio workspace list-roles --workspace $WS"
+  },
+  "error_handling": {
+    "insufficient_scopes": "Admin commands fail with AUTH_REQUIRED if you lack Fabric Administrator role. This is NOT fixable by re-authenticating — you need the admin role assigned in your tenant.",
+    "fallback_pattern": "If admin fails, try the workspace-scoped equivalent. Most read operations have standard alternatives."
+  },
+  "what_agents_should_do": [
+    "Default to workspace-scoped commands — they work for all users",
+    "Only use 'fabio admin ...' when the task EXPLICITLY requires tenant-wide access",
+    "If admin commands fail with AUTH_REQUIRED, suggest workspace-scoped alternatives",
+    "Never assume the user is a Fabric Administrator"
+  ]
+}

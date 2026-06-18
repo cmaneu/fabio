@@ -1,0 +1,34 @@
+{
+  "topic": "pagination",
+  "title": "Pagination in fabio",
+  "summary": "fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually.",
+  "fabio_behavior": {
+    "default": "Without flags, fabio returns the first page from the API (typically 100-5000 items depending on endpoint).",
+    "all_pages": "--all fetches all pages automatically by following continuationToken links.",
+    "resume_from_token": "--continuation-token <TOKEN> resumes from a specific page.",
+    "client_side_limit": "--limit N truncates the result to N items (applied after pagination)."
+  },
+  "output_envelope": {
+    "list_response": "{\"data\": [...], \"count\": N}",
+    "with_continuation": "{\"data\": [...], \"count\": N, \"continuationToken\": \"<token>\"}",
+    "note": "continuationToken is only present when there are more pages AND --all was not used"
+  },
+  "patterns_for_agents": {
+    "get_everything": "fabio workspace list --all",
+    "get_first_10": "fabio item list --workspace $WS --limit 10",
+    "resume_paging": "fabio item list --workspace $WS --continuation-token <token_from_previous_call>",
+    "count_only": "fabio item list --workspace $WS --all --query 'length(data)'"
+  },
+  "what_agents_should_do": [
+    "Use --all when you need the complete list (workspaces, items, tables)",
+    "Use --limit for quick sampling or when you only need a few results",
+    "Check for 'continuationToken' in output if you didn't use --all — more data exists",
+    "Use --query with JMESPath to filter/project after fetching (e.g., --query \"data[?type=='Lakehouse']\")"
+  ],
+  "relevant_flags": {
+    "--all": "Fetch all pages automatically (may be slow for large tenants)",
+    "--limit N": "Return at most N items",
+    "--continuation-token <TOKEN>": "Resume from a previous page",
+    "--query <JMESPATH>": "Filter/project results using JMESPath expressions"
+  }
+}

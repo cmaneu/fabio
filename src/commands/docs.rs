@@ -40,6 +40,14 @@ pub enum DocsCommand {
         #[arg(name = "COMMAND")]
         command: String,
     },
+
+    /// Show best-practices guidance for a topic (throttling, lro, pagination, admin-apis)
+    #[command(display_order = 4)]
+    BestPractices {
+        /// Topic name (use `fabio docs list` to see available topics)
+        #[arg(name = "TOPIC")]
+        topic: String,
+    },
 }
 
 pub fn execute(cli: &Cli, command: &DocsCommand) {
@@ -48,6 +56,7 @@ pub fn execute(cli: &Cli, command: &DocsCommand) {
         DocsCommand::ItemSchema { item_type } => item_schema(cli, item_type),
         DocsCommand::Workflow { name } => workflow(cli, name),
         DocsCommand::OutputExample { group, command } => output_example(cli, group, command),
+        DocsCommand::BestPractices { topic } => best_practices(cli, topic),
     }
 }
 
@@ -58,10 +67,12 @@ fn list_topics(cli: &Cli) {
         "item_schemas": ITEM_SCHEMAS.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
         "workflows": WORKFLOWS.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
         "output_examples": OUTPUT_EXAMPLES.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
+        "best_practices": BEST_PRACTICES.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
         "usage": {
             "item_schema": "fabio docs item-schema <TYPE>",
             "workflow": "fabio docs workflow <NAME>",
-            "output_example": "fabio docs output-example <GROUP> <COMMAND>"
+            "output_example": "fabio docs output-example <GROUP> <COMMAND>",
+            "best_practices": "fabio docs best-practices <TOPIC>"
         }
     });
     output::render_object(cli, &topics, "item_schemas");
@@ -120,6 +131,25 @@ fn output_example(cli: &Cli, group: &str, command: &str) {
             "error": format!("No output example found for '{group} {command}'"),
             "available_examples": available,
             "hint": "Use 'fabio docs list' to see all available examples"
+        });
+        output::render_object(cli, &result, "error");
+    }
+}
+
+// ─── Best Practices ──────────────────────────────────────────────────────────
+
+fn best_practices(cli: &Cli, topic: &str) {
+    let normalized = topic.to_lowercase().replace(['-', '_'], "");
+    if let Some(content) = find_entry(BEST_PRACTICES, &normalized) {
+        let val: Value =
+            serde_json::from_str(content).unwrap_or_else(|_| json!({"content": content}));
+        output::render_object(cli, &val, "topic");
+    } else {
+        let available: Vec<&str> = BEST_PRACTICES.iter().map(|(name, _)| *name).collect();
+        let result = json!({
+            "error": format!("No best-practices topic found for '{topic}'"),
+            "available_topics": available,
+            "hint": "Use 'fabio docs list' to see all available topics"
         });
         output::render_object(cli, &result, "error");
     }
@@ -257,5 +287,22 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
         "deploy/plan",
         include_str!("docs_data/examples/deploy_plan.json"),
+    ),
+];
+
+/// Best-practices topic to guidance document.
+const BEST_PRACTICES: &[(&str, &str)] = &[
+    (
+        "throttling",
+        include_str!("docs_data/best_practices/throttling.json"),
+    ),
+    ("lro", include_str!("docs_data/best_practices/lro.json")),
+    (
+        "pagination",
+        include_str!("docs_data/best_practices/pagination.json"),
+    ),
+    (
+        "admin-apis",
+        include_str!("docs_data/best_practices/admin_apis.json"),
     ),
 ];

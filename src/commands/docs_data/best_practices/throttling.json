@@ -1,0 +1,24 @@
+{
+  "topic": "throttling",
+  "title": "How fabio handles API throttling",
+  "summary": "fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic.",
+  "fabio_behavior": {
+    "rate_limit_429": "fabio retries automatically using the Retry-After header value (capped at 60s). Parallel operations (upload, sync, copy) use bounded concurrency with rate-limit retry.",
+    "gateway_errors_502_503_504": "Automatic retry with linear backoff (1s, 2s, 3s) for up to 3 attempts.",
+    "capacity_throttle_430": "Spark operations on small capacity may return 430 (TooManyRequestsForCapacity). fabio reports this as RATE_LIMITED error."
+  },
+  "what_agents_should_do": [
+    "Nothing — fabio handles all retries transparently",
+    "If you get RATE_LIMITED error, the operation already exhausted retries. Wait and try again later.",
+    "Use --verbose to see HTTP response codes and retry behavior on stderr",
+    "For bulk operations, fabio uses bounded parallelism (default 8 concurrent) with automatic backoff"
+  ],
+  "relevant_flags": {
+    "--verbose": "Shows HTTP status codes and retry attempts on stderr",
+    "--concurrency N": "Control parallelism for bulk/parallel operations (lower = less throttling)"
+  },
+  "error_codes": {
+    "RATE_LIMITED": "API returned 429 after all retries exhausted. Wait before retrying.",
+    "TIMEOUT": "LRO polling exceeded --lro-timeout (default 120s). Operation may still be running."
+  }
+}

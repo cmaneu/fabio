@@ -1,0 +1,30 @@
+{
+  "topic": "lro",
+  "title": "Long-Running Operations in fabio",
+  "summary": "Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations.",
+  "fabio_behavior": {
+    "automatic_lro_polling": "Create, getDefinition, and updateDefinition operations return 202 + Location header. fabio polls every 2s (respects Retry-After, capped at 60s) until Succeeded/Failed, max 120s.",
+    "job_operations_with_wait": "Notebook run, pipeline run, and job-scheduler run-on-demand return immediately by default. Add --wait to poll until completion.",
+    "lro_timeout": "Default max LRO wait is 120s. Override with --lro-timeout <seconds>."
+  },
+  "patterns_for_agents": {
+    "fire_and_forget": "fabio data-pipeline run --workspace $WS --id $ID → returns {jobId} immediately",
+    "wait_for_completion": "fabio data-pipeline run --workspace $WS --id $ID --wait --timeout 600 → polls until done",
+    "check_status_later": "fabio operation get-state --operation-id <ID> → check LRO status manually",
+    "cancel_on_timeout": "fabio notebook run --workspace $WS --id $ID --wait --timeout 300 --cancel-on-timeout"
+  },
+  "terminal_states": ["Succeeded", "Failed", "Cancelled"],
+  "continue_polling_states": ["NotStarted", "InProgress", "Running", "Deduped"],
+  "what_agents_should_do": [
+    "For create/update operations: fabio handles LRO automatically — just call the command",
+    "For job operations: use --wait if you need the result, omit --wait for async fire-and-forget",
+    "If you get TIMEOUT: the operation may still be running. Use 'fabio operation get-state' to check",
+    "After timeout without --cancel-on-timeout: operation continues server-side"
+  ],
+  "relevant_flags": {
+    "--wait": "Poll job until terminal state (for run/execute operations)",
+    "--timeout <seconds>": "Max wait time for --wait (default 600s for jobs)",
+    "--lro-timeout <seconds>": "Max wait for create/definition LRO operations (default 120s)",
+    "--cancel-on-timeout": "Cancel the job if --timeout is reached"
+  }
+}
