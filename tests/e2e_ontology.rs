@@ -2585,3 +2585,150 @@ fn ontology_round_trip_rdf() {
     let _ = std::fs::remove_file(&tmp_in);
     let _ = std::fs::remove_file(&tmp_out);
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ontology_round_trip_jsonld() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("ont_rt_jld");
+
+    // 1. Create ontology + import JSON-LD
+    let output = fabio()
+        .args([
+            "ontology",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .assert()
+        .success();
+    let ont_id = extract_data(&parse_json(&output))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let jsonld_in = r#"{"@graph": [
+        {"@id": "http://ex.org/Robot", "@type": "owl:Class", "rdfs:label": "Robot"},
+        {"@id": "http://ex.org/Task", "@type": "owl:Class", "rdfs:label": "Task"},
+        {"@id": "http://ex.org/robot_serial", "@type": "owl:DatatypeProperty", "rdfs:label": "serial",
+         "rdfs:domain": {"@id": "http://ex.org/Robot"}, "rdfs:range": {"@id": "http://www.w3.org/2001/XMLSchema#string"},
+         "ont:isIdentifier": true},
+        {"@id": "http://ex.org/robot_model", "@type": "owl:DatatypeProperty", "rdfs:label": "model",
+         "rdfs:domain": {"@id": "http://ex.org/Robot"}, "rdfs:range": {"@id": "http://www.w3.org/2001/XMLSchema#string"}},
+        {"@id": "http://ex.org/task_id", "@type": "owl:DatatypeProperty", "rdfs:label": "taskId",
+         "rdfs:domain": {"@id": "http://ex.org/Task"}, "rdfs:range": {"@id": "http://www.w3.org/2001/XMLSchema#string"},
+         "ont:isIdentifier": true},
+        {"@id": "http://ex.org/task_priority", "@type": "owl:DatatypeProperty", "rdfs:label": "priority",
+         "rdfs:domain": {"@id": "http://ex.org/Task"}, "rdfs:range": {"@id": "http://www.w3.org/2001/XMLSchema#integer"}},
+        {"@id": "http://ex.org/executes", "@type": "owl:ObjectProperty", "rdfs:label": "executes",
+         "rdfs:domain": {"@id": "http://ex.org/Robot"}, "rdfs:range": {"@id": "http://ex.org/Task"}}
+    ]}"#;
+    let tmp_in = std::env::temp_dir().join("fabio_e2e_rt_jld_in.jsonld");
+    std::fs::write(&tmp_in, jsonld_in).unwrap();
+
+    fabio()
+        .args([
+            "ontology",
+            "import",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--file",
+            &tmp_in.display().to_string(),
+        ])
+        .assert()
+        .success();
+
+    // 2. Export as JSON-LD
+    let tmp_out = std::env::temp_dir().join("fabio_e2e_rt_jld_out.jsonld");
+    fabio()
+        .args([
+            "ontology",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--format",
+            "jsonld",
+            "--file",
+            &tmp_out.display().to_string(),
+        ])
+        .assert()
+        .success();
+
+    // 3. Re-import exported JSON-LD into a new ontology
+    let name2 = unique_name("ont_rt_jld2");
+    let output = fabio()
+        .args([
+            "ontology",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name2,
+        ])
+        .assert()
+        .success();
+    let ont_id2 = extract_data(&parse_json(&output))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let output = fabio()
+        .args([
+            "ontology",
+            "import",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id2,
+            "--file",
+            &tmp_out.display().to_string(),
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "imported");
+    assert_eq!(
+        data["entity_types"], 2,
+        "Round-trip should preserve 2 entity types"
+    );
+    assert_eq!(
+        data["relationship_types"], 1,
+        "Round-trip should preserve 1 relationship"
+    );
+
+    // Cleanup
+    fabio()
+        .args([
+            "ontology",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--hard",
+        ])
+        .assert()
+        .success();
+    fabio()
+        .args([
+            "ontology",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id2,
+            "--hard",
+        ])
+        .assert()
+        .success();
+    let _ = std::fs::remove_file(&tmp_in);
+    let _ = std::fs::remove_file(&tmp_out);
+}
