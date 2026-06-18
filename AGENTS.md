@@ -2831,4 +2831,3 @@ This enables fabio to work in environments where public Fabric endpoints are blo
 - `save` overwrites all fields (not merge) — omitted fields become `null`
 - `delete` removes the profile; if it was active, `active` is cleared
 - Profiles are NOT authentication identities — switching profiles does not change the authenticated user/service principal
-

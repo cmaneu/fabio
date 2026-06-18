@@ -4,7 +4,7 @@ Brief description of what this PR does.
 
 ## Changes
 
-- 
+-
 
 ## How to Test
 
