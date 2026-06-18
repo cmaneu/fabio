@@ -128,3 +128,11 @@ nursery = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
+
+[package.metadata.dev-tools]
+# Recommended tools for development (install with: cargo install <tool>)
+prek = { version = ">=0.4", description = "Fast Rust-native pre-commit hooks (prek install)" }
+git-cliff = { version = ">=2.13", description = "Changelog generator from conventional commits" }
+cargo-zigbuild = { version = ">=0.23", description = "Cross-compilation via Zig linker" }
+cargo-xwin = { version = ">=0.23", description = "Cross-compilation for Windows MSVC" }
+cargo-audit = { version = ">=0.22", description = "Security vulnerability scanner" }

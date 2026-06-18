@@ -29,6 +29,6 @@
       }
     }
   },
-  "postCreateCommand": "cargo fetch && cargo install git-cliff cargo-zigbuild cargo-xwin cargo-audit",
+  "postCreateCommand": "cargo fetch && cargo install git-cliff cargo-zigbuild cargo-xwin cargo-audit prek && prek install",
   "remoteUser": "ubuntu"
 }
