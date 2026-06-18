@@ -1,0 +1,20 @@
+{
+  "command": "fabio ontology export --workspace $WS_ID --id $ONTOLOGY_ID --format rdf --file ontology.rdf",
+  "description": "Exports a Fabric Ontology item to standard OWL RDF/XML format. Compatible with Ontology Playground, Protege, and standard RDF tools. Use --format jsonld for JSON-LD output.",
+  "response": {
+    "data": {
+      "status": "exported",
+      "file": "ontology.rdf",
+      "format": "rdf",
+      "entity_types": 6,
+      "relationship_types": 7,
+      "properties": 33
+    }
+  },
+  "notes": "Without --file, outputs raw RDF/XML to stdout. The exported file can be re-imported with `fabio ontology import --file ontology.rdf`. Supports full round-trip: Fabric → RDF → Fabric preserves all entity types, properties, and relationships.",
+  "query_examples": [
+    {"query": "data.entity_types", "description": "Count of exported entity types (owl:Class)."},
+    {"query": "data.relationship_types", "description": "Count of exported relationships (owl:ObjectProperty)."},
+    {"query": "data.properties", "description": "Total property count across all entity types."}
+  ]
+}

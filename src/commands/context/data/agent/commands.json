@@ -9316,6 +9316,53 @@
         },
         "mutates": true,
         "returns": "void"
+      },
+      "import": {
+        "description": "Import OWL ontology (RDF/XML or JSON-LD) and convert to Fabric format. Compatible with Ontology Playground.",
+        "flags": {
+          "--file": {
+            "description": "OWL file (.rdf, .owl, .xml, .jsonld, .json)",
+            "required": true,
+            "type": "string"
+          },
+          "--id": {
+            "description": "Ontology ID (required when pushing to Fabric)",
+            "type": "string"
+          },
+          "--output-dir": {
+            "description": "Export converted definition to local directory",
+            "type": "string"
+          },
+          "--workspace": {
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "export": {
+        "description": "Export Fabric Ontology to OWL format (RDF/XML or JSON-LD). Full round-trip with import.",
+        "flags": {
+          "--file": {
+            "description": "Output file path (stdout if omitted)",
+            "type": "string"
+          },
+          "--format": {
+            "description": "Output format",
+            "type": "enum",
+            "values": ["rdf", "jsonld"]
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },

@@ -1,0 +1,18 @@
+{
+  "command": "fabio ontology import --workspace $WS_ID --id $ONTOLOGY_ID --file cosmic-coffee.rdf",
+  "description": "Imports an OWL ontology file (RDF/XML or JSON-LD) and converts it to the Fabric Ontology definition format. Compatible with Ontology Playground catalogue .rdf files.",
+  "response": {
+    "data": {
+      "status": "imported",
+      "id": "5f090b73-bae2-47d6-9e0c-f4777e77b8ca",
+      "entity_types": 6,
+      "relationship_types": 7
+    }
+  },
+  "notes": "Detects format from file extension (.rdf/.owl → RDF/XML, .jsonld/.json → JSON-LD) or content sniffing. Use --output-dir instead of --workspace/--id for local export only (no API call). Supports owl:Class → EntityType, owl:DatatypeProperty → properties, owl:ObjectProperty → RelationshipType, ont:isIdentifier → entityIdParts.",
+  "query_examples": [
+    {"query": "data.entity_types", "description": "Count of imported entity types."},
+    {"query": "data.relationship_types", "description": "Count of imported relationships."},
+    {"query": "data.id", "description": "ID of the Fabric Ontology item updated."}
+  ]
+}

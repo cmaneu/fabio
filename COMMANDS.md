@@ -169,7 +169,7 @@ fabio context examples <GROUP> <CMD>  Show example output for a command
 fabio context list           List all available documentation topics
 fabio context tenant        Scan your Fabric tenant — build a relationship graph from workspace(s)
                              Flags: --workspace (repeatable), --deep, --include-connections,
-                                    --item-types, --no-properties, --format (graph|jsonld),
+                                    --item-types, --no-properties, --format (graph|jsonld|owl|rdf|full),
                                     --merge, --output-file, --concurrency
 ```
 
@@ -271,6 +271,8 @@ fabio ontology update        Update ontology properties
 fabio ontology delete        Delete an ontology
 fabio ontology get-definition   Get definition (--decode for readable output)
 fabio ontology update-definition Update definition (--dir for folder format)
+fabio ontology import        Import OWL ontology (RDF/XML or JSON-LD) into Fabric (--file + --workspace/--id or --output-dir)
+fabio ontology export        Export Fabric Ontology to OWL format (--format rdf|jsonld, --file)
 
 fabio environment list       List environments in a workspace
 fabio environment show       Show environment details

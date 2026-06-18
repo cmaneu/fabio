@@ -128,7 +128,8 @@ docker run --rm \
 - **Bounded responses** -- `--limit` for list commands; concise default output
 - **Async-aware** -- `--wait` for long-running operations; local job ledger
 - **Discoverable** -- `fabio context agent` provides machine-readable command schema; `fabio context` provides item schemas, workflows, and best practices
-- **Context-aware** -- `fabio context tenant` builds a workspace relationship graph for agent memory
+- **Context-aware** -- `fabio context tenant` builds a workspace relationship graph for agent memory; exports as OWL RDF/XML or JSON-LD for Fabric Ontology import
+- **Ontology round-trip** -- `fabio ontology import/export` converts between OWL (RDF/XML, JSON-LD) and Fabric format; compatible with [Ontology Playground](https://github.com/microsoft/Ontology-Playground)
 - **Throttling-aware** -- Bulk/batch APIs preferred; parallel execution with rate-limit retry
 
 ## Quick Start

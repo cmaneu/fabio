@@ -993,6 +993,38 @@ fabio cosmos-db-database create --workspace $WS --name "CosmosOrders"
 fabio ontology create --workspace $WS --name "ManufacturingOntology"
 fabio ontology update-definition --workspace $WS --id $ONT --dir ./ontology/
 
+# ── Import/Export (OWL round-trip) ──
+
+# Import from Ontology Playground catalogue file (RDF/XML)
+fabio ontology import --workspace $WS --id $ONT --file cosmic-coffee.rdf
+
+# Import JSON-LD ontology
+fabio ontology import --workspace $WS --id $ONT --file domain-model.jsonld
+
+# Export only to local directory (no API call)
+fabio ontology import --file ontology.rdf --output-dir ./fabric-format/
+
+# Export a Fabric Ontology to OWL RDF/XML
+fabio ontology export --workspace $WS --id $ONT --format rdf --file exported.rdf
+
+# Export as JSON-LD
+fabio ontology export --workspace $WS --id $ONT --format jsonld --file exported.jsonld
+
+# Full round-trip: import → export → re-import (preserves types + relationships)
+fabio ontology import --workspace $WS --id $ONT --file original.rdf
+fabio ontology export --workspace $WS --id $ONT --format rdf --file exported.rdf
+fabio ontology import --workspace $WS --id $ONT2 --file exported.rdf
+
+# ── Context tenant → Ontology pipeline ──
+
+# Extract tenant topology as OWL schema and import into Fabric Ontology
+fabio context tenant --workspace $WS --format owl --output-file tenant-schema.jsonld
+fabio ontology import --workspace $WS --id $ONT --file tenant-schema.jsonld
+
+# Full schema + instances (viewable in Ontology Playground + importable)
+fabio context tenant --workspace $WS --deep --format full --output-file tenant.rdf
+fabio ontology import --workspace $WS --id $ONT --file tenant.rdf
+
 # Create a graph model linked to the ontology
 fabio graph-model create --workspace $WS --name "FactoryGraph" --ontology $ONT
 

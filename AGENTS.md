@@ -388,7 +388,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **Workspace**: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
 - **Warehouse**: list/show/create/update/delete/query/connection-string (endpoint resolved, stdin/file/flag SQL input)
 - **Git integration**: status, commit, pull, connect, disconnect, initialize, switch (branch), connection/credentials management, show-tracked
-- **Ontology management**: list, show, create, update, delete, get-definition, update-definition (RDF file support, --dir for Fabric definition format, --decode for readable output)
+- **Ontology management**: list, show, create, update, delete, get-definition, update-definition (RDF file support, --dir for Fabric definition format, --decode for readable output), import (OWL RDF/XML + JSON-LD → Fabric, compatible with Ontology Playground), export (Fabric → OWL RDF/XML or JSON-LD, full round-trip support)
 - **Environment**: list, show, create, update, delete, publish, cancel-publish, get-spark-settings, get-staging-spark-settings, upload-staging-library
 - **Data Pipeline**: list, show, create, update, delete, run (triggers Pipeline job), create-schedule, list-schedules, get-schedule, update-schedule, delete-schedule, list-instances, get-instance
 - **Eventhouse**: list, show, create, update, delete
@@ -456,7 +456,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **Graph Model**: list/show/create/update/delete/get-definition/update-definition, refresh-graph/execute-query/get-queryable-graph-type (portal initialization required for refresh)
 - **Graph Query Set**: list/show/create/update/delete/get-definition/update-definition (definition is read-only export)
 - **Catalog**: search (tenant-level full-text search across workspaces)
-- **Context**: tenant (workspace graph extraction — builds a relationship graph of items with nodes/edges/summary for agent memory; three-layer discovery: properties, definitions via `--deep`, connections via `--include-connections`; parallel execution; supports multi-workspace, `--item-types` filter, `--concurrency`; incremental building via `--output-file` + `--merge`; fast inventory via `--no-properties`)
+- **Context**: tenant (workspace graph extraction — builds a relationship graph of items with nodes/edges/summary for agent memory; three-layer discovery: properties, definitions via `--deep`, connections via `--include-connections`; parallel execution; supports multi-workspace, `--item-types` filter, `--concurrency`; incremental building via `--output-file` + `--merge`; fast inventory via `--no-properties`; 5 output formats: `graph` native, `jsonld` RDF instances, `owl` OWL JSON-LD schema, `rdf` OWL RDF/XML schema, `full` combined schema+instances RDF/XML)
 - **Dashboard**: list (read-only, portal-created)
 - **Datamart**: list (read-only, portal-created)
 - **Paginated Report**: list/update (read-only creation via portal/SSRS)
@@ -569,7 +569,8 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/tds_utils.rs`: Shared TDS utilities (resolve_sql_input, parse_connection_string, execute_and_render_sql, column_value_to_json)
 - `src/commands/dataagent.rs`: list/show/create/update/delete/query/get-definition/update-definition/publish + get-config/update-config, add/remove/list/show-datasource, select-tables, list-elements/describe-element, add/remove/list-fewshots/upload-fewshots
 - `src/commands/git.rs`: status/commit/pull/connect/disconnect/initialize/switch/connection/credentials/show-tracked
-- `src/commands/ontology.rs`: list/show/create/update/delete/get-definition/update-definition
+- `src/commands/ontology.rs`: list/show/create/update/delete/get-definition/update-definition/import/export
+- `src/commands/ontology_import.rs`: OWL RDF/XML + JSON-LD parser, Fabric format generator, RDF serializer (import + export)
 - `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings/upload-staging-library
 - `src/commands/data_pipeline.rs`: list/show/create/update/delete/run, create-schedule, list-schedules/get-schedule/update-schedule/delete-schedule, list-instances/get-instance
 - `src/commands/report.rs`: list/show/create/update/delete/get-definition/update-definition
