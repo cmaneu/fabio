@@ -36,19 +36,19 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Command File Structure (MANDATORY)
 
-Any command module that exceeds **1500 lines of code** MUST be refactored into a directory module with one file per logical concern. Follow the pattern established by `context/`, `deploy/`, and `lakehouse/`:
+Any command module that exceeds **1500 lines of code** MUST be refactored into a directory module with one file per subcommand group. Follow the pattern established by `context/`, `deploy/`, and `lakehouse/`:
 
 ```
 src/commands/<command>/
 ├── mod.rs          — Subcommand enum, execute() dispatch, shared helpers
-├── <concern_a>.rs  — Handler functions for one group of subcommands
-├── <concern_b>.rs  — Handler functions for another group
+├── <subcommand_a>.rs  — Handler for one subcommand (or small cohesive group)
+├── <subcommand_b>.rs  — Handler for another subcommand
 └── ...
 ```
 
 **Rules:**
 - `mod.rs` contains the `<Command>Command` enum, the `execute()` dispatch function, and any helpers shared across submodules.
-- Each submodule file owns handler functions for a cohesive group of subcommands (e.g., CRUD, file ops, table ops).
+- Split by **subcommand**, not by abstract concern. Each file maps directly to one or a small group of related subcommands (e.g., `iceberg.rs` for all iceberg-* subcommands, `sync.rs` for the sync subcommand, `crud.rs` for list/show/create/update/delete).
 - Functions called from `execute()` are `pub(super)`. Internal helpers stay private.
 - Embedded data files (JSON schemas, templates) go in a `data/` subdirectory within the module.
 - When adding new subcommands to an existing directory module, place the handler in the appropriate submodule file — do NOT add it to `mod.rs`.
