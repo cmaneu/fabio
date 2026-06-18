@@ -1,0 +1,23 @@
+{
+  "command": "fabio notebook run --workspace $WS_ID --id $NB_ID --wait --timeout 300",
+  "description": "Runs a notebook and waits for completion. Polls job status every 5 seconds until terminal state (Completed/Failed/Cancelled) or timeout.",
+  "response": {
+    "data": {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "itemId": "38177352-dc1c-440b-a860-a83ec508e806",
+      "jobType": "RunNotebook",
+      "invokeType": "Manual",
+      "status": "Completed",
+      "startTimeUtc": "2026-06-18T10:00:05.000Z",
+      "endTimeUtc": "2026-06-18T10:02:45.000Z",
+      "failureReason": null
+    }
+  },
+  "notes": "Without --wait, returns immediately with {\"status\":\"accepted\",\"jobId\":\"...\"}. Use --parameters for notebook parameters: --parameters '[{\"name\":\"p1\",\"value\":\"v1\",\"type\":\"Text\"}]'. First run on small capacity can take 2-5 min (Spark cold start). Use --cancel-on-timeout to auto-cancel if timeout is reached.",
+  "query_examples": [
+    {"query": "data.status", "description": "Get final job status."},
+    {"query": "data.failureReason", "description": "Get failure reason (null if succeeded)."},
+    {"query": "data.id", "description": "Get the job instance ID for further queries."},
+    {"query": "data.endTimeUtc", "description": "Get completion timestamp."}
+  ]
+}

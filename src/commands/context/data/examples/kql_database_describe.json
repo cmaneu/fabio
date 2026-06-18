@@ -1,0 +1,23 @@
+{
+  "command": "fabio kql-database describe --workspace $WS_ID --id $KDB_ID",
+  "description": "Returns the full schema for all entities in a KQL database — every table, every column with its KQL type.",
+  "response": {
+    "data": [
+      {"TableName": "StormEvents", "ColumnName": "StartTime", "ColumnType": "datetime", "Folder": ""},
+      {"TableName": "StormEvents", "ColumnName": "State", "ColumnType": "string", "Folder": ""},
+      {"TableName": "StormEvents", "ColumnName": "EventType", "ColumnType": "string", "Folder": ""},
+      {"TableName": "StormEvents", "ColumnName": "DamageProperty", "ColumnType": "long", "Folder": ""},
+      {"TableName": "SensorData", "ColumnName": "DeviceId", "ColumnType": "string", "Folder": "IoT"},
+      {"TableName": "SensorData", "ColumnName": "Temperature", "ColumnType": "real", "Folder": "IoT"},
+      {"TableName": "SensorData", "ColumnName": "Timestamp", "ColumnType": "datetime", "Folder": "IoT"}
+    ],
+    "count": 7
+  },
+  "notes": "Returns one row per column across all tables. The Folder field indicates the table's folder grouping (empty string if none). Use describe-entity for a single table's detailed schema (returns parsed JSON instead of flat rows).",
+  "query_examples": [
+    {"query": "data[?TableName=='StormEvents']", "description": "Get columns for a specific table."},
+    {"query": "data[].TableName | unique(@)", "description": "List all unique table names."},
+    {"query": "data[?ColumnType=='datetime'].ColumnName", "description": "Find all datetime columns."},
+    {"query": "length(data[?TableName=='SensorData'])", "description": "Count columns in a table."}
+  ]
+}

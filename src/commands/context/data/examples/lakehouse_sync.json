@@ -1,0 +1,24 @@
+{
+  "command": "fabio lakehouse sync --source-workspace $SRC_WS --source-id $SRC_LH --dest-workspace $DST_WS --dest-id $DST_LH --dest-path Files/data --delete --checksum",
+  "description": "Syncs files between lakehouses (or local-to-remote with --local). Compares by ETag (default) or Content-MD5 (--checksum). Only copies new/modified files.",
+  "response": {
+    "data": {
+      "copied": 3,
+      "deleted": 1,
+      "renamed": 1,
+      "skipped": 42,
+      "dedupCopied": 0,
+      "sourceRemoved": 0,
+      "deletionsSkipped": false,
+      "source": "Files/data",
+      "destination": "Files/data"
+    }
+  },
+  "notes": "Use --delete to remove files at destination not present at source. Use --checksum for Content-MD5 comparison (slower, requires HEAD per file). Use --local /path/to/dir for local-to-remote sync. Rename detection uses atomic DFS rename (O(1) metadata op). Use --itemize for per-file action logging on stderr.",
+  "query_examples": [
+    {"query": "data.copied", "description": "Count of files copied."},
+    {"query": "data.deleted", "description": "Count of files deleted at destination."},
+    {"query": "data.renamed", "description": "Count of files detected as renamed (atomic rename)."},
+    {"query": "data.{new: copied, removed: deleted, unchanged: skipped}", "description": "Custom summary projection."}
+  ]
+}

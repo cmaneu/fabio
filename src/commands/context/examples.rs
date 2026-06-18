@@ -43,6 +43,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/lakehouse_iceberg_stats.json"),
     ),
     (
+        "lakehouse/sync",
+        include_str!("data/examples/lakehouse_sync.json"),
+    ),
+    (
         "workspace/list",
         include_str!("data/examples/workspace_list.json"),
     ),
@@ -52,8 +56,32 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/deploy_plan.json"),
     ),
     (
+        "deploy/apply",
+        include_str!("data/examples/deploy_apply.json"),
+    ),
+    (
+        "notebook/run",
+        include_str!("data/examples/notebook_run.json"),
+    ),
+    (
+        "data-agent/query",
+        include_str!("data/examples/data_agent_query.json"),
+    ),
+    (
+        "context/extract",
+        include_str!("data/examples/context_extract.json"),
+    ),
+    (
         "kql-database/list-entities",
         include_str!("data/examples/kql_database_list_entities.json"),
+    ),
+    (
+        "kql-database/describe",
+        include_str!("data/examples/kql_database_describe.json"),
+    ),
+    (
+        "kql-database/sample",
+        include_str!("data/examples/kql_database_sample.json"),
     ),
     (
         "kql-database/diagnostics",

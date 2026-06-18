@@ -1,0 +1,18 @@
+{
+  "command": "fabio data-agent query --workspace $WS_ID --id $AGENT_ID --question \"What are the top 5 products by revenue?\" --stage sandbox",
+  "description": "Queries a Data Agent with a natural language question. Returns the agent's SQL/KQL answer, explanation, and generated query.",
+  "response": {
+    "data": {
+      "answer": "The top 5 products by revenue are: Widget Pro ($1.2M), Gadget X ($980K), SuperTool ($875K), MegaPack ($720K), BasicKit ($650K).",
+      "query": "SELECT TOP 5 ProductName, SUM(Revenue) as TotalRevenue FROM dbo.Sales GROUP BY ProductName ORDER BY TotalRevenue DESC",
+      "threadId": "thread_abc123def456",
+      "status": "completed"
+    }
+  },
+  "notes": "Use --stage sandbox (draft) or --stage production (published). The agent must have datasources configured and tables selected. Requires the agent to be published for --stage production. Use --timeout to control max wait (default: 120s).",
+  "query_examples": [
+    {"query": "data.answer", "description": "Get the natural language answer."},
+    {"query": "data.query", "description": "Get the generated SQL/KQL query."},
+    {"query": "data.status", "description": "Check if the query completed successfully."}
+  ]
+}

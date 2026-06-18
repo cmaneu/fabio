@@ -1,0 +1,19 @@
+{
+  "command": "fabio context extract --workspace $WS_ID --deep --include-connections --output-file graph.json",
+  "description": "Extracts a relationship graph of items in a workspace. Three layers: properties (fast), --deep (definition scanning), --include-connections (API connections). Outputs nodes, edges, and summary.",
+  "response": {
+    "data": {
+      "status": "written",
+      "file": "graph.json",
+      "nodes": 42,
+      "edges": 88,
+      "workspaces": 1
+    }
+  },
+  "notes": "The graph file contains: {\"nodes\":[{\"id\",\"type\",\"name\",\"workspaceId\",...}], \"edges\":[{\"source\",\"target\",\"relationship\",...}], \"workspaces\":[...], \"summary\":{...}}. Use --no-properties for fast inventory (nodes only, no edges). Use --merge to incrementally build graphs across workspaces. Use --format jsonld for RDF-compatible output.",
+  "query_examples": [
+    {"query": "data.nodes", "description": "Get total node count."},
+    {"query": "data.edges", "description": "Get total edge count."},
+    {"query": "data.status", "description": "Check if file was written."}
+  ]
+}
