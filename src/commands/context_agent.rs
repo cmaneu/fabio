@@ -266,12 +266,12 @@ fn error_codes() -> Vec<ErrorCodeInfo> {
 }
 
 fn job_types() -> serde_json::Value {
-    serde_json::from_str(include_str!("context_agent_data/job_types.json"))
+    serde_json::from_str(include_str!("context_data/agent/job_types.json"))
         .expect("job_types.json must contain valid JSON")
 }
 
 fn definition_paths() -> serde_json::Value {
-    serde_json::from_str(include_str!("context_agent_data/definition_paths.json"))
+    serde_json::from_str(include_str!("context_data/agent/definition_paths.json"))
         .expect("definition_paths.json must contain valid JSON")
 }
 
@@ -296,16 +296,16 @@ fn portal_only_operations() -> Vec<PortalOnlyOp> {
 }
 
 fn commands_schema() -> serde_json::Value {
-    serde_json::from_str(include_str!("context_agent_data/commands.json"))
+    serde_json::from_str(include_str!("context_data/agent/commands.json"))
         .expect("commands.json must contain valid JSON")
 }
 
 fn workflows() -> serde_json::Value {
-    serde_json::from_str(include_str!("context_agent_data/workflows.json"))
+    serde_json::from_str(include_str!("context_data/agent/workflows.json"))
         .expect("workflows.json must contain valid JSON")
 }
 
 fn output_conventions() -> serde_json::Value {
-    serde_json::from_str(include_str!("context_agent_data/output_conventions.json"))
+    serde_json::from_str(include_str!("context_data/agent/output_conventions.json"))
         .expect("output_conventions.json must contain valid JSON")
 }

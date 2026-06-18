@@ -103,7 +103,7 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
 
 2. **`src/commands/context_agent.rs`** — Update the machine-readable command schema so AI agents can discover the new commands (flags, types, mutability, examples).
 
-   **`src/commands/context_docs.rs` + `context_docs_data/`** — If the new feature introduces an item type, add a schema file in `context_docs_data/schemas/`. If it's part of a multi-step workflow, consider adding a workflow recipe in `context_docs_data/workflows/`.
+   **`src/commands/context_docs.rs` + `context_data/`** — If the new feature introduces an item type, add a schema file in `context_data/schemas/`. If it's part of a multi-step workflow, consider adding a workflow recipe in `context_data/workflows/`.
 
 3. **README.md** — Update the user-facing documentation:
    - Add new commands to the command listing/examples.
