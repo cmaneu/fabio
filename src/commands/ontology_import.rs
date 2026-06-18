@@ -1112,4 +1112,80 @@ mod tests {
         let trimmed = json_content.trim_start();
         assert!(trimmed.starts_with('{') || trimmed.starts_with('['));
     }
+
+    #[test]
+    fn test_serialize_to_rdf_xml() {
+        let model = OwlModel {
+            classes: vec![OwlClass {
+                uri: "http://ex.org/Thing".to_string(),
+                label: "Thing".to_string(),
+            }],
+            datatype_properties: vec![OwlDatatypeProperty {
+                label: "name".to_string(),
+                domain_uri: "http://ex.org/Thing".to_string(),
+                property_type: "String".to_string(),
+                is_identifier: true,
+            }],
+            object_properties: vec![],
+        };
+        let rdf = serialize_to_rdf_xml(&model);
+        assert!(rdf.contains("owl:Class"));
+        assert!(rdf.contains("Thing"));
+        assert!(rdf.contains("owl:DatatypeProperty"));
+        assert!(rdf.contains("ont:isIdentifier"));
+        assert!(rdf.contains("XMLSchema#string"));
+    }
+
+    #[test]
+    fn test_serialize_to_jsonld() {
+        let model = OwlModel {
+            classes: vec![
+                OwlClass {
+                    uri: "http://ex.org/A".to_string(),
+                    label: "A".to_string(),
+                },
+                OwlClass {
+                    uri: "http://ex.org/B".to_string(),
+                    label: "B".to_string(),
+                },
+            ],
+            datatype_properties: vec![OwlDatatypeProperty {
+                label: "score".to_string(),
+                domain_uri: "http://ex.org/A".to_string(),
+                property_type: "Double".to_string(),
+                is_identifier: false,
+            }],
+            object_properties: vec![OwlObjectProperty {
+                label: "links".to_string(),
+                domain_uri: "http://ex.org/A".to_string(),
+                range_uri: "http://ex.org/B".to_string(),
+            }],
+        };
+        let jsonld = serialize_to_jsonld(&model);
+        let doc: serde_json::Value = serde_json::from_str(&jsonld).unwrap();
+        assert!(doc.get("@context").is_some());
+        let graph = doc["@graph"].as_array().unwrap();
+        // 2 classes + 1 property + 1 relationship = 4 nodes
+        assert_eq!(graph.len(), 4);
+        assert_eq!(
+            graph.iter().filter(|n| n["@type"] == "owl:Class").count(),
+            2
+        );
+        let rels: Vec<_> = graph
+            .iter()
+            .filter(|n| n["@type"] == "owl:ObjectProperty")
+            .collect();
+        assert_eq!(rels.len(), 1);
+        assert_eq!(rels[0]["rdfs:label"], "links");
+    }
+
+    #[test]
+    fn test_fabric_type_to_xsd() {
+        assert_eq!(fabric_type_to_xsd("String"), "string");
+        assert_eq!(fabric_type_to_xsd("BigInt"), "integer");
+        assert_eq!(fabric_type_to_xsd("Double"), "decimal");
+        assert_eq!(fabric_type_to_xsd("Boolean"), "boolean");
+        assert_eq!(fabric_type_to_xsd("DateTime"), "dateTime");
+        assert_eq!(fabric_type_to_xsd("Unknown"), "string");
+    }
 }
