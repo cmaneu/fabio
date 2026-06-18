@@ -458,3 +458,225 @@ fn eventstream_pause_resume_dry_run() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["would_execute"], "eventstream resume");
 }
+
+// ─── Phase 2: Builder Improvements Tests ─────────────────────────────────────
+
+#[test]
+fn eventstream_list_components_all() {
+    let output = fabio()
+        .args(["eventstream", "list-components"])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    let items = data.as_array().expect("should be array");
+    assert!(items.len() >= 18, "Should have sources + destinations");
+    // Check has both categories
+    let has_source = items.iter().any(|i| i["category"] == "source");
+    let has_dest = items.iter().any(|i| i["category"] == "destination");
+    assert!(has_source, "Should include sources");
+    assert!(has_dest, "Should include destinations");
+}
+
+#[test]
+fn eventstream_list_components_filter_source() {
+    let output = fabio()
+        .args(["eventstream", "list-components", "--category", "source"])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    let items = data.as_array().expect("should be array");
+    assert!(items.len() >= 14, "Should have all source types");
+    for item in items {
+        assert_eq!(item["category"], "source");
+    }
+}
+
+#[test]
+fn eventstream_list_components_filter_destination() {
+    let output = fabio()
+        .args([
+            "eventstream",
+            "list-components",
+            "--category",
+            "destination",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    let items = data.as_array().expect("should be array");
+    assert_eq!(items.len(), 4, "Should have 4 destination types");
+    for item in items {
+        assert_eq!(item["category"], "destination");
+    }
+}
+
+#[test]
+fn eventstream_validate_valid_definition() {
+    let def = serde_json::json!({
+        "sources": [{"name": "src1", "type": "CustomEndpoint"}],
+        "streams": [{"name": "str1", "inputNodes": [{"name": "src1"}]}],
+        "destinations": [{"name": "dst1", "type": "Eventhouse", "inputNodes": [{"name": "str1"}]}],
+        "compatibilityLevel": "1.1"
+    });
+    let tmp = std::env::temp_dir().join("fabio_es_valid.json");
+    std::fs::write(&tmp, serde_json::to_string(&def).unwrap()).unwrap();
+
+    let output = fabio()
+        .args([
+            "eventstream",
+            "validate",
+            "--file",
+            &tmp.display().to_string(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["valid"], true);
+    assert!(data["errors"].as_array().unwrap().is_empty());
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn eventstream_validate_invalid_references() {
+    let def = serde_json::json!({
+        "sources": [{"name": "src1", "type": "CustomEndpoint"}],
+        "streams": [{"name": "str1", "inputNodes": [{"name": "missing_node"}]}],
+        "destinations": []
+    });
+    let tmp = std::env::temp_dir().join("fabio_es_invalid.json");
+    std::fs::write(&tmp, serde_json::to_string(&def).unwrap()).unwrap();
+
+    let output = fabio()
+        .args([
+            "eventstream",
+            "validate",
+            "--file",
+            &tmp.display().to_string(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["valid"], false);
+    let errors = data["errors"].as_array().unwrap();
+    assert!(!errors.is_empty());
+    assert!(
+        errors[0]
+            .as_str()
+            .unwrap()
+            .contains("non-existent inputNode")
+    );
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn eventstream_validate_duplicate_names() {
+    let def = serde_json::json!({
+        "sources": [
+            {"name": "node1", "type": "CustomEndpoint"},
+            {"name": "node1", "type": "SampleData"}
+        ],
+        "streams": [],
+        "destinations": []
+    });
+    let tmp = std::env::temp_dir().join("fabio_es_dup.json");
+    std::fs::write(&tmp, serde_json::to_string(&def).unwrap()).unwrap();
+
+    let output = fabio()
+        .args([
+            "eventstream",
+            "validate",
+            "--file",
+            &tmp.display().to_string(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["valid"], false);
+    let errors = data["errors"].as_array().unwrap();
+    let has_dup = errors
+        .iter()
+        .any(|e| e.as_str().unwrap().contains("Duplicate"));
+    assert!(has_dup, "Should detect duplicate node names");
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn eventstream_validate_missing_file() {
+    fabio()
+        .args([
+            "eventstream",
+            "validate",
+            "--file",
+            "/nonexistent/path.json",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn eventstream_add_sample_source_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let output = fabio()
+        .args([
+            "eventstream",
+            "add-sample-source",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--name",
+            "test-sample",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "eventstream add-sample-source");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn eventstream_add_derived_stream_dry_run() {
+    let cfg = TestConfig::from_env();
+
+    let output = fabio()
+        .args([
+            "eventstream",
+            "add-derived-stream",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--name",
+            "filtered-stream",
+            "--input-node",
+            "source-stream",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "eventstream add-derived-stream");
+}

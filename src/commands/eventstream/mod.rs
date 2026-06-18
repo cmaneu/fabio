@@ -323,6 +323,70 @@ pub enum EventstreamCommand {
         #[arg(long)]
         input_node: String,
     },
+
+    /// Add a sample data source to an eventstream (high-level helper)
+    #[command(name = "add-sample-source", display_order = 42)]
+    AddSampleSource {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Eventstream ID
+        #[arg(long)]
+        id: String,
+
+        /// Source name (unique within the eventstream)
+        #[arg(long)]
+        name: String,
+    },
+
+    /// Add a derived stream (filtered/transformed) between existing nodes
+    #[command(name = "add-derived-stream", display_order = 43)]
+    AddDerivedStream {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Eventstream ID
+        #[arg(long)]
+        id: String,
+
+        /// Derived stream name (unique within the eventstream)
+        #[arg(long)]
+        name: String,
+
+        /// Input node name (the source or stream to derive from)
+        #[arg(long)]
+        input_node: String,
+
+        /// Stream properties as JSON string (filter/transform config)
+        #[arg(long)]
+        properties: Option<String>,
+    },
+
+    /// Validate an eventstream definition (client-side checks, no API call)
+    #[command(display_order = 44)]
+    Validate {
+        /// Workspace ID (used to fetch definition from server if --file not provided)
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: Option<String>,
+
+        /// Eventstream ID (used to fetch definition from server if --file not provided)
+        #[arg(long)]
+        id: Option<String>,
+
+        /// Path to a local eventstream definition JSON file
+        #[arg(long)]
+        file: Option<String>,
+    },
+
+    /// List available eventstream component types (sources, destinations, operators)
+    #[command(name = "list-components", display_order = 45)]
+    ListComponents {
+        /// Filter by category: source, destination, all (default: all)
+        #[arg(long, default_value = "all")]
+        category: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -431,7 +495,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventstreamComm
             source_type,
             properties,
         } => {
-            add_source(
+            builder::add_source(
                 cli,
                 client,
                 workspace,
@@ -450,7 +514,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventstreamComm
             properties,
             input_node,
         } => {
-            add_destination(
+            builder::add_destination(
                 cli,
                 client,
                 workspace,
@@ -461,6 +525,47 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventstreamComm
                 input_node,
             )
             .await
+        }
+        EventstreamCommand::AddSampleSource {
+            workspace,
+            id,
+            name,
+        } => builder::add_sample_source(cli, client, workspace, id, name).await,
+        EventstreamCommand::AddDerivedStream {
+            workspace,
+            id,
+            name,
+            input_node,
+            properties,
+        } => {
+            builder::add_derived_stream(
+                cli,
+                client,
+                workspace,
+                id,
+                name,
+                input_node,
+                properties.as_deref(),
+            )
+            .await
+        }
+        EventstreamCommand::Validate {
+            workspace,
+            id,
+            file,
+        } => {
+            builder::validate(
+                cli,
+                client,
+                workspace.as_deref(),
+                id.as_deref(),
+                file.as_deref(),
+            )
+            .await
+        }
+        EventstreamCommand::ListComponents { category } => {
+            builder::list_components(cli, category);
+            Ok(())
         }
     }
 }
@@ -934,227 +1039,4 @@ async fn resume_source(
     Ok(())
 }
 
-// ─── High-level helpers ──────────────────────────────────────────────────────
-
-/// Fetches the current eventstream definition, decodes it, returns the parsed JSON.
-async fn fetch_current_definition(
-    client: &FabricClient,
-    workspace: &str,
-    id: &str,
-) -> Result<Value> {
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/eventstreams/{id}/getDefinition"),
-            &serde_json::json!({}),
-            true,
-        )
-        .await?;
-
-    // Extract the eventstream.json part
-    let parts = data["definition"]["parts"]
-        .as_array()
-        .ok_or_else(|| anyhow::anyhow!("No definition parts returned"))?;
-
-    for part in parts {
-        if part["path"].as_str() == Some("eventstream.json") {
-            let payload = part["payload"]
-                .as_str()
-                .ok_or_else(|| anyhow::anyhow!("Missing payload in eventstream.json part"))?;
-            let decoded = base64::engine::general_purpose::STANDARD.decode(payload)?;
-            let json_str = String::from_utf8(decoded)?;
-            let parsed: Value = serde_json::from_str(&json_str)?;
-            return Ok(parsed);
-        }
-    }
-
-    Err(anyhow::anyhow!(
-        "eventstream.json not found in definition parts"
-    ))
-}
-
-/// Pushes updated definition back to the eventstream.
-async fn push_definition(
-    cli: &Cli,
-    client: &FabricClient,
-    workspace: &str,
-    id: &str,
-    definition: &Value,
-) -> Result<Value> {
-    let json_str = serde_json::to_string(definition)?;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(json_str.as_bytes());
-
-    let body = serde_json::json!({
-        "definition": {
-            "parts": [
-                {
-                    "path": "eventstream.json",
-                    "payload": encoded,
-                    "payloadType": "InlineBase64"
-                }
-            ]
-        }
-    });
-
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/eventstreams/{id}/updateDefinition"),
-            &body,
-            true,
-        )
-        .await
-        .map_err(|e| enrich_forbidden(e, "eventstream update-definition", "Contributor"))?;
-
-    // After update, fetch the topology to return the new source/destination with its server-assigned ID
-    let topology = client
-        .get(&format!(
-            "/workspaces/{workspace}/eventstreams/{id}/topology"
-        ))
-        .await;
-
-    if let Ok(topo) = topology {
-        output::render_object(cli, &topo, "id");
-        return Ok(topo);
-    }
-
-    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
-        let obj = serde_json::json!({ "id": id, "status": "definition_updated" });
-        output::render_object(cli, &obj, "status");
-        Ok(obj)
-    } else {
-        output::render_object(cli, &data, "id");
-        Ok(data)
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn add_source(
-    cli: &Cli,
-    client: &FabricClient,
-    workspace: &str,
-    id: &str,
-    name: &str,
-    source_type: &str,
-    properties: Option<&str>,
-) -> Result<()> {
-    let props: Value = match properties {
-        Some(p) => serde_json::from_str(p).map_err(|e| {
-            FabioError::with_hint(
-                ErrorCode::InvalidInput,
-                format!("Invalid JSON in --properties: {e}"),
-                "Example: --properties '{}'".to_string(),
-            )
-        })?,
-        None => serde_json::json!({}),
-    };
-
-    if output::dry_run_guard(
-        cli,
-        "eventstream add-source",
-        &serde_json::json!({
-            "workspace": workspace,
-            "id": id,
-            "source": { "name": name, "type": source_type, "properties": props }
-        }),
-    ) {
-        return Ok(());
-    }
-
-    // 1. Fetch current definition
-    let mut def = fetch_current_definition(client, workspace, id).await?;
-
-    // 2. Add the new source
-    let new_source = serde_json::json!({
-        "name": name,
-        "type": source_type,
-        "properties": props,
-    });
-
-    let sources = def["sources"]
-        .as_array_mut()
-        .ok_or_else(|| anyhow::anyhow!("Definition missing sources array"))?;
-    sources.push(new_source);
-
-    // 3. Add a default stream for this source if no stream references it yet
-    let streams = def["streams"]
-        .as_array_mut()
-        .ok_or_else(|| anyhow::anyhow!("Definition missing streams array"))?;
-    let has_stream = streams.iter().any(|s| {
-        s["inputNodes"]
-            .as_array()
-            .is_some_and(|nodes| nodes.iter().any(|n| n["name"].as_str() == Some(name)))
-    });
-    if !has_stream {
-        let stream_name = format!("{name}-stream");
-        streams.push(serde_json::json!({
-            "name": stream_name,
-            "type": "DefaultStream",
-            "properties": {},
-            "inputNodes": [{"name": name}]
-        }));
-    }
-
-    // 4. Push updated definition
-    push_definition(cli, client, workspace, id, &def).await?;
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn add_destination(
-    cli: &Cli,
-    client: &FabricClient,
-    workspace: &str,
-    id: &str,
-    name: &str,
-    destination_type: &str,
-    properties: Option<&str>,
-    input_node: &str,
-) -> Result<()> {
-    let props: Value = match properties {
-        Some(p) => serde_json::from_str(p).map_err(|e| {
-            FabioError::with_hint(
-                ErrorCode::InvalidInput,
-                format!("Invalid JSON in --properties: {e}"),
-                "Example: --properties '{{\"workspaceId\":\"...\",\"itemId\":\"...\"}}'"
-                    .to_string(),
-            )
-        })?,
-        None => serde_json::json!({}),
-    };
-
-    if output::dry_run_guard(
-        cli,
-        "eventstream add-destination",
-        &serde_json::json!({
-            "workspace": workspace,
-            "id": id,
-            "destination": {
-                "name": name,
-                "type": destination_type,
-                "properties": props,
-                "inputNodes": [{"name": input_node}]
-            }
-        }),
-    ) {
-        return Ok(());
-    }
-
-    // 1. Fetch current definition
-    let mut def = fetch_current_definition(client, workspace, id).await?;
-
-    // 2. Add the new destination
-    let new_dest = serde_json::json!({
-        "name": name,
-        "type": destination_type,
-        "properties": props,
-        "inputNodes": [{"name": input_node}]
-    });
-
-    let destinations = def["destinations"]
-        .as_array_mut()
-        .ok_or_else(|| anyhow::anyhow!("Definition missing destinations array"))?;
-    destinations.push(new_dest);
-
-    // 3. Push updated definition
-    push_definition(cli, client, workspace, id, &def).await?;
-    Ok(())
-}
+mod builder;
