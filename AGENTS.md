@@ -453,7 +453,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **Graph Model**: list/show/create/update/delete/get-definition/update-definition, refresh-graph/execute-query/get-queryable-graph-type (portal initialization required for refresh)
 - **Graph Query Set**: list/show/create/update/delete/get-definition/update-definition (definition is read-only export)
 - **Catalog**: search (tenant-level full-text search across workspaces)
-- **Context**: extract (workspace graph extraction — builds a relationship graph of items with nodes/edges/summary for agent memory; three-layer discovery: properties, definitions via `--deep`, connections via `--include-connections`; parallel execution; supports multi-workspace, `--item-types` filter, `--concurrency`; incremental building via `--output-file` + `--merge`; fast inventory via `--no-properties`)
+- **Context**: tenant (workspace graph extraction — builds a relationship graph of items with nodes/edges/summary for agent memory; three-layer discovery: properties, definitions via `--deep`, connections via `--include-connections`; parallel execution; supports multi-workspace, `--item-types` filter, `--concurrency`; incremental building via `--output-file` + `--merge`; fast inventory via `--no-properties`)
 - **Dashboard**: list (read-only, portal-created)
 - **Datamart**: list (read-only, portal-created)
 - **Paginated Report**: list/update (read-only creation via portal/SSRS)
@@ -705,7 +705,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `tests/e2e_graph_model.rs`: Graph model CRUD + refresh + query tests
 - `tests/e2e_graph_query_set.rs`: Graph query set tests
 - `tests/e2e_catalog.rs`: Catalog search tests
-- `tests/e2e_context.rs`: Context extract tests (10 offline dry-run + 10 live graph extraction)
+- `tests/e2e_context.rs`: Context tenant tests (10 offline dry-run + 10 live graph extraction)
 - `tests/e2e_dashboard.rs`: Dashboard list tests
 - `tests/e2e_datamart.rs`: Datamart list tests
 - `tests/e2e_paginated_report.rs`: Paginated report tests

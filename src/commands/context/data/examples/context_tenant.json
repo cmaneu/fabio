@@ -1,6 +1,6 @@
 {
-  "command": "fabio context extract --workspace $WS_ID --deep --include-connections --output-file graph.json",
-  "description": "Extracts a relationship graph of items in a workspace. Three layers: properties (fast), --deep (definition scanning), --include-connections (API connections). Outputs nodes, edges, and summary.",
+  "command": "fabio context tenant --workspace $WS_ID --deep --include-connections --output-file graph.json",
+  "description": "Scans your Fabric tenant and builds a relationship graph from workspace(s). Three layers: properties (fast), --deep (definition scanning), --include-connections (API connections). Outputs nodes, edges, and summary.",
   "response": {
     "data": {
       "status": "written",

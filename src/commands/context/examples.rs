@@ -68,8 +68,8 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/data_agent_query.json"),
     ),
     (
-        "context/extract",
-        include_str!("data/examples/context_extract.json"),
+        "context/tenant",
+        include_str!("data/examples/context_tenant.json"),
     ),
     (
         "kql-database/list-entities",
