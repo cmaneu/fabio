@@ -1,6 +1,6 @@
 {
   "type": "MLExperiment",
-  "description": "Machine learning experiment tracking item (CRUD only, no definition support)",
+  "description": "Tracks machine learning training runs, metrics, and parameters. Used with MLflow for experiment tracking. CRUD only — models and runs are managed through notebooks or MLflow APIs.",
   "create_command": "fabio ml-experiment create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [],

@@ -1,6 +1,6 @@
 {
   "type": "SemanticModel",
-  "description": "Power BI semantic model (dataset) for analytics. Supports Direct Lake (TMDL) and Import (model.bim)",
+  "description": "Analytical data model (formerly 'Power BI dataset') that defines tables, relationships, measures, and calculations. Queried via DAX. Direct Lake mode reads Delta tables directly from OneLake (zero-copy); Import mode loads data into memory. Reports bind to semantic models for visualization.",
   "create_command": "fabio semantic-model create --workspace <WS> --name <NAME> --file <TMDL_OR_BIM>",
   "definition_format": "TMDL (Direct Lake) or model.bim (Import)",
   "definition_parts": [

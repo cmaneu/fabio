@@ -1,6 +1,6 @@
 {
   "type": "SQLDatabase",
-  "description": "Fabric SQL Database with full T-SQL support (requires F4+ capacity)",
+  "description": "Fully managed SQL database with complete T-SQL support (stored procedures, triggers, views). Operational database for transactional workloads. Requires F4+ capacity. Supports point-in-time restore and database mirroring.",
   "create_command": "fabio sql-database create --workspace <WS> --name <NAME>",
   "definition_format": "dacpac or sqlproj",
   "definition_parts": [],

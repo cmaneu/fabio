@@ -1,6 +1,6 @@
 {
   "type": "Dataflow",
-  "description": "Power Query / M-based data transformation (Dataflow Gen2)",
+  "description": "Visual data transformation using Power Query (M language). Connects to sources, applies transformations (filter, merge, pivot), and loads results into Fabric destinations. Also known as Dataflow Gen2.",
   "create_command": "fabio dataflow create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [

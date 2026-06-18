@@ -1,6 +1,6 @@
 {
   "type": "Warehouse",
-  "description": "Synapse Data Warehouse with full T-SQL support and TDS connectivity",
+  "description": "Analytical data warehouse with full T-SQL support. Optimized for large-scale queries and reporting. Supports cross-database queries with lakehouses in the same workspace. Connect via TDS (SQL Server protocol) from any SQL client.",
   "create_command": "fabio warehouse create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [],

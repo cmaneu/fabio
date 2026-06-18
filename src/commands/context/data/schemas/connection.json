@@ -1,6 +1,6 @@
 {
   "type": "Connection",
-  "description": "Tenant-level shared connection to external data sources (not workspace-scoped)",
+  "description": "Reusable credential/connection to an external service (Azure SQL, ADLS, Snowflake, etc.). Tenant-scoped — shared across workspaces. Required by items that access external data.",
   "create_command": "fabio connection create --content <JSON>",
   "definition_format": null,
   "definition_parts": [],

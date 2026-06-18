@@ -1,6 +1,6 @@
 {
   "type": "Reflex",
-  "description": "Data Activator triggers and alerts based on real-time data conditions",
+  "description": "Reactive automation (also called Data Activator) that monitors data streams and triggers actions when conditions are met. Example: 'When temperature exceeds 80C, send a Teams alert.' Connects to EventStreams, KQL databases, or simulators and fires Teams/email notifications or runs Fabric pipelines.",
   "create_command": "fabio reflex create --workspace <WS> --name <NAME>",
   "definition_format": "json",
   "definition_parts": [

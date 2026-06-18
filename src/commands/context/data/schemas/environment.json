@@ -1,6 +1,6 @@
 {
   "type": "Environment",
-  "description": "Spark environment with libraries and compute settings. Uses staging/publish workflow",
+  "description": "Shared Spark runtime configuration — defines Python/R libraries, Spark properties, and compute pool settings. Changes are staged first, then published. Attach to notebooks and Spark job definitions to control their execution environment.",
   "create_command": "fabio environment create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [

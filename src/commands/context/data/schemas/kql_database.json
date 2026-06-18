@@ -1,6 +1,6 @@
 {
   "type": "KQLDatabase",
-  "description": "Kusto Query Language database for real-time analytics. Must belong to an Eventhouse",
+  "description": "Database for real-time analytics using Kusto Query Language (KQL). Must be created inside an Eventhouse. Supports streaming ingestion, time-series analysis, and sub-second queries over large datasets.",
   "create_command": "fabio kql-database create --workspace <WS> --name <NAME> --eventhouse-id <EH_ID>",
   "definition_format": null,
   "definition_parts": [

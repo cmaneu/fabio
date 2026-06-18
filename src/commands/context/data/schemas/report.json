@@ -1,6 +1,6 @@
 {
   "type": "Report",
-  "description": "Power BI report bound to a semantic model. Supports PBIR and PBIR-Legacy formats",
+  "description": "Power BI report with interactive visualizations (charts, tables, maps) bound to a semantic model. Created programmatically or in the portal. PBIR format (one file per visual) is the modern standard; PBIR-Legacy (single report.json) supports programmatic visual creation with data rendering.",
   "create_command": "fabio report create --workspace <WS> --name <NAME> --dataset <SEMANTIC_MODEL_ID>",
   "definition_format": "PBIR-Legacy (report.json) or PBIR (definition/ folder)",
   "definition_parts": [

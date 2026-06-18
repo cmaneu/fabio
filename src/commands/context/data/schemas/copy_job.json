@@ -1,6 +1,6 @@
 {
   "type": "CopyJob",
-  "description": "Data movement job for copying data between sources and destinations",
+  "description": "Automated data copy job that moves data between sources and destinations (e.g., from Azure SQL to a lakehouse). Supports scheduled and on-demand execution.",
   "create_command": "fabio copy-job create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [

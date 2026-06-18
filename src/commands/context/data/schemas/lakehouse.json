@@ -1,6 +1,6 @@
 {
   "type": "Lakehouse",
-  "description": "Delta Lake storage with SQL analytics endpoint. Core storage artifact in Fabric",
+  "description": "Central data storage in Fabric — stores files and Delta Lake tables on OneLake. Provides a SQL analytics endpoint for T-SQL queries, and an Iceberg REST Catalog for table metadata. The foundation for most Fabric data workflows.",
   "create_command": "fabio lakehouse create --workspace <WS> --name <NAME> [--enable-schemas]",
   "definition_format": null,
   "definition_parts": [],

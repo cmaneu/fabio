@@ -1,6 +1,6 @@
 {
   "type": "Notebook",
-  "description": "Jupyter notebook for Spark/Python code execution in Fabric",
+  "description": "Interactive Jupyter notebook for writing and running PySpark, Scala, SQL, or R code on Fabric's Spark engine. Can be bound to a lakehouse for direct data access. Supports parameterized execution and scheduled runs.",
   "create_command": "fabio notebook create --workspace <WS> --name <NAME> --source <FILE>",
   "definition_format": "ipynb",
   "definition_parts": [

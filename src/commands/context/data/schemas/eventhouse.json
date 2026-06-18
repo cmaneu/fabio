@@ -1,6 +1,6 @@
 {
   "type": "Eventhouse",
-  "description": "Container for KQL databases. Provides the Kusto engine for real-time intelligence",
+  "description": "Container for KQL databases that provides the Kusto analytics engine. Used for real-time intelligence — ingesting and querying streaming data (IoT telemetry, logs, events) with sub-second latency.",
   "create_command": "fabio eventhouse create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [

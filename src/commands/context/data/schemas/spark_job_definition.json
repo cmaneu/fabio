@@ -1,6 +1,6 @@
 {
   "type": "SparkJobDefinition",
-  "description": "Spark batch job with main file, arguments, and Spark configuration",
+  "description": "Batch Spark job definition — specifies a main Python/Scala/R file, command-line arguments, and Spark configuration. Runs on Fabric's Spark engine. Use for scheduled or on-demand batch processing (ETL, ML training, data transformation).",
   "create_command": "fabio spark-job-definition create --workspace <WS> --name <NAME>",
   "definition_format": "SparkJobDefinitionV2",
   "definition_parts": [

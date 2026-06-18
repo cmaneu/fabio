@@ -1,6 +1,6 @@
 {
   "type": "MLModel",
-  "description": "Machine learning model registry item (CRUD only, no definition support)",
+  "description": "Registry for trained machine learning models. Stores model versions, metadata, and artifacts. CRUD only — model registration and versioning is done through notebooks or MLflow APIs.",
   "create_command": "fabio ml-model create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [],

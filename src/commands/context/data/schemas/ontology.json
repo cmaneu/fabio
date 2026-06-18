@@ -1,6 +1,6 @@
 {
   "type": "Ontology",
-  "description": "Knowledge graph schema with entity types, relationship types, and data bindings to lakehouses",
+  "description": "Knowledge graph schema that defines entity types (e.g., Equipment, Location), relationships between them, and data bindings to lakehouse tables. Used by Digital Twin Builder and Graph Models to create queryable knowledge graphs.",
   "create_command": "fabio ontology create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [

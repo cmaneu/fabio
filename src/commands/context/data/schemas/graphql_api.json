@@ -1,6 +1,6 @@
 {
   "type": "GraphQLApi",
-  "description": "GraphQL API endpoint backed by Fabric data sources (lakehouse, warehouse, SQL database)",
+  "description": "GraphQL API that exposes Fabric data (lakehouses, warehouses, SQL databases) as a typed GraphQL schema. Enables applications to query Fabric data via standard GraphQL queries and mutations.",
   "create_command": "fabio graphql-api create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [

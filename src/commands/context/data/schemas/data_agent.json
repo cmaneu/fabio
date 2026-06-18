@@ -1,6 +1,6 @@
 {
   "type": "DataAgent",
-  "description": "AI-powered natural language to SQL/KQL agent with datasources and few-shot examples",
+  "description": "AI agent that answers natural language questions by generating and executing SQL/KQL queries against Fabric data sources. Configurable with data source bindings, few-shot examples, and custom instructions. Can be published for use in Microsoft 365 Copilot.",
   "create_command": "fabio data-agent create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [

@@ -1,6 +1,6 @@
 {
   "type": "MirroredDatabase",
-  "description": "Database mirroring from external sources (Azure SQL, Cosmos DB, Snowflake, etc.) into Fabric",
+  "description": "Continuously mirrors data from an external database (Azure SQL, Cosmos DB, Snowflake, PostgreSQL) into Fabric. Provides near real-time replication without ETL pipelines. Mirrored data is queryable via SQL endpoint.",
   "create_command": "fabio mirrored-database create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [

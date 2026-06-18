@@ -1,6 +1,6 @@
 {
   "type": "Eventstream",
-  "description": "Real-time event routing with sources, destinations, streams, and operators",
+  "description": "Real-time event ingestion and routing pipeline. Connects event sources (Event Hubs, IoT Hub, custom endpoints) to destinations (KQL databases, lakehouses) with optional transformations. The streaming equivalent of a data pipeline.",
   "create_command": "fabio eventstream create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [

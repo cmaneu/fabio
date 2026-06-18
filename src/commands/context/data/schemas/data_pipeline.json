@@ -1,6 +1,6 @@
 {
   "type": "DataPipeline",
-  "description": "Orchestration pipeline with activities (Copy, Notebook, ForEach, etc.)",
+  "description": "Data orchestration pipeline that chains activities (Copy data, Run notebook, Execute pipeline, ForEach loops, If conditions). Similar to Azure Data Factory pipelines. Supports scheduled and event-triggered execution.",
   "create_command": "fabio data-pipeline create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [
