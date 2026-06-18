@@ -2110,3 +2110,78 @@ fn ontology_import_rdf_live() {
         .success();
     let _ = std::fs::remove_file(&tmp);
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ontology_import_jsonld_live() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("ont_import_jld");
+
+    let output = fabio()
+        .args([
+            "ontology",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    let ont_id = extract_data(&json)["id"].as_str().unwrap().to_string();
+
+    let jsonld = r#"{"@graph": [
+        {"@id": "http://ex.org/Machine", "@type": "owl:Class", "rdfs:label": "Machine"},
+        {"@id": "http://ex.org/Alert", "@type": "owl:Class", "rdfs:label": "Alert"},
+        {"@id": "http://ex.org/machine_id", "@type": "owl:DatatypeProperty", "rdfs:label": "machineId",
+         "rdfs:domain": {"@id": "http://ex.org/Machine"}, "rdfs:range": {"@id": "http://www.w3.org/2001/XMLSchema#string"},
+         "ont:isIdentifier": true},
+        {"@id": "http://ex.org/machine_name", "@type": "owl:DatatypeProperty", "rdfs:label": "name",
+         "rdfs:domain": {"@id": "http://ex.org/Machine"}, "rdfs:range": {"@id": "http://www.w3.org/2001/XMLSchema#string"}},
+        {"@id": "http://ex.org/alert_id", "@type": "owl:DatatypeProperty", "rdfs:label": "alertId",
+         "rdfs:domain": {"@id": "http://ex.org/Alert"}, "rdfs:range": {"@id": "http://www.w3.org/2001/XMLSchema#string"},
+         "ont:isIdentifier": true},
+        {"@id": "http://ex.org/alert_severity", "@type": "owl:DatatypeProperty", "rdfs:label": "severity",
+         "rdfs:domain": {"@id": "http://ex.org/Alert"}, "rdfs:range": {"@id": "http://www.w3.org/2001/XMLSchema#integer"}},
+        {"@id": "http://ex.org/triggers", "@type": "owl:ObjectProperty", "rdfs:label": "triggers",
+         "rdfs:domain": {"@id": "http://ex.org/Machine"}, "rdfs:range": {"@id": "http://ex.org/Alert"}}
+    ]}"#;
+    let tmp = std::env::temp_dir().join("fabio_e2e_import.jsonld");
+    std::fs::write(&tmp, jsonld).unwrap();
+
+    let output = fabio()
+        .args([
+            "ontology",
+            "import",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--file",
+            &tmp.display().to_string(),
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "imported");
+    assert_eq!(data["entity_types"], 2);
+    assert_eq!(data["relationship_types"], 1);
+
+    // Cleanup
+    fabio()
+        .args([
+            "ontology",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+            "--hard",
+        ])
+        .assert()
+        .success();
+    let _ = std::fs::remove_file(&tmp);
+}
