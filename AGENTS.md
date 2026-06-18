@@ -127,7 +127,7 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
 
 2. **`src/commands/context/agent.rs`** — Update the machine-readable command schema so AI agents can discover the new commands (flags, types, mutability, examples).
 
-   **`src/commands/context/`** — If the new feature introduces an item type, add a schema file in `context/data/schemas/`. If it's part of a multi-step workflow, consider adding a workflow recipe in `context/data/workflows/`.
+   **`src/commands/context/`** — If the new feature introduces an item type, add a schema file in `context/data/schemas/`. If it's part of a multi-step workflow, consider adding a workflow recipe in `context/data/workflows/`. If the new feature adds significant query/output patterns, add output examples in `context/data/examples/` so agents understand the response shapes (e.g., new KQL intelligence commands like `list-entities`, `diagnostics`, `deeplink` should have representative output examples).
 
 3. **README.md** — Update the user-facing documentation:
    - Add new commands to the command listing/examples.
@@ -143,6 +143,7 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
 - API behaviors discovered during implementation MUST be captured in AGENTS.md (this is critical institutional knowledge for future development).
 - The `context agent` schema must stay in sync with the actual CLI surface — agents rely on it for discovery.
 - The `docs` data files must be updated when new item types or workflows are added — agents rely on them for understanding definition formats and best practices.
+- Output examples in `context/data/examples/` SHOULD be added for commands with non-obvious response shapes (e.g., nested objects, aggregated multi-section results, URL outputs) so agents can parse responses correctly.
 
 ## Testing Requirements (MANDATORY)
 
