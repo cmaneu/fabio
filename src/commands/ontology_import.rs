@@ -129,6 +129,255 @@ pub async fn import_owl(
     Ok(())
 }
 
+// ─── Export (Fabric → OWL) ───────────────────────────────────────────────────
+
+/// Fetch a Fabric Ontology definition and export it as OWL RDF/XML or JSON-LD.
+pub async fn export_owl(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    format: &str,
+    output_file: Option<&str>,
+) -> Result<()> {
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/ontologies/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "ontology export", "Contributor"))?;
+
+    let model = fabric_definition_to_model(&data)?;
+    let output_content = match format {
+        "jsonld" => serialize_to_jsonld(&model),
+        _ => serialize_to_rdf_xml(&model),
+    };
+
+    if let Some(path) = output_file {
+        fs::write(path, &output_content)
+            .map_err(|e| anyhow::anyhow!("Failed to write file '{path}': {e}"))?;
+        let obj = serde_json::json!({
+            "status": "exported",
+            "file": path,
+            "format": format,
+            "entity_types": model.classes.len(),
+            "relationship_types": model.object_properties.len(),
+            "properties": model.datatype_properties.len(),
+        });
+        output::render_object(cli, &obj, "status");
+    } else {
+        print!("{output_content}");
+    }
+    Ok(())
+}
+
+fn fabric_definition_to_model(data: &Value) -> Result<OwlModel> {
+    let parts = data
+        .get("definition")
+        .and_then(|d| d.get("parts"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow::anyhow!("No definition parts found"))?;
+
+    let mut model = OwlModel::default();
+    let mut entity_id_to_uri: HashMap<String, String> = HashMap::new();
+
+    for part in parts {
+        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
+        if !path.contains("EntityTypes") || !path.ends_with("definition.json") {
+            continue;
+        }
+        let payload = part.get("payload").and_then(Value::as_str).unwrap_or("");
+        let decoded = BASE64.decode(payload).unwrap_or_default();
+        let entity: Value =
+            serde_json::from_str(&String::from_utf8_lossy(&decoded)).unwrap_or_default();
+
+        let eid = entity.get("id").and_then(Value::as_str).unwrap_or("");
+        let name = entity.get("name").and_then(Value::as_str).unwrap_or("");
+        if name.is_empty() {
+            continue;
+        }
+        let uri = format!("http://fabric.microsoft.com/ontology/{name}");
+        entity_id_to_uri.insert(eid.to_string(), uri.clone());
+        model.classes.push(OwlClass {
+            uri: uri.clone(),
+            label: name.to_string(),
+        });
+
+        let id_parts: Vec<&str> = entity
+            .get("entityIdParts")
+            .and_then(Value::as_array)
+            .map_or_else(Vec::new, |a| a.iter().filter_map(Value::as_str).collect());
+
+        if let Some(props) = entity.get("properties").and_then(Value::as_array) {
+            for prop in props {
+                let pid = prop.get("id").and_then(Value::as_str).unwrap_or("");
+                let pname = prop.get("name").and_then(Value::as_str).unwrap_or("");
+                let vtype = prop
+                    .get("valueType")
+                    .and_then(Value::as_str)
+                    .unwrap_or("String");
+                model.datatype_properties.push(OwlDatatypeProperty {
+                    label: pname.to_string(),
+                    domain_uri: uri.clone(),
+                    property_type: vtype.to_string(),
+                    is_identifier: id_parts.contains(&pid),
+                });
+            }
+        }
+    }
+
+    for part in parts {
+        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
+        if !path.contains("RelationshipTypes") || !path.ends_with("definition.json") {
+            continue;
+        }
+        let payload = part.get("payload").and_then(Value::as_str).unwrap_or("");
+        let decoded = BASE64.decode(payload).unwrap_or_default();
+        let rel: Value =
+            serde_json::from_str(&String::from_utf8_lossy(&decoded)).unwrap_or_default();
+
+        let name = rel.get("name").and_then(Value::as_str).unwrap_or("");
+        let src = rel
+            .get("source")
+            .and_then(|s| s.get("entityTypeId"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let tgt = rel
+            .get("target")
+            .and_then(|t| t.get("entityTypeId"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let d = entity_id_to_uri.get(src).cloned().unwrap_or_default();
+        let r = entity_id_to_uri.get(tgt).cloned().unwrap_or_default();
+        if !d.is_empty() && !r.is_empty() {
+            model.object_properties.push(OwlObjectProperty {
+                label: name.to_string(),
+                domain_uri: d,
+                range_uri: r,
+            });
+        }
+    }
+    Ok(model)
+}
+
+#[allow(clippy::too_many_lines, clippy::write_with_newline)]
+fn serialize_to_rdf_xml(model: &OwlModel) -> String {
+    use std::fmt::Write;
+    let base = "http://fabric.microsoft.com/ontology/";
+    let mut s = String::new();
+    s.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rdf:RDF\n");
+    let _ = write!(s, "    xml:base=\"{base}\"\n");
+    s.push_str("    xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"\n");
+    s.push_str("    xmlns:rdfs=\"http://www.w3.org/2000/01/rdf-schema#\"\n");
+    s.push_str("    xmlns:owl=\"http://www.w3.org/2002/07/owl#\"\n");
+    s.push_str("    xmlns:xsd=\"http://www.w3.org/2001/XMLSchema#\"\n");
+    let _ = write!(s, "    xmlns:ont=\"{base}\">\n\n");
+    for c in &model.classes {
+        let _ = write!(
+            s,
+            "    <owl:Class rdf:about=\"{}\">\n        <rdfs:label>{}</rdfs:label>\n    </owl:Class>\n\n",
+            c.uri, c.label
+        );
+    }
+    for p in &model.datatype_properties {
+        let xsd = fabric_type_to_xsd(&p.property_type);
+        let _ = write!(
+            s,
+            "    <owl:DatatypeProperty rdf:about=\"{base}{}_{}\">",
+            uri_local_name(&p.domain_uri).to_lowercase(),
+            p.label
+        );
+        let _ = write!(s, "\n        <rdfs:label>{}</rdfs:label>", p.label);
+        let _ = write!(
+            s,
+            "\n        <rdfs:domain rdf:resource=\"{}\"/>",
+            p.domain_uri
+        );
+        let _ = write!(
+            s,
+            "\n        <rdfs:range rdf:resource=\"http://www.w3.org/2001/XMLSchema#{xsd}\"/>"
+        );
+        if p.is_identifier {
+            s.push_str("\n        <ont:isIdentifier rdf:datatype=\"http://www.w3.org/2001/XMLSchema#boolean\">true</ont:isIdentifier>");
+        }
+        let _ = write!(
+            s,
+            "\n        <ont:propertyType>{}</ont:propertyType>",
+            p.property_type.to_lowercase()
+        );
+        s.push_str("\n    </owl:DatatypeProperty>\n\n");
+    }
+    for r in &model.object_properties {
+        let _ = write!(
+            s,
+            "    <owl:ObjectProperty rdf:about=\"{base}{}\">\n",
+            r.label
+        );
+        let _ = write!(s, "        <rdfs:label>{}</rdfs:label>\n", r.label);
+        let _ = write!(
+            s,
+            "        <rdfs:domain rdf:resource=\"{}\"/>\n",
+            r.domain_uri
+        );
+        let _ = write!(
+            s,
+            "        <rdfs:range rdf:resource=\"{}\"/>\n",
+            r.range_uri
+        );
+        s.push_str("    </owl:ObjectProperty>\n\n");
+    }
+    s.push_str("</rdf:RDF>\n");
+    s
+}
+
+fn serialize_to_jsonld(model: &OwlModel) -> String {
+    let mut graph: Vec<Value> = Vec::new();
+    for c in &model.classes {
+        graph.push(serde_json::json!({"@id": c.uri, "@type": "owl:Class", "rdfs:label": c.label}));
+    }
+    for p in &model.datatype_properties {
+        let xsd = fabric_type_to_xsd(&p.property_type);
+        let mut node = serde_json::json!({
+            "@id": format!("{}#{}", p.domain_uri, p.label),
+            "@type": "owl:DatatypeProperty",
+            "rdfs:label": p.label,
+            "rdfs:domain": {"@id": &p.domain_uri},
+            "rdfs:range": {"@id": format!("http://www.w3.org/2001/XMLSchema#{xsd}")},
+            "ont:propertyType": p.property_type.to_lowercase(),
+        });
+        if p.is_identifier {
+            node["ont:isIdentifier"] = serde_json::json!(true);
+        }
+        graph.push(node);
+    }
+    for r in &model.object_properties {
+        graph.push(serde_json::json!({
+            "@id": format!("http://fabric.microsoft.com/ontology/{}", r.label),
+            "@type": "owl:ObjectProperty",
+            "rdfs:label": r.label,
+            "rdfs:domain": {"@id": &r.domain_uri},
+            "rdfs:range": {"@id": &r.range_uri},
+        }));
+    }
+    let doc = serde_json::json!({
+        "@context": {"owl": "http://www.w3.org/2002/07/owl#", "rdfs": "http://www.w3.org/2000/01/rdf-schema#", "xsd": "http://www.w3.org/2001/XMLSchema#", "ont": "http://fabric.microsoft.com/ontology/"},
+        "@graph": graph
+    });
+    serde_json::to_string_pretty(&doc).unwrap_or_default()
+}
+
+fn fabric_type_to_xsd(t: &str) -> &str {
+    match t {
+        "BigInt" => "integer",
+        "Double" => "decimal",
+        "Boolean" => "boolean",
+        "DateTime" => "dateTime",
+        _ => "string",
+    }
+}
+
 // ─── Data Model ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Default)]

@@ -159,8 +159,32 @@ pub enum OntologyCommand {
         #[arg(long)]
         output_dir: Option<String>,
     },
+    /// Export a Fabric Ontology to OWL format (RDF/XML or JSON-LD)
+    ///
+    /// Fetches the ontology definition from Fabric and converts `EntityTypes`
+    /// and `RelationshipTypes` back to standard OWL. Compatible with Ontology
+    /// Playground and standard RDF tools.
+    #[command(display_order = 11)]
+    Export {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Output format: `rdf` (RDF/XML) or `jsonld` (JSON-LD)
+        #[arg(long, default_value = "rdf", value_parser = ["rdf", "jsonld"])]
+        format: String,
+
+        /// Output file path (writes to stdout if omitted)
+        #[arg(long)]
+        file: Option<String>,
+    },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand) -> Result<()> {
     match command {
         OntologyCommand::List { workspace } => list(cli, client, workspace).await,
@@ -244,6 +268,22 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
                 id.as_deref(),
                 file,
                 output_dir.as_deref(),
+            )
+            .await
+        }
+        OntologyCommand::Export {
+            workspace,
+            id,
+            format,
+            file,
+        } => {
+            crate::commands::ontology_import::export_owl(
+                cli,
+                client,
+                workspace,
+                id,
+                format,
+                file.as_deref(),
             )
             .await
         }
