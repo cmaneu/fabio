@@ -1,6 +1,6 @@
 # Commands
 
-> **AI agents**: Instead of parsing this file, run `fabio agent-context` to get a machine-readable command schema with flags, types, mutability, and examples.
+> **AI agents**: Instead of parsing this file, run `fabio agent-context` to get a machine-readable command schema with flags, types, mutability, and examples. Run `fabio docs list` to discover item schemas, workflow recipes, and best practices.
 
 ## Global Flags
 

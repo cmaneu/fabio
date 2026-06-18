@@ -1009,6 +1009,21 @@ fabio item list --workspace $WS -o plain --query displayName | sort | uniq -c | 
 
 # Machine-readable schema for building AI agents on top of fabio
 fabio agent-context | jq '.commands[] | select(.group == "lakehouse")'
+
+# Understand item definition formats (what JSON to pass to --content/--file)
+fabio docs item-schema Notebook
+fabio docs item-schema DataPipeline
+
+# Get workflow recipes for multi-step tasks
+fabio docs workflow direct-lake-report
+fabio docs workflow cicd-deploy
+
+# Understand how fabio handles throttling, LRO, pagination
+fabio docs best-practices throttling
+fabio docs best-practices lro
+
+# See example output shapes (for writing --query JMESPath expressions)
+fabio docs output-example lakehouse iceberg-table
 ```
 
 ## GitHub Actions

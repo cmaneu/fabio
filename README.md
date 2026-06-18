@@ -127,7 +127,7 @@ docker run --rm \
 - **Safe mutations** -- `--dry-run` for destructive operations; idempotent where possible
 - **Bounded responses** -- `--limit` for list commands; concise default output
 - **Async-aware** -- `--wait` for long-running operations; local job ledger
-- **Discoverable** -- `fabio agent-context` provides machine-readable command schema
+- **Discoverable** -- `fabio agent-context` provides machine-readable command schema; `fabio docs` provides item schemas, workflows, and best practices
 - **Context-aware** -- `fabio context extract` builds a workspace relationship graph for agent memory
 - **Throttling-aware** -- Bulk/batch APIs preferred; parallel execution with rate-limit retry
 
@@ -207,7 +207,7 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 
 See [COMMANDS.md](COMMANDS.md) for the full list of 76 command groups and 830+ subcommands.
 
-If you are an AI agent, run `fabio agent-context` to get a machine-readable command schema with flags, types, mutability, and examples.
+If you are an AI agent, run `fabio agent-context` to get a machine-readable command schema with flags, types, mutability, and examples. Run `fabio docs item-schema <TYPE>` to understand definition formats, `fabio docs workflow <NAME>` for multi-step recipes, and `fabio docs best-practices <TOPIC>` for operational guidance.
 
 ## Authentication
 

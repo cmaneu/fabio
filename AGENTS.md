@@ -14,7 +14,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 4. **Safe retries and explicit mutation boundaries** — `--dry-run` for mutations; idempotency-safe; stable returned IDs.
 5. **Bounded responses** — `--limit` for list commands; default to concise output; truncation metadata in envelope.
 6. **Cross-CLI vocabulary consistency** — Canonical agent verbs: `list`, `show`, `create`, `delete`, `copy`, `move`.
-7. **Three-layer introspection** — `fabio agent-context` provides machine-readable command schema (flags, types, mutability, examples).
+7. **Three-layer introspection** — `fabio agent-context` provides machine-readable command schema (flags, types, mutability, examples). `fabio docs` provides semantic knowledge (item definition schemas, workflow recipes, output examples, best-practices guidance).
 8. **Async-aware execution** — `--wait` for async jobs; local job ledger (`fabio jobs list/get/prune`); status polling.
 9. **Persistent identity through profiles** — Named profiles (`fabio profile save/use/list/show/delete`); `--profile` flag.
 10. **Two-way I/O** — Feedback channel (`fabio feedback send/list`); artifact delivery via stdout/file.
@@ -103,6 +103,8 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
 
 2. **`src/commands/agent_context.rs`** — Update the machine-readable command schema so AI agents can discover the new commands (flags, types, mutability, examples).
 
+   **`src/commands/docs.rs` + `docs_data/`** — If the new feature introduces an item type, add a schema file in `docs_data/schemas/`. If it's part of a multi-step workflow, consider adding a workflow recipe in `docs_data/workflows/`.
+
 3. **README.md** — Update the user-facing documentation:
    - Add new commands to the command listing/examples.
    - Update feature descriptions if capabilities have expanded.
@@ -116,6 +118,7 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
 - Documentation updates are part of the feature — do NOT commit code without corresponding doc updates.
 - API behaviors discovered during implementation MUST be captured in AGENTS.md (this is critical institutional knowledge for future development).
 - The `agent-context` schema must stay in sync with the actual CLI surface — agents rely on it for discovery.
+- The `docs` data files must be updated when new item types or workflows are added — agents rely on them for understanding definition formats and best practices.
 
 ## Testing Requirements (MANDATORY)
 
@@ -390,7 +393,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
   - Principle 4: Safe retries (`--dry-run`)
   - Principle 5: Bounded responses (`--limit`, `--continuation-token`, truncation metadata)
   - Principle 6: Consistent vocabulary (list/show/create/delete/copy/move)
-  - Principle 7: `fabio agent-context` machine-readable schema
+  - Principle 7: `fabio agent-context` machine-readable schema + `fabio docs` semantic knowledge (item schemas, workflows, best practices)
   - Principle 8: Async-aware (`--wait`, jobs ledger)
   - Principle 9: Named profiles (`fabio profile save/use/list/show/delete`)
   - Principle 10: Two-way I/O (`fabio feedback send/list`)
@@ -603,6 +606,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/jobs.rs`: list/get/prune (local async job ledger)
 - `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
 - `src/commands/agent_context.rs`: Machine-readable command schema for AI agents
+- `src/commands/docs.rs`: Offline documentation for AI agents (item schemas, workflows, output examples, best practices)
 - `src/commands/rest.rs`: Raw REST passthrough (method/path/body/query-params/poll); `resolve_body()` for @file/@- support; `--api powerbi` targets Power BI REST API
 - `src/commands/rti.rs`: nl-to-kql (natural language to KQL translation)
 - `src/commands/data_build_tool_job.rs`: list/show/create/update/delete/get-definition/update-definition/run (with --wait/--timeout/--cancel-on-timeout) [preview]
