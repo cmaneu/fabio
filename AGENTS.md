@@ -472,6 +472,23 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **Graph Query Set**: list/show/create/update/delete/get-definition/update-definition (definition is read-only export)
 - **Catalog**: search (tenant-level full-text search across workspaces)
 - **Context**: tenant (workspace graph extraction — builds a relationship graph of items with nodes/edges/summary for agent memory; three-layer discovery: properties, definitions via `--deep`, connections via `--include-connections`; parallel execution; supports multi-workspace, `--item-types` filter, `--concurrency`; incremental building via `--output-file` + `--merge`; fast inventory via `--no-properties`; 5 output formats: `graph` native, `jsonld` RDF instances, `owl` OWL JSON-LD schema, `rdf` OWL RDF/XML schema, `full` combined schema+instances RDF/XML)
+- **Context (agent knowledge)**: `fabio context` provides structured knowledge for AI agents. Subcommands:
+  - `fabio context agent` — Machine-readable JSON schema of all commands (flags, types, mutability, error codes)
+  - `fabio context list` — Discover all available topics (workflows, best-practices, schemas, examples)
+  - `fabio context workflow <NAME>` — Multi-step workflow recipes with exact command syntax:
+    - `rti-pipeline` — Eventhouse + KQL DB + EventStream end-to-end
+    - `direct-lake-report` — Semantic model (model.bim or TMDL) + report creation with template
+    - `cicd-deploy` — Export + plan + apply with content-hash convergence
+    - `lakehouse-etl` — Lakehouse + notebook + load-table + schedule
+    - `data-agent-setup` — Create + datasource + schema discovery retry + instructions + few-shots + publish
+  - `fabio context best-practices <TOPIC>` — Operational guidance:
+    - `shortcuts` — ADLS Gen2 connection + shortcut two-step pattern, known list-files limitation
+    - `lro` — Automatic LRO polling, --wait for jobs, timeout handling
+    - `throttling` — Automatic 429 retry, bounded parallelism
+    - `pagination` — --all, --limit, --continuation-token
+    - `admin-apis` — When to use admin vs workspace-scoped commands
+  - `fabio context schema <TYPE>` — Item definition schemas (22 types: notebook, lakehouse, semantic_model, etc.)
+  - `fabio context examples <GROUP> <CMD>` — Output shape examples for command responses
 - **Dashboard**: list (read-only, portal-created)
 - **Datamart**: list (read-only, portal-created)
 - **Paginated Report**: list/update (read-only creation via portal/SSRS)
