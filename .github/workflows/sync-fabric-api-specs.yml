@@ -15,12 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout fabio
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
 
       - name: Checkout fabric-rest-api-specs
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           repository: microsoft/fabric-rest-api-specs
           path: fabric-rest-api-specs
@@ -71,11 +71,11 @@ jobs:
 
       - name: Install Rust toolchain
         if: steps.check-changes.outputs.has_changes == 'true'
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
 
       - name: Cache cargo registry
         if: steps.check-changes.outputs.has_changes == 'true'
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: |
             ~/.cargo/registry
@@ -83,11 +83,10 @@ jobs:
           key: sync-specs-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             sync-specs-cargo-
-          save-always: true
 
       - name: Cache build artifacts
         if: steps.check-changes.outputs.has_changes == 'true'
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: target
           key: sync-specs-target-${{ hashFiles('**/Cargo.lock') }}
@@ -96,7 +95,7 @@ jobs:
 
       - name: Set up Node.js
         if: steps.check-changes.outputs.has_changes == 'true'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6
 
       - name: Install Copilot CLI
         if: steps.check-changes.outputs.has_changes == 'true'
