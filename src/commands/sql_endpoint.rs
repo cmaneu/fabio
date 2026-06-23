@@ -151,7 +151,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlEndpointComm
             .await
         }
         SqlEndpointCommand::Query { workspace, id, sql } => {
-            query(cli, client, workspace, id, sql.as_deref()).await
+            Box::pin(query(cli, client, workspace, id, sql.as_deref())).await
         }
         SqlEndpointCommand::RefreshMetadata { workspace, id } => {
             refresh_metadata(cli, client, workspace, id).await

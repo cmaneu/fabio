@@ -366,9 +366,8 @@ fn replace_executable(new_binary: &[u8]) -> Result<()> {
 
     // Rename current exe out of the way (Windows allows renaming a running exe)
     fs::rename(&current_exe, &old_path).with_context(|| {
-        format!(
-            "Failed to rename current executable. You may need to run with elevated permissions."
-        )
+        "Failed to rename current executable. You may need to run with elevated permissions."
+            .to_string()
     })?;
 
     // Move new binary into place
