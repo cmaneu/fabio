@@ -68,6 +68,7 @@ where
     let op = Arc::new(op);
     let semaphore = Arc::new(Semaphore::new(concurrency));
     let mut join_set = JoinSet::new();
+    let item_count = items.len();
 
     for (index, item) in items.into_iter().enumerate() {
         let op = op.clone();
@@ -79,7 +80,7 @@ where
         });
     }
 
-    let mut results = Vec::new();
+    let mut results = Vec::with_capacity(item_count);
     while let Some(res) = join_set.join_next().await {
         if let Ok(op_result) = res {
             results.push(op_result);

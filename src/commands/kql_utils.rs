@@ -248,7 +248,7 @@ pub fn parse_kusto_v1_response(resp: &Value) -> Result<(Vec<Value>, Vec<String>)
             .map_or_else(Vec::new, |rows| {
                 rows.iter()
                     .map(|row| {
-                        let mut obj = serde_json::Map::new();
+                        let mut obj = serde_json::Map::with_capacity(columns.len());
                         if let Some(row_arr) = row.as_array() {
                             for (i, val) in row_arr.iter().enumerate() {
                                 let col_name = columns
@@ -342,7 +342,7 @@ pub fn parse_kusto_v2_response(frames: &Value) -> Result<(Vec<Value>, Vec<String
             .map_or_else(Vec::new, |rows| {
                 rows.iter()
                     .map(|row| {
-                        let mut obj = serde_json::Map::new();
+                        let mut obj = serde_json::Map::with_capacity(columns.len());
                         if let Some(row_arr) = row.as_array() {
                             for (i, val) in row_arr.iter().enumerate() {
                                 let col_name = columns

@@ -137,7 +137,7 @@ pub async fn execute_and_render_sql(
             .await
             .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("Failed to read row: {e}")))?
         {
-            let mut obj = serde_json::Map::new();
+            let mut obj = serde_json::Map::with_capacity(columns.len());
             for (i, val) in row.into_iter().enumerate() {
                 let col_name = columns
                     .get(i)

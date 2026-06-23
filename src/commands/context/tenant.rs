@@ -1208,7 +1208,9 @@ fn build_owl_model_from_graph(
 fn format_as_full_rdf(graph: &ContextGraph) -> String {
     use std::fmt::Write;
     let base = "http://fabric.microsoft.com/ontology/";
-    let mut s = String::new();
+    // Estimate: ~500 bytes header + ~300 per node + ~200 per edge
+    let estimated = 500 + graph.nodes.len() * 300 + graph.edges.len() * 200;
+    let mut s = String::with_capacity(estimated);
 
     s.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rdf:RDF\n");
     let _ = write!(s, "    xml:base=\"{base}\"\n");
@@ -1365,7 +1367,7 @@ fn build_jsonld_context() -> Value {
 
 /// Convert `snake_case` relationship names to `camelCase` for JSON-LD predicates.
 fn relationship_to_camel(rel: &str) -> String {
-    let mut result = String::new();
+    let mut result = String::with_capacity(rel.len());
     let mut capitalize_next = false;
     for ch in rel.chars() {
         if ch == '_' {
