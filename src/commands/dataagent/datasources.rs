@@ -174,7 +174,7 @@ pub(super) async fn add_datasource(
         "type": ds_type,
     });
     if let Some(instr) = instructions {
-        datasource_json["dataSourceInstructions"] = Value::String(instr.to_string());
+        datasource_json["dataSourceInstructions"] = Value::from(instr);
     }
 
     // Fetch current definition and append the new datasource part

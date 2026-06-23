@@ -144,7 +144,7 @@ pub(super) async fn describe_element(
     // Set or clear the description
     match description {
         Some(desc) if !desc.is_empty() => {
-            element["description"] = Value::String(desc.to_string());
+            element["description"] = Value::from(desc);
         }
         _ => {
             // Clear description
@@ -226,10 +226,10 @@ fn flatten_elements(elements: &[Value], output: &mut Vec<Value>, depth: usize) {
             row["selected"] = Value::Bool(selected);
         }
         if !description.is_empty() {
-            row["description"] = Value::String(description.to_string());
+            row["description"] = Value::from(description);
         }
         if let Some(dt) = elem.get("data_type").and_then(Value::as_str) {
-            row["dataType"] = Value::String(dt.to_string());
+            row["dataType"] = Value::from(dt);
         }
 
         output.push(row);

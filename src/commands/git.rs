@@ -415,7 +415,7 @@ async fn commit(
     });
 
     if let Some(msg) = message {
-        body["comment"] = Value::String(msg.to_string());
+        body["comment"] = Value::from(msg);
     }
 
     if let Some(item_ids) = items {
@@ -580,7 +580,7 @@ async fn connect(
                 "directoryName": dir_name,
             });
             if let Some(domain) = custom_domain {
-                details["customDomainName"] = Value::String(domain.to_string());
+                details["customDomainName"] = Value::from(domain);
             }
             details
         }
@@ -748,7 +748,7 @@ async fn checkout(
 
     // Step 4: Reconnect with the new branch
     let mut new_provider_details = provider_details.clone();
-    new_provider_details["branchName"] = Value::String(branch.to_string());
+    new_provider_details["branchName"] = Value::from(branch);
 
     let mut connect_body = serde_json::json!({
         "gitProviderDetails": new_provider_details,

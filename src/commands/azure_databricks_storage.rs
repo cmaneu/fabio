@@ -205,7 +205,7 @@ async fn create(
         "displayName": name,
     });
     if let Some(desc) = description {
-        body["description"] = Value::String(desc.to_string());
+        body["description"] = Value::from(desc);
     }
 
     if output::dry_run_guard(
@@ -251,10 +251,10 @@ async fn update(
 
     let mut body = serde_json::json!({});
     if let Some(n) = name {
-        body["displayName"] = Value::String(n.to_string());
+        body["displayName"] = Value::from(n);
     }
     if let Some(d) = description {
-        body["description"] = Value::String(d.to_string());
+        body["description"] = Value::from(d);
     }
 
     if output::dry_run_guard(cli, "azure-databricks-storage update", &body) {
@@ -535,7 +535,7 @@ mod tests {
         let description = Some("A description");
         let mut body = serde_json::json!({ "displayName": name });
         if let Some(d) = description {
-            body["description"] = serde_json::Value::String(d.to_string());
+            body["description"] = serde_json::Value::from(d);
         }
         assert_eq!(body["displayName"], "My Storage");
         assert_eq!(body["description"], "A description");
@@ -547,7 +547,7 @@ mod tests {
         let description: Option<&str> = None;
         let mut body = serde_json::json!({ "displayName": name });
         if let Some(d) = description {
-            body["description"] = serde_json::Value::String(d.to_string());
+            body["description"] = serde_json::Value::from(d);
         }
         assert_eq!(body["displayName"], "My Storage");
         assert!(body.get("description").is_none());

@@ -34,10 +34,10 @@ pub(super) async fn create_folder(
 ) -> Result<()> {
     let mut body = serde_json::json!({ "displayName": name });
     if let Some(desc) = description {
-        body["description"] = Value::String(desc.to_string());
+        body["description"] = Value::from(desc);
     }
     if let Some(parent) = parent_folder_id {
-        body["parentFolderId"] = Value::String(parent.to_string());
+        body["parentFolderId"] = Value::from(parent);
     }
     if output::dry_run_guard(cli, "workspace create-folder", &body) {
         return Ok(());
@@ -75,10 +75,10 @@ pub(super) async fn update_folder(
     }
     let mut body = serde_json::json!({});
     if let Some(n) = name {
-        body["displayName"] = Value::String(n.to_string());
+        body["displayName"] = Value::from(n);
     }
     if let Some(d) = description {
-        body["description"] = Value::String(d.to_string());
+        body["description"] = Value::from(d);
     }
     if output::dry_run_guard(cli, "workspace update-folder", &body) {
         return Ok(());

@@ -334,7 +334,7 @@ async fn create(
         "displayName": name,
     });
     if let Some(desc) = description {
-        body["description"] = Value::String(desc.to_string());
+        body["description"] = Value::from(desc);
     }
 
     if output::dry_run_guard(cli, "dataflow create", &body) {
@@ -369,10 +369,10 @@ async fn update(
 
     let mut body = serde_json::json!({});
     if let Some(n) = name {
-        body["displayName"] = Value::String(n.to_string());
+        body["displayName"] = Value::from(n);
     }
     if let Some(d) = description {
-        body["description"] = Value::String(d.to_string());
+        body["description"] = Value::from(d);
     }
 
     if output::dry_run_guard(cli, "dataflow update", &body) {
@@ -722,7 +722,7 @@ fn build_execution_body(
     if let Some(opt) = execute_option {
         match opt {
             "SkipApplyChanges" | "ApplyChangesIfNeeded" => {
-                exec_data["executeOption"] = Value::String(opt.to_string());
+                exec_data["executeOption"] = Value::from(opt);
             }
             _ => {
                 return Err(FabioError::with_hint(
@@ -763,7 +763,7 @@ async fn execute_query(
 ) -> Result<()> {
     let mut body = serde_json::json!({ "queryName": query_name });
     if let Some(m) = mashup {
-        body["customMashupDocument"] = Value::String(m.to_string());
+        body["customMashupDocument"] = Value::from(m);
     }
 
     if output::dry_run_guard(cli, "dataflow execute-query", &body) {

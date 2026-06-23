@@ -593,7 +593,7 @@ async fn create_capacity_pool(
         (_, Some(c)) => serde_json::from_str::<Value>(c)?,
         (None, None) => serde_json::json!({}),
     };
-    body["name"] = Value::String(name.to_string());
+    body["name"] = Value::from(name);
 
     if output::dry_run_guard(cli, "spark create-capacity-pool", &body) {
         return Ok(());

@@ -51,7 +51,7 @@ pub(super) async fn create(
         "displayName": name,
     });
     if let Some(desc) = description {
-        body["description"] = Value::String(desc.to_string());
+        body["description"] = Value::from(desc);
     }
 
     let data = client
@@ -83,10 +83,10 @@ pub(super) async fn update(
 
     let mut body = serde_json::Map::new();
     if let Some(n) = name {
-        body.insert("displayName".to_string(), Value::String(n.to_string()));
+        body.insert("displayName".to_string(), Value::from(n));
     }
     if let Some(d) = description {
-        body.insert("description".to_string(), Value::String(d.to_string()));
+        body.insert("description".to_string(), Value::from(d));
     }
 
     let data = client

@@ -90,7 +90,7 @@ pub fn render_list_with_token(
                 envelope["total_available"] = serde_json::json!(items.len());
             }
             if let Some(token) = continuation_token {
-                envelope["continuationToken"] = Value::String(token.to_string());
+                envelope["continuationToken"] = Value::from(token);
             }
             println!(
                 "{}",

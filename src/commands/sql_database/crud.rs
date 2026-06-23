@@ -57,7 +57,7 @@ pub(super) async fn create(
 ) -> Result<()> {
     let mut body = serde_json::json!({ "displayName": name });
     if let Some(desc) = description {
-        body["description"] = Value::String(desc.to_string());
+        body["description"] = Value::from(desc);
     }
 
     // Build creationPayload based on mode
@@ -122,7 +122,7 @@ pub(super) async fn create(
                 payload["backupRetentionDays"] = Value::Number(serde_json::Number::from(days));
             }
             if let Some(c) = collation {
-                payload["collation"] = Value::String(c.to_string());
+                payload["collation"] = Value::from(c);
             }
             // Only include creationPayload if there are extra settings
             if backup_retention_days.is_some() || collation.is_some() {
@@ -166,7 +166,7 @@ pub(super) async fn update(
 
     let mut body = serde_json::json!({});
     if let Some(d) = description {
-        body["description"] = Value::String(d.to_string());
+        body["description"] = Value::from(d);
     }
 
     if output::dry_run_guard(cli, "sql-database update", &body) {

@@ -371,7 +371,7 @@ async fn update_audit_settings(
 
     let mut body = serde_json::json!({});
     if let Some(s) = state {
-        body["state"] = Value::String(s.to_string());
+        body["state"] = Value::from(s);
     }
     if let Some(days) = retention_days {
         body["retentionDays"] = Value::Number(serde_json::Number::from(days));
@@ -381,7 +381,7 @@ async fn update_audit_settings(
             Value::Array(actions.iter().map(|a| Value::String(a.clone())).collect());
     }
     if let Some(pred) = predicate_expression {
-        body["predicateExpression"] = Value::String(pred.to_string());
+        body["predicateExpression"] = Value::from(pred);
     }
 
     if output::dry_run_guard(cli, "sql-endpoint update-audit-settings", &body) {

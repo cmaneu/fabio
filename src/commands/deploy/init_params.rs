@@ -374,12 +374,13 @@ fn collect_json_string_diffs(
 /// Find GUIDs in text in order of first appearance.
 fn find_ordered_guids(text: &str, guids: &BTreeSet<&String>) -> Vec<String> {
     let guid_re = Regex::new(GUID_PATTERN).expect("valid regex");
+    let lowercase_guids: BTreeSet<String> = guids.iter().map(|g| g.to_lowercase()).collect();
     let mut seen = BTreeSet::new();
     let mut ordered = Vec::new();
 
     for mat in guid_re.find_iter(text) {
         let g = mat.as_str().to_lowercase();
-        if guids.iter().any(|gref| **gref == g) && !seen.contains(&g) {
+        if lowercase_guids.contains(&g) && !seen.contains(&g) {
             seen.insert(g.clone());
             ordered.push(g);
         }

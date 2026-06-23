@@ -257,7 +257,7 @@ async fn create(
         "displayName": name,
     });
     if let Some(desc) = description {
-        body["description"] = Value::String(desc.to_string());
+        body["description"] = Value::from(desc);
     }
 
     if output::dry_run_guard(cli, "graphql-api create", &body) {
@@ -292,10 +292,10 @@ async fn update(
 
     let mut body = serde_json::json!({});
     if let Some(n) = name {
-        body["displayName"] = Value::String(n.to_string());
+        body["displayName"] = Value::from(n);
     }
     if let Some(d) = description {
-        body["description"] = Value::String(d.to_string());
+        body["description"] = Value::from(d);
     }
 
     if output::dry_run_guard(cli, "graphql-api update", &body) {
@@ -491,7 +491,7 @@ async fn graphql_query(
         body["variables"] = variables_value;
     }
     if let Some(op) = operation_name {
-        body["operationName"] = Value::String(op.to_string());
+        body["operationName"] = Value::from(op);
     }
 
     // POST to the GraphQL execution endpoint (no LRO, synchronous)

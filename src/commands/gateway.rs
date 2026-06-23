@@ -423,7 +423,7 @@ async fn update(
 
     let mut body = serde_json::json!({ "type": gw_type });
     if let Some(n) = name {
-        body["displayName"] = Value::String(n.to_string());
+        body["displayName"] = Value::from(n);
     }
     if let Some(v) = allow_cloud_connection_refresh {
         body["allowCloudConnectionRefresh"] = Value::Bool(v);
@@ -432,7 +432,7 @@ async fn update(
         body["allowCustomConnectors"] = Value::Bool(v);
     }
     if let Some(lb) = load_balancing {
-        body["loadBalancingSetting"] = Value::String(lb.to_string());
+        body["loadBalancingSetting"] = Value::from(lb);
     }
 
     if output::dry_run_guard(cli, "gateway update", &body) {
@@ -509,7 +509,7 @@ async fn update_member(
 
     let mut body = serde_json::json!({});
     if let Some(n) = display_name {
-        body["displayName"] = Value::String(n.to_string());
+        body["displayName"] = Value::from(n);
     }
     if let Some(e) = enabled {
         body["enabled"] = Value::Bool(e);

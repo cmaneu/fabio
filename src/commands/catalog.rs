@@ -119,7 +119,7 @@ fn build_search_body(
     let mut body = serde_json::Map::new();
 
     if let Some(q) = query {
-        body.insert("searchString".to_string(), Value::String(q.to_string()));
+        body.insert("searchString".to_string(), Value::from(q));
     }
 
     if let Some(t) = top {

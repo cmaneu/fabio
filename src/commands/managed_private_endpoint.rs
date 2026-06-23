@@ -143,7 +143,7 @@ async fn create(
         "groupId": target_subresource_type
     });
     if let Some(msg) = request_message {
-        body["requestMessage"] = Value::String(msg.to_string());
+        body["requestMessage"] = Value::from(msg);
     }
 
     if output::dry_run_guard(cli, "managed-private-endpoint create", &body) {

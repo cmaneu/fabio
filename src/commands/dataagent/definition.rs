@@ -239,7 +239,7 @@ pub(super) async fn publish(
             }
             Err(e) => {
                 // M365 publishing is best-effort; report in output but don't fail
-                obj["m365Status"] = Value::String("failed".to_string());
+                obj["m365Status"] = Value::from("failed");
                 obj["m365Error"] = Value::String(e.to_string());
             }
         }

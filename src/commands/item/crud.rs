@@ -142,7 +142,7 @@ pub(super) fn url(cli: &Cli, workspace: &str, id: &str, item_type: Option<&str>)
     let portal_url = format!("https://app.fabric.microsoft.com{type_segment}");
     let mut data = serde_json::json!({ "url": portal_url, "itemId": id, "workspaceId": workspace });
     if let Some(t) = item_type {
-        data["itemType"] = Value::String(t.to_string());
+        data["itemType"] = Value::from(t);
     }
     output::render_object(cli, &data, "url");
     Ok(())
@@ -214,7 +214,7 @@ pub(super) async fn create(
         "type": item_type,
     });
     if let Some(desc) = description {
-        body["description"] = Value::String(desc.to_string());
+        body["description"] = Value::from(desc);
     }
 
     if output::dry_run_guard(
@@ -260,10 +260,10 @@ pub(super) async fn update(
 
     let mut body = serde_json::json!({});
     if let Some(n) = name {
-        body["displayName"] = Value::String(n.to_string());
+        body["displayName"] = Value::from(n);
     }
     if let Some(d) = description {
-        body["description"] = Value::String(d.to_string());
+        body["description"] = Value::from(d);
     }
 
     if output::dry_run_guard(cli, "item update", &body) {

@@ -191,7 +191,7 @@ fn build_delete_url(workspace: &str, id: &str, hard_delete: bool) -> String {
 fn build_create_body(name: &str, description: Option<&str>) -> Value {
     let mut body = serde_json::json!({ "displayName": name });
     if let Some(desc) = description {
-        body["description"] = Value::String(desc.to_string());
+        body["description"] = Value::from(desc);
     }
     body
 }
@@ -209,10 +209,10 @@ fn build_update_body(name: Option<&str>, description: Option<&str>) -> Result<Va
 
     let mut body = serde_json::json!({});
     if let Some(n) = name {
-        body["displayName"] = Value::String(n.to_string());
+        body["displayName"] = Value::from(n);
     }
     if let Some(d) = description {
-        body["description"] = Value::String(d.to_string());
+        body["description"] = Value::from(d);
     }
     Ok(body)
 }

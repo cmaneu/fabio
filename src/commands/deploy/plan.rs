@@ -430,11 +430,11 @@ pub async fn build_changeset(
 
     // Detect orphans (deployed but not in source)
     if delete_orphans {
-        for ((item_type, name), deployed) in &deployed_map {
-            if !matched_deployed.contains(&(item_type.clone(), name.clone())) {
+        for (key, deployed) in &deployed_map {
+            if !matched_deployed.contains(key) {
                 changeset.changes.push(Change {
-                    name: name.clone(),
-                    item_type: item_type.clone(),
+                    name: key.1.clone(),
+                    item_type: key.0.clone(),
                     action: ChangeAction::Delete,
                     reason: "not in source".to_owned(),
                     logical_id: None,

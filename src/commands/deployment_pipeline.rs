@@ -340,7 +340,7 @@ async fn create(
 ) -> Result<()> {
     let mut body = serde_json::json!({ "displayName": name });
     if let Some(desc) = description {
-        body["description"] = Value::String(desc.to_string());
+        body["description"] = Value::from(desc);
     }
 
     if output::dry_run_guard(cli, "deployment-pipeline create", &body) {
@@ -373,10 +373,10 @@ async fn update(
 
     let mut body = serde_json::json!({});
     if let Some(n) = name {
-        body["displayName"] = Value::String(n.to_string());
+        body["displayName"] = Value::from(n);
     }
     if let Some(d) = description {
-        body["description"] = Value::String(d.to_string());
+        body["description"] = Value::from(d);
     }
 
     if output::dry_run_guard(cli, "deployment-pipeline update", &body) {
@@ -704,7 +704,7 @@ async fn deploy(
         "sourceStageId": source_stage_id,
     });
     if let Some(target) = target_stage_id {
-        body["targetStageId"] = Value::String(target.to_string());
+        body["targetStageId"] = Value::from(target);
     }
     if let Some(items_json) = items {
         let items_value: Value = serde_json::from_str(items_json)
@@ -712,7 +712,7 @@ async fn deploy(
         body["items"] = items_value;
     }
     if let Some(n) = note {
-        body["note"] = Value::String(n.to_string());
+        body["note"] = Value::from(n);
     }
 
     if output::dry_run_guard(cli, "deployment-pipeline deploy", &body) {

@@ -282,7 +282,7 @@ pub(super) async fn clone_model(
 ) -> Result<()> {
     let mut body = serde_json::json!({ "name": name });
     if let Some(tw) = target_workspace {
-        body["targetWorkspaceId"] = Value::String(tw.to_string());
+        body["targetWorkspaceId"] = Value::from(tw);
     }
 
     if output::dry_run_guard(cli, "semantic-model clone", &body) {

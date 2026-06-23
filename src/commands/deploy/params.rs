@@ -1075,8 +1075,8 @@ fn replace_connection_id_in_json(value: &mut serde_json::Value, new_connection_i
                 && cs.contains("semanticmodelid=")
             {
                 let re = Regex::new(r"semanticmodelid=([0-9a-fA-F-]{36})").expect("valid regex");
-                let new_cs =
-                    re.replace(cs, format!("semanticmodelid={new_connection_id}").as_str());
+                let replacement = format!("semanticmodelid={new_connection_id}");
+                let new_cs = re.replace(cs, replacement.as_str());
                 if new_cs != cs {
                     *v = serde_json::Value::String(new_cs.into_owned());
                     modified = true;
