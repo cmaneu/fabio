@@ -348,7 +348,7 @@ fabio upgrade --target-version 0.23.0
 ```bash
 git clone https://github.com/iemejia/fabio.git && cd fabio
 
-# Install from source (requires Rust 1.85+)
+# Install from source (requires Rust 1.96+)
 cargo install --path .
 
 # Build
