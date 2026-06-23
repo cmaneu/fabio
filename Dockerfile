@@ -6,6 +6,8 @@ FROM rust:1-slim-bookworm AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
+    make \
+    perl \
     git \
     && rm -rf /var/lib/apt/lists/*
 
@@ -28,17 +30,12 @@ RUN touch src/main.rs
 # Build the release binary with vendored OpenSSL (no runtime libssl needed)
 RUN cargo build --release --features vendored-openssl
 
-# Runtime stage — minimal Debian with only glibc and CA certs
-FROM debian:bookworm-slim
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --shell /bin/false fabio
+# Runtime stage — distroless: glibc + libgcc + CA certs, nothing else (~20MB)
+FROM gcr.io/distroless/cc-debian12
 
 # Copy the compiled binary from the build stage
 COPY --from=builder /src/target/release/fabio /usr/local/bin/fabio
 
-USER fabio
+USER nonroot
 
 ENTRYPOINT ["fabio"]
