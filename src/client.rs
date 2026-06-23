@@ -109,6 +109,7 @@ const TOKEN_REFRESH_MARGIN: Duration = Duration::from_mins(5);
 /// URL-encode each segment of a `OneLake` path while preserving `/` separators.
 /// Prevents query string injection (`?`), fragment injection (`#`), and ensures
 /// spaces and special characters are properly handled in DFS/Blob API URLs.
+#[inline]
 fn encode_onelake_path(path: &str) -> String {
     path.split('/')
         .map(|seg| urlencoding::encode(seg))
@@ -3149,6 +3150,7 @@ pub fn validate_trusted_url(url: &str, flag_name: &str) -> Result<()> {
 ///
 /// Prevents path injection when IDs are interpolated into URL paths.
 /// Accepts standard UUID format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (lowercase hex + hyphens).
+#[inline]
 pub fn validate_uuid(value: &str, param_name: &str) -> Result<()> {
     let is_valid = value.len() == 36
         && value.chars().enumerate().all(|(i, c)| match i {

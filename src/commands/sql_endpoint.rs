@@ -378,7 +378,7 @@ async fn update_audit_settings(
     }
     if let Some(actions) = audit_actions {
         body["auditActionsAndGroups"] =
-            Value::Array(actions.iter().map(|a| Value::String(a.clone())).collect());
+            Value::Array(actions.iter().map(|a| Value::from(a.as_str())).collect());
     }
     if let Some(pred) = predicate_expression {
         body["predicateExpression"] = Value::from(pred);
@@ -406,7 +406,7 @@ async fn set_audit_actions(
     id: &str,
     actions: &[String],
 ) -> Result<()> {
-    let body = Value::Array(actions.iter().map(|a| Value::String(a.clone())).collect());
+    let body = Value::Array(actions.iter().map(|a| Value::from(a.as_str())).collect());
 
     if output::dry_run_guard(cli, "sql-endpoint set-audit-actions", &body) {
         return Ok(());

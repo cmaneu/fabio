@@ -974,7 +974,7 @@ fn format_as_jsonld(graph: &ContextGraph) -> Value {
             "name": ws.name,
         });
         if let Some(ref cap) = ws.capacity_id {
-            resource["fabric:capacityId"] = Value::String(cap.clone());
+            resource["fabric:capacityId"] = Value::from(cap.as_str());
         }
         resources.push(resource);
     }
@@ -998,7 +998,7 @@ fn format_as_jsonld(graph: &ContextGraph) -> Value {
             "fabric:workspace": {"@id": format!("urn:fabric:workspace:{}", node.workspace_id)},
         });
         if let Some(ref desc) = node.description {
-            resource["description"] = Value::String(desc.clone());
+            resource["description"] = Value::from(desc.as_str());
         }
 
         // Inline edges as typed properties

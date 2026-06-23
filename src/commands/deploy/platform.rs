@@ -564,15 +564,15 @@ fn build_platform_json(metadata: &PlatformMetadata) -> String {
     });
 
     if let Some(ref desc) = metadata.description {
-        obj["metadata"]["description"] = serde_json::Value::String(desc.clone());
+        obj["metadata"]["description"] = serde_json::Value::from(desc.as_str());
     }
 
     if let Some(ref lid) = metadata.logical_id {
-        obj["config"]["logicalId"] = serde_json::Value::String(lid.clone());
+        obj["config"]["logicalId"] = serde_json::Value::from(lid.as_str());
     }
 
     if let Some(ref fmt) = metadata.definition_format {
-        obj["config"]["definitionFormat"] = serde_json::Value::String(fmt.clone());
+        obj["config"]["definitionFormat"] = serde_json::Value::from(fmt.as_str());
     }
 
     serde_json::to_string_pretty(&obj).unwrap_or_default()

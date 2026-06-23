@@ -955,7 +955,7 @@ async fn deploy_change(
             if let Some(ref desc) = source_item.metadata.description {
                 body.as_object_mut()
                     .unwrap()
-                    .insert("description".to_owned(), Value::String(desc.clone()));
+                    .insert("description".to_owned(), Value::from(desc.as_str()));
             }
 
             if dry_run {
@@ -1277,7 +1277,7 @@ fn extract_dataflow_references(
         for (&lid, &name) in dataflow_logical_ids {
             if name != source_item.metadata.display_name
                 && content.contains(lid)
-                && !refs.contains(&name.to_owned())
+                && !refs.iter().any(|r| r == name)
             {
                 refs.push(name.to_owned());
             }

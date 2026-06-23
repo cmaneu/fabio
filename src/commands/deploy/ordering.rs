@@ -72,6 +72,7 @@ pub const DEPLOY_ORDER: &[&str] = &[
 
 /// Returns the deploy priority for a given item type.
 /// Lower number = deployed earlier. Unknown types get a high number (deployed last).
+#[inline]
 pub fn deploy_priority(item_type: &str) -> usize {
     DEPLOY_ORDER
         .iter()
@@ -81,6 +82,7 @@ pub fn deploy_priority(item_type: &str) -> usize {
 
 /// Reverse deployment order for deletes.
 /// Items that depend on others should be deleted first.
+#[inline]
 pub fn delete_priority(item_type: &str) -> usize {
     let pos = deploy_priority(item_type);
     DEPLOY_ORDER.len().saturating_sub(pos)

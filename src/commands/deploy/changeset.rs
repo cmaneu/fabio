@@ -102,11 +102,13 @@ impl Changeset {
     }
 
     /// Returns true if there are fatal errors preventing deployment.
+    #[inline]
     pub const fn has_errors(&self) -> bool {
         !self.errors.is_empty()
     }
 
     /// Returns true if there are actionable changes (create/update/delete).
+    #[inline]
     pub fn has_changes(&self) -> bool {
         self.changes.iter().any(|c| c.action != ChangeAction::Skip)
     }

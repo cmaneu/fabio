@@ -15,6 +15,7 @@ use crate::errors::ErrorCode;
 
 /// Default maximum concurrency for parallel I/O operations.
 /// Computed as `min(available_parallelism * 4, 16)` at runtime.
+#[inline]
 pub fn default_concurrency() -> usize {
     let cpus = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
     cpus.saturating_mul(4).clamp(2, 16)
@@ -240,6 +241,7 @@ impl BatchSummary {
     }
 
     /// Returns true if all operations succeeded.
+    #[inline]
     pub const fn all_succeeded(&self) -> bool {
         self.failed == 0
     }

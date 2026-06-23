@@ -246,6 +246,7 @@ pub fn render_error(err: &FabioError) {
 
 /// Check if dry-run is active and render a preview response.
 /// Returns `true` if dry-run is active (caller should skip the real operation).
+#[inline]
 pub fn dry_run_guard(cli: &Cli, operation: &str, details: &Value) -> bool {
     if !cli.dry_run {
         return false;

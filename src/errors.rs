@@ -105,18 +105,22 @@ impl FabioError {
         }
     }
 
+    #[inline]
     pub fn auth_required(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::AuthRequired, message)
     }
 
+    #[inline]
     pub fn not_found(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::NotFound, message)
     }
 
+    #[inline]
     pub fn api_error(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::ApiError, message)
     }
 
+    #[inline]
     pub fn invalid_input(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::InvalidInput, message)
     }

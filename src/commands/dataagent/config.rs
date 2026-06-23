@@ -146,7 +146,7 @@ pub(super) async fn update_config(
                 .unwrap_or_else(|| serde_json::json!({}));
 
             if let Some(instr) = &resolved_instructions {
-                config["aiInstructions"] = Value::String(instr.clone());
+                config["aiInstructions"] = Value::from(instr.as_str());
             }
             if enable_preview_runtime || disable_preview_runtime {
                 let experimental = config.as_object_mut().map(|o| {
@@ -181,7 +181,7 @@ pub(super) async fn update_config(
             "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/stageConfiguration/1.0.0/schema.json"
         });
         if let Some(instr) = &resolved_instructions {
-            config["aiInstructions"] = Value::String(instr.clone());
+            config["aiInstructions"] = Value::from(instr.as_str());
         }
         if enable_preview_runtime {
             config["experimental"] = serde_json::json!({"enableExperimentalFeatures": true});

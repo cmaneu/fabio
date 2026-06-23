@@ -82,7 +82,7 @@ pub(super) async fn update_audit_settings(
     }
     if let Some(actions) = audit_actions {
         body["auditActionsAndGroups"] =
-            Value::Array(actions.iter().map(|a| Value::String(a.clone())).collect());
+            Value::Array(actions.iter().map(|a| Value::from(a.as_str())).collect());
     }
     if let Some(pred) = predicate_expression {
         body["predicateExpression"] = Value::from(pred);
