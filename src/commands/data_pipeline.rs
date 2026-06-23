@@ -914,7 +914,7 @@ mod tests {
             "Example: fabio data-pipeline update-schedule --workspace <WS> --id <ID> --schedule-id <SCHED_ID> --content '{...}'".to_string(),
         )
         .into();
-        let msg = format!("{err}");
+        let msg = err.to_string();
         assert!(msg.contains("--file or --content"));
     }
 

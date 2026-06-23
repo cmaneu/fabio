@@ -572,7 +572,7 @@ mod tests {
             "Example: fabio azure-databricks-storage update-definition --workspace <WS> --id <ID> --file definition.json".to_string(),
         )
         .into();
-        let msg = format!("{err}");
+        let msg = err.to_string();
         assert!(msg.contains("--file or --content"));
     }
 }

@@ -251,7 +251,7 @@ async fn update(
         )
         .await
         .map_err(|e| {
-            let msg = format!("{e}");
+            let msg = e.to_string();
             if msg.contains("GraphQuerySetEmpty") {
                 FabioError::with_hint(
                     ErrorCode::ApiError,

@@ -718,7 +718,7 @@ fn build_trigger_entities(
                         {"name": "value", "values": [{"type": "string", "value": "0"}]},
                         {"name": "summary", "values": [{"type": "string", "value": "Count"}]},
                         {"name": "timeDrivenWindowSpec", "values": [
-                            {"type": "string", "value": format!("{}", u64::from(interval) * 1000)}
+                            {"type": "string", "value": (u64::from(interval) * 1000).to_string()}
                         ]}
                     ]
                 }]

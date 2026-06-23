@@ -84,9 +84,8 @@ fn redact_value(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::Object(map) => {
             for (key, val) in map.iter_mut() {
-                let key_lower = key.to_lowercase();
-                if SENSITIVE_KEYS.iter().any(|s| key_lower == s.to_lowercase()) {
-                    *val = serde_json::Value::String("[REDACTED]".to_string());
+                if SENSITIVE_KEYS.iter().any(|s| key.eq_ignore_ascii_case(s)) {
+                    *val = serde_json::Value::from("[REDACTED]");
                 } else {
                     redact_value(val);
                 }

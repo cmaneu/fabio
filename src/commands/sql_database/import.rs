@@ -501,7 +501,7 @@ pub(super) async fn import(
         .create_client(context, &data_source, None)
         .await
         .map_err(|e| {
-            let msg = format!("{e}");
+            let msg = e.to_string();
             let hint = if msg.contains("18456") {
                 ". Hint: Fabric SQL Database requires F4+ capacity. On F2, TDS connections \
                  fail with 'Validation of user's permissions failed' due to insufficient \

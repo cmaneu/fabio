@@ -1096,7 +1096,7 @@ mod tests {
     fn resolve_json_input_file_not_found() {
         let result = resolve_json_input("@/nonexistent/path.json", "--execution-data");
         assert!(result.is_err());
-        let err_msg = format!("{}", result.unwrap_err());
+        let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Failed to read file"));
     }
 
@@ -1141,7 +1141,7 @@ mod tests {
         let input = format!("@{}", file_path.display());
         let result = build_run_body(None, None, Some(&input));
         assert!(result.is_err());
-        let err_msg = format!("{}", result.unwrap_err());
+        let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Invalid --execution-data JSON"));
     }
 

@@ -145,9 +145,11 @@ pub fn topological_sort(items: &[(String, Vec<String>)]) -> Result<Vec<String>> 
     }
 
     if sorted.len() != items.len() {
+        let sorted_set: std::collections::HashSet<&str> =
+            sorted.iter().map(String::as_str).collect();
         let unsorted: Vec<&str> = names
             .iter()
-            .filter(|n| !sorted.contains(&(**n).to_owned()))
+            .filter(|n| !sorted_set.contains(*n))
             .copied()
             .collect();
         return Err(FabioError::with_hint(

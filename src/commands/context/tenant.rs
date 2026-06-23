@@ -796,15 +796,13 @@ fn scan_content_for_refs(
 ) {
     for mat in uuid_re.find_iter(content) {
         let found_id = mat.as_str().to_lowercase();
-        if found_id == source_id.to_lowercase() {
+        if found_id.eq_ignore_ascii_case(source_id) {
             continue;
         }
         if is_well_known_guid(&found_id) {
             continue;
         }
-        let is_known = all_known.contains(&found_id)
-            || all_known.iter().any(|k| k.eq_ignore_ascii_case(&found_id));
-        if !is_known {
+        if !all_known.contains(&found_id) {
             continue;
         }
 

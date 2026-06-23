@@ -112,7 +112,7 @@ pub(super) async fn query(
         .create_client(context, &data_source, None)
         .await
         .map_err(|e| {
-            let msg = format!("{e}");
+            let msg = e.to_string();
             let hint = if msg.contains("18456") {
                 ". Hint: Fabric SQL Database requires F4+ capacity. On F2, TDS connections \
                  fail with 'Validation of user's permissions failed' due to insufficient \
@@ -131,7 +131,7 @@ pub(super) async fn query(
         .execute(sql_text, Some(60), None)
         .await
         .map_err(|e| {
-            let msg = format!("{e}");
+            let msg = e.to_string();
             let hint = if msg.contains("40515") {
                 ". Hint: Fabric SQL Database does not support cross-database queries via \
                  three-part naming ([Database].[schema].[table]). Use a lakehouse SQL \

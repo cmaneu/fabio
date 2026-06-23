@@ -175,7 +175,8 @@ impl CachedToken {
         let now = std::time::SystemTime::now();
         self.expires_on
             .duration_since(now)
-            .map_or(true, |remaining| remaining < TOKEN_REFRESH_MARGIN)
+            .ok()
+            .is_none_or(|remaining| remaining < TOKEN_REFRESH_MARGIN)
     }
 }
 
@@ -3396,7 +3397,7 @@ mod tests {
     #[test]
     fn trusted_url_error_includes_flag_name() {
         let err = validate_trusted_url("https://evil.com/path", "--query-uri").unwrap_err();
-        let msg = format!("{err}");
+        let msg = err.to_string();
         assert!(
             msg.contains("--query-uri"),
             "Error should mention flag name"
@@ -3406,7 +3407,7 @@ mod tests {
     #[test]
     fn trusted_url_error_includes_domain() {
         let err = validate_trusted_url("https://evil.com/path", "test").unwrap_err();
-        let msg = format!("{err}");
+        let msg = err.to_string();
         assert!(msg.contains("evil.com"), "Error should mention the domain");
     }
 
@@ -3492,7 +3493,7 @@ mod tests {
     #[test]
     fn uuid_error_includes_param_name() {
         let err = validate_uuid("bad", "--workspace").unwrap_err();
-        let msg = format!("{err}");
+        let msg = err.to_string();
         assert!(msg.contains("--workspace"));
     }
 
@@ -3743,7 +3744,7 @@ mod tests {
 
             let resp = get_response(&server).await;
             let err = handle_response(resp).await.unwrap_err();
-            let msg = format!("{err}");
+            let msg = err.to_string();
             assert!(msg.contains("Invalid JSON"));
         }
 
@@ -3857,7 +3858,7 @@ mod tests {
 
             let resp = get_response(&server).await;
             let err = handle_response(resp).await.unwrap_err();
-            let msg = format!("{err}");
+            let msg = err.to_string();
             assert!(msg.contains("The name is too long"));
         }
 
@@ -3873,7 +3874,7 @@ mod tests {
 
             let resp = get_response(&server).await;
             let err = handle_response(resp).await.unwrap_err();
-            let msg = format!("{err}");
+            let msg = err.to_string();
             assert!(msg.contains("Something went wrong"));
         }
 
@@ -3888,7 +3889,7 @@ mod tests {
 
             let resp = get_response(&server).await;
             let err = handle_response(resp).await.unwrap_err();
-            let msg = format!("{err}");
+            let msg = err.to_string();
             assert!(msg.contains("(truncated)"));
             // Should not contain the full 2000 chars
             assert!(msg.len() < 1500);
@@ -3959,7 +3960,7 @@ mod tests {
 
             let resp = get_response(&server).await;
             let err = handle_response(resp).await.unwrap_err();
-            let msg = format!("{err}");
+            let msg = err.to_string();
             assert!(
                 msg.contains("ItemNotFound"),
                 "error should include API error code from header: {msg}"
@@ -3986,7 +3987,7 @@ mod tests {
 
             let resp = get_response(&server).await;
             let err = handle_response(resp).await.unwrap_err();
-            let msg = format!("{err}");
+            let msg = err.to_string();
             assert!(
                 msg.contains("InvalidItemType"),
                 "error should include error code from x-ms-error-code header: {msg}"
@@ -4005,7 +4006,7 @@ mod tests {
 
             let resp = get_response(&server).await;
             let err = handle_response(resp).await.unwrap_err();
-            let msg = format!("{err}");
+            let msg = err.to_string();
             assert!(
                 msg.contains("Internal server error"),
                 "error message should work without header: {msg}"

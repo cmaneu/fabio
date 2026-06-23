@@ -107,7 +107,7 @@ pub async fn execute_and_render_sql(
         .execute(sql_text.to_string(), Some(60), None)
         .await
         .map_err(|e| {
-            let msg = format!("{e}");
+            let msg = e.to_string();
             let hint = if msg.contains("Invalid object name") && msg.contains("sys.") {
                 ". Hint: Fabric Warehouse/Lakehouse SQL does not support all SQL Server \
                  system views. Supported: sys.tables, sys.columns, sys.schemas, \
