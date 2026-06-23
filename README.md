@@ -118,6 +118,18 @@ docker run --rm \
   ghcr.io/iemejia/fabio workspace list --output json
 ```
 
+The Docker image uses a minimal [distroless](https://github.com/GoogleContainerTools/distroless)
+base (~20MB) with no shell or package manager. Authentication options inside the container:
+
+| Method | How |
+|--------|-----|
+| Service principal | `-e AZURE_TENANT_ID` + `-e AZURE_CLIENT_ID` + `-e AZURE_CLIENT_SECRET` |
+| Workload identity (AKS/OIDC) | `-e AZURE_TENANT_ID` + `-e AZURE_CLIENT_ID` + `-e AZURE_FEDERATED_TOKEN_FILE` + volume mount |
+| Managed identity | Automatic in Azure compute (Container Apps, ACI, AKS) |
+
+> **Note:** Azure CLI (`az login`) credentials do not work inside the container because
+> `az` is not installed. Use service principal or managed identity for containerized workloads.
+
 ## Design Principles
 
 - **JSON by default** -- All commands output structured JSON for machine consumption
