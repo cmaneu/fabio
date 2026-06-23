@@ -5,12 +5,6 @@
     "cacheFrom": "ghcr.io/iemejia/fabio-devcontainer"
   },
   "features": {
-    "ghcr.io/devcontainers/features/rust:1": {
-      "version": "latest",
-      "profile": "default",
-      "targets": "aarch64-unknown-linux-gnu,x86_64-apple-darwin,aarch64-apple-darwin,x86_64-pc-windows-msvc"
-    },
-    "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers/features/azure-cli:1": {}
   },
@@ -29,6 +23,6 @@
       }
     }
   },
-  "postCreateCommand": "cargo fetch && cargo install git-cliff cargo-zigbuild cargo-xwin cargo-audit prek && prek install",
+  "postCreateCommand": "cargo fetch && prek install",
   "remoteUser": "ubuntu"
 }
