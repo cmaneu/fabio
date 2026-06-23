@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -368,7 +369,7 @@ async fn update_definition(
         }
     };
 
-    let encoded = base64::engine::general_purpose::STANDARD.encode(script.as_bytes());
+    let encoded = BASE64.encode(script.as_bytes());
 
     let body = serde_json::json!({
         "definition": {
@@ -583,14 +584,12 @@ fn decode_queryset_definition(def_data: &Value) -> Result<Value> {
             )
         })?;
 
-    let decoded_bytes = base64::engine::general_purpose::STANDARD
-        .decode(payload)
-        .map_err(|e| {
-            FabioError::new(
-                ErrorCode::ApiError,
-                format!("Failed to decode RealTimeQueryset.json base64 payload: {e}"),
-            )
-        })?;
+    let decoded_bytes = BASE64.decode(payload).map_err(|e| {
+        FabioError::new(
+            ErrorCode::ApiError,
+            format!("Failed to decode RealTimeQueryset.json base64 payload: {e}"),
+        )
+    })?;
 
     let decoded_str = String::from_utf8(decoded_bytes).map_err(|e| {
         FabioError::new(
@@ -711,7 +710,7 @@ mod tests {
     #[test]
     fn test_decode_queryset_definition_success() {
         let payload = r#"{"queryset":{"version":"1.0.0","dataSources":[{"id":"ds1","clusterUri":"https://test.kusto.fabric.microsoft.com","type":"AzureDataExplorer","databaseName":"TestDb"}],"tabs":[{"id":"t1","content":"T | count","title":"CountTab","dataSourceId":"ds1"}]}}"#;
-        let encoded = base64::engine::general_purpose::STANDARD.encode(payload.as_bytes());
+        let encoded = BASE64.encode(payload.as_bytes());
         let def_data = serde_json::json!({
             "definition": {
                 "parts": [{
@@ -732,7 +731,7 @@ mod tests {
 
     #[test]
     fn test_decode_queryset_definition_empty() {
-        let encoded = base64::engine::general_purpose::STANDARD.encode(b"{}");
+        let encoded = BASE64.encode(b"{}");
         let def_data = serde_json::json!({
             "definition": {
                 "parts": [{

@@ -1,4 +1,6 @@
 use anyhow::Result;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -56,10 +58,7 @@ pub(super) async fn create(
             "Provide a valid model.bim or .tmdl file path.".to_string(),
         )
     })?;
-    let encoded = base64::engine::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        content.as_bytes(),
-    );
+    let encoded = BASE64.encode(content.as_bytes());
 
     // Detect format from file extension
     let is_tmdl = std::path::Path::new(file)
@@ -76,10 +75,7 @@ pub(super) async fn create(
     // Version "4.0" for TMDL, "3.0" for model.bim (v3 JSON)
     let pbism_version = if is_tmdl { "4.0" } else { "3.0" };
     let pbism = serde_json::json!({ "version": pbism_version });
-    let pbism_encoded = base64::engine::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        pbism.to_string().as_bytes(),
-    );
+    let pbism_encoded = BASE64.encode(pbism.to_string().as_bytes());
     parts.push(serde_json::json!({
         "path": "definition.pbism",
         "payload": pbism_encoded,
@@ -98,10 +94,7 @@ pub(super) async fn create(
                  \t\t\tdatabase\n\
                  \tlineageTag: 00000000-0000-0000-0000-000000000001"
         );
-        let expr_encoded = base64::engine::Engine::encode(
-            &base64::engine::general_purpose::STANDARD,
-            expr.as_bytes(),
-        );
+        let expr_encoded = BASE64.encode(expr.as_bytes());
         parts.push(serde_json::json!({
             "path": "definition/expressions.tmdl",
             "payload": expr_encoded,

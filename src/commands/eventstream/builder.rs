@@ -3,6 +3,7 @@
 
 use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -34,7 +35,7 @@ pub(super) async fn fetch_current_definition(
             let payload = part["payload"]
                 .as_str()
                 .ok_or_else(|| anyhow::anyhow!("Missing payload in eventstream.json part"))?;
-            let decoded = base64::engine::general_purpose::STANDARD.decode(payload)?;
+            let decoded = BASE64.decode(payload)?;
             let json_str = String::from_utf8(decoded)?;
             let parsed: Value = serde_json::from_str(&json_str)?;
             return Ok(parsed);
@@ -55,7 +56,7 @@ pub(super) async fn push_definition(
     definition: &Value,
 ) -> Result<Value> {
     let json_str = serde_json::to_string(definition)?;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(json_str.as_bytes());
+    let encoded = BASE64.encode(json_str.as_bytes());
 
     let body = serde_json::json!({
         "definition": {

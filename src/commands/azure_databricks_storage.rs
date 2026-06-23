@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -357,7 +358,7 @@ async fn update_definition(
         }
     };
 
-    let encoded = base64::engine::general_purpose::STANDARD.encode(raw.as_bytes());
+    let encoded = BASE64.encode(raw.as_bytes());
 
     let body = serde_json::json!({
         "definition": {
@@ -490,7 +491,7 @@ mod tests {
     #[test]
     fn test_update_definition_body_structure() {
         let raw = r#"{"key":"value"}"#;
-        let encoded = base64::engine::general_purpose::STANDARD.encode(raw.as_bytes());
+        let encoded = BASE64.encode(raw.as_bytes());
         let body = serde_json::json!({
             "definition": {
                 "format": "AzureDatabricksStorageV1",
@@ -523,7 +524,7 @@ mod tests {
         );
 
         // Validate base64 encoding roundtrip
-        let decoded = base64::engine::general_purpose::STANDARD
+        let decoded = BASE64
             .decode(body["definition"]["parts"][0]["payload"].as_str().unwrap())
             .unwrap();
         assert_eq!(String::from_utf8(decoded).unwrap(), raw);

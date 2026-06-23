@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
@@ -51,7 +52,7 @@ pub(super) async fn update_definition(
         }
     };
 
-    let encoded = base64::engine::general_purpose::STANDARD.encode(&payload_bytes);
+    let encoded = BASE64.encode(&payload_bytes);
     let fmt = format.unwrap_or("dacpac");
     let extension = match fmt {
         "sqlproj" => "sqlproj",

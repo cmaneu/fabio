@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -155,8 +156,7 @@ pub(super) async fn describe_element(
     }
 
     // Re-encode and push updated definition
-    let encoded = base64::engine::general_purpose::STANDARD
-        .encode(serde_json::to_string(&ds_json)?.as_bytes());
+    let encoded = BASE64.encode(serde_json::to_string(&ds_json)?.as_bytes());
 
     let new_parts: Vec<Value> = parts
         .iter()

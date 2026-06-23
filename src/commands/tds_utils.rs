@@ -1,6 +1,7 @@
 use std::io;
 
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use mssql_tds::connection::client_context::{ClientContext, TdsAuthenticationMethod};
 use mssql_tds::connection::tds_client::{ResultSet, ResultSetClient};
 use mssql_tds::connection_provider::tds_connection_provider::TdsConnectionProvider;
@@ -245,7 +246,7 @@ pub fn column_value_to_json(val: &ColumnValues) -> Value {
             let amount = f64::from(sm.int_val) / 10000.0;
             serde_json::Number::from_f64(amount).map_or(Value::Null, Value::Number)
         }
-        ColumnValues::Bytes(b) => Value::from(base64::engine::general_purpose::STANDARD.encode(b)),
+        ColumnValues::Bytes(b) => Value::from(BASE64.encode(b)),
         ColumnValues::Xml(xml) => Value::from(xml.as_string()),
         ColumnValues::Json(j) => {
             // Try to parse as JSON value, fall back to string

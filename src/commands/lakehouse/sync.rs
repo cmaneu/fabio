@@ -1,3 +1,5 @@
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -704,7 +706,7 @@ async fn compute_local_checksum_diff(
                 |_| String::new(),
                 |data| {
                     let hash = md5::compute(&data);
-                    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, hash.0)
+                    BASE64.encode(hash.0)
                 },
             )
         })

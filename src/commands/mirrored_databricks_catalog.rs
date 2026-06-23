@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -423,7 +424,7 @@ async fn update_definition(
         }
     };
 
-    let encoded = base64::engine::general_purpose::STANDARD.encode(definition_json.as_bytes());
+    let encoded = BASE64.encode(definition_json.as_bytes());
 
     let body = serde_json::json!({
         "definition": {

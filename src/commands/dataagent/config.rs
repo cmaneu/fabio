@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -163,8 +164,7 @@ pub(super) async fn update_config(
                 }
             }
 
-            let encoded =
-                base64::engine::general_purpose::STANDARD.encode(config.to_string().as_bytes());
+            let encoded = BASE64.encode(config.to_string().as_bytes());
             new_parts.push(serde_json::json!({
                 "path": path,
                 "payload": encoded,
@@ -186,8 +186,7 @@ pub(super) async fn update_config(
         if enable_preview_runtime {
             config["experimental"] = serde_json::json!({"enableExperimentalFeatures": true});
         }
-        let encoded =
-            base64::engine::general_purpose::STANDARD.encode(config.to_string().as_bytes());
+        let encoded = BASE64.encode(config.to_string().as_bytes());
         new_parts.push(serde_json::json!({
             "path": "Files/Config/draft/stage_config.json",
             "payload": encoded,

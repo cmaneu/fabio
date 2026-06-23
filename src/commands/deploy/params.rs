@@ -509,30 +509,7 @@ fn decode_part_payload(payload: &str) -> Result<String> {
 /// Recompute the content hash for a set of definition parts.
 /// Excludes `.platform` from hash (API modifies logicalId, breaking idempotency).
 fn recompute_content_hash(parts: &[DefinitionPart]) -> String {
-    use sha2::{Digest, Sha256};
-    use std::fmt::Write;
-
-    let mut hasher = Sha256::new();
-    let mut sorted: Vec<(&str, &str)> = parts
-        .iter()
-        .filter(|p| p.path != ".platform")
-        .map(|p| (p.path.as_str(), p.payload.as_str()))
-        .collect();
-    sorted.sort_by_key(|(path, _)| *path);
-
-    for (path, payload) in sorted {
-        hasher.update(path.as_bytes());
-        hasher.update(b"\x00");
-        hasher.update(payload.as_bytes());
-        hasher.update(b"\x00");
-    }
-
-    let hash = hasher.finalize();
-    let hex = hash.iter().fold(String::with_capacity(64), |mut s, b| {
-        let _ = write!(s, "{b:02x}");
-        s
-    });
-    format!("sha256:{hex}")
+    super::platform::compute_content_hash_excluding_platform(parts)
 }
 
 /// Apply `find_replace` rules to a source workspace.
@@ -1189,32 +1166,9 @@ fn replace_capture_group(re: &Regex, text: &str, replacement: &str) -> String {
     result
 }
 
-/// Compute content hash (duplicated from platform.rs to avoid circular dependency
-/// in the substitution flow — we need to recompute after modification).
+/// Compute content hash — delegates to shared implementation in platform.rs.
 fn compute_content_hash(parts: &[DefinitionPart]) -> String {
-    use sha2::{Digest, Sha256};
-    use std::fmt::Write;
-
-    let mut hasher = Sha256::new();
-    let mut sorted: Vec<(&str, &str)> = parts
-        .iter()
-        .map(|p| (p.path.as_str(), p.payload.as_str()))
-        .collect();
-    sorted.sort_by_key(|(path, _)| *path);
-
-    for (path, payload) in sorted {
-        hasher.update(path.as_bytes());
-        hasher.update(b"\x00");
-        hasher.update(payload.as_bytes());
-        hasher.update(b"\x00");
-    }
-
-    let hash = hasher.finalize();
-    let hex = hash.iter().fold(String::with_capacity(64), |mut s, b| {
-        let _ = write!(s, "{b:02x}");
-        s
-    });
-    format!("sha256:{hex}")
+    super::platform::compute_content_hash(parts)
 }
 
 /// Internal: compiled rule for efficient application.

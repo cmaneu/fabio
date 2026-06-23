@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -165,8 +166,7 @@ pub(super) async fn publish(
         "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/publishInfo/1.0.0/schema.json",
         "description": description.unwrap_or("")
     });
-    let publish_info_encoded =
-        base64::engine::general_purpose::STANDARD.encode(publish_info.to_string().as_bytes());
+    let publish_info_encoded = BASE64.encode(publish_info.to_string().as_bytes());
     new_parts.push(serde_json::json!({
         "path": "Files/Config/publish_info.json",
         "payload": publish_info_encoded,
@@ -282,7 +282,7 @@ fn validate_datasource_elements(body: &Value) -> Result<()> {
         };
 
         // Decode base64 payload
-        let decoded = base64::engine::general_purpose::STANDARD
+        let decoded = BASE64
             .decode(payload_str)
             .ok()
             .and_then(|bytes| String::from_utf8(bytes).ok());
@@ -363,12 +363,13 @@ fn validate_elements_recursive(elements: &[Value], datasource_path: &str) -> Res
 #[cfg(test)]
 mod tests {
     use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
     use serde_json::json;
 
     use super::*;
 
     fn make_definition(datasource_json: &serde_json::Value) -> serde_json::Value {
-        let payload = base64::engine::general_purpose::STANDARD.encode(datasource_json.to_string());
+        let payload = BASE64.encode(datasource_json.to_string());
         json!({
             "definition": {
                 "parts": [

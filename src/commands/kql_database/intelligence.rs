@@ -333,18 +333,34 @@ pub(super) async fn diagnostics(
         ),
     ];
 
-    let mut result = serde_json::Map::new();
+    let mut result = serde_json::Map::with_capacity(sections.len());
 
+    // Execute all diagnostic queries concurrently (independent operations)
+    let mut join_set = tokio::task::JoinSet::new();
     for (name, kql) in &sections {
-        match kql_utils::execute_kql(client, &kusto_uri, &db_name, kql).await {
-            Ok((rows, _columns)) => {
-                result.insert((*name).to_string(), Value::Array(rows));
-            }
-            Err(e) => {
-                result.insert(
-                    (*name).to_string(),
-                    serde_json::json!({"error": e.to_string()}),
-                );
+        let kusto_uri = kusto_uri.clone();
+        let db_name = db_name.clone();
+        let kql = (*kql).to_string();
+        let name = *name;
+        let client = client.clone();
+        join_set.spawn(async move {
+            let res = kql_utils::execute_kql(&client, &kusto_uri, &db_name, &kql).await;
+            (name, res)
+        });
+    }
+
+    while let Some(outcome) = join_set.join_next().await {
+        if let Ok((name, res)) = outcome {
+            match res {
+                Ok((rows, _columns)) => {
+                    result.insert(name.to_string(), Value::Array(rows));
+                }
+                Err(e) => {
+                    result.insert(
+                        name.to_string(),
+                        serde_json::json!({"error": e.to_string()}),
+                    );
+                }
             }
         }
     }

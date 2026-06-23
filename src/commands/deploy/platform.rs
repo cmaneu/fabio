@@ -142,41 +142,42 @@ fn parse_platform_file(path: &Path) -> Result<PlatformMetadata> {
 ///
 /// The hash is computed over sorted (path, payload) pairs to ensure
 /// consistency regardless of filesystem ordering.
-fn compute_content_hash(parts: &[DefinitionPart]) -> String {
-    let mut hasher = Sha256::new();
-
-    // Sort by path for deterministic ordering
-    let mut sorted: Vec<(&str, &str)> = parts
-        .iter()
-        .map(|p| (p.path.as_str(), p.payload.as_str()))
-        .collect();
-    sorted.sort_by_key(|(path, _)| *path);
-
-    for (path, payload) in sorted {
-        hasher.update(path.as_bytes());
-        hasher.update(b"\x00"); // separator
-        hasher.update(payload.as_bytes());
-        hasher.update(b"\x00");
+/// Format a SHA-256 digest as `"sha256:<64 hex chars>"`.
+#[inline]
+pub(super) fn sha256_hex(hash: &[u8]) -> String {
+    let mut out = String::with_capacity(7 + 64);
+    out.push_str("sha256:");
+    for b in hash {
+        let _ = write!(out, "{b:02x}");
     }
+    out
+}
 
-    let hash = hasher.finalize();
-    let hex = hash.iter().fold(String::with_capacity(64), |mut s, b| {
-        let _ = write!(s, "{b:02x}");
-        s
-    });
-    format!("sha256:{hex}")
+pub(super) fn compute_content_hash(parts: &[DefinitionPart]) -> String {
+    compute_content_hash_from_pairs(parts.iter().map(|p| (p.path.as_str(), p.payload.as_str())))
 }
 
 /// Same as `compute_content_hash` but accepts references (for filtered subsets).
-fn compute_content_hash_refs(parts: &[&DefinitionPart]) -> String {
-    let mut hasher = Sha256::new();
+pub(super) fn compute_content_hash_refs(parts: &[&DefinitionPart]) -> String {
+    compute_content_hash_from_pairs(parts.iter().map(|p| (p.path.as_str(), p.payload.as_str())))
+}
 
-    let mut sorted: Vec<(&str, &str)> = parts
-        .iter()
-        .map(|p| (p.path.as_str(), p.payload.as_str()))
-        .collect();
+/// Compute content hash excluding `.platform` (API rewrites logicalId in it).
+pub(super) fn compute_content_hash_excluding_platform(parts: &[DefinitionPart]) -> String {
+    compute_content_hash_from_pairs(
+        parts
+            .iter()
+            .filter(|p| p.path != ".platform")
+            .map(|p| (p.path.as_str(), p.payload.as_str())),
+    )
+}
+
+/// Core hashing logic: sort (path, payload) pairs and SHA-256 them.
+fn compute_content_hash_from_pairs<'a>(pairs: impl Iterator<Item = (&'a str, &'a str)>) -> String {
+    let mut sorted: Vec<(&str, &str)> = pairs.collect();
     sorted.sort_by_key(|(path, _)| *path);
 
+    let mut hasher = Sha256::new();
     for (path, payload) in sorted {
         hasher.update(path.as_bytes());
         hasher.update(b"\x00");
@@ -184,12 +185,7 @@ fn compute_content_hash_refs(parts: &[&DefinitionPart]) -> String {
         hasher.update(b"\x00");
     }
 
-    let hash = hasher.finalize();
-    let hex = hash.iter().fold(String::with_capacity(64), |mut s, b| {
-        let _ = write!(s, "{b:02x}");
-        s
-    });
-    format!("sha256:{hex}")
+    sha256_hex(&hasher.finalize())
 }
 
 /// Parse a source directory containing Fabric item folders with `.platform` files.

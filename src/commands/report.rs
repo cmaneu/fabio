@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -260,8 +261,7 @@ async fn create(
                 }
             }
         });
-        let pbir_encoded =
-            base64::engine::general_purpose::STANDARD.encode(pbir.to_string().as_bytes());
+        let pbir_encoded = BASE64.encode(pbir.to_string().as_bytes());
         parts.push(serde_json::json!({
             "path": "definition.pbir",
             "payload": pbir_encoded,
@@ -285,8 +285,7 @@ async fn create(
                 "height": 720
             }]
         });
-        let report_encoded =
-            base64::engine::general_purpose::STANDARD.encode(report_json.to_string().as_bytes());
+        let report_encoded = BASE64.encode(report_json.to_string().as_bytes());
         parts.push(serde_json::json!({
             "path": "report.json",
             "payload": report_encoded,
@@ -295,7 +294,7 @@ async fn create(
     } else if let Some(file_path) = file {
         let content = std::fs::read_to_string(file_path)
             .map_err(|e| anyhow::anyhow!("Failed to read file '{file_path}': {e}"))?;
-        let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
+        let encoded = BASE64.encode(content.as_bytes());
         parts.push(serde_json::json!({
             "path": "definition.pbir",
             "payload": encoded,
@@ -454,7 +453,7 @@ async fn update_definition(
     let content = std::fs::read_to_string(file)
         .map_err(|e| anyhow::anyhow!("Failed to read file '{file}': {e}"))?;
     total_len += content.len();
-    let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
+    let encoded = BASE64.encode(content.as_bytes());
     parts.push(serde_json::json!({
         "path": "definition.pbir",
         "payload": encoded,
@@ -465,7 +464,7 @@ async fn update_definition(
         let rj_content = std::fs::read_to_string(rj)
             .map_err(|e| anyhow::anyhow!("Failed to read file '{rj}': {e}"))?;
         total_len += rj_content.len();
-        let rj_encoded = base64::engine::general_purpose::STANDARD.encode(rj_content.as_bytes());
+        let rj_encoded = BASE64.encode(rj_content.as_bytes());
         parts.push(serde_json::json!({
             "path": "report.json",
             "payload": rj_encoded,

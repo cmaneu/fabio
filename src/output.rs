@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use comfy_table::{Cell, Table};
 use serde::Serialize;
 use serde_json::Value;
@@ -383,7 +384,7 @@ pub fn apply_query(value: &Value, query: &str) -> Value {
 /// Handles both JSON payloads (parsed into objects) and plain text (kept as strings).
 /// Accepts owned `Value` to avoid cloning the entire response.
 pub fn decode_definition_parts(mut data: Value) -> Value {
-    let base64_engine = base64::engine::general_purpose::STANDARD;
+    let base64_engine = BASE64;
     if let Some(parts) = data
         .get_mut("definition")
         .and_then(|d| d.get_mut("parts"))

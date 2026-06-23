@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 use uuid::Uuid;
@@ -438,7 +439,7 @@ async fn update_definition(
         }
     };
 
-    let encoded = base64::engine::general_purpose::STANDARD.encode(script.as_bytes());
+    let encoded = BASE64.encode(script.as_bytes());
 
     let body = serde_json::json!({
         "definition": {
@@ -577,7 +578,7 @@ async fn create_trigger(
         .ok_or_else(|| anyhow::anyhow!("Failed to extract reflex ID from creation response"))?;
 
     // 2. Push the definition with the trigger entities
-    let encoded = base64::engine::general_purpose::STANDARD.encode(entities_json.as_bytes());
+    let encoded = BASE64.encode(entities_json.as_bytes());
     let def_body = serde_json::json!({
         "definition": {
             "parts": [{

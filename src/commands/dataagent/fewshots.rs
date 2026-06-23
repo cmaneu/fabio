@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -135,8 +136,7 @@ pub(super) async fn add_fewshot(
     }));
 
     // Rebuild definition parts
-    let encoded = base64::engine::general_purpose::STANDARD
-        .encode(serde_json::to_string(&fewshots_data)?.as_bytes());
+    let encoded = BASE64.encode(serde_json::to_string(&fewshots_data)?.as_bytes());
 
     let mut new_parts: Vec<Value> = parts
         .iter()
@@ -238,8 +238,7 @@ pub(super) async fn remove_fewshot(
         .into());
     }
 
-    let encoded = base64::engine::general_purpose::STANDARD
-        .encode(serde_json::to_string(&fewshots_data)?.as_bytes());
+    let encoded = BASE64.encode(serde_json::to_string(&fewshots_data)?.as_bytes());
 
     let new_parts: Vec<Value> = parts
         .iter()
@@ -435,8 +434,7 @@ pub(super) async fn upload_fewshots(
     let total = fewshots_arr.len();
 
     // Update definition (fewshots_arr borrow ends here)
-    let encoded = base64::engine::general_purpose::STANDARD
-        .encode(serde_json::to_string(&fewshots_data)?.as_bytes());
+    let encoded = BASE64.encode(serde_json::to_string(&fewshots_data)?.as_bytes());
 
     let new_parts: Vec<Value> = parts
         .iter()
@@ -576,6 +574,7 @@ fn parse_fewshots_csv(content: &str, file: &str) -> Result<Vec<Value>> {
 #[cfg(test)]
 mod tests {
     use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
     use serde_json::json;
 
     use super::*;
@@ -584,15 +583,13 @@ mod tests {
     fn extract_fewshots_for_datasource_found() {
         let ds_json =
             json!({"displayName": "TestLH", "type": "lakehouse_tables", "artifactId": "x"});
-        let ds_payload =
-            base64::engine::general_purpose::STANDARD.encode(ds_json.to_string().as_bytes());
+        let ds_payload = BASE64.encode(ds_json.to_string().as_bytes());
         let fs_json = json!({
             "fewShots": [
                 {"id": "fs1", "question": "How many?", "query": "SELECT COUNT(*) FROM t"}
             ]
         });
-        let fs_payload =
-            base64::engine::general_purpose::STANDARD.encode(fs_json.to_string().as_bytes());
+        let fs_payload = BASE64.encode(fs_json.to_string().as_bytes());
 
         let parts = vec![
             json!({
@@ -617,8 +614,7 @@ mod tests {
     fn extract_fewshots_empty_when_no_file() {
         let ds_json =
             json!({"displayName": "TestLH", "type": "lakehouse_tables", "artifactId": "x"});
-        let ds_payload =
-            base64::engine::general_purpose::STANDARD.encode(ds_json.to_string().as_bytes());
+        let ds_payload = BASE64.encode(ds_json.to_string().as_bytes());
         let parts = vec![json!({
             "path": "Files/Config/draft/lakehouse_tables-TestLH/datasource.json",
             "payload": ds_payload,

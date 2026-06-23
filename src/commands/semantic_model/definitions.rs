@@ -1,4 +1,6 @@
 use anyhow::Result;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
@@ -37,10 +39,7 @@ pub(super) async fn update_definition(
             "Provide a valid model.bim file path.".to_string(),
         )
     })?;
-    let encoded = base64::engine::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        content.as_bytes(),
-    );
+    let encoded = BASE64.encode(content.as_bytes());
 
     let body = serde_json::json!({
         "definition": {

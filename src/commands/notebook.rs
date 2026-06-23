@@ -1,6 +1,8 @@
 use std::time::Duration;
 
 use anyhow::Result;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 use tokio::time::sleep;
@@ -434,7 +436,7 @@ async fn update_definition(
                 "Provide a valid .py or .ipynb file path.".to_string(),
             )
         })?;
-        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &file_content)
+        base64::Engine::encode(&BASE64, &file_content)
     } else {
         // Build ipynb from content
         let code = content.unwrap();
@@ -451,10 +453,7 @@ async fn update_definition(
                 "outputs": []
             }]
         });
-        base64::Engine::encode(
-            &base64::engine::general_purpose::STANDARD,
-            serde_json::to_string(&notebook_json)?,
-        )
+        base64::Engine::encode(&BASE64, serde_json::to_string(&notebook_json)?)
     };
 
     let body = serde_json::json!({
@@ -538,10 +537,7 @@ async fn create(
         }]
     });
 
-    let encoded = base64::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        serde_json::to_string(&notebook_json)?,
-    );
+    let encoded = base64::Engine::encode(&BASE64, serde_json::to_string(&notebook_json)?);
 
     let body = serde_json::json!({
         "displayName": name,
@@ -847,7 +843,7 @@ async fn get_livy_session(
 /// part, decodes its base64 payload as ipynb JSON, clears `outputs` and
 /// `execution_count` on every cell, then re-encodes the payload.
 fn strip_notebook_outputs(data: &mut Value) {
-    let base64_engine = base64::engine::general_purpose::STANDARD;
+    let base64_engine = BASE64;
 
     let Some(parts) = data
         .get_mut("definition")
@@ -988,12 +984,11 @@ fn build_run_body(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base64::Engine;
     use serde_json::json;
 
     #[test]
     fn strip_notebook_outputs_clears_cells() {
-        let base64_engine = base64::engine::general_purpose::STANDARD;
+        let base64_engine = BASE64;
         let notebook = json!({
             "nbformat": 4,
             "nbformat_minor": 5,

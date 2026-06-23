@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fmt::Write;
 
 use anyhow::{Result, bail};
 use base64::Engine;
@@ -189,11 +188,7 @@ fn hash_api_parts(parts: &[Value]) -> String {
     }
 
     let hash = hasher.finalize();
-    let hex = hash.iter().fold(String::with_capacity(64), |mut s, b| {
-        let _ = write!(s, "{b:02x}");
-        s
-    });
-    format!("sha256:{hex}")
+    super::platform::sha256_hex(&hash)
 }
 
 /// Resolve a workspace identifier (ID or name) to a workspace ID.
@@ -547,11 +542,7 @@ pub fn compute_workspace_fingerprint(deployed_items: &[DeployedItem]) -> String 
     }
 
     let hash = hasher.finalize();
-    let hex = hash.iter().fold(String::with_capacity(64), |mut s, b| {
-        let _ = write!(s, "{b:02x}");
-        s
-    });
-    format!("sha256:{hex}")
+    super::platform::sha256_hex(&hash)
 }
 
 /// Normalize a content hash from the deployed API response for comparison.
@@ -596,11 +587,7 @@ pub fn normalize_and_hash_definition(definition: &Value) -> Option<String> {
     }
 
     let hash = hasher.finalize();
-    let hex = hash.iter().fold(String::with_capacity(64), |mut s, b| {
-        let _ = write!(s, "{b:02x}");
-        s
-    });
-    Some(format!("sha256:{hex}"))
+    Some(super::platform::sha256_hex(&hash))
 }
 
 #[cfg(test)]

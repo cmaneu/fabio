@@ -8,6 +8,7 @@ mod query;
 
 use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -670,7 +671,7 @@ pub(super) async fn get_definition_parts(
 
 /// Decode a base64-encoded definition part payload to a UTF-8 string.
 pub(super) fn decode_part_payload(payload: &str) -> Option<String> {
-    base64::engine::general_purpose::STANDARD
+    BASE64
         .decode(payload)
         .ok()
         .and_then(|bytes| String::from_utf8(bytes).ok())
@@ -713,12 +714,13 @@ pub(super) fn find_datasource_dir(parts: &[Value], datasource: &str) -> Result<S
 #[cfg(test)]
 mod tests {
     use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
 
     use super::*;
 
     #[test]
     fn decode_part_payload_valid_base64() {
-        let payload = base64::engine::general_purpose::STANDARD.encode(br#"{"hello":"world"}"#);
+        let payload = BASE64.encode(br#"{"hello":"world"}"#);
         let decoded = decode_part_payload(&payload).unwrap();
         assert_eq!(decoded, r#"{"hello":"world"}"#);
     }
@@ -731,8 +733,7 @@ mod tests {
     #[test]
     fn find_datasource_dir_by_name() {
         let ds_json = serde_json::json!({"displayName": "MyWarehouse", "type": "data_warehouse", "artifactId": "bbb"});
-        let payload =
-            base64::engine::general_purpose::STANDARD.encode(ds_json.to_string().as_bytes());
+        let payload = BASE64.encode(ds_json.to_string().as_bytes());
         let parts = vec![serde_json::json!({
             "path": "Files/Config/draft/data_warehouse-MyWarehouse/datasource.json",
             "payload": payload,
@@ -746,8 +747,7 @@ mod tests {
     #[test]
     fn find_datasource_dir_by_id() {
         let ds_json = serde_json::json!({"displayName": "TestLH", "type": "lakehouse_tables", "artifactId": "abc-123"});
-        let payload =
-            base64::engine::general_purpose::STANDARD.encode(ds_json.to_string().as_bytes());
+        let payload = BASE64.encode(ds_json.to_string().as_bytes());
         let parts = vec![serde_json::json!({
             "path": "Files/Config/draft/lakehouse_tables-TestLH/datasource.json",
             "payload": payload,

@@ -1,3 +1,5 @@
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use std::fmt::Write;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
@@ -476,7 +478,7 @@ impl FabricClient {
         let data_len = data.len();
         let content_md5 = {
             let hash = md5::compute(&data);
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, hash.0)
+            BASE64.encode(hash.0)
         };
         let append_url = format!("{base}?action=append&position=0");
         verbose::trace_request("PATCH", &append_url, None);

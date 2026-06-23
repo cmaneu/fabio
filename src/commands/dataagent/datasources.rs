@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -183,8 +184,7 @@ pub(super) async fn add_datasource(
 
     // Determine path prefix based on type
     let path_prefix = format!("Files/Config/draft/{ds_type}-{artifact_name}");
-    let ds_encoded = base64::engine::general_purpose::STANDARD
-        .encode(serde_json::to_string(&datasource_json)?.as_bytes());
+    let ds_encoded = BASE64.encode(serde_json::to_string(&datasource_json)?.as_bytes());
 
     new_parts.push(serde_json::json!({
         "path": format!("{path_prefix}/datasource.json"),
@@ -386,8 +386,7 @@ pub(super) async fn select_tables(
     }
 
     // Re-encode and update definition
-    let encoded = base64::engine::general_purpose::STANDARD
-        .encode(serde_json::to_string(&ds_json)?.as_bytes());
+    let encoded = BASE64.encode(serde_json::to_string(&ds_json)?.as_bytes());
 
     let new_parts: Vec<Value> = parts
         .iter()
@@ -512,6 +511,7 @@ fn set_table_selection(
 #[cfg(test)]
 mod tests {
     use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
     use serde_json::json;
 
     use super::*;
@@ -589,8 +589,7 @@ mod tests {
             "displayName": "TestLH",
             "type": "lakehouse_tables"
         });
-        let payload =
-            base64::engine::general_purpose::STANDARD.encode(ds_json.to_string().as_bytes());
+        let payload = BASE64.encode(ds_json.to_string().as_bytes());
         let parts = vec![
             json!({
                 "path": "Files/Config/data_agent.json",

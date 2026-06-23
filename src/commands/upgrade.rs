@@ -252,10 +252,12 @@ fn verify_checksum(data: &[u8], checksum_text: &str) -> Result<()> {
     let mut hasher = Sha256::new();
     hasher.update(data);
     let hash_bytes = hasher.finalize();
-    let mut actual = String::with_capacity(64);
-    for b in &hash_bytes {
-        write!(actual, "{b:02x}").unwrap();
-    }
+    let actual = hash_bytes
+        .iter()
+        .fold(String::with_capacity(64), |mut s, b| {
+            let _ = write!(s, "{b:02x}");
+            s
+        });
 
     if actual != expected {
         bail!(

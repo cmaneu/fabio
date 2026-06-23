@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 use std::time::Duration;
@@ -305,8 +306,7 @@ async fn create(
     // If an ontology ID is provided, include it in the definition
     if let Some(ont_id) = ontology {
         let ont_json = serde_json::json!({ "ontologyId": ont_id });
-        let encoded =
-            base64::engine::general_purpose::STANDARD.encode(ont_json.to_string().as_bytes());
+        let encoded = BASE64.encode(ont_json.to_string().as_bytes());
         body["definition"] = serde_json::json!({
             "parts": [{
                 "path": "GraphModel.json",
@@ -453,7 +453,7 @@ async fn update_definition(
         }
     };
 
-    let encoded = base64::engine::general_purpose::STANDARD.encode(definition_json.as_bytes());
+    let encoded = BASE64.encode(definition_json.as_bytes());
 
     let body = serde_json::json!({
         "definition": {
