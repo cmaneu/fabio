@@ -38,7 +38,7 @@ fn eventstream_create_and_delete() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -148,7 +148,7 @@ fn eventstream_get_topology_returns_structure() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -210,7 +210,7 @@ fn eventstream_add_source_custom_endpoint() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -232,7 +232,7 @@ fn eventstream_add_source_custom_endpoint() {
             "--source-type",
             "CustomEndpoint",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -370,7 +370,7 @@ fn eventstream_get_definition_returns_parts() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -388,7 +388,7 @@ fn eventstream_get_definition_returns_parts() {
             "--id",
             &es_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 

@@ -242,25 +242,23 @@ pub(super) async fn remove_datasource(
                 return true; // keep non-datasource parts
             }
             // Check if this part belongs to the datasource being removed
-            if let Some(payload) = part.get("payload").and_then(Value::as_str) {
-                if path.ends_with("/datasource.json") {
-                    if let Some(decoded) = decode_part_payload(payload) {
-                        if let Ok(parsed) = serde_json::from_str::<Value>(&decoded) {
-                            let name = parsed
-                                .get("displayName")
-                                .or_else(|| parsed.get("display_name"))
-                                .and_then(Value::as_str)
-                                .unwrap_or("");
-                            let art_id = parsed
-                                .get("artifactId")
-                                .or_else(|| parsed.get("id"))
-                                .and_then(Value::as_str)
-                                .unwrap_or("");
-                            if name.eq_ignore_ascii_case(datasource) || art_id == datasource {
-                                return false; // remove this datasource part
-                            }
-                        }
-                    }
+            if let Some(payload) = part.get("payload").and_then(Value::as_str)
+                && path.ends_with("/datasource.json")
+                && let Some(decoded) = decode_part_payload(payload)
+                && let Ok(parsed) = serde_json::from_str::<Value>(&decoded)
+            {
+                let name = parsed
+                    .get("displayName")
+                    .or_else(|| parsed.get("display_name"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let art_id = parsed
+                    .get("artifactId")
+                    .or_else(|| parsed.get("id"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if name.eq_ignore_ascii_case(datasource) || art_id == datasource {
+                    return false; // remove this datasource part
                 }
             }
             // Also remove associated fewshots file in the same directory
@@ -433,10 +431,10 @@ fn extract_datasources_from_parts(parts: &[Value]) -> Vec<Value> {
         let path = part.get("path").and_then(Value::as_str).unwrap_or("");
         if path.starts_with("Files/Config/draft/") && path.ends_with("/datasource.json") {
             let payload = part.get("payload").and_then(Value::as_str).unwrap_or("");
-            if let Some(decoded) = decode_part_payload(payload) {
-                if let Ok(parsed) = serde_json::from_str::<Value>(&decoded) {
-                    datasources.push(parsed);
-                }
+            if let Some(decoded) = decode_part_payload(payload)
+                && let Ok(parsed) = serde_json::from_str::<Value>(&decoded)
+            {
+                datasources.push(parsed);
             }
         }
     }

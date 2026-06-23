@@ -574,36 +574,32 @@ fn extract_property_edges(
     };
 
     // KQL Database → Eventhouse (parent)
-    if source_type == "KQLDatabase" {
-        if let Some(parent_id) = properties
+    if source_type == "KQLDatabase"
+        && let Some(parent_id) = properties
             .get("parentEventhouseItemId")
             .and_then(Value::as_str)
-        {
-            if known_ids.contains(parent_id) {
-                edges.insert(GraphEdge {
-                    source: source_id.to_string(),
-                    target: parent_id.to_string(),
-                    relationship: "child_of".to_string(),
-                    metadata: Some(serde_json::json!({"parentType": "Eventhouse"})),
-                });
-            }
-        }
+        && known_ids.contains(parent_id)
+    {
+        edges.insert(GraphEdge {
+            source: source_id.to_string(),
+            target: parent_id.to_string(),
+            relationship: "child_of".to_string(),
+            metadata: Some(serde_json::json!({"parentType": "Eventhouse"})),
+        });
     }
 
     // Lakehouse → SQL Endpoint (companion relationship via sqlEndpointProperties)
-    if source_type == "Lakehouse" {
-        if let Some(sql_props) = properties.get("sqlEndpointProperties") {
-            if let Some(ep_id) = sql_props.get("id").and_then(Value::as_str) {
-                if known_ids.contains(ep_id) {
-                    edges.insert(GraphEdge {
-                        source: source_id.to_string(),
-                        target: ep_id.to_string(),
-                        relationship: "has_endpoint".to_string(),
-                        metadata: Some(serde_json::json!({"endpointType": "SQLEndpoint"})),
-                    });
-                }
-            }
-        }
+    if source_type == "Lakehouse"
+        && let Some(sql_props) = properties.get("sqlEndpointProperties")
+        && let Some(ep_id) = sql_props.get("id").and_then(Value::as_str)
+        && known_ids.contains(ep_id)
+    {
+        edges.insert(GraphEdge {
+            source: source_id.to_string(),
+            target: ep_id.to_string(),
+            relationship: "has_endpoint".to_string(),
+            metadata: Some(serde_json::json!({"endpointType": "SQLEndpoint"})),
+        });
     }
 
     // Graph Model → properties.queryReadiness, lastDataLoadingStatus

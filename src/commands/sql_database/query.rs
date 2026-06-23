@@ -1,4 +1,4 @@
-use std::io::{self, Read};
+use std::io;
 
 use anyhow::Result;
 use mssql_tds::connection::client_context::{ClientContext, TdsAuthenticationMethod};
@@ -75,8 +75,7 @@ pub(super) async fn query(
         Some(s) => s.to_string(),
         None => {
             // Read from stdin
-            let mut buf = String::new();
-            io::stdin().read_to_string(&mut buf).map_err(|e| {
+            let buf = io::read_to_string(io::stdin()).map_err(|e| {
                 FabioError::new(
                     ErrorCode::ApiError,
                     format!("Failed to read SQL from stdin: {e}"),

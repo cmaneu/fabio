@@ -764,18 +764,18 @@ async fn execute_apply(
     };
 
     // Apply parameter substitution for plan-file path (re-apply to parsed source)
-    if plan_file.is_some() {
-        if let (Some(param_path), Some(env_name)) = (parameters, env) {
-            let parsed_params = params::parse_parameters(param_path)?;
-            let deployed_items = std::collections::HashMap::new();
-            let ctx = params::SubstitutionContext {
-                workspace_id: &workspace_id,
-                workspace_name: None,
-                deployed_items: &deployed_items,
-            };
-            let _warnings =
-                params::apply_parameters(&mut source_workspace, &parsed_params, env_name, &ctx)?;
-        }
+    if plan_file.is_some()
+        && let (Some(param_path), Some(env_name)) = (parameters, env)
+    {
+        let parsed_params = params::parse_parameters(param_path)?;
+        let deployed_items = std::collections::HashMap::new();
+        let ctx = params::SubstitutionContext {
+            workspace_id: &workspace_id,
+            workspace_name: None,
+            deployed_items: &deployed_items,
+        };
+        let _warnings =
+            params::apply_parameters(&mut source_workspace, &parsed_params, env_name, &ctx)?;
     }
 
     // Check for errors

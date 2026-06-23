@@ -207,12 +207,11 @@ pub async fn resolve_workspace(client: &FabricClient, workspace: &str) -> Result
     let resp = client.get_list("/workspaces", "value", true, None).await?;
 
     for item in &resp.items {
-        if let Some(name) = item.get("displayName").and_then(|v| v.as_str()) {
-            if name.eq_ignore_ascii_case(workspace) {
-                if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
-                    return Ok(id.to_owned());
-                }
-            }
+        if let Some(name) = item.get("displayName").and_then(|v| v.as_str())
+            && name.eq_ignore_ascii_case(workspace)
+            && let Some(id) = item.get("id").and_then(|v| v.as_str())
+        {
+            return Ok(id.to_owned());
         }
     }
 
@@ -266,13 +265,12 @@ pub async fn build_changeset(
 
     for (idx, source_item) in source.items.iter().enumerate() {
         // Skip if filtered by item type
-        if let Some(types) = item_types {
-            if !types
+        if let Some(types) = item_types
+            && !types
                 .iter()
                 .any(|t| t.eq_ignore_ascii_case(&source_item.metadata.item_type))
-            {
-                continue;
-            }
+        {
+            continue;
         }
 
         let key = (
@@ -391,28 +389,27 @@ pub async fn build_changeset(
 
                 if let Ok(Some(lid)) =
                     fetch_deployed_logical_id(client, workspace_id, &candidate.id).await
+                    && lid == *source_lid
                 {
-                    if lid == *source_lid {
-                        // Found a rename: same logical ID, different name
-                        matched_deployed
-                            .insert((candidate.item_type.clone(), candidate.display_name.clone()));
+                    // Found a rename: same logical ID, different name
+                    matched_deployed
+                        .insert((candidate.item_type.clone(), candidate.display_name.clone()));
 
-                        changeset.changes.push(Change {
-                            name: source_item.metadata.display_name.clone(),
-                            item_type: source_item.metadata.item_type.clone(),
-                            action: ChangeAction::Rename,
-                            reason: format!(
-                                "renamed from \"{}\" (matched by logical ID)",
-                                candidate.display_name
-                            ),
-                            logical_id: source_item.metadata.logical_id.clone(),
-                            deployed_id: Some(candidate.id.clone()),
-                            source_hash: Some(source_item.content_hash.clone()),
-                            previous_name: Some(candidate.display_name.clone()),
-                        });
-                        rename_found = true;
-                        break;
-                    }
+                    changeset.changes.push(Change {
+                        name: source_item.metadata.display_name.clone(),
+                        item_type: source_item.metadata.item_type.clone(),
+                        action: ChangeAction::Rename,
+                        reason: format!(
+                            "renamed from \"{}\" (matched by logical ID)",
+                            candidate.display_name
+                        ),
+                        logical_id: source_item.metadata.logical_id.clone(),
+                        deployed_id: Some(candidate.id.clone()),
+                        source_hash: Some(source_item.content_hash.clone()),
+                        previous_name: Some(candidate.display_name.clone()),
+                    });
+                    rename_found = true;
+                    break;
                 }
             }
         }

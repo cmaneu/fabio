@@ -44,7 +44,7 @@ fn dataagent_create_show_update_delete() {
             "--description",
             description,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -145,7 +145,7 @@ fn dataagent_create_without_description() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -291,7 +291,7 @@ fn dataagent_query_with_prompt() {
             "--prompt",
             "What data sources do you have access to?",
         ])
-        .timeout(std::time::Duration::from_secs(300))
+        .timeout(std::time::Duration::from_mins(5))
         .assert();
 
     // Query may fail if agent isn't published - that's OK for this test
@@ -349,7 +349,7 @@ fn dataagent_get_definition() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -367,7 +367,7 @@ fn dataagent_get_definition() {
             "--id",
             &agent_id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -410,7 +410,7 @@ fn dataagent_update_definition_with_lakehouse_datasource() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -476,7 +476,7 @@ fn dataagent_update_definition_with_lakehouse_datasource() {
             "--content",
             &def_content,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -498,7 +498,7 @@ fn dataagent_update_definition_with_lakehouse_datasource() {
             "--id",
             &agent_id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -564,7 +564,7 @@ fn dataagent_publish_lifecycle() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -629,7 +629,7 @@ fn dataagent_publish_lifecycle() {
             "--content",
             &def_content,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -645,7 +645,7 @@ fn dataagent_publish_lifecycle() {
             "--description",
             "Test publish from e2e",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -669,7 +669,7 @@ fn dataagent_publish_lifecycle() {
             "--id",
             &agent_id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -785,7 +785,7 @@ fn dataagent_full_lifecycle_create_publish_query_delete() {
             "--description",
             "E2E lifecycle test agent",
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -913,7 +913,7 @@ fn dataagent_full_lifecycle_create_publish_query_delete() {
             "--content",
             &def_content,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
     eprintln!("  Definition updated with lakehouse data source + fewshots");
@@ -931,7 +931,7 @@ fn dataagent_full_lifecycle_create_publish_query_delete() {
             "--description",
             "E2E lifecycle publish",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -953,7 +953,7 @@ fn dataagent_full_lifecycle_create_publish_query_delete() {
             "--id",
             &agent_id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -998,7 +998,7 @@ fn dataagent_full_lifecycle_create_publish_query_delete() {
             "--prompt",
             "What is the most expensive product and how much does it cost?",
         ])
-        .timeout(std::time::Duration::from_secs(300))
+        .timeout(std::time::Duration::from_mins(5))
         .assert();
 
     let output = assert.get_output();
@@ -1444,7 +1444,7 @@ fn dataagent_datasource_fewshot_lifecycle() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -1464,7 +1464,7 @@ fn dataagent_datasource_fewshot_lifecycle() {
             "--id",
             &agent_id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1492,7 +1492,7 @@ fn dataagent_datasource_fewshot_lifecycle() {
             "--artifact-type",
             "Lakehouse",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1513,7 +1513,7 @@ fn dataagent_datasource_fewshot_lifecycle() {
             "--id",
             &agent_id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1541,7 +1541,7 @@ fn dataagent_datasource_fewshot_lifecycle() {
             "--answer",
             "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1564,7 +1564,7 @@ fn dataagent_datasource_fewshot_lifecycle() {
             "--datasource",
             ds_name,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1588,7 +1588,7 @@ fn dataagent_datasource_fewshot_lifecycle() {
             "--fewshot-id",
             &fewshot_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
     eprintln!("  Fewshot removed");
@@ -1605,7 +1605,7 @@ fn dataagent_datasource_fewshot_lifecycle() {
             "--datasource",
             ds_name,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1708,7 +1708,7 @@ fn dataagent_elements_lifecycle() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -1731,7 +1731,7 @@ fn dataagent_elements_lifecycle() {
             "--artifact-type",
             "Lakehouse",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1748,7 +1748,7 @@ fn dataagent_elements_lifecycle() {
             "--datasource",
             &cfg.source_lakehouse,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1781,7 +1781,7 @@ fn dataagent_elements_lifecycle() {
                 "--description",
                 "Test description from e2e",
             ])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
             .success();
 
@@ -1829,7 +1829,7 @@ fn dataagent_advanced_management_lifecycle() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -1852,7 +1852,7 @@ fn dataagent_advanced_management_lifecycle() {
             "Answer questions about sales data. Use SQL for lakehouse tables.",
             "--enable-preview-runtime",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1872,7 +1872,7 @@ fn dataagent_advanced_management_lifecycle() {
             "--id",
             &agent_id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1903,7 +1903,7 @@ fn dataagent_advanced_management_lifecycle() {
             "--instructions",
             "Contains product catalog and order history",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
     eprintln!("  Datasource added");
@@ -1921,7 +1921,7 @@ fn dataagent_advanced_management_lifecycle() {
             "--datasource",
             &cfg.source_lakehouse,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1950,7 +1950,7 @@ fn dataagent_advanced_management_lifecycle() {
             "--file",
             csv_path,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1975,7 +1975,7 @@ fn dataagent_advanced_management_lifecycle() {
             "--datasource",
             &cfg.source_lakehouse,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -2001,7 +2001,7 @@ fn dataagent_advanced_management_lifecycle() {
             "--answer",
             "SELECT COUNT(*) FROM products WHERE active = 1",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -2030,7 +2030,7 @@ fn dataagent_advanced_management_lifecycle() {
             "--datasource",
             &cfg.source_lakehouse,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -2052,7 +2052,7 @@ fn dataagent_advanced_management_lifecycle() {
                 "--all-tables",
                 "--unselect",
             ])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
             .success();
 
@@ -2075,7 +2075,7 @@ fn dataagent_advanced_management_lifecycle() {
                 &cfg.source_lakehouse,
                 "--all-tables",
             ])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
             .success();
 

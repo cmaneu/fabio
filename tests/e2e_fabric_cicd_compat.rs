@@ -122,7 +122,7 @@ fn fabric_cicd_plan_all_items() {
             &cfg.source_workspace,
             "--dry-run",
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -156,7 +156,7 @@ fn fabric_cicd_plan_with_item_type_filter() {
             "Notebook",
             "--dry-run",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -198,7 +198,7 @@ fn fabric_cicd_plan_with_exclude_regex() {
             "^Hello",
             "--dry-run",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -234,7 +234,7 @@ fn fabric_cicd_plan_with_include_folders() {
             "/subfolder",
             "--dry-run",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -422,7 +422,7 @@ fn fabric_cicd_plan_with_parameters_changes_hash() {
             "Notebook",
             "--dry-run",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -443,7 +443,7 @@ fn fabric_cicd_plan_with_parameters_changes_hash() {
             "PPE",
             "--dry-run",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -500,7 +500,7 @@ fn fabric_cicd_workspace_id_replacement_affects_hash() {
             "Report",
             "--dry-run",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -518,7 +518,7 @@ fn fabric_cicd_workspace_id_replacement_affects_hash() {
             "--no-workspace-id-replace",
             "--dry-run",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -586,7 +586,7 @@ filters:
             "test",
             "--dry-run",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 

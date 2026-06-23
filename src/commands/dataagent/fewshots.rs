@@ -221,14 +221,15 @@ pub(super) async fn remove_fewshot(
         .and_then(Value::as_array_mut)
         .ok_or_else(|| FabioError::new(ErrorCode::ApiError, "Invalid fewshots structure"))?;
 
-    let original_len = arr.len();
-    arr.retain(|f| {
-        f.get("id")
-            .and_then(Value::as_str)
-            .is_none_or(|fid| fid != fewshot_id)
-    });
+    let removed: Vec<_> = arr
+        .extract_if(.., |f| {
+            f.get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|fid| fid == fewshot_id)
+        })
+        .collect();
 
-    if arr.len() == original_len {
+    if removed.is_empty() {
         return Err(FabioError::with_hint(
             ErrorCode::NotFound,
             format!("Few-shot '{fewshot_id}' not found"),
@@ -478,14 +479,14 @@ fn extract_fewshots_for_datasource(parts: &[Value], datasource: &str) -> Result<
         let path = part.get("path").and_then(Value::as_str).unwrap_or("");
         if path == fewshots_path {
             let payload = part.get("payload").and_then(Value::as_str).unwrap_or("");
-            if let Some(decoded) = decode_part_payload(payload) {
-                if let Ok(parsed) = serde_json::from_str::<Value>(&decoded) {
-                    return Ok(parsed
-                        .get("fewShots")
-                        .and_then(Value::as_array)
-                        .cloned()
-                        .unwrap_or_default());
-                }
+            if let Some(decoded) = decode_part_payload(payload)
+                && let Ok(parsed) = serde_json::from_str::<Value>(&decoded)
+            {
+                return Ok(parsed
+                    .get("fewShots")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default());
             }
         }
     }

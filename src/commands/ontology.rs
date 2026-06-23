@@ -1,4 +1,3 @@
-use std::io::Read;
 use std::path::Path;
 
 use anyhow::Result;
@@ -446,16 +445,15 @@ fn decode_definition_parts(mut data: Value) -> Value {
         .and_then(|p| p.as_array_mut())
     {
         for part in parts {
-            if let Some(payload) = part.get("payload").and_then(|p| p.as_str()) {
-                if let Ok(decoded_bytes) = BASE64.decode(payload) {
-                    if let Ok(decoded_str) = String::from_utf8(decoded_bytes) {
-                        // Try parsing as JSON for pretty output
-                        if let Ok(json_val) = serde_json::from_str::<Value>(&decoded_str) {
-                            part["decodedPayload"] = json_val;
-                        } else {
-                            part["decodedPayload"] = Value::String(decoded_str);
-                        }
-                    }
+            if let Some(payload) = part.get("payload").and_then(|p| p.as_str())
+                && let Ok(decoded_bytes) = BASE64.decode(payload)
+                && let Ok(decoded_str) = String::from_utf8(decoded_bytes)
+            {
+                // Try parsing as JSON for pretty output
+                if let Ok(json_val) = serde_json::from_str::<Value>(&decoded_str) {
+                    part["decodedPayload"] = json_val;
+                } else {
+                    part["decodedPayload"] = Value::String(decoded_str);
                 }
             }
         }
@@ -816,43 +814,41 @@ fn normalize_data_binding(content: &[u8]) -> Result<Vec<u8>> {
         .map_err(|e| FabioError::with_hint(ErrorCode::InvalidInput, format!("Invalid JSON in DataBinding file: {e}"), "DataBinding files must be valid JSON. See format: fabio ontology get-definition --workspace <WS> --id <ID> --decode"))?;
 
     // Validate that the 'id' field is a valid UUID — non-UUID IDs are silently dropped by the server
-    if let Some(id_val) = binding.get("id").and_then(Value::as_str) {
-        if !is_valid_uuid(id_val) {
-            return Err(FabioError::with_hint(
-                ErrorCode::InvalidInput,
-                format!("Data binding 'id' must be UUID format, got: '{id_val}'"),
-                "Use UUID format (e.g., c0000001-0001-0001-0001-000000000001). \
+    if let Some(id_val) = binding.get("id").and_then(Value::as_str)
+        && !is_valid_uuid(id_val)
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Data binding 'id' must be UUID format, got: '{id_val}'"),
+            "Use UUID format (e.g., c0000001-0001-0001-0001-000000000001). \
                  Non-UUID IDs are silently dropped by the Fabric API with no error.",
-            )
-            .into());
-        }
+        )
+        .into());
     }
 
     // Navigate to dataBindingConfiguration.sourceTableProperties and reorder
     if let Some(config) = binding
         .get_mut("dataBindingConfiguration")
         .and_then(Value::as_object_mut)
-    {
-        if let Some(source_props) = config
+        && let Some(source_props) = config
             .get_mut("sourceTableProperties")
             .and_then(Value::as_object_mut)
-        {
-            // Extract sourceType and rebuild using struct serialization for guaranteed order
-            if let Some(source_type) = source_props.remove("sourceType") {
-                let remaining: std::collections::BTreeMap<String, Value> = source_props
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-                let ordered = OrderedSourceTableProperties {
-                    source_type,
-                    other: remaining,
-                };
-                // Serialize the ordered struct back to a Value and replace
-                let ordered_value = serde_json::to_value(&ordered)
-                    .map_err(|e| anyhow::anyhow!("Failed to reorder sourceTableProperties: {e}"))?;
-                if let Value::Object(new_map) = ordered_value {
-                    *source_props = new_map;
-                }
+    {
+        // Extract sourceType and rebuild using struct serialization for guaranteed order
+        if let Some(source_type) = source_props.remove("sourceType") {
+            let remaining: std::collections::BTreeMap<String, Value> = source_props
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            let ordered = OrderedSourceTableProperties {
+                source_type,
+                other: remaining,
+            };
+            // Serialize the ordered struct back to a Value and replace
+            let ordered_value = serde_json::to_value(&ordered)
+                .map_err(|e| anyhow::anyhow!("Failed to reorder sourceTableProperties: {e}"))?;
+            if let Value::Object(new_map) = ordered_value {
+                *source_props = new_map;
             }
         }
     }
@@ -876,11 +872,8 @@ fn is_valid_uuid(s: &str) -> bool {
 
 fn read_file_or_stdin(path: &str) -> Result<String> {
     if path == "-" {
-        let mut buf = String::new();
-        std::io::stdin()
-            .read_to_string(&mut buf)
-            .map_err(|e| anyhow::anyhow!("Failed to read from stdin: {e}"))?;
-        Ok(buf)
+        std::io::read_to_string(std::io::stdin())
+            .map_err(|e| anyhow::anyhow!("Failed to read from stdin: {e}"))
     } else {
         std::fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))

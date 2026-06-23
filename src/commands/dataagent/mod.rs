@@ -682,22 +682,22 @@ pub(super) fn find_datasource_dir(parts: &[Value], datasource: &str) -> Result<S
         let path = part.get("path").and_then(Value::as_str).unwrap_or("");
         if path.starts_with("Files/Config/draft/") && path.ends_with("/datasource.json") {
             let payload = part.get("payload").and_then(Value::as_str).unwrap_or("");
-            if let Some(decoded) = decode_part_payload(payload) {
-                if let Ok(parsed) = serde_json::from_str::<Value>(&decoded) {
-                    let name = parsed
-                        .get("displayName")
-                        .or_else(|| parsed.get("display_name"))
-                        .and_then(Value::as_str)
-                        .unwrap_or("");
-                    let art_id = parsed
-                        .get("artifactId")
-                        .or_else(|| parsed.get("id"))
-                        .and_then(Value::as_str)
-                        .unwrap_or("");
-                    if name.eq_ignore_ascii_case(datasource) || art_id == datasource {
-                        // Return directory (path without /datasource.json)
-                        return Ok(path.trim_end_matches("/datasource.json").to_string());
-                    }
+            if let Some(decoded) = decode_part_payload(payload)
+                && let Ok(parsed) = serde_json::from_str::<Value>(&decoded)
+            {
+                let name = parsed
+                    .get("displayName")
+                    .or_else(|| parsed.get("display_name"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let art_id = parsed
+                    .get("artifactId")
+                    .or_else(|| parsed.get("id"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if name.eq_ignore_ascii_case(datasource) || art_id == datasource {
+                    // Return directory (path without /datasource.json)
+                    return Ok(path.trim_end_matches("/datasource.json").to_string());
                 }
             }
         }

@@ -3,7 +3,7 @@
 //! Used by `kql_database`, `kql_queryset`, and other commands that need to
 //! execute KQL queries against Kusto endpoints.
 
-use std::io::{self, Read};
+use std::io;
 
 use anyhow::Result;
 use reqwest::header::AUTHORIZATION;
@@ -28,8 +28,7 @@ pub fn resolve_kql_input(kql: Option<&str>) -> Result<String> {
         }
         Some(s) => Ok(s.to_string()),
         None => {
-            let mut buf = String::new();
-            io::stdin().read_to_string(&mut buf).map_err(|e| {
+            let buf = io::read_to_string(io::stdin()).map_err(|e| {
                 FabioError::new(
                     ErrorCode::ApiError,
                     format!("Failed to read KQL from stdin: {e}"),
@@ -300,19 +299,18 @@ pub fn parse_kusto_v2_response(frames: &Value) -> Result<(Vec<Value>, Vec<String
         if let Some(completion) = frame_array
             .iter()
             .find(|f| f.get("FrameType").and_then(Value::as_str) == Some("DataSetCompletion"))
+            && completion.get("HasErrors").and_then(Value::as_bool) == Some(true)
         {
-            if completion.get("HasErrors").and_then(Value::as_bool) == Some(true) {
-                let error_msg = completion
-                    .get("OneApiErrors")
-                    .map_or("Unknown Kusto error", |e| {
-                        e.as_str().unwrap_or("Unknown Kusto error")
-                    });
-                return Err(FabioError::new(
-                    ErrorCode::ApiError,
-                    format!("Kusto query error: {error_msg}"),
-                )
-                .into());
-            }
+            let error_msg = completion
+                .get("OneApiErrors")
+                .map_or("Unknown Kusto error", |e| {
+                    e.as_str().unwrap_or("Unknown Kusto error")
+                });
+            return Err(FabioError::new(
+                ErrorCode::ApiError,
+                format!("Kusto query error: {error_msg}"),
+            )
+            .into());
         }
         return Ok((Vec::new(), Vec::new()));
     };

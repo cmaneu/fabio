@@ -42,7 +42,7 @@ fn kql_queryset_create_and_delete() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -157,7 +157,7 @@ fn kql_queryset_run_default_tab() {
             "--id",
             &queryset_id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -183,7 +183,7 @@ fn kql_queryset_run_by_tab_name() {
             "--tab",
             "EventCount",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -213,7 +213,7 @@ fn kql_queryset_run_by_tab_index() {
             "--tab",
             "0",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -238,7 +238,7 @@ fn kql_queryset_run_tab_not_found() {
             "--tab",
             "NonExistentTab",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .failure();
 
@@ -270,7 +270,7 @@ fn kql_queryset_run_tab_index_out_of_range() {
             "--tab",
             "99",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .failure();
 
@@ -303,7 +303,7 @@ fn kql_queryset_run_case_insensitive_tab() {
             "--tab",
             "eventcount", // lowercase version of "EventCount"
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -326,7 +326,7 @@ fn kql_queryset_run_not_found_queryset() {
             "--id",
             "00000000-0000-0000-0000-000000000000",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .failure();
 

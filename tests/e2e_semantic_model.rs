@@ -157,7 +157,7 @@ fn semantic_model_create_show_get_definition_delete() {
             "--file",
             &file_path,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -194,7 +194,7 @@ fn semantic_model_create_show_get_definition_delete() {
             "--id",
             &sm_id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -289,7 +289,7 @@ fn semantic_model_create_tmdl_and_delete() {
             "--file",
             &file_path,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -356,7 +356,7 @@ fn semantic_model_update_name_and_description() {
             "--file",
             &file_path,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -459,7 +459,7 @@ fn semantic_model_query_dax_flag() {
             "--file",
             &file_path,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -526,7 +526,7 @@ fn semantic_model_query_from_stdin() {
             "--file",
             &file_path,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -592,7 +592,7 @@ fn semantic_model_query_from_file() {
             "--file",
             &file_path,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -665,7 +665,7 @@ fn semantic_model_query_table_output() {
             "--file",
             &file_path,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -760,7 +760,7 @@ fn semantic_model_query_csv_output() {
             "--file",
             &file_path,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 

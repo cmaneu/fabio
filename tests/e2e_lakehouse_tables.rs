@@ -53,7 +53,7 @@ fn create_test_table(cfg: &TestConfig, table_name: &str) -> String {
             "--format",
             "Csv",
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -124,7 +124,7 @@ fn lakehouse_load_table_succeeds() {
             "--format",
             "Csv",
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -213,7 +213,7 @@ fn lakehouse_copy_table_and_delete() {
             "--dest-table",
             &dst_table,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -313,7 +313,7 @@ fn lakehouse_move_table_across_workspaces() {
             "--dest-table",
             &dst_table,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -691,7 +691,7 @@ fn lakehouse_optimize_table_succeeds() {
             &table_name,
             "--vorder",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -744,7 +744,7 @@ fn lakehouse_optimize_table_with_zorder_succeeds() {
             "--zorder",
             "name",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -794,7 +794,7 @@ fn lakehouse_vacuum_table_succeeds() {
             "--table",
             &table_name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -846,7 +846,7 @@ fn lakehouse_vacuum_table_custom_retention_succeeds() {
             "--retain-hours",
             "48",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -902,7 +902,7 @@ fn lakehouse_upload_table_csv_auto_format() {
             "--table",
             &table_name,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -978,7 +978,7 @@ fn lakehouse_upload_table_explicit_format() {
             "--format",
             "Csv",
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -1160,7 +1160,7 @@ fn lakehouse_move_table_without_dest_name() {
             "--dest-id",
             &cfg.dest_lakehouse,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -1212,7 +1212,7 @@ fn lakehouse_copy_table_without_dest_name() {
             "--dest-id",
             &cfg.dest_lakehouse,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1322,7 +1322,7 @@ fn lakehouse_load_table_with_append_mode() {
             "--format",
             "Csv",
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -1344,7 +1344,7 @@ fn lakehouse_load_table_with_append_mode() {
             "--format",
             "Csv",
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 

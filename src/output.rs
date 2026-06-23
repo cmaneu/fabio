@@ -389,15 +389,14 @@ pub fn decode_definition_parts(mut data: Value) -> Value {
         .and_then(|p| p.as_array_mut())
     {
         for part in parts {
-            if let Some(payload) = part.get("payload").and_then(|p| p.as_str()) {
-                if let Ok(decoded_bytes) = base64_engine.decode(payload) {
-                    if let Ok(decoded_str) = String::from_utf8(decoded_bytes) {
-                        if let Ok(json_val) = serde_json::from_str::<Value>(&decoded_str) {
-                            part["decodedPayload"] = json_val;
-                        } else {
-                            part["decodedPayload"] = Value::String(decoded_str);
-                        }
-                    }
+            if let Some(payload) = part.get("payload").and_then(|p| p.as_str())
+                && let Ok(decoded_bytes) = base64_engine.decode(payload)
+                && let Ok(decoded_str) = String::from_utf8(decoded_bytes)
+            {
+                if let Ok(json_val) = serde_json::from_str::<Value>(&decoded_str) {
+                    part["decodedPayload"] = json_val;
+                } else {
+                    part["decodedPayload"] = Value::String(decoded_str);
                 }
             }
         }

@@ -25,7 +25,7 @@ fn notebook_create_get_definition_and_delete() {
             "--content",
             "print('integration test')",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -64,7 +64,7 @@ fn notebook_create_get_definition_and_delete() {
             "--id",
             &nb_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -109,7 +109,7 @@ fn notebook_run_status_stop() {
             "--content",
             "import time; time.sleep(30); print('done')",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -229,7 +229,7 @@ fn notebook_run_with_wait() {
             "--content",
             "print('quick run')",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -267,7 +267,7 @@ fn notebook_run_with_wait() {
             "--timeout",
             "600",
         ])
-        .timeout(std::time::Duration::from_secs(660))
+        .timeout(std::time::Duration::from_mins(11))
         .assert()
         .success();
 
@@ -313,7 +313,7 @@ fn notebook_run_with_wait_fails() {
             "--content",
             "raise Exception('intentional failure for test')",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -351,7 +351,7 @@ fn notebook_run_with_wait_fails() {
             "--timeout",
             "600",
         ])
-        .timeout(std::time::Duration::from_secs(660))
+        .timeout(std::time::Duration::from_mins(11))
         .assert();
 
     // The command may succeed (reporting status=Failed) or fail outright
@@ -438,7 +438,7 @@ fn notebook_get_definition_not_found() {
             "--id",
             "00000000-0000-0000-0000-000000000000",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .failure();
 
@@ -520,7 +520,7 @@ fn notebook_update_name() {
             "--content",
             "print('update test')",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -594,7 +594,7 @@ fn notebook_update_definition_with_content() {
             "--content",
             "print('original')",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -628,7 +628,7 @@ fn notebook_update_definition_with_content() {
             "--content",
             "print('updated content')",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 

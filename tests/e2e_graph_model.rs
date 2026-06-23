@@ -40,7 +40,7 @@ fn graph_model_create_show_and_delete() {
             "--description",
             "E2E test graph model",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -105,7 +105,7 @@ fn graph_model_create_with_ontology() {
             "--name",
             &ont_name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -125,7 +125,7 @@ fn graph_model_create_with_ontology() {
             "--ontology",
             &ont_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -178,7 +178,7 @@ fn graph_model_update_name() {
             "--name",
             &original,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -259,7 +259,7 @@ fn graph_model_get_definition() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -277,7 +277,7 @@ fn graph_model_get_definition() {
             "--id",
             &gm_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -323,7 +323,7 @@ fn graph_model_refresh_graph() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -341,7 +341,7 @@ fn graph_model_refresh_graph() {
             "--id",
             &gm_id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -400,7 +400,7 @@ fn graph_model_execute_query_on_unloaded_graph() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 

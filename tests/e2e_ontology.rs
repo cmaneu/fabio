@@ -54,7 +54,7 @@ fn ontology_create_show_update_delete() {
             "--description",
             "Test ontology for E2E",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -172,7 +172,7 @@ fn ontology_create_with_definition_json() {
             "--definition",
             def_path.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -276,7 +276,7 @@ sales:orderDate a owl:DatatypeProperty ;
             "--file",
             ttl_path.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -380,7 +380,7 @@ fn ontology_create_with_rdf_owl() {
             "--file",
             owl_path.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -495,7 +495,7 @@ fn ontology_create_with_rdf_jsonld() {
             "--file",
             jsonld_path.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -539,7 +539,7 @@ fn ontology_hard_delete() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -610,7 +610,7 @@ fn ontology_get_and_update_definition() {
             "--file",
             ttl_path.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -628,7 +628,7 @@ fn ontology_get_and_update_definition() {
             "--id",
             &ont_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -656,7 +656,7 @@ fn ontology_get_and_update_definition() {
             "--file",
             updated_path.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -693,7 +693,7 @@ fn ontology_get_and_update_definition() {
             "--definition",
             def_json_path.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -732,7 +732,7 @@ fn ontology_update_definition_from_stdin() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -773,7 +773,7 @@ fn ontology_update_definition_from_stdin() {
             "-",
         ])
         .write_stdin(stdin_content)
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -992,7 +992,7 @@ fn ontology_update_description_only() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1055,7 +1055,7 @@ fn ontology_update_definition_with_rdf() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1083,7 +1083,7 @@ fn ontology_update_definition_with_rdf() {
             "--file",
             ttl_path.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1161,7 +1161,7 @@ fn ontology_get_definition_decode() {
             "--definition",
             def_path.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1180,7 +1180,7 @@ fn ontology_get_definition_decode() {
             &ont_id,
             "--decode",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1284,7 +1284,7 @@ fn ontology_create_with_dir() {
             "--dir",
             ont_dir.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1304,7 +1304,7 @@ fn ontology_create_with_dir() {
             &ont_id,
             "--decode",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1359,7 +1359,7 @@ fn ontology_update_definition_with_dir() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1474,7 +1474,7 @@ fn ontology_update_definition_with_dir() {
             "--dir",
             ont_dir.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1489,7 +1489,7 @@ fn ontology_update_definition_with_dir() {
             &ont_id,
             "--decode",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1727,7 +1727,7 @@ fn ontology_iot_scenario_entity_types_and_data_bindings() {
             "--definition",
             def_path.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1747,7 +1747,7 @@ fn ontology_iot_scenario_entity_types_and_data_bindings() {
             &ont_id,
             "--decode",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1819,7 +1819,7 @@ fn ontology_get_definition_without_decode() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1837,7 +1837,7 @@ fn ontology_get_definition_without_decode() {
             "--id",
             &ont_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 

@@ -2,7 +2,7 @@
 name = "fabio"
 version = "0.30.0-dev"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.96"
 description = "Agent-first CLI for managing Microsoft Fabric artifacts and data"
 license = "MIT"
 repository = "https://github.com/iemejia/fabio"
@@ -63,7 +63,7 @@ tar = "0.4"
 # TDS protocol (SQL query execution for warehouse/lakehouse)
 # TODO: Switch to upstream crates.io release once https://github.com/microsoft/mssql-rust-driver
 # publishes a version with rustls support (currently only available in this fork).
-mssql-tds = { git = "https://github.com/iemejia/mssql-rs.git", rev = "928a1762b8a9c2ee05016f0f887d65c53b6b7d2e", default-features = false, features = ["rustls-backend"] }
+mssql-tds = { git = "https://github.com/iemejia/mssql-rs.git", rev = "bb063b01fa3ad7d943f18f29e0a92b074f5b37e6", default-features = false, features = ["rustls-backend"] }
 
 # URL encoding for query parameters (security: prevent parameter injection)
 urlencoding = "2"

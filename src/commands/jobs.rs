@@ -131,14 +131,13 @@ impl JobLedger {
                     e.completed_at = Some(Utc::now().to_rfc3339());
                     if let (Ok(start), Some(end_str)) =
                         (DateTime::parse_from_rfc3339(&e.started_at), &e.completed_at)
+                        && let Ok(end) = DateTime::parse_from_rfc3339(end_str)
                     {
-                        if let Ok(end) = DateTime::parse_from_rfc3339(end_str) {
-                            e.duration_secs = Some(
-                                end.signed_duration_since(start)
-                                    .num_seconds()
-                                    .unsigned_abs(),
-                            );
-                        }
+                        e.duration_secs = Some(
+                            end.signed_duration_since(start)
+                                .num_seconds()
+                                .unsigned_abs(),
+                        );
                     }
                     if let Some(err) = error {
                         e.error = Some(err.to_string());

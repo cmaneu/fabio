@@ -410,11 +410,11 @@ async fn update(
             })?;
             if cred_details["credentials"].is_null() {
                 cred_details["credentials"] = cred_value;
-            } else if let Some(obj) = cred_details["credentials"].as_object_mut() {
-                if let Some(cred_obj) = cred_value.as_object() {
-                    for (k, v) in cred_obj {
-                        obj.insert(k.clone(), v.clone());
-                    }
+            } else if let Some(obj) = cred_details["credentials"].as_object_mut()
+                && let Some(cred_obj) = cred_value.as_object()
+            {
+                for (k, v) in cred_obj {
+                    obj.insert(k.clone(), v.clone());
                 }
             }
         }
@@ -424,10 +424,10 @@ async fn update(
     if cli.dry_run {
         // Redact credential values from the dry-run preview
         let mut safe_body = body.clone();
-        if let Some(cred) = safe_body.get_mut("credentialDetails") {
-            if let Some(creds) = cred.get_mut("credentials") {
-                *creds = serde_json::json!("[REDACTED]");
-            }
+        if let Some(cred) = safe_body.get_mut("credentialDetails")
+            && let Some(creds) = cred.get_mut("credentials")
+        {
+            *creds = serde_json::json!("[REDACTED]");
         }
         let preview = json!({
             "status": "dry_run",

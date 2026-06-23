@@ -101,10 +101,10 @@ static SQL_SCOPE: LazyLock<String> =
 static ARM_SCOPE: LazyLock<String> =
     LazyLock::new(|| env_or_default("FABIO_ARM_SCOPE", "https://management.azure.com/.default"));
 const LRO_POLL_INTERVAL: Duration = Duration::from_secs(2);
-const LRO_MAX_WAIT: Duration = Duration::from_secs(120);
+const LRO_MAX_WAIT: Duration = Duration::from_mins(2);
 
 /// Minimum remaining lifetime before a token is considered expired and re-acquired.
-const TOKEN_REFRESH_MARGIN: Duration = Duration::from_secs(300); // 5 minutes
+const TOKEN_REFRESH_MARGIN: Duration = Duration::from_mins(5);
 
 /// URL-encode each segment of a `OneLake` path while preserving `/` separators.
 /// Prevents query string injection (`?`), fragment injection (`#`), and ensures
@@ -202,7 +202,7 @@ impl FabricClient {
         // HTTP redirects could forward Authorization headers to attacker-controlled
         // domains. We handle LRO Location headers explicitly with validation instead.
         let http = Client::builder()
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_mins(1))
             .redirect(reqwest::redirect::Policy::none())
             .user_agent(concat!("fabio/", env!("CARGO_PKG_VERSION")))
             .build()
@@ -311,11 +311,11 @@ impl FabricClient {
     pub async fn require_auth(&self) -> Result<String> {
         {
             let guard = self.fabric_token.read().await;
-            if let Some(ref cached) = *guard {
-                if !cached.is_expired() {
-                    verbose::trace_auth_cache_hit(&FABRIC_SCOPE);
-                    return Ok(cached.bearer_header.clone());
-                }
+            if let Some(ref cached) = *guard
+                && !cached.is_expired()
+            {
+                verbose::trace_auth_cache_hit(&FABRIC_SCOPE);
+                return Ok(cached.bearer_header.clone());
             }
         }
 
@@ -338,10 +338,10 @@ impl FabricClient {
     pub async fn require_storage_auth(&self) -> Result<String> {
         {
             let guard = self.storage_token.read().await;
-            if let Some(ref cached) = *guard {
-                if !cached.is_expired() {
-                    return Ok(cached.bearer_header.clone());
-                }
+            if let Some(ref cached) = *guard
+                && !cached.is_expired()
+            {
+                return Ok(cached.bearer_header.clone());
             }
         }
 
@@ -357,10 +357,10 @@ impl FabricClient {
     pub async fn require_sql_auth(&self) -> Result<String> {
         {
             let guard = self.sql_token.read().await;
-            if let Some(ref cached) = *guard {
-                if !cached.is_expired() {
-                    return Ok(cached.token.clone());
-                }
+            if let Some(ref cached) = *guard
+                && !cached.is_expired()
+            {
+                return Ok(cached.token.clone());
             }
         }
 
@@ -377,10 +377,10 @@ impl FabricClient {
     pub async fn require_arm_auth(&self) -> Result<String> {
         {
             let guard = self.arm_token.read().await;
-            if let Some(ref cached) = *guard {
-                if !cached.is_expired() {
-                    return Ok(cached.bearer_header.clone());
-                }
+            if let Some(ref cached) = *guard
+                && !cached.is_expired()
+            {
+                return Ok(cached.bearer_header.clone());
             }
         }
 
@@ -2557,7 +2557,7 @@ impl FabricClient {
             sleep(poll_interval).await;
 
             // Refresh token if elapsed > 4 minutes (prevents expiry during long polls)
-            if start.elapsed() > Duration::from_secs(240) {
+            if start.elapsed() > Duration::from_mins(4) {
                 token = self.require_auth().await?;
             }
 
@@ -2809,25 +2809,25 @@ async fn try_managed_identity_credential(
 /// Try developer tools credentials (Azure CLI, then Azure Developer CLI).
 async fn try_developer_tools_credential(scope: &str) -> Result<(CachedToken, CredentialSource)> {
     // Try Azure CLI first
-    if let Ok(credential) = azure_identity::AzureCliCredential::new(None) {
-        if let Ok(token) = credential.get_token(&[scope], None).await {
-            let expires_on = std::time::SystemTime::from(token.expires_on);
-            return Ok((
-                CachedToken::new(token.token.secret().to_string(), expires_on),
-                CredentialSource::AzureCli,
-            ));
-        }
+    if let Ok(credential) = azure_identity::AzureCliCredential::new(None)
+        && let Ok(token) = credential.get_token(&[scope], None).await
+    {
+        let expires_on = std::time::SystemTime::from(token.expires_on);
+        return Ok((
+            CachedToken::new(token.token.secret().to_string(), expires_on),
+            CredentialSource::AzureCli,
+        ));
     }
 
     // Try Azure Developer CLI
-    if let Ok(credential) = azure_identity::AzureDeveloperCliCredential::new(None) {
-        if let Ok(token) = credential.get_token(&[scope], None).await {
-            let expires_on = std::time::SystemTime::from(token.expires_on);
-            return Ok((
-                CachedToken::new(token.token.secret().to_string(), expires_on),
-                CredentialSource::AzureDeveloperCli,
-            ));
-        }
+    if let Ok(credential) = azure_identity::AzureDeveloperCliCredential::new(None)
+        && let Ok(token) = credential.get_token(&[scope], None).await
+    {
+        let expires_on = std::time::SystemTime::from(token.expires_on);
+        return Ok((
+            CachedToken::new(token.token.secret().to_string(), expires_on),
+            CredentialSource::AzureDeveloperCli,
+        ));
     }
 
     Err(FabioError::with_hint(
@@ -2845,17 +2845,17 @@ async fn handle_response(resp: Response) -> Result<Value> {
 
     // Guard against unbounded response bodies (OOM protection).
     // Only applies to API JSON responses — file downloads use separate paths.
-    if let Some(len) = resp.content_length() {
-        if len > MAX_API_RESPONSE_SIZE {
-            return Err(FabioError::new(
-                ErrorCode::ApiError,
-                format!(
-                    "Response body too large ({len} bytes, max {MAX_API_RESPONSE_SIZE}). \
+    if let Some(len) = resp.content_length()
+        && len > MAX_API_RESPONSE_SIZE
+    {
+        return Err(FabioError::new(
+            ErrorCode::ApiError,
+            format!(
+                "Response body too large ({len} bytes, max {MAX_API_RESPONSE_SIZE}). \
                      This may indicate a misconfigured endpoint."
-                ),
-            )
-            .into());
-        }
+            ),
+        )
+        .into());
     }
 
     if status.is_success() {
@@ -2922,7 +2922,10 @@ async fn handle_response(resp: Response) -> Result<Value> {
             // Also redact any sensitive fields in case the server echoes back request payloads.
             let redacted = crate::verbose::redact_body_if_json(&text);
             let truncated = if redacted.len() > MAX_ERROR_BODY_LEN {
-                format!("{}...(truncated)", &redacted[..MAX_ERROR_BODY_LEN])
+                format!(
+                    "{}...(truncated)",
+                    &redacted[..redacted.floor_char_boundary(MAX_ERROR_BODY_LEN)]
+                )
             } else {
                 redacted
             };
@@ -3499,7 +3502,7 @@ mod tests {
     fn cached_token_new_formats_bearer_header() {
         let token = CachedToken::new(
             "my_token_123".to_string(),
-            std::time::SystemTime::now() + Duration::from_secs(3600),
+            std::time::SystemTime::now() + Duration::from_hours(1),
         );
         assert_eq!(token.bearer_header, "Bearer my_token_123");
         assert_eq!(token.token, "my_token_123");
@@ -3509,7 +3512,7 @@ mod tests {
     fn cached_token_not_expired_when_far_from_expiry() {
         let token = CachedToken::new(
             "tok".to_string(),
-            std::time::SystemTime::now() + Duration::from_secs(3600), // 1 hour from now
+            std::time::SystemTime::now() + Duration::from_hours(1), // 1 hour from now
         );
         assert!(!token.is_expired());
     }
@@ -3528,7 +3531,7 @@ mod tests {
     fn cached_token_expired_when_past_expiry() {
         let token = CachedToken::new(
             "tok".to_string(),
-            std::time::SystemTime::now() - Duration::from_secs(60), // already past
+            std::time::SystemTime::now() - Duration::from_mins(1), // already past
         );
         assert!(token.is_expired());
     }
@@ -3613,12 +3616,12 @@ mod tests {
 
     #[test]
     fn lro_max_wait_is_2_minutes() {
-        assert_eq!(LRO_MAX_WAIT, Duration::from_secs(120));
+        assert_eq!(LRO_MAX_WAIT, Duration::from_mins(2));
     }
 
     #[test]
     fn token_refresh_margin_is_5_minutes() {
-        assert_eq!(TOKEN_REFRESH_MARGIN, Duration::from_secs(300));
+        assert_eq!(TOKEN_REFRESH_MARGIN, Duration::from_mins(5));
     }
 
     #[test]
@@ -3641,13 +3644,13 @@ mod tests {
     #[test]
     fn fabric_client_default_lro_timeout_is_120s() {
         let client = FabricClient::new();
-        assert_eq!(client.lro_max_wait, Duration::from_secs(120));
+        assert_eq!(client.lro_max_wait, Duration::from_mins(2));
     }
 
     #[test]
     fn fabric_client_with_lro_timeout_overrides_default() {
-        let client = FabricClient::new().with_lro_timeout(Duration::from_secs(300));
-        assert_eq!(client.lro_max_wait, Duration::from_secs(300));
+        let client = FabricClient::new().with_lro_timeout(Duration::from_mins(5));
+        assert_eq!(client.lro_max_wait, Duration::from_mins(5));
     }
 
     #[test]

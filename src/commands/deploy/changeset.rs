@@ -102,7 +102,7 @@ impl Changeset {
     }
 
     /// Returns true if there are fatal errors preventing deployment.
-    pub fn has_errors(&self) -> bool {
+    pub const fn has_errors(&self) -> bool {
         !self.errors.is_empty()
     }
 

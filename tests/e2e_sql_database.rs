@@ -40,7 +40,7 @@ fn sql_database_create_show_and_delete() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -104,7 +104,7 @@ fn sql_database_update_description() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -231,7 +231,7 @@ fn sql_database_get_audit_settings() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -302,7 +302,7 @@ fn ensure_sql_database(cfg: &TestConfig) -> String {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -330,7 +330,7 @@ fn sql_database_query_select_one() {
             "--sql",
             "SELECT 1 AS test_col",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -360,7 +360,7 @@ fn sql_database_query_multiple_rows() {
             "--sql",
             "SELECT val FROM (VALUES (1),(2),(3)) AS t(val)",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -387,7 +387,7 @@ fn sql_database_query_from_stdin() {
             &db_id,
         ])
         .write_stdin("SELECT 42 AS answer")
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -421,7 +421,7 @@ fn sql_database_query_from_file() {
             "--sql",
             &sql_arg,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -453,7 +453,7 @@ fn sql_database_query_table_output() {
             "--sql",
             "SELECT 1 AS col1, 'hello' AS col2",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success()
         .stdout(predicate::str::contains("col1"))
@@ -480,7 +480,7 @@ fn sql_database_query_csv_output() {
             "--sql",
             "SELECT 1 AS num, 'hello' AS txt, CAST(NULL AS VARCHAR) AS empty",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -514,7 +514,7 @@ fn sql_database_query_tsv_output() {
             "--sql",
             "SELECT 99 AS val, 'world' AS msg",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -547,7 +547,7 @@ fn sql_database_query_ddl_no_resultset() {
             "--sql",
             "DECLARE @x INT = 1",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -660,7 +660,7 @@ fn sql_database_import_csv() {
             "test_csv_import",
             "--drop-if-exists",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -742,7 +742,7 @@ fn sql_database_import_json() {
             "test_json_import",
             "--drop-if-exists",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 

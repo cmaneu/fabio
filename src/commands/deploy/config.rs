@@ -188,15 +188,16 @@ pub fn parse_config(path: &Path) -> Result<DeployConfig> {
     };
 
     // Validate mutual exclusivity of include_folders and exclude_folders
-    if let Some(ref filters) = config.filters {
-        if filters.include_folders.is_some() && filters.exclude_folders.is_some() {
-            return Err(FabioError::with_hint(
+    if let Some(ref filters) = config.filters
+        && filters.include_folders.is_some()
+        && filters.exclude_folders.is_some()
+    {
+        return Err(FabioError::with_hint(
                 ErrorCode::InvalidInput,
                 "Config file error: 'include_folders' and 'exclude_folders' are mutually exclusive",
                 "Use only one: 'include_folders' to deploy specific folders, or 'exclude_folders' to skip specific folders.",
             )
             .into());
-        }
     }
 
     Ok(config)

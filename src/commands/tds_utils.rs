@@ -1,4 +1,4 @@
-use std::io::{self, Read};
+use std::io;
 
 use base64::Engine;
 use mssql_tds::connection::client_context::{ClientContext, TdsAuthenticationMethod};
@@ -23,8 +23,7 @@ pub fn resolve_sql_input(sql: Option<&str>) -> anyhow::Result<String> {
         }
         Some(s) => Ok(s.to_string()),
         None => {
-            let mut buf = String::new();
-            io::stdin().read_to_string(&mut buf).map_err(|e| {
+            let buf = io::read_to_string(io::stdin()).map_err(|e| {
                 FabioError::new(
                     ErrorCode::ApiError,
                     format!("Failed to read SQL from stdin: {e}"),

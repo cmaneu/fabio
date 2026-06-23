@@ -174,10 +174,10 @@ pub(super) async fn optimize_table(
     zorder: Option<&[String]>,
 ) -> Result<()> {
     let mut optimize_settings = serde_json::json!({ "vOrder": vorder });
-    if let Some(cols) = zorder {
-        if !cols.is_empty() {
-            optimize_settings["zOrderBy"] = serde_json::json!(cols);
-        }
+    if let Some(cols) = zorder
+        && !cols.is_empty()
+    {
+        optimize_settings["zOrderBy"] = serde_json::json!(cols);
     }
 
     let mut execution_data = serde_json::json!({
@@ -423,10 +423,11 @@ async fn table_schema_via_delta_log(
                 continue;
             };
 
-            if let Some(metadata) = obj.get("metaData") {
-                if let Some(schema_str) = metadata.get("schemaString").and_then(Value::as_str) {
-                    // Parse the schema string (which is itself JSON)
-                    let schema: Value = serde_json::from_str(schema_str).map_err(|e| {
+            if let Some(metadata) = obj.get("metaData")
+                && let Some(schema_str) = metadata.get("schemaString").and_then(Value::as_str)
+            {
+                // Parse the schema string (which is itself JSON)
+                let schema: Value = serde_json::from_str(schema_str).map_err(|e| {
                         FabioError::with_hint(
                             ErrorCode::ApiError,
                             format!("Failed to parse schema from Delta log: {e}"),
@@ -434,21 +435,20 @@ async fn table_schema_via_delta_log(
                         )
                     })?;
 
-                    // Extract fields array and build output
-                    let fields = schema
-                        .get("fields")
-                        .and_then(Value::as_array)
-                        .cloned()
-                        .unwrap_or_default();
+                // Extract fields array and build output
+                let fields = schema
+                    .get("fields")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
 
-                    let result = serde_json::json!({
-                        "table": table,
-                        "schema_type": schema.get("type").unwrap_or(&Value::Null),
-                        "fields": fields,
-                    });
-                    output::render_object(cli, &result, "table");
-                    return Ok(());
-                }
+                let result = serde_json::json!({
+                    "table": table,
+                    "schema_type": schema.get("type").unwrap_or(&Value::Null),
+                    "fields": fields,
+                });
+                output::render_object(cli, &result, "table");
+                return Ok(());
             }
         }
     }

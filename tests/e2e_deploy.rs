@@ -29,7 +29,7 @@ fn deploy_export_workspace_to_directory() {
             "--dir",
             output_dir.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -80,7 +80,7 @@ fn deploy_export_with_item_type_filter() {
             "--item-types",
             "Lakehouse",
         ])
-        .timeout(Duration::from_secs(180))
+        .timeout(Duration::from_mins(3))
         .assert()
         .success();
 
@@ -89,16 +89,16 @@ fn deploy_export_with_item_type_filter() {
     assert_eq!(data["status"], "exported");
 
     // All exported directories should be Lakehouse type
-    if let Some(exported) = data["exported"].as_u64() {
-        if exported > 0 {
-            for entry in std::fs::read_dir(&output_dir).unwrap().flatten() {
-                if entry.path().is_dir() {
-                    let platform_path = entry.path().join(".platform");
-                    if platform_path.exists() {
-                        let content = std::fs::read_to_string(&platform_path).unwrap();
-                        let meta: serde_json::Value = serde_json::from_str(&content).unwrap();
-                        assert_eq!(meta["metadata"]["type"], "Lakehouse");
-                    }
+    if let Some(exported) = data["exported"].as_u64()
+        && exported > 0
+    {
+        for entry in std::fs::read_dir(&output_dir).unwrap().flatten() {
+            if entry.path().is_dir() {
+                let platform_path = entry.path().join(".platform");
+                if platform_path.exists() {
+                    let content = std::fs::read_to_string(&platform_path).unwrap();
+                    let meta: serde_json::Value = serde_json::from_str(&content).unwrap();
+                    assert_eq!(meta["metadata"]["type"], "Lakehouse");
                 }
             }
         }
@@ -123,7 +123,7 @@ fn deploy_export_dry_run() {
             output_dir.to_str().unwrap(),
             "--dry-run",
         ])
-        .timeout(Duration::from_secs(180))
+        .timeout(Duration::from_mins(3))
         .assert()
         .success();
 
@@ -155,7 +155,7 @@ fn deploy_plan_exported_workspace_shows_skip_or_update() {
             "--dir",
             export_dir.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -169,7 +169,7 @@ fn deploy_plan_exported_workspace_shows_skip_or_update() {
             "--workspace",
             &cfg.source_workspace,
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -218,7 +218,7 @@ fn deploy_plan_force_all_shows_all_updates() {
             "--dir",
             export_dir.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -233,7 +233,7 @@ fn deploy_plan_force_all_shows_all_updates() {
             &cfg.source_workspace,
             "--force-all",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -271,7 +271,7 @@ fn deploy_plan_with_item_type_filter() {
             "--dir",
             export_dir.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -288,7 +288,7 @@ fn deploy_plan_with_item_type_filter() {
             "Lakehouse",
             "--force-all",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -325,7 +325,7 @@ fn deploy_plan_save_to_file() {
             "--dir",
             export_dir.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -342,7 +342,7 @@ fn deploy_plan_save_to_file() {
             "--out",
             plan_file.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -376,7 +376,7 @@ fn deploy_apply_dry_run() {
             "--dir",
             export_dir.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -392,7 +392,7 @@ fn deploy_apply_dry_run() {
             "--force-all",
             "--dry-run",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -467,7 +467,7 @@ fn deploy_apply_create_notebook_and_cleanup() {
             "--workspace",
             &cfg.dest_workspace,
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -485,7 +485,7 @@ fn deploy_apply_create_notebook_and_cleanup() {
             "--workspace",
             &cfg.dest_workspace,
         ])
-        .timeout(Duration::from_secs(180))
+        .timeout(Duration::from_mins(3))
         .assert()
         .success();
 
@@ -526,7 +526,7 @@ fn deploy_apply_create_notebook_and_cleanup() {
             "--workspace",
             &cfg.dest_workspace,
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -546,7 +546,7 @@ fn deploy_apply_create_notebook_and_cleanup() {
             "--id",
             nb_id,
         ])
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -581,7 +581,7 @@ fn deploy_plan_nonexistent_workspace_fails() {
             "--workspace",
             "NonExistentWorkspace12345",
         ])
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .assert()
         .failure();
 
@@ -694,7 +694,7 @@ fn deploy_export_overwrite_flag_works() {
             output_dir.to_str().unwrap(),
             "--overwrite",
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 }
@@ -719,7 +719,7 @@ fn deploy_plan_workspace_name_resolution() {
             "--dir",
             export_dir.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -745,7 +745,7 @@ fn deploy_plan_workspace_name_resolution() {
             &ws_name,
             "--force-all",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1103,7 +1103,7 @@ fn deploy_plan_with_parameters_requires_env() {
             "--dir",
             export_dir.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -1127,7 +1127,7 @@ fn deploy_plan_with_parameters_requires_env() {
             "--parameters",
             params_file.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .assert()
         .failure();
 }
@@ -1150,7 +1150,7 @@ fn deploy_plan_with_parameters_and_env() {
             "--dir",
             export_dir.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -1177,7 +1177,7 @@ fn deploy_plan_with_parameters_and_env() {
             "prod",
             "--force-all",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1205,7 +1205,7 @@ fn deploy_plan_with_key_value_replace_parameters() {
             "--dir",
             export_dir.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -1240,7 +1240,7 @@ fn deploy_plan_with_key_value_replace_parameters() {
             "prod",
             "--force-all",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1267,7 +1267,7 @@ fn deploy_plan_with_spark_pool_parameters() {
             "--dir",
             export_dir.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -1307,7 +1307,7 @@ fn deploy_plan_with_spark_pool_parameters() {
             "prod",
             "--force-all",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1334,7 +1334,7 @@ fn deploy_plan_with_semantic_model_binding_parameters() {
             "--dir",
             export_dir.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -1370,7 +1370,7 @@ fn deploy_plan_with_semantic_model_binding_parameters() {
             "prod",
             "--force-all",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1441,7 +1441,7 @@ fn deploy_plan_file_roundtrip_apply() {
             "--out",
             plan_file.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1454,7 +1454,7 @@ fn deploy_plan_file_roundtrip_apply() {
     // Step 2: Apply from plan file
     let assert = fabio()
         .args(["deploy", "apply", "--plan", plan_file.to_str().unwrap()])
-        .timeout(Duration::from_secs(180))
+        .timeout(Duration::from_mins(3))
         .assert()
         .success();
 
@@ -1491,7 +1491,7 @@ fn deploy_plan_file_roundtrip_apply() {
             "--id",
             nb_id,
         ])
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -1559,7 +1559,7 @@ fn deploy_plan_staleness_detection() {
             "--out",
             plan_file.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1575,7 +1575,7 @@ fn deploy_plan_staleness_detection() {
             "--type",
             "Notebook",
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
     let json = parse_json(&assert);
@@ -1584,7 +1584,7 @@ fn deploy_plan_staleness_detection() {
     // Step 3: Apply from plan file WITHOUT --force → should FAIL (stale)
     let assert = fabio()
         .args(["deploy", "apply", "--plan", plan_file.to_str().unwrap()])
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .assert()
         .failure();
 
@@ -1605,7 +1605,7 @@ fn deploy_plan_staleness_detection() {
             plan_file.to_str().unwrap(),
             "--force",
         ])
-        .timeout(Duration::from_secs(180))
+        .timeout(Duration::from_mins(3))
         .assert()
         .success();
 
@@ -1638,7 +1638,7 @@ fn deploy_plan_staleness_detection() {
                 "--id",
                 id,
             ])
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_mins(1))
             .assert()
             .success();
     }
@@ -1651,7 +1651,7 @@ fn deploy_plan_staleness_detection() {
             "--id",
             &stale_item_id,
         ])
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -1752,7 +1752,7 @@ fn deploy_apply_logical_id_resolution() {
             "--workspace",
             &cfg.dest_workspace,
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1775,7 +1775,7 @@ fn deploy_apply_logical_id_resolution() {
             "--workspace",
             &cfg.dest_workspace,
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -1815,7 +1815,7 @@ fn deploy_apply_logical_id_resolution() {
             "--id",
             nb_id,
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
     let json = parse_json(&assert);
@@ -1859,7 +1859,7 @@ fn deploy_apply_logical_id_resolution() {
             "--id",
             nb_id,
         ])
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .assert()
         .success();
     fabio()
@@ -1871,7 +1871,7 @@ fn deploy_apply_logical_id_resolution() {
             "--id",
             lh_id,
         ])
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -1897,7 +1897,7 @@ fn deploy_plan_file_contains_fingerprint() {
             "--dir",
             export_dir.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_mins(5))
         .assert()
         .success();
 
@@ -1914,7 +1914,7 @@ fn deploy_plan_file_contains_fingerprint() {
             "--out",
             plan_file.to_str().unwrap(),
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -2006,7 +2006,7 @@ fn deploy_apply_creation_payload_lakehouse_with_schemas() {
             "--workspace",
             &cfg.dest_workspace,
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -2024,7 +2024,7 @@ fn deploy_apply_creation_payload_lakehouse_with_schemas() {
             "--workspace",
             &cfg.dest_workspace,
         ])
-        .timeout(Duration::from_secs(180))
+        .timeout(Duration::from_mins(3))
         .assert()
         .success();
 
@@ -2065,7 +2065,7 @@ fn deploy_apply_creation_payload_lakehouse_with_schemas() {
             "--id",
             lh_id,
         ])
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -2133,7 +2133,7 @@ fn deploy_plan_detects_rename() {
             "--workspace",
             &cfg.dest_workspace,
         ])
-        .timeout(Duration::from_secs(180))
+        .timeout(Duration::from_mins(3))
         .assert()
         .success();
 
@@ -2195,7 +2195,7 @@ fn deploy_plan_detects_rename() {
             "--workspace",
             &cfg.dest_workspace,
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 
@@ -2223,7 +2223,7 @@ fn deploy_plan_detects_rename() {
             "--workspace",
             &cfg.dest_workspace,
         ])
-        .timeout(Duration::from_secs(180))
+        .timeout(Duration::from_mins(3))
         .assert()
         .success();
 
@@ -2263,7 +2263,7 @@ fn deploy_plan_detects_rename() {
             "--id",
             &nb_id,
         ])
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -2330,7 +2330,7 @@ fn deploy_apply_no_post_hooks_flag_accepted() {
             &cfg.dest_workspace,
             "--no-post-hooks",
         ])
-        .timeout(Duration::from_secs(180))
+        .timeout(Duration::from_mins(3))
         .assert()
         .success();
 
@@ -2374,7 +2374,7 @@ fn deploy_apply_no_post_hooks_flag_accepted() {
             "--id",
             nb_id,
         ])
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -2765,7 +2765,7 @@ fn deploy_export_lakehouse_includes_shortcuts() {
             "--target",
             &target_json,
         ])
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .assert()
         .success();
 
@@ -2785,7 +2785,7 @@ fn deploy_export_lakehouse_includes_shortcuts() {
             "--item-types",
             "Lakehouse",
         ])
-        .timeout(Duration::from_secs(180))
+        .timeout(Duration::from_mins(3))
         .assert()
         .success();
 
@@ -2827,7 +2827,7 @@ fn deploy_export_lakehouse_includes_shortcuts() {
             "--path",
             "Files",
         ])
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -2868,7 +2868,7 @@ fn deploy_plan_data_build_tool_job() {
             "--workspace",
             &cfg.dest_workspace,
         ])
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .assert()
         .success();
 

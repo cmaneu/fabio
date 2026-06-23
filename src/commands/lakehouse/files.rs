@@ -142,13 +142,13 @@ pub(super) async fn download(
     dest_path: &str,
 ) -> Result<()> {
     // Security: reject symlinks at destination to prevent arbitrary file overwrite
-    if let Ok(meta) = std::fs::symlink_metadata(dest_path) {
-        if meta.file_type().is_symlink() {
-            return Err(crate::errors::FabioError::invalid_input(format!(
-                "Destination path is a symlink (refusing to follow): {dest_path}"
-            ))
-            .into());
-        }
+    if let Ok(meta) = std::fs::symlink_metadata(dest_path)
+        && meta.file_type().is_symlink()
+    {
+        return Err(crate::errors::FabioError::invalid_input(format!(
+            "Destination path is a symlink (refusing to follow): {dest_path}"
+        ))
+        .into());
     }
 
     let data = client

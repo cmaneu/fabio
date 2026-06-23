@@ -87,26 +87,26 @@ pub(super) async fn create(
     }));
 
     // For TMDL models with --connection, generate the expressions.tmdl
-    if let Some(conn_id) = connection {
-        if is_tmdl {
-            let expr = format!(
-                "expression DatabaseQuery =\n\
+    if let Some(conn_id) = connection
+        && is_tmdl
+    {
+        let expr = format!(
+            "expression DatabaseQuery =\n\
                  \t\tlet\n\
                  \t\t\tdatabase = Sql.Database(\"placeholder\", \"{conn_id}\")\n\
                  \t\tin\n\
                  \t\t\tdatabase\n\
                  \tlineageTag: 00000000-0000-0000-0000-000000000001"
-            );
-            let expr_encoded = base64::engine::Engine::encode(
-                &base64::engine::general_purpose::STANDARD,
-                expr.as_bytes(),
-            );
-            parts.push(serde_json::json!({
-                "path": "definition/expressions.tmdl",
-                "payload": expr_encoded,
-                "payloadType": "InlineBase64"
-            }));
-        }
+        );
+        let expr_encoded = base64::engine::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            expr.as_bytes(),
+        );
+        parts.push(serde_json::json!({
+            "path": "definition/expressions.tmdl",
+            "payload": expr_encoded,
+            "payloadType": "InlineBase64"
+        }));
     }
 
     let mut body = serde_json::json!({

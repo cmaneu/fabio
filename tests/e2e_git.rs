@@ -43,10 +43,10 @@ where
 /// Returns `None` if no GitHub connection is available.
 fn find_github_connection_id() -> Option<String> {
     // Check env var first
-    if let Ok(id) = std::env::var("FABIO_TEST_GIT_CONNECTION_ID") {
-        if !id.is_empty() {
-            return Some(id);
-        }
+    if let Ok(id) = std::env::var("FABIO_TEST_GIT_CONNECTION_ID")
+        && !id.is_empty()
+    {
+        return Some(id);
     }
 
     // Auto-discover from tenant
@@ -117,7 +117,7 @@ fn git_status_unconnected_workspace_fails() {
 
     let assert = fabio()
         .args(["git", "status", "--workspace", &cfg.source_workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .failure();
 
@@ -148,7 +148,7 @@ fn git_commit_unconnected_workspace_fails() {
             "--message",
             "test commit",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .failure();
 }
@@ -165,7 +165,7 @@ fn git_pull_unconnected_workspace_fails() {
 
     fabio()
         .args(["git", "pull", "--workspace", &cfg.source_workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .failure();
 }
@@ -197,7 +197,7 @@ fn git_connect_init_status_disconnect_lifecycle() {
     // First ensure workspace is disconnected (ignore error if already disconnected)
     let _ = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 
     // Verify disconnected state
@@ -231,7 +231,7 @@ fn git_connect_init_status_disconnect_lifecycle() {
             "--connection-id",
             &connection_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -269,7 +269,7 @@ fn git_connect_init_status_disconnect_lifecycle() {
                 "--strategy",
                 "prefer-workspace",
             ])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -282,7 +282,7 @@ fn git_connect_init_status_disconnect_lifecycle() {
     let assert = retry_on_failure(|| {
         fabio()
             .args(["git", "status", "--workspace", workspace])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -298,7 +298,7 @@ fn git_connect_init_status_disconnect_lifecycle() {
     // Disconnect
     let assert = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -343,7 +343,7 @@ fn git_checkout_unconnected_fails() {
             "--repo",
             "fabio-test-connection",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .failure();
 }
@@ -374,7 +374,7 @@ fn git_switch_alias_works() {
             "--repo",
             "fabio-test-connection",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .failure();
 
@@ -492,7 +492,7 @@ fn git_commit_pull_lifecycle() {
     // Ensure workspace is disconnected
     let _ = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 
     // Connect
@@ -513,7 +513,7 @@ fn git_commit_pull_lifecycle() {
             "--connection-id",
             &connection_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -534,7 +534,7 @@ fn git_commit_pull_lifecycle() {
     retry_on_failure(|| {
         fabio()
             .args(init_args)
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -559,7 +559,7 @@ fn git_commit_pull_lifecycle() {
             "--content",
             "# Test notebook for git commit test",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -567,7 +567,7 @@ fn git_commit_pull_lifecycle() {
     let assert = retry_on_failure(|| {
         fabio()
             .args(["git", "status", "--workspace", workspace])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -599,7 +599,7 @@ fn git_commit_pull_lifecycle() {
     let assert = retry_on_failure(|| {
         fabio()
             .args(commit_args)
-            .timeout(std::time::Duration::from_secs(180))
+            .timeout(std::time::Duration::from_mins(3))
             .assert()
     });
     let assert = assert.success();
@@ -612,7 +612,7 @@ fn git_commit_pull_lifecycle() {
     let assert = retry_on_failure(|| {
         fabio()
             .args(["git", "status", "--workspace", workspace])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -673,14 +673,14 @@ fn git_commit_pull_lifecycle() {
                 &format!("Clean up: delete {test_name}"),
                 "--wait",
             ])
-            .timeout(std::time::Duration::from_secs(180))
+            .timeout(std::time::Duration::from_mins(3))
             .assert();
     }
 
     // Disconnect
     fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -712,7 +712,7 @@ fn git_feature_branch_workflow() {
     // Ensure workspace is disconnected
     let _ = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 
     // Step 1: Connect to main and initialize
@@ -733,7 +733,7 @@ fn git_feature_branch_workflow() {
             "--connection-id",
             &connection_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -748,7 +748,7 @@ fn git_feature_branch_workflow() {
                 "prefer-workspace",
                 "--wait",
             ])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -825,7 +825,7 @@ fn git_feature_branch_workflow() {
     retry_on_failure(|| {
         fabio()
             .args(checkout_args)
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -855,7 +855,7 @@ fn git_feature_branch_workflow() {
             "--content",
             "# Feature branch notebook\nprint('hello from feature branch')",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -874,7 +874,7 @@ fn git_feature_branch_workflow() {
     let assert = retry_on_failure(|| {
         fabio()
             .args(commit_args)
-            .timeout(std::time::Duration::from_secs(180))
+            .timeout(std::time::Duration::from_mins(3))
             .assert()
     })
     .success();
@@ -921,7 +921,7 @@ fn git_feature_branch_workflow() {
     retry_on_failure(|| {
         fabio()
             .args(switch_args)
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -983,7 +983,7 @@ fn git_feature_branch_workflow() {
         let _ = retry_on_failure(|| {
             fabio()
                 .args(cleanup_args)
-                .timeout(std::time::Duration::from_secs(180))
+                .timeout(std::time::Duration::from_mins(3))
                 .assert()
         });
     }
@@ -991,7 +991,7 @@ fn git_feature_branch_workflow() {
     // Disconnect
     fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -1015,7 +1015,7 @@ fn git_selective_commit() {
     // Ensure workspace is disconnected
     let _ = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 
     // Connect and init
@@ -1036,7 +1036,7 @@ fn git_selective_commit() {
             "--connection-id",
             &connection_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1051,7 +1051,7 @@ fn git_selective_commit() {
                 "prefer-workspace",
                 "--wait",
             ])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -1075,7 +1075,7 @@ fn git_selective_commit() {
             "--content",
             "# Notebook A",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1090,7 +1090,7 @@ fn git_selective_commit() {
             "--content",
             "# Notebook B",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1098,7 +1098,7 @@ fn git_selective_commit() {
     let assert = retry_on_failure(|| {
         fabio()
             .args(["git", "status", "--workspace", workspace])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -1139,7 +1139,7 @@ fn git_selective_commit() {
     let assert = retry_on_failure(|| {
         fabio()
             .args(commit_args)
-            .timeout(std::time::Duration::from_secs(180))
+            .timeout(std::time::Duration::from_mins(3))
             .assert()
     })
     .success();
@@ -1152,7 +1152,7 @@ fn git_selective_commit() {
     let assert = retry_on_failure(|| {
         fabio()
             .args(["git", "status", "--workspace", workspace])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -1190,7 +1190,7 @@ fn git_selective_commit() {
                 "cleanup: commit remaining",
                 "--wait",
             ])
-            .timeout(std::time::Duration::from_secs(180))
+            .timeout(std::time::Duration::from_mins(3))
             .assert()
     });
 
@@ -1227,13 +1227,13 @@ fn git_selective_commit() {
                 "cleanup: delete selective test notebooks",
                 "--wait",
             ])
-            .timeout(std::time::Duration::from_secs(180))
+            .timeout(std::time::Duration::from_mins(3))
             .assert()
     });
 
     fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -1257,7 +1257,7 @@ fn git_credentials_update() {
     // Ensure workspace is disconnected
     let _ = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 
     // Connect and init (credentials will be ConfiguredConnection)
@@ -1278,7 +1278,7 @@ fn git_credentials_update() {
             "--connection-id",
             &connection_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1293,7 +1293,7 @@ fn git_credentials_update() {
                 "prefer-workspace",
                 "--wait",
             ])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -1364,7 +1364,7 @@ fn git_credentials_update() {
     // Disconnect
     fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -1388,7 +1388,7 @@ fn git_commit_async_returns_operation() {
     // Ensure workspace is disconnected
     let _ = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 
     // Connect and init
@@ -1409,7 +1409,7 @@ fn git_commit_async_returns_operation() {
             "--connection-id",
             &connection_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1424,7 +1424,7 @@ fn git_commit_async_returns_operation() {
                 "prefer-workspace",
                 "--wait",
             ])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -1447,7 +1447,7 @@ fn git_commit_async_returns_operation() {
             "--content",
             "# Async commit test",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1464,7 +1464,7 @@ fn git_commit_async_returns_operation() {
     let assert = retry_on_failure(|| {
         fabio()
             .args(commit_args)
-            .timeout(std::time::Duration::from_secs(60))
+            .timeout(std::time::Duration::from_mins(1))
             .assert()
     })
     .success();
@@ -1513,13 +1513,13 @@ fn git_commit_async_returns_operation() {
                 "cleanup: delete async test notebook",
                 "--wait",
             ])
-            .timeout(std::time::Duration::from_secs(180))
+            .timeout(std::time::Duration::from_mins(3))
             .assert()
     });
 
     fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -1543,7 +1543,7 @@ fn git_pull_with_conflict_resolution() {
     // Ensure workspace is disconnected
     let _ = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 
     // Connect and init
@@ -1564,7 +1564,7 @@ fn git_pull_with_conflict_resolution() {
             "--connection-id",
             &connection_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1579,7 +1579,7 @@ fn git_pull_with_conflict_resolution() {
                 "prefer-workspace",
                 "--wait",
             ])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -1600,7 +1600,7 @@ fn git_pull_with_conflict_resolution() {
     let assert = retry_on_failure(|| {
         fabio()
             .args(pull_args)
-            .timeout(std::time::Duration::from_secs(180))
+            .timeout(std::time::Duration::from_mins(3))
             .assert()
     })
     .success();
@@ -1618,7 +1618,7 @@ fn git_pull_with_conflict_resolution() {
     // Disconnect
     fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -1642,7 +1642,7 @@ fn git_connect_nonexistent_branch_gives_hint() {
     // Ensure workspace is disconnected
     let _ = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 
     // Try to connect to a branch that doesn't exist
@@ -1663,7 +1663,7 @@ fn git_connect_nonexistent_branch_gives_hint() {
             "--connection-id",
             &connection_id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .failure();
 
@@ -1714,7 +1714,7 @@ fn git_checkout_nonexistent_branch_gives_hint_and_rollback() {
     // Ensure workspace is disconnected
     let _ = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 
     // Connect to main and init
@@ -1735,7 +1735,7 @@ fn git_checkout_nonexistent_branch_gives_hint_and_rollback() {
             "--connection-id",
             &connection_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1750,7 +1750,7 @@ fn git_checkout_nonexistent_branch_gives_hint_and_rollback() {
                 "prefer-workspace",
                 "--wait",
             ])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -1769,7 +1769,7 @@ fn git_checkout_nonexistent_branch_gives_hint_and_rollback() {
             "prefer-remote",
             "--wait",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .failure();
 
@@ -1808,7 +1808,7 @@ fn git_checkout_nonexistent_branch_gives_hint_and_rollback() {
     // Disconnect
     fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 }
@@ -1856,7 +1856,7 @@ fn git_checkout_blocked_by_uncommitted_changes() {
     // Ensure workspace is disconnected
     let _ = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 
     // Connect to main and init
@@ -1877,7 +1877,7 @@ fn git_checkout_blocked_by_uncommitted_changes() {
             "--connection-id",
             &connection_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1892,7 +1892,7 @@ fn git_checkout_blocked_by_uncommitted_changes() {
                 "prefer-remote",
                 "--wait",
             ])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -1913,7 +1913,7 @@ fn git_checkout_blocked_by_uncommitted_changes() {
             "--name",
             &nb_name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1938,7 +1938,7 @@ fn git_checkout_blocked_by_uncommitted_changes() {
             "prefer-remote",
             "--wait",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .failure();
 
@@ -1967,14 +1967,14 @@ fn git_checkout_blocked_by_uncommitted_changes() {
                 "--id",
                 &nb_id,
             ])
-            .timeout(std::time::Duration::from_secs(60))
+            .timeout(std::time::Duration::from_mins(1))
             .assert();
     }
 
     // Disconnect
     let _ = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 }
 
@@ -2022,10 +2022,10 @@ impl AzdoConfig {
     /// 1. `FABIO_TEST_AZDO_CONNECTION_ID` env var
     /// 2. Auto-discover from `fabio connection list` (type `AzureDevOpsSourceControl`)
     fn find_connection_id(&self) -> Option<String> {
-        if let Some(ref id) = self.connection_id {
-            if !id.is_empty() {
-                return Some(id.clone());
-            }
+        if let Some(ref id) = self.connection_id
+            && !id.is_empty()
+        {
+            return Some(id.clone());
         }
 
         // Auto-discover Azure DevOps connection from tenant
@@ -2151,7 +2151,7 @@ fn git_azdo_connect_init_status_disconnect_lifecycle() {
     // Ensure workspace is disconnected
     let _ = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 
     // Verify disconnected state
@@ -2194,7 +2194,7 @@ fn git_azdo_connect_init_status_disconnect_lifecycle() {
 
     let assert = fabio()
         .args(&connect_args)
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -2229,7 +2229,7 @@ fn git_azdo_connect_init_status_disconnect_lifecycle() {
                 "prefer-workspace",
                 "--wait",
             ])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -2242,7 +2242,7 @@ fn git_azdo_connect_init_status_disconnect_lifecycle() {
     let assert = retry_on_failure(|| {
         fabio()
             .args(["git", "status", "--workspace", workspace])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -2257,7 +2257,7 @@ fn git_azdo_connect_init_status_disconnect_lifecycle() {
     // Disconnect
     let assert = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -2306,7 +2306,7 @@ fn git_table_not_tracked_but_notebook_is() {
         // Try to disconnect first (in case partially connected)
         let _ = fabio()
             .args(["git", "disconnect", "--workspace", &workspace])
-            .timeout(std::time::Duration::from_secs(60))
+            .timeout(std::time::Duration::from_mins(1))
             .assert();
 
         let connect_result = fabio()
@@ -2326,7 +2326,7 @@ fn git_table_not_tracked_but_notebook_is() {
                 "--connection-id",
                 &connection_id,
             ])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert();
 
         if !connect_result.get_output().status.success() {
@@ -2345,7 +2345,7 @@ fn git_table_not_tracked_but_notebook_is() {
                     "prefer-workspace",
                     "--wait",
                 ])
-                .timeout(std::time::Duration::from_secs(120))
+                .timeout(std::time::Duration::from_mins(2))
                 .assert()
         })
         .success();
@@ -2355,7 +2355,7 @@ fn git_table_not_tracked_but_notebook_is() {
     let assert = retry_on_failure(|| {
         fabio()
             .args(["git", "status", "--workspace", &workspace])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -2389,7 +2389,7 @@ fn git_table_not_tracked_but_notebook_is() {
             "--dest-path",
             "Files/git_table_test.csv",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 
     if !upload_result.get_output().status.success() {
@@ -2397,7 +2397,7 @@ fn git_table_not_tracked_but_notebook_is() {
         if !already_connected {
             let _ = fabio()
                 .args(["git", "disconnect", "--workspace", &workspace])
-                .timeout(std::time::Duration::from_secs(60))
+                .timeout(std::time::Duration::from_mins(1))
                 .assert();
         }
         return;
@@ -2421,7 +2421,7 @@ fn git_table_not_tracked_but_notebook_is() {
             "--format",
             "Csv",
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert();
 
     if !load_result.get_output().status.success() {
@@ -2442,7 +2442,7 @@ fn git_table_not_tracked_but_notebook_is() {
         if !already_connected {
             let _ = fabio()
                 .args(["git", "disconnect", "--workspace", &workspace])
-                .timeout(std::time::Duration::from_secs(60))
+                .timeout(std::time::Duration::from_mins(1))
                 .assert();
         }
         return;
@@ -2453,7 +2453,7 @@ fn git_table_not_tracked_but_notebook_is() {
     let assert = retry_on_failure(|| {
         fabio()
             .args(["git", "status", "--workspace", &workspace])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -2488,7 +2488,7 @@ fn git_table_not_tracked_but_notebook_is() {
             "--table",
             "git_test_table",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 
     let _ = fabio()
@@ -2512,7 +2512,7 @@ fn git_table_not_tracked_but_notebook_is() {
     if !already_connected {
         fabio()
             .args(["git", "disconnect", "--workspace", &workspace])
-            .timeout(std::time::Duration::from_secs(60))
+            .timeout(std::time::Duration::from_mins(1))
             .assert()
             .success();
     }
@@ -2532,7 +2532,7 @@ fn git_azdo_connect_invalid_org_gives_hint() {
     // Ensure workspace is disconnected
     let _ = fabio()
         .args(["git", "disconnect", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert();
 
     // Try to connect to a non-existent Azure DevOps org/project/repo
@@ -2553,7 +2553,7 @@ fn git_azdo_connect_invalid_org_gives_hint() {
             "--branch",
             "main",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .failure();
 
@@ -2593,7 +2593,7 @@ fn git_show_tracked_on_connected_workspace() {
     let assert = retry_on_failure(|| {
         fabio()
             .args(["git", "show-tracked", "--workspace", &workspace])
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
     .success();
@@ -2635,7 +2635,7 @@ fn git_show_tracked_on_unconnected_workspace_gives_hint() {
 
     let assert = fabio()
         .args(["git", "show-tracked", "--workspace", workspace])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .failure();
 

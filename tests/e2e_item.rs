@@ -132,7 +132,7 @@ fn item_create_and_delete() {
             "--type",
             "Lakehouse",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -182,7 +182,7 @@ fn item_copy_with_custom_name_and_delete() {
             "--name",
             &copy_name,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -228,7 +228,7 @@ fn item_copy_without_name_inherits_source_name() {
             "--content",
             "print('copy inherit name test')",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -262,7 +262,7 @@ fn item_copy_without_name_inherits_source_name() {
             "--dest-workspace",
             &cfg.dest_workspace,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -321,7 +321,7 @@ fn item_move_to_dest_workspace() {
             "--content",
             "print('move test')",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -361,7 +361,7 @@ fn item_move_to_dest_workspace() {
             "--name",
             &move_name,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -419,7 +419,7 @@ fn item_move_without_name() {
             "--content",
             "print('move no rename')",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -453,7 +453,7 @@ fn item_move_without_name() {
             "--dest-workspace",
             &cfg.source_workspace,
         ])
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
@@ -647,7 +647,7 @@ fn item_update_name() {
             "--type",
             "Lakehouse",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -707,7 +707,7 @@ fn item_update_description() {
             "--type",
             "Lakehouse",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -796,7 +796,7 @@ fn item_get_definition_notebook() {
             "--id",
             &cfg.notebook_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -863,7 +863,7 @@ fn item_update_definition_inline() {
             "--content",
             "print('original')",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -909,7 +909,7 @@ fn item_update_definition_inline() {
             "--definition",
             &serde_json::to_string(&definition_payload).unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -1113,7 +1113,7 @@ fn item_inspect_returns_metadata() {
             "--id",
             &cfg.source_lakehouse,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1143,7 +1143,7 @@ fn item_inspect_notebook_includes_definition() {
             "--id",
             &cfg.notebook_id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 

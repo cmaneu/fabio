@@ -580,43 +580,37 @@ async fn get_connection_string(
     if let Ok(data) = client
         .get(&format!("/workspaces/{workspace}/warehouses/{id}"))
         .await
-    {
-        if let Some(conn) = data
+        && let Some(conn) = data
             .get("properties")
             .and_then(|p| p.get("connectionString"))
             .and_then(Value::as_str)
-        {
-            if !conn.is_empty() {
-                let db_name = data
-                    .get("displayName")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string();
-                return Ok((conn.to_string(), db_name));
-            }
-        }
+        && !conn.is_empty()
+    {
+        let db_name = data
+            .get("displayName")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        return Ok((conn.to_string(), db_name));
     }
 
     // Fall back to lakehouse SQL endpoint
     if let Ok(data) = client
         .get(&format!("/workspaces/{workspace}/lakehouses/{id}"))
         .await
-    {
-        if let Some(conn) = data
+        && let Some(conn) = data
             .get("properties")
             .and_then(|p| p.get("sqlEndpointProperties"))
             .and_then(|s| s.get("connectionString"))
             .and_then(Value::as_str)
-        {
-            if !conn.is_empty() {
-                let db_name = data
-                    .get("displayName")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string();
-                return Ok((conn.to_string(), db_name));
-            }
-        }
+        && !conn.is_empty()
+    {
+        let db_name = data
+            .get("displayName")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        return Ok((conn.to_string(), db_name));
     }
 
     Err(FabioError {

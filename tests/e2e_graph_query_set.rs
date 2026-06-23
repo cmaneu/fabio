@@ -45,7 +45,7 @@ fn graph_query_set_create_show_and_delete() {
             "--description",
             "E2E test graph query set",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -108,7 +108,7 @@ fn graph_query_set_get_definition() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -126,7 +126,7 @@ fn graph_query_set_get_definition() {
             "--id",
             &gqs_id,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -215,7 +215,7 @@ fn graph_query_set_update_definition() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -235,7 +235,7 @@ fn graph_query_set_update_definition() {
             "--content",
             r#"{"dependencies":[],"indirectDependencies":[],"ArtifactContents":[],"ConfigurationCategories":[]}"#,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 

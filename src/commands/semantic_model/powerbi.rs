@@ -331,10 +331,10 @@ pub(super) async fn export_pbix(
         .map_err(|e| enrich_forbidden(e, "semantic-model export-pbix", "Contributor"))?;
 
     // Ensure parent directory exists
-    if let Some(parent) = Path::new(output_path).parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = Path::new(output_path).parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
     }
     std::fs::write(output_path, &bytes)?;
 

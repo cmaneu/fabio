@@ -72,50 +72,50 @@ pub(super) async fn list_entities(
     let mut entities: Vec<Value> = Vec::new();
 
     // Extract tables
-    if entity_type.is_none() || entity_type == Some("table") {
-        if let Some(tables) = schema.get("Tables").and_then(Value::as_object) {
-            for (name, _info) in tables {
-                entities.push(serde_json::json!({
-                    "name": name,
-                    "type": "table",
-                }));
-            }
+    if entity_type.is_none_or(|t| t == "table")
+        && let Some(tables) = schema.get("Tables").and_then(Value::as_object)
+    {
+        for (name, _info) in tables {
+            entities.push(serde_json::json!({
+                "name": name,
+                "type": "table",
+            }));
         }
     }
 
     // Extract materialized views
-    if entity_type.is_none() || entity_type == Some("materialized-view") {
-        if let Some(views) = schema.get("MaterializedViews").and_then(Value::as_object) {
-            for (name, _info) in views {
-                entities.push(serde_json::json!({
-                    "name": name,
-                    "type": "materialized-view",
-                }));
-            }
+    if entity_type.is_none_or(|t| t == "materialized-view")
+        && let Some(views) = schema.get("MaterializedViews").and_then(Value::as_object)
+    {
+        for (name, _info) in views {
+            entities.push(serde_json::json!({
+                "name": name,
+                "type": "materialized-view",
+            }));
         }
     }
 
     // Extract external tables
-    if entity_type.is_none() || entity_type == Some("external-table") {
-        if let Some(ext) = schema.get("ExternalTables").and_then(Value::as_object) {
-            for (name, _info) in ext {
-                entities.push(serde_json::json!({
-                    "name": name,
-                    "type": "external-table",
-                }));
-            }
+    if entity_type.is_none_or(|t| t == "external-table")
+        && let Some(ext) = schema.get("ExternalTables").and_then(Value::as_object)
+    {
+        for (name, _info) in ext {
+            entities.push(serde_json::json!({
+                "name": name,
+                "type": "external-table",
+            }));
         }
     }
 
     // Extract functions
-    if entity_type.is_none() || entity_type == Some("function") {
-        if let Some(funcs) = schema.get("Functions").and_then(Value::as_object) {
-            for (name, _info) in funcs {
-                entities.push(serde_json::json!({
-                    "name": name,
-                    "type": "function",
-                }));
-            }
+    if entity_type.is_none_or(|t| t == "function")
+        && let Some(funcs) = schema.get("Functions").and_then(Value::as_object)
+    {
+        for (name, _info) in funcs {
+            entities.push(serde_json::json!({
+                "name": name,
+                "type": "function",
+            }));
         }
     }
 
@@ -179,17 +179,15 @@ pub(super) async fn describe_entity(
     let (rows, columns) = kql_utils::execute_kql(client, &kusto_uri, &db_name, &kql).await?;
 
     // For schema-as-json commands, try to parse and render the schema nicely
-    if entity_type != "function" {
-        if let Some(schema_str) = rows
+    if entity_type != "function"
+        && let Some(schema_str) = rows
             .first()
             .and_then(|r| r.get("Schema").or_else(|| r.get("DatabaseSchema")))
             .and_then(Value::as_str)
-        {
-            if let Ok(schema) = serde_json::from_str::<Value>(schema_str) {
-                output::render_object(cli, &schema, "name");
-                return Ok(());
-            }
-        }
+        && let Ok(schema) = serde_json::from_str::<Value>(schema_str)
+    {
+        output::render_object(cli, &schema, "name");
+        return Ok(());
     }
 
     // Fallback: render raw rows

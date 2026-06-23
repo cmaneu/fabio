@@ -28,7 +28,7 @@ const DEFAULT_TENANT: &str = "common";
 const FABRIC_SCOPE: &str = "https://api.fabric.microsoft.com/.default";
 
 /// Margin before expiry to consider token stale and attempt refresh.
-const REFRESH_MARGIN: Duration = Duration::from_secs(300); // 5 minutes
+const REFRESH_MARGIN: Duration = Duration::from_mins(5);
 
 /// Cached token data persisted to disk.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -194,10 +194,10 @@ pub fn save_token(data: &TokenData) -> Result<()> {
     }
 
     // Remove logout marker on successful login
-    if let Ok(marker) = logout_marker_path() {
-        if marker.exists() {
-            std::fs::remove_file(&marker).ok();
-        }
+    if let Ok(marker) = logout_marker_path()
+        && marker.exists()
+    {
+        std::fs::remove_file(&marker).ok();
     }
 
     Ok(())
@@ -751,7 +751,7 @@ pub async fn browser_login(tenant: Option<&str>, scope: Option<&str>) -> Result<
     open_browser(&authorize_url);
 
     // Step 5: Wait for the redirect (with timeout)
-    let code = tokio::time::timeout(Duration::from_secs(300), async {
+    let code = tokio::time::timeout(Duration::from_mins(5), async {
         let (mut stream, _addr) = listener.accept().await.map_err(|e| {
             FabioError::new(ErrorCode::NetworkError, format!("Listener accept failed: {e}"))
         })?;

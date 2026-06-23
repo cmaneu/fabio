@@ -1,4 +1,4 @@
-use std::io::{self, Read};
+use std::io;
 
 use anyhow::Result;
 use base64::Engine;
@@ -453,8 +453,7 @@ async fn graphql_query(
         }
         Some(s) => s.to_string(),
         None => {
-            let mut buf = String::new();
-            io::stdin().read_to_string(&mut buf).map_err(|e| {
+            let buf = io::read_to_string(io::stdin()).map_err(|e| {
                 FabioError::new(
                     ErrorCode::ApiError,
                     format!("Failed to read GraphQL query from stdin: {e}"),

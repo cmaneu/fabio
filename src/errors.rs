@@ -19,21 +19,28 @@ pub enum ErrorCode {
     Unknown,
 }
 
+impl ErrorCode {
+    /// Returns the machine-readable string representation of the error code.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AuthRequired => "AUTH_REQUIRED",
+            Self::Forbidden => "FORBIDDEN",
+            Self::NotFound => "NOT_FOUND",
+            Self::Conflict => "CONFLICT",
+            Self::RateLimited => "RATE_LIMITED",
+            Self::CapacityInactive => "CAPACITY_INACTIVE",
+            Self::InvalidInput => "INVALID_INPUT",
+            Self::ApiError => "API_ERROR",
+            Self::Timeout => "TIMEOUT",
+            Self::NetworkError => "NETWORK_ERROR",
+            Self::Unknown => "UNKNOWN",
+        }
+    }
+}
+
 impl fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::AuthRequired => write!(f, "AUTH_REQUIRED"),
-            Self::Forbidden => write!(f, "FORBIDDEN"),
-            Self::NotFound => write!(f, "NOT_FOUND"),
-            Self::Conflict => write!(f, "CONFLICT"),
-            Self::RateLimited => write!(f, "RATE_LIMITED"),
-            Self::CapacityInactive => write!(f, "CAPACITY_INACTIVE"),
-            Self::InvalidInput => write!(f, "INVALID_INPUT"),
-            Self::ApiError => write!(f, "API_ERROR"),
-            Self::Timeout => write!(f, "TIMEOUT"),
-            Self::NetworkError => write!(f, "NETWORK_ERROR"),
-            Self::Unknown => write!(f, "UNKNOWN"),
-        }
+        f.write_str(self.as_str())
     }
 }
 

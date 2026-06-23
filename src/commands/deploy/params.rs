@@ -464,15 +464,15 @@ pub fn replace_default_workspace_id(source: &mut SourceWorkspace, workspace_id: 
     for item in &mut source.items {
         // Apply to definition parts (regex-based replacement)
         for part in &mut item.parts {
-            if let Ok(decoded) = decode_part_payload(&part.payload) {
-                if decoded.contains(DEFAULT_WORKSPACE_GUID) {
-                    let replaced = pattern.replace_all(&decoded, |caps: &regex::Captures<'_>| {
-                        // Preserve the key and format, replace only the GUID value
-                        caps[0].replace(DEFAULT_WORKSPACE_GUID, workspace_id)
-                    });
-                    if replaced != decoded {
-                        part.payload = BASE64.encode(replaced.as_bytes());
-                    }
+            if let Ok(decoded) = decode_part_payload(&part.payload)
+                && decoded.contains(DEFAULT_WORKSPACE_GUID)
+            {
+                let replaced = pattern.replace_all(&decoded, |caps: &regex::Captures<'_>| {
+                    // Preserve the key and format, replace only the GUID value
+                    caps[0].replace(DEFAULT_WORKSPACE_GUID, workspace_id)
+                });
+                if replaced != decoded {
+                    part.payload = BASE64.encode(replaced.as_bytes());
                 }
             }
         }
@@ -484,10 +484,10 @@ pub fn replace_default_workspace_id(source: &mut SourceWorkspace, workspace_id: 
                 let replaced = pattern.replace_all(&s, |caps: &regex::Captures<'_>| {
                     caps[0].replace(DEFAULT_WORKSPACE_GUID, workspace_id)
                 });
-                if replaced != s {
-                    if let Ok(v) = serde_json::from_str(&replaced) {
-                        *payload = v;
-                    }
+                if replaced != s
+                    && let Ok(v) = serde_json::from_str(&replaced)
+                {
+                    *payload = v;
                 }
             }
         }
@@ -658,10 +658,8 @@ fn apply_find_replace_to_item(
             apply_rule_to_content(cr, &mut content, &mut modified);
         }
 
-        if modified {
-            if let Ok(new_val) = serde_json::from_str(&content) {
-                *payload = new_val;
-            }
+        if modified && let Ok(new_val) = serde_json::from_str(&content) {
+            *payload = new_val;
         }
     }
 
@@ -715,20 +713,20 @@ fn kv_rule_applies_to_item(
     item_name: &str,
     file_path: &str,
 ) -> bool {
-    if let Some(types) = item_type_filter {
-        if !types.contains(item_type) {
-            return false;
-        }
+    if let Some(types) = item_type_filter
+        && !types.contains(item_type)
+    {
+        return false;
     }
-    if let Some(names) = item_name_filter {
-        if !names.contains(item_name) {
-            return false;
-        }
+    if let Some(names) = item_name_filter
+        && !names.contains(item_name)
+    {
+        return false;
     }
-    if let Some(paths) = file_path_filter {
-        if !paths.contains(file_path) {
-            return false;
-        }
+    if let Some(paths) = file_path_filter
+        && !paths.contains(file_path)
+    {
+        return false;
     }
     true
 }
@@ -815,17 +813,17 @@ fn apply_key_value_replace(
             }
 
             // Apply key_value_replace to creationPayload if present
-            if let Some(ref mut payload) = item.creation_payload {
-                if kv_rule_applies_to_item(
+            if let Some(ref mut payload) = item.creation_payload
+                && kv_rule_applies_to_item(
                     rule.item_type.as_ref(),
                     rule.item_name.as_ref(),
                     rule.file_path.as_ref(),
                     &item.metadata.item_type,
                     &item.metadata.display_name,
                     "creationPayload.json",
-                ) {
-                    apply_jsonpath_replace(payload, &rule.find_key, &resolved_replacement);
-                }
+                )
+            {
+                apply_jsonpath_replace(payload, &rule.find_key, &resolved_replacement);
             }
 
             // Recompute hash
@@ -881,10 +879,10 @@ fn apply_spark_pool_rules(
 
         for item in &mut source.items {
             // Spark pool rules typically apply to Environment items
-            if let Some(ref names) = rule.item_name {
-                if !names.contains(&item.metadata.display_name) {
-                    continue;
-                }
+            if let Some(ref names) = rule.item_name
+                && !names.contains(&item.metadata.display_name)
+            {
+                continue;
             }
 
             for part in &mut item.parts {
@@ -1059,31 +1057,29 @@ fn replace_connection_id_in_json(value: &mut serde_json::Value, new_connection_i
 
             // Look for connection ID fields
             for key in &["connectionId", "connection_id", "pbiModelDatabaseName"] {
-                if let Some(v) = map.get_mut(*key) {
-                    if v.is_string() {
-                        let old = v.as_str().unwrap_or_default();
-                        // Only replace if it looks like a GUID
-                        if old.len() == 36 && old.contains('-') {
-                            *v = serde_json::Value::String(new_connection_id.to_owned());
-                            modified = true;
-                        }
+                if let Some(v) = map.get_mut(*key)
+                    && v.is_string()
+                {
+                    let old = v.as_str().unwrap_or_default();
+                    // Only replace if it looks like a GUID
+                    if old.len() == 36 && old.contains('-') {
+                        *v = serde_json::Value::String(new_connection_id.to_owned());
+                        modified = true;
                     }
                 }
             }
 
             // Also handle connectionString containing semanticmodelid=<UUID>
-            if let Some(v) = map.get_mut("connectionString") {
-                if let Some(cs) = v.as_str() {
-                    if cs.contains("semanticmodelid=") {
-                        let re =
-                            Regex::new(r"semanticmodelid=([0-9a-fA-F-]{36})").expect("valid regex");
-                        let new_cs =
-                            re.replace(cs, format!("semanticmodelid={new_connection_id}").as_str());
-                        if new_cs != cs {
-                            *v = serde_json::Value::String(new_cs.into_owned());
-                            modified = true;
-                        }
-                    }
+            if let Some(v) = map.get_mut("connectionString")
+                && let Some(cs) = v.as_str()
+                && cs.contains("semanticmodelid=")
+            {
+                let re = Regex::new(r"semanticmodelid=([0-9a-fA-F-]{36})").expect("valid regex");
+                let new_cs =
+                    re.replace(cs, format!("semanticmodelid={new_connection_id}").as_str());
+                if new_cs != cs {
+                    *v = serde_json::Value::String(new_cs.into_owned());
+                    modified = true;
                 }
             }
 

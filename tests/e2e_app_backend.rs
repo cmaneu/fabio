@@ -43,7 +43,7 @@ fn app_backend_create_show_update_and_delete() {
             "--description",
             description,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 

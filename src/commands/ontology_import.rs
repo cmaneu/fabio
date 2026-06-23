@@ -807,12 +807,11 @@ fn generate_fabric_parts(model: &OwlModel) -> Vec<FabricPart> {
         }
 
         // If no identifier was marked, use first property
-        if id_parts.is_empty() {
-            if let Some(first) = properties.first() {
-                if let Some(pid) = first.get("id").and_then(Value::as_str) {
-                    id_parts.push(pid.to_string());
-                }
-            }
+        if id_parts.is_empty()
+            && let Some(first) = properties.first()
+            && let Some(pid) = first.get("id").and_then(Value::as_str)
+        {
+            id_parts.push(pid.to_string());
         }
 
         let entity_def = serde_json::json!({

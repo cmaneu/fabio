@@ -518,7 +518,7 @@ async fn poll_lakehouse_sql_endpoint(
     lakehouse_id: &str,
 ) -> Result<()> {
     let url = format!("workspaces/{workspace_id}/lakehouses/{lakehouse_id}");
-    let max_wait = std::time::Duration::from_secs(300);
+    let max_wait = std::time::Duration::from_mins(5);
     let poll_interval = std::time::Duration::from_secs(5);
     let start = std::time::Instant::now();
 
@@ -556,7 +556,7 @@ async fn poll_environment_publish(
     env_name: &str,
 ) -> Result<()> {
     let url = format!("workspaces/{workspace_id}/environments/{environment_id}");
-    let max_wait = std::time::Duration::from_secs(300);
+    let max_wait = std::time::Duration::from_mins(5);
     let poll_interval = std::time::Duration::from_secs(5);
     let start = std::time::Instant::now();
 
@@ -1173,15 +1173,14 @@ fn extract_pipeline_references(source_item: &super::platform::SourceItem) -> Vec
                     .and_then(|t| t.as_str())
                     .is_some_and(|t| t == "ExecutePipeline");
 
-                if is_execute_pipeline {
-                    if let Some(name) = activity
+                if is_execute_pipeline
+                    && let Some(name) = activity
                         .get("typeProperties")
                         .and_then(|tp| tp.get("pipeline"))
                         .and_then(|p| p.get("referenceName"))
                         .and_then(|n| n.as_str())
-                    {
-                        refs.push(name.to_owned());
-                    }
+                {
+                    refs.push(name.to_owned());
                 }
             }
         }
@@ -1308,10 +1307,9 @@ fn build_resolution_map(
         if let Some(&idx) = source
             .type_name_index
             .get(&(item_type.clone(), name.clone()))
+            && let Some(ref logical_id) = source.items[idx].metadata.logical_id
         {
-            if let Some(ref logical_id) = source.items[idx].metadata.logical_id {
-                map.insert(logical_id.clone(), deployed_id.clone());
-            }
+            map.insert(logical_id.clone(), deployed_id.clone());
         }
     }
 

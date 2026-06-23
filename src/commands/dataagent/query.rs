@@ -1,4 +1,4 @@
-use std::io::{self, Read};
+use std::io;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -33,8 +33,7 @@ pub(super) async fn query(
     let prompt_text = if let Some(p) = prompt {
         p.to_string()
     } else {
-        let mut buf = String::new();
-        io::stdin().read_to_string(&mut buf).map_err(|e| {
+        let buf = io::read_to_string(io::stdin()).map_err(|e| {
             FabioError::with_hint(
                 ErrorCode::InvalidInput,
                 format!("Failed to read prompt from stdin: {e}"),
@@ -97,14 +96,13 @@ pub(super) async fn query(
 async fn get_published_url(client: &FabricClient, workspace: &str, id: &str) -> Result<String> {
     // Attempt 1: Try the V3 settings endpoint (may not be enabled)
     let settings_path = format!("/workspaces/{workspace}/dataAgents/{id}/settings");
-    if let Ok(settings) = client.get(&settings_path).await {
-        if let Some(url) = settings
+    if let Ok(settings) = client.get(&settings_path).await
+        && let Some(url) = settings
             .get("publishedUrl")
             .and_then(Value::as_str)
             .filter(|u| !u.is_empty())
-        {
-            return Ok(url.to_string());
-        }
+    {
+        return Ok(url.to_string());
     }
 
     // Attempt 2: Check item properties
@@ -149,7 +147,7 @@ async fn run_assistant_query(
     stage: &str,
 ) -> Result<QueryResult> {
     let http = reqwest::Client::builder()
-        .timeout(Duration::from_secs(360))
+        .timeout(Duration::from_mins(6))
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| FabioError::with_hint(ErrorCode::NetworkError, e.to_string(), "Verify the data agent is published. Check status: fabio data-agent show --workspace <WS> --id <ID>. Publish if needed: fabio data-agent publish --workspace <WS> --id <ID>"))?;

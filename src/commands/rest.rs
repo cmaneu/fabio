@@ -215,10 +215,7 @@ async fn execute_powerbi(
 /// Resolve body from inline JSON, @file, or @- (stdin).
 fn resolve_body(input: &str) -> Result<Value> {
     let content = if input == "@-" {
-        use std::io::Read;
-        let mut buf = String::new();
-        std::io::stdin().read_to_string(&mut buf)?;
-        buf
+        std::io::read_to_string(std::io::stdin())?
     } else if let Some(file_path) = input.strip_prefix('@') {
         std::fs::read_to_string(file_path)
             .map_err(|e| anyhow::anyhow!("Failed to read file '{file_path}': {e}"))?

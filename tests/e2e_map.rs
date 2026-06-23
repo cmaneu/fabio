@@ -40,7 +40,7 @@ fn map_create_show_and_delete() {
             "--description",
             "Test map for e2e",
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -104,7 +104,7 @@ fn map_update_name_and_description() {
             "--name",
             &original,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -165,7 +165,7 @@ fn map_get_definition_returns_map_json() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -183,7 +183,7 @@ fn map_get_definition_returns_map_json() {
             "--id",
             &map_id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -242,7 +242,7 @@ fn map_update_definition_with_layers() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -321,7 +321,7 @@ fn map_update_definition_with_layers() {
             "--file",
             def_path.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -340,7 +340,7 @@ fn map_update_definition_with_layers() {
             "--id",
             &map_id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 

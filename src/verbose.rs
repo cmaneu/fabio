@@ -115,7 +115,7 @@ pub fn trace_request(method: &str, url: &str, body: Option<&str>) {
         let display = if redacted.len() > MAX_BODY_TRACE_LEN {
             format!(
                 "{}...(truncated, {} bytes total)",
-                &redacted[..MAX_BODY_TRACE_LEN],
+                &redacted[..redacted.floor_char_boundary(MAX_BODY_TRACE_LEN)],
                 redacted.len()
             )
         } else {

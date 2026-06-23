@@ -451,30 +451,30 @@ fn extract_tag_id(json: &Value, name: &str) -> String {
     // Try: data is array of created tags
     if let Some(arr) = json["data"].as_array() {
         for tag in arr {
-            if tag["displayName"].as_str() == Some(name) {
-                if let Some(id) = tag["id"].as_str() {
-                    return id.to_string();
-                }
+            if tag["displayName"].as_str() == Some(name)
+                && let Some(id) = tag["id"].as_str()
+            {
+                return id.to_string();
             }
         }
     }
     // Try: data is an object with nested tags
     if let Some(tags) = json["data"]["tags"].as_array() {
         for tag in tags {
-            if tag["displayName"].as_str() == Some(name) {
-                if let Some(id) = tag["id"].as_str() {
-                    return id.to_string();
-                }
+            if tag["displayName"].as_str() == Some(name)
+                && let Some(id) = tag["id"].as_str()
+            {
+                return id.to_string();
             }
         }
     }
     // Try: data.value array
     if let Some(tags) = json["data"]["value"].as_array() {
         for tag in tags {
-            if tag["displayName"].as_str() == Some(name) {
-                if let Some(id) = tag["id"].as_str() {
-                    return id.to_string();
-                }
+            if tag["displayName"].as_str() == Some(name)
+                && let Some(id) = tag["id"].as_str()
+            {
+                return id.to_string();
             }
         }
     }

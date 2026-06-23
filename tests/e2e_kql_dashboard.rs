@@ -43,7 +43,7 @@ fn kql_dashboard_create_and_delete() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 

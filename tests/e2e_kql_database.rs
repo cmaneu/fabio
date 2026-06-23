@@ -235,10 +235,10 @@ fn kql_database_query_show_tables_mgmt() {
     let json = parse_json(&output);
     // Should have at least the SalesEvents table we created
     let data = extract_data(&json);
-    if let Some(rows) = data.as_array() {
-        if !rows.is_empty() {
-            assert!(rows[0].get("TableName").is_some());
-        }
+    if let Some(rows) = data.as_array()
+        && !rows.is_empty()
+    {
+        assert!(rows[0].get("TableName").is_some());
     }
 }
 
@@ -480,12 +480,12 @@ fn kql_database_list_entities() {
     let data = extract_data(&json);
     // Should return an array (possibly empty on a fresh database)
     assert!(data.is_array(), "list-entities should return an array");
-    if let Some(arr) = data.as_array() {
-        if !arr.is_empty() {
-            // Each entity should have name and type
-            assert!(arr[0].get("name").is_some());
-            assert!(arr[0].get("type").is_some());
-        }
+    if let Some(arr) = data.as_array()
+        && !arr.is_empty()
+    {
+        // Each entity should have name and type
+        assert!(arr[0].get("name").is_some());
+        assert!(arr[0].get("type").is_some());
     }
 }
 

@@ -458,13 +458,13 @@ pub(super) async fn validate(
         for node in &all_nodes_with_inputs {
             if let Some(inputs) = node.get("inputNodes").and_then(Value::as_array) {
                 for input in inputs {
-                    if let Some(ref_name) = input.get("name").and_then(Value::as_str) {
-                        if !all_names.contains(&ref_name) {
-                            errors.push(format!(
-                                "Node '{}' references non-existent inputNode '{ref_name}'.",
-                                node.get("name").and_then(Value::as_str).unwrap_or("?")
-                            ));
-                        }
+                    if let Some(ref_name) = input.get("name").and_then(Value::as_str)
+                        && !all_names.contains(&ref_name)
+                    {
+                        errors.push(format!(
+                            "Node '{}' references non-existent inputNode '{ref_name}'.",
+                            node.get("name").and_then(Value::as_str).unwrap_or("?")
+                        ));
                     }
                 }
             }

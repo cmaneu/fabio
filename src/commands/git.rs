@@ -755,10 +755,10 @@ async fn checkout(
     });
 
     // Include credentials if available (required for GitHub)
-    if let Some(ref creds) = credentials {
-        if creds.get("source").is_some() {
-            connect_body["myGitCredentials"] = creds.clone();
-        }
+    if let Some(ref creds) = credentials
+        && creds.get("source").is_some()
+    {
+        connect_body["myGitCredentials"] = creds.clone();
     }
 
     let provider_type = provider_details
@@ -787,10 +787,10 @@ async fn checkout(
         let mut rollback_body = serde_json::json!({
             "gitProviderDetails": provider_details,
         });
-        if let Some(ref creds) = credentials {
-            if creds.get("source").is_some() {
-                rollback_body["myGitCredentials"] = creds.clone();
-            }
+        if let Some(ref creds) = credentials
+            && creds.get("source").is_some()
+        {
+            rollback_body["myGitCredentials"] = creds.clone();
         }
         let _ = client
             .post(

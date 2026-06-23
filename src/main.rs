@@ -116,20 +116,20 @@ fn inject_profile_env_vars() {
     };
 
     // SAFETY: single-threaded at this point — called before tokio runtime is built.
-    if let Some(ref ws) = profile.workspace {
-        if std::env::var("FABIO_WORKSPACE").is_err() {
-            unsafe { std::env::set_var("FABIO_WORKSPACE", ws) };
-        }
+    if let Some(ref ws) = profile.workspace
+        && std::env::var("FABIO_WORKSPACE").is_err()
+    {
+        unsafe { std::env::set_var("FABIO_WORKSPACE", ws) };
     }
-    if let Some(ref cap) = profile.capacity {
-        if std::env::var("FABIO_CAPACITY").is_err() {
-            unsafe { std::env::set_var("FABIO_CAPACITY", cap) };
-        }
+    if let Some(ref cap) = profile.capacity
+        && std::env::var("FABIO_CAPACITY").is_err()
+    {
+        unsafe { std::env::set_var("FABIO_CAPACITY", cap) };
     }
-    if let Some(ref fmt) = profile.output {
-        if std::env::var("FABIO_OUTPUT").is_err() {
-            unsafe { std::env::set_var("FABIO_OUTPUT", fmt) };
-        }
+    if let Some(ref fmt) = profile.output
+        && std::env::var("FABIO_OUTPUT").is_err()
+    {
+        unsafe { std::env::set_var("FABIO_OUTPUT", fmt) };
     }
 }
 

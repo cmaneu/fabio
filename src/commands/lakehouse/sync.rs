@@ -82,15 +82,15 @@ pub(super) async fn sync_files(
     // Apply --min-size / --max-size filters
     if min_bytes.is_some() || max_bytes.is_some() {
         src_map.retain(|_, info| {
-            if let Some(min) = min_bytes {
-                if info.size < min {
-                    return false;
-                }
+            if let Some(min) = min_bytes
+                && info.size < min
+            {
+                return false;
             }
-            if let Some(max) = max_bytes {
-                if info.size > max {
-                    return false;
-                }
+            if let Some(max) = max_bytes
+                && info.size > max
+            {
+                return false;
             }
             true
         });
@@ -960,17 +960,17 @@ async fn find_dedup_copies_by_checksum(
             .unwrap_or("");
         let src_size = src_map.get(rel).map_or(0, |info| info.size);
 
-        if !src_md5.is_empty() {
-            if let Some(candidates) = dest_by_md5.get(src_md5) {
-                let match_found = candidates
-                    .iter()
-                    .find(|(path, size)| *path != rel && *size == src_size)
-                    .map(|(path, _)| *path);
+        if !src_md5.is_empty()
+            && let Some(candidates) = dest_by_md5.get(src_md5)
+        {
+            let match_found = candidates
+                .iter()
+                .find(|(path, size)| *path != rel && *size == src_size)
+                .map(|(path, _)| *path);
 
-                if let Some(existing_path) = match_found {
-                    dedup_copies.push((existing_path.to_string(), rel.clone()));
-                    continue;
-                }
+            if let Some(existing_path) = match_found {
+                dedup_copies.push((existing_path.to_string(), rel.clone()));
+                continue;
             }
         }
 
@@ -1006,10 +1006,10 @@ fn detect_renames(
     // Only include files with non-empty ETags
     let mut dest_by_etag: HashMap<&str, Vec<&str>> = HashMap::new();
     for rel in to_delete {
-        if let Some(info) = dst_map.get(rel) {
-            if !info.etag.is_empty() {
-                dest_by_etag.entry(&info.etag).or_default().push(rel);
-            }
+        if let Some(info) = dst_map.get(rel)
+            && !info.etag.is_empty()
+        {
+            dest_by_etag.entry(&info.etag).or_default().push(rel);
         }
     }
 
@@ -1018,26 +1018,26 @@ fn detect_renames(
     let mut remaining_copy: Vec<String> = Vec::new();
 
     for rel in to_copy {
-        if let Some(src_info) = src_map.get(rel) {
-            if !src_info.etag.is_empty() {
-                // Look for a dest-only file with the same ETag that hasn't been matched yet
-                if let Some(candidates) = dest_by_etag.get(src_info.etag.as_str()) {
-                    let match_found = candidates
-                        .iter()
-                        .find(|&&c| !matched_dest.contains(c))
-                        .copied();
+        if let Some(src_info) = src_map.get(rel)
+            && !src_info.etag.is_empty()
+        {
+            // Look for a dest-only file with the same ETag that hasn't been matched yet
+            if let Some(candidates) = dest_by_etag.get(src_info.etag.as_str()) {
+                let match_found = candidates
+                    .iter()
+                    .find(|&&c| !matched_dest.contains(c))
+                    .copied();
 
-                    if let Some(old_path) = match_found {
-                        // Also verify size matches as a safety check
-                        let size_match = dst_map
-                            .get(old_path)
-                            .is_some_and(|d| d.size == src_info.size);
+                if let Some(old_path) = match_found {
+                    // Also verify size matches as a safety check
+                    let size_match = dst_map
+                        .get(old_path)
+                        .is_some_and(|d| d.size == src_info.size);
 
-                        if size_match {
-                            renames.push((old_path.to_string(), rel.clone()));
-                            matched_dest.insert(old_path);
-                            continue;
-                        }
+                    if size_match {
+                        renames.push((old_path.to_string(), rel.clone()));
+                        matched_dest.insert(old_path);
+                        continue;
                     }
                 }
             }
@@ -1171,37 +1171,38 @@ async fn detect_renames_by_checksum(
             .unwrap_or(0);
 
         // Try MD5 match first (strongest signal)
-        if !src_md5.is_empty() && has_any_md5 {
-            if let Some(candidates) = dest_by_md5.get(src_md5) {
-                let match_found = candidates
-                    .iter()
-                    .find(|(path, size)| !matched_dest.contains(*path) && *size == src_size)
-                    .map(|(path, _)| *path);
+        if !src_md5.is_empty()
+            && has_any_md5
+            && let Some(candidates) = dest_by_md5.get(src_md5)
+        {
+            let match_found = candidates
+                .iter()
+                .find(|(path, size)| !matched_dest.contains(*path) && *size == src_size)
+                .map(|(path, _)| *path);
 
-                if let Some(old_path) = match_found {
-                    renames.push((old_path.to_string(), rel.clone()));
-                    matched_dest.insert(old_path);
-                    continue;
-                }
+            if let Some(old_path) = match_found {
+                renames.push((old_path.to_string(), rel.clone()));
+                matched_dest.insert(old_path);
+                continue;
             }
         }
 
         // Fallback: size-only match (only when the size is unique among dest orphans
         // to avoid false positives from files that happen to have the same size)
-        if src_size > 0 {
-            if let Some(candidates) = dest_by_size.get(&src_size) {
-                // Only match when there's exactly ONE dest file with this size
-                // (avoids ambiguity)
-                let unmatched: Vec<&str> = candidates
-                    .iter()
-                    .filter(|p| !matched_dest.contains(**p))
-                    .copied()
-                    .collect();
-                if unmatched.len() == 1 {
-                    let old_path = unmatched[0];
-                    renames.push((old_path.to_string(), rel.clone()));
-                    matched_dest.insert(old_path);
-                }
+        if src_size > 0
+            && let Some(candidates) = dest_by_size.get(&src_size)
+        {
+            // Only match when there's exactly ONE dest file with this size
+            // (avoids ambiguity)
+            let unmatched: Vec<&str> = candidates
+                .iter()
+                .filter(|p| !matched_dest.contains(**p))
+                .copied()
+                .collect();
+            if unmatched.len() == 1 {
+                let old_path = unmatched[0];
+                renames.push((old_path.to_string(), rel.clone()));
+                matched_dest.insert(old_path);
             }
         }
     }

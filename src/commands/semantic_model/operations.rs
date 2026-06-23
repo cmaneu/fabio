@@ -1,4 +1,4 @@
-use std::io::{self, Read};
+use std::io;
 
 use anyhow::Result;
 use serde_json::Value;
@@ -89,8 +89,7 @@ pub(super) async fn query(
         })?
     } else {
         // Read from stdin
-        let mut buf = String::new();
-        io::stdin().read_to_string(&mut buf).map_err(|e| {
+        let buf = io::read_to_string(io::stdin()).map_err(|e| {
             FabioError::with_hint(
                 ErrorCode::InvalidInput,
                 format!("Failed to read DAX from stdin: {e}"),

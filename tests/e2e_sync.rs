@@ -478,7 +478,7 @@ fn sync_detects_renames_via_etag() {
             &dst_dir,
             "--delete",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -533,7 +533,7 @@ fn sync_detects_renames_via_etag() {
             &dst_dir,
             "--delete",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -622,7 +622,7 @@ fn sync_checksum_detects_renames_via_size() {
             &dst_dir,
             "--delete",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -668,7 +668,7 @@ fn sync_checksum_detects_renames_via_size() {
             "--delete",
             "--checksum",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -760,7 +760,7 @@ fn sync_mixed_metadata_rename_detection() {
             &dst_dir,
             "--delete",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -832,7 +832,7 @@ fn sync_mixed_metadata_rename_detection() {
             "--delete",
             "--checksum",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1023,7 +1023,7 @@ fn sync_rename_correctness_verification() {
             &dst_dir,
             "--delete",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
     let json = parse_json(&assert);
@@ -1226,7 +1226,7 @@ fn sync_ambiguous_sizes_no_false_rename() {
             &dst_dir,
             "--delete",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1293,7 +1293,7 @@ fn sync_ambiguous_sizes_no_false_rename() {
             "--delete",
             "--checksum",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1415,7 +1415,7 @@ fn sync_dedup_uses_existing_dest_file() {
             "-o",
             "json",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1508,7 +1508,7 @@ fn sync_dedup_no_match_uses_remote_copy() {
             "-o",
             "json",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1600,7 +1600,7 @@ fn sync_dedup_mixed_dedup_and_remote() {
             "-o",
             "json",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1705,7 +1705,7 @@ fn sync_include_filter_copies_only_matching() {
             "-o",
             "json",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1780,7 +1780,7 @@ fn sync_exclude_filter_skips_matching() {
             "-o",
             "json",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1863,7 +1863,7 @@ fn sync_no_overwrite_skips_existing() {
             "-o",
             "json",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -1945,7 +1945,7 @@ fn sync_force_copies_all_files() {
             "-o",
             "json",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -2019,7 +2019,7 @@ fn sync_size_only_compares_by_size() {
             "-o",
             "json",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -2088,7 +2088,7 @@ fn sync_max_delete_prevents_mass_deletion() {
             "-o",
             "json",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -2166,7 +2166,7 @@ fn sync_existing_only_updates_present_files() {
             "-o",
             "json",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -2235,7 +2235,7 @@ fn sync_remove_source_files_deletes_after_copy() {
             "-o",
             "json",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -2306,7 +2306,7 @@ fn sync_local_uploads_new_files() {
             "-o",
             "json",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -2369,7 +2369,7 @@ fn sync_local_checksum_skips_unchanged() {
             "-d",
             &dst_dir,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -2390,7 +2390,7 @@ fn sync_local_checksum_skips_unchanged() {
             "-o",
             "json",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 

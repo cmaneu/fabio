@@ -41,38 +41,37 @@ pub(super) async fn get_config(
         let path = part.get("path").and_then(Value::as_str).unwrap_or("");
         let payload = part.get("payload").and_then(Value::as_str).unwrap_or("");
 
-        if path == "Files/Config/draft/stage_config.json" {
-            if let Some(decoded) = decode_part_payload(payload) {
-                if let Ok(parsed) = serde_json::from_str::<Value>(&decoded) {
-                    config["instructions"] = parsed
-                        .get("aiInstructions")
-                        .or_else(|| parsed.get("additionalInstructions"))
-                        .cloned()
-                        .unwrap_or(Value::Null);
-                    if let Some(experimental) = parsed.get("experimental") {
-                        let enabled = experimental
-                            .get("enableExperimentalFeatures")
-                            .and_then(Value::as_bool)
-                            .unwrap_or(false);
-                        config["enablePreviewRuntime"] = Value::Bool(enabled);
-                    }
-                }
+        if path == "Files/Config/draft/stage_config.json"
+            && let Some(decoded) = decode_part_payload(payload)
+            && let Ok(parsed) = serde_json::from_str::<Value>(&decoded)
+        {
+            config["instructions"] = parsed
+                .get("aiInstructions")
+                .or_else(|| parsed.get("additionalInstructions"))
+                .cloned()
+                .unwrap_or(Value::Null);
+            if let Some(experimental) = parsed.get("experimental") {
+                let enabled = experimental
+                    .get("enableExperimentalFeatures")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                config["enablePreviewRuntime"] = Value::Bool(enabled);
             }
         }
 
         // Collect datasource names
-        if path.starts_with("Files/Config/draft/") && path.ends_with("/datasource.json") {
-            if let Some(decoded) = decode_part_payload(payload) {
-                if let Ok(parsed) = serde_json::from_str::<Value>(&decoded) {
-                    let ds_info = serde_json::json!({
-                        "displayName": parsed.get("displayName").or_else(|| parsed.get("display_name")),
-                        "type": parsed.get("type"),
-                        "artifactId": parsed.get("artifactId").or_else(|| parsed.get("id")),
-                    });
-                    if let Some(arr) = config["dataSources"].as_array_mut() {
-                        arr.push(ds_info);
-                    }
-                }
+        if path.starts_with("Files/Config/draft/")
+            && path.ends_with("/datasource.json")
+            && let Some(decoded) = decode_part_payload(payload)
+            && let Ok(parsed) = serde_json::from_str::<Value>(&decoded)
+        {
+            let ds_info = serde_json::json!({
+                "displayName": parsed.get("displayName").or_else(|| parsed.get("display_name")),
+                "type": parsed.get("type"),
+                "artifactId": parsed.get("artifactId").or_else(|| parsed.get("id")),
+            });
+            if let Some(arr) = config["dataSources"].as_array_mut() {
+                arr.push(ds_info);
             }
         }
     }
@@ -121,7 +120,7 @@ pub(super) async fn update_config(
         &serde_json::json!({
             "workspace": workspace,
             "id": id,
-            "instructions": resolved_instructions.as_deref().map(|s| if s.len() > 100 { format!("{}...", &s[..100]) } else { s.to_string() }),
+            "instructions": resolved_instructions.as_deref().map(|s| if s.len() > 100 { format!("{}...", &s[..s.floor_char_boundary(100)]) } else { s.to_string() }),
             "instructionsFile": instructions_file,
             "enablePreviewRuntime": enable_preview_runtime,
             "disablePreviewRuntime": disable_preview_runtime,
@@ -154,13 +153,13 @@ pub(super) async fn update_config(
                     o.entry("experimental")
                         .or_insert_with(|| serde_json::json!({}))
                 });
-                if let Some(exp) = experimental {
-                    if let Some(obj) = exp.as_object_mut() {
-                        obj.insert(
-                            "enableExperimentalFeatures".to_string(),
-                            Value::Bool(enable_preview_runtime),
-                        );
-                    }
+                if let Some(exp) = experimental
+                    && let Some(obj) = exp.as_object_mut()
+                {
+                    obj.insert(
+                        "enableExperimentalFeatures".to_string(),
+                        Value::Bool(enable_preview_runtime),
+                    );
                 }
             }
 

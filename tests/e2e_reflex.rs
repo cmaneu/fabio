@@ -131,7 +131,7 @@ fn reflex_create_and_delete() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -241,7 +241,7 @@ fn reflex_get_definition_returns_entities() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -259,7 +259,7 @@ fn reflex_get_definition_returns_entities() {
             "--id",
             &id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -319,7 +319,7 @@ fn reflex_update_definition_simulator_pipeline() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -344,7 +344,7 @@ fn reflex_update_definition_simulator_pipeline() {
             "--file",
             def_path.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -362,7 +362,7 @@ fn reflex_update_definition_simulator_pipeline() {
             "--id",
             &id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -451,7 +451,7 @@ fn reflex_update_definition_replaces_entities() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -475,7 +475,7 @@ fn reflex_update_definition_replaces_entities() {
             "--file",
             def_path.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -517,7 +517,7 @@ fn reflex_update_definition_replaces_entities() {
             "--file",
             def2_path.to_str().unwrap(),
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -531,7 +531,7 @@ fn reflex_update_definition_replaces_entities() {
             "--id",
             &id,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -583,7 +583,7 @@ fn reflex_update_definition_inline_content() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -612,7 +612,7 @@ fn reflex_update_definition_inline_content() {
             "--content",
             &content,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 

@@ -908,10 +908,7 @@ fn strip_notebook_outputs(data: &mut Value) {
 /// Resolve a CLI value that may be inline JSON, `@file.json`, or `@-` (stdin).
 fn resolve_json_input(input: &str, flag_name: &str) -> Result<String> {
     if input == "@-" {
-        use std::io::Read;
-        let mut buf = String::new();
-        std::io::stdin().read_to_string(&mut buf)?;
-        Ok(buf)
+        Ok(std::io::read_to_string(std::io::stdin())?)
     } else if let Some(file_path) = input.strip_prefix('@') {
         std::fs::read_to_string(file_path).map_err(|e| {
             FabioError::with_hint(

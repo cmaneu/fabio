@@ -81,7 +81,7 @@ fn warehouse_query_select_one() {
             "--sql",
             "SELECT 1 AS test",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -111,7 +111,7 @@ fn warehouse_query_from_stdin() {
             &cfg.source_lakehouse,
         ])
         .write_stdin("SELECT 42 AS answer")
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -142,7 +142,7 @@ fn warehouse_query_table_output() {
             "--sql",
             "SELECT 1 AS test",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success()
         .stdout(predicate::str::contains("test"));
@@ -204,7 +204,7 @@ fn warehouse_query_from_file() {
             "--sql",
             &sql_arg,
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -238,7 +238,7 @@ fn warehouse_query_csv_output() {
             "--sql",
             "SELECT 1 AS col1, 'hello' AS col2",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -278,7 +278,7 @@ fn warehouse_query_tsv_output() {
             "--sql",
             "SELECT 42 AS num, 'world' AS txt, NULL AS empty",
         ])
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 
@@ -315,7 +315,7 @@ fn warehouse_create_and_delete() {
             "--name",
             &name,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 
@@ -360,7 +360,7 @@ fn warehouse_update_name() {
             "--name",
             &original,
         ])
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .assert()
         .success();
 

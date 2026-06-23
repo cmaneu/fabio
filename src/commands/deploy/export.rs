@@ -52,10 +52,10 @@ pub async fn export_workspace(
         }
 
         // Filter by item types if specified
-        if let Some(types) = item_types {
-            if !types.iter().any(|t| t.eq_ignore_ascii_case(item_type)) {
-                continue;
-            }
+        if let Some(types) = item_types
+            && !types.iter().any(|t| t.eq_ignore_ascii_case(item_type))
+        {
+            continue;
         }
 
         items_to_export.push((
