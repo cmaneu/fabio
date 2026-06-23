@@ -1,19 +1,29 @@
 {
   "name": "Data Agent Creation and Configuration",
   "description": "Create a Data Agent, connect to a lakehouse, configure tables, add few-shots, test, and publish.",
-  "prerequisites": ["Authenticated via fabio auth login", "Workspace with F2+ capacity", "Lakehouse with populated tables"],
+  "prerequisites": ["Authenticated via fabio auth login", "Workspace with F2+ capacity", "Lakehouse with populated tables (tables must be visible via SQL endpoint)"],
   "steps": [
-    {"step_number": 1, "command": "fabio data-agent create --workspace $WS_ID --name \"SalesAgent\"", "description": "Create a new Data Agent."},
-    {"step_number": 2, "command": "fabio data-agent add-datasource --workspace $WS_ID --id $AGENT_ID --artifact-id $LH_ID --artifact-workspace $WS_ID --name \"SalesLH\" --type lakehouse_tables", "description": "Connect agent to lakehouse."},
-    {"step_number": 3, "command": "fabio data-agent select-tables --workspace $WS_ID --id $AGENT_ID --datasource-name \"SalesLH\" --tables orders,customers,products", "description": "Select queryable tables."},
-    {"step_number": 4, "command": "fabio data-agent add-fewshot --workspace $WS_ID --id $AGENT_ID --datasource-name \"SalesLH\" --question \"Top 5 customers by revenue?\" --answer \"SELECT TOP 5 ...\"", "description": "Add few-shot example."},
-    {"step_number": 5, "command": "fabio data-agent query --workspace $WS_ID --id $AGENT_ID --stage sandbox --question \"How many orders last month?\"", "description": "Test in sandbox mode."},
-    {"step_number": 6, "command": "fabio data-agent publish --workspace $WS_ID --id $AGENT_ID", "description": "Publish to production."}
+    {"step_number": 1, "command": "fabio data-agent create --workspace $WS_ID --name \"SalesAgent\"", "description": "Create a new Data Agent.", "capture": "AGENT_ID=$(fabio data-agent create ... -q id -o plain)"},
+    {"step_number": 2, "command": "fabio data-agent add-datasource --workspace $WS_ID --id $AGENT_ID --artifact-id $LH_ID --artifact-workspace $WS_ID --name \"SalesLH\" --type lakehouse_tables", "description": "Connect agent to lakehouse. Schema discovery starts asynchronously."},
+    {"step_number": 3, "command": "fabio data-agent select-tables --workspace $WS_ID --id $AGENT_ID --datasource $LH_ID --all-tables", "description": "Select all discovered tables. If 0 tables selected, schema discovery is still in progress — wait and retry.", "retry_pattern": "sleep 60 && fabio data-agent select-tables ... --all-tables"},
+    {"step_number": 4, "command": "fabio data-agent update-config --workspace $WS_ID --id $AGENT_ID --datasource $LH_ID --instructions \"Your instructions here\"", "description": "Set agent instructions for query generation guidance."},
+    {"step_number": 5, "command": "fabio data-agent add-fewshot --workspace $WS_ID --id $AGENT_ID --datasource $LH_ID --question \"Top 5 customers by revenue?\" --sql \"SELECT TOP 5 ...\"", "description": "Add few-shot example to improve query generation."},
+    {"step_number": 6, "command": "fabio data-agent publish --workspace $WS_ID --id $AGENT_ID", "description": "Publish to production."},
+    {"step_number": 7, "command": "fabio data-agent query --workspace $WS_ID --id $AGENT_ID --prompt \"How many orders last month?\"", "description": "Query the published agent."}
   ],
+  "schema_discovery": {
+    "behavior": "After add-datasource, Fabric asynchronously discovers the lakehouse SQL endpoint schema (tables, columns). This typically takes 1-5 minutes for new lakehouses.",
+    "detection": "Use 'fabio data-agent list-elements --workspace $WS --id $AGENT --datasource $LH' — if empty, discovery is still in progress.",
+    "retry_pattern": "Wait 60s between retries, up to 5 attempts. If tables never appear after 5 min, proceed with --all-tables anyway — it will include all tables once published.",
+    "acceleration": "Querying the lakehouse SQL endpoint directly (fabio lakehouse query --sql \"SELECT 1\") can sometimes accelerate schema indexing."
+  },
   "tips": [
     "Max 5 datasources per agent, 100 fewshots per datasource.",
+    "Schema discovery is async — tables may not appear immediately after add-datasource. Wait 1-2 min and retry.",
+    "Use --all-tables instead of listing individual table names to avoid case-sensitivity issues.",
     "Use --stage production on query to test published version.",
     "Use fabio data-agent upload-fewshots --file examples.csv for bulk loading.",
-    "Use fabio data-agent describe-element to add column descriptions."
+    "Use fabio data-agent describe-element to add column descriptions.",
+    "The --datasource flag accepts either the datasource name or the artifact ID."
   ]
 }

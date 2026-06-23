@@ -1,0 +1,36 @@
+{
+  "topic": "shortcuts",
+  "title": "ADLS Gen2 Shortcuts in Lakehouses",
+  "summary": "Creating shortcuts requires a two-step process: first create a connection, then create the shortcut referencing that connection. The list-files API may not show shortcut contents, but load-table resolves them correctly.",
+  "two_step_creation": {
+    "step_1_create_connection": "fabio connection create --name \"my-adls\" --connectivity-type ShareableCloud --connection-type AzureDataLakeStorage --server \"https://ACCOUNT.dfs.core.windows.net\" --path \"/CONTAINER\" --credential-type Key --credential-key \"$STORAGE_KEY\" --skip-test",
+    "step_2_create_shortcut": "fabio lakehouse create-shortcut --workspace $WS --id $LH --name \"shortcutname\" --path \"Files\" --target-type adls --location \"https://ACCOUNT.dfs.core.windows.net/CONTAINER\" --sub-path \"/\" --connection-id $CONN_ID"
+  },
+  "connection_parameters": {
+    "server": "The DFS endpoint WITHOUT the container: https://ACCOUNT.dfs.core.windows.net",
+    "path": "The container path: /CONTAINER",
+    "credential_type": "Key, OAuth2, or ServicePrincipal",
+    "skip_test": "Add --skip-test to avoid connection validation during creation (faster)"
+  },
+  "shortcut_parameters": {
+    "location": "Full DFS path INCLUDING the container: https://ACCOUNT.dfs.core.windows.net/CONTAINER",
+    "sub_path": "Path within the container (use / for root)",
+    "target_type": "adls for Azure Data Lake Storage Gen2"
+  },
+  "known_behaviors": {
+    "list_files_limitation": "fabio lakehouse list-files may not show files through ADLS shortcuts. The OneLake DFS layer virtualizes the path and may show the lakehouse structure instead of the actual storage contents. This is a Fabric API behavior, not a fabio bug.",
+    "load_table_works": "fabio lakehouse load-table resolves shortcut paths correctly via the Fabric backend. Files at Files/shortcutname/file.csv are accessible for table loading even when list-files does not show them.",
+    "propagation_delay": "After creating a shortcut, allow 5-10 seconds before accessing files through it."
+  },
+  "what_agents_should_do": [
+    "Create the connection first, capture its ID, then create the shortcut",
+    "Do NOT waste time debugging list-files if it doesn't show shortcut contents",
+    "Proceed directly to load-table using the expected path (Files/shortcutname/filename.csv)",
+    "If load-table fails with NOT_FOUND, wait 10s and retry (propagation delay)",
+    "Use --skip-test on connection create to avoid validation delays"
+  ],
+  "error_patterns": {
+    "connection_not_found": "Shortcut creation fails if connection-id is invalid. Verify with: fabio connection show --id $CONN_ID",
+    "conflict_on_name": "A shortcut or directory with the same name already exists. Delete it first: fabio lakehouse delete-shortcut --workspace $WS --id $LH --name NAME --path Files --force"
+  }
+}

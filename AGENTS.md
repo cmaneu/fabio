@@ -658,7 +658,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/context/agent.rs`: Machine-readable command schema for AI agents
 - `src/commands/context/schemas.rs`: Item definition schemas (22 types)
 - `src/commands/context/workflows.rs`: Multi-step workflow recipes (5 recipes)
-- `src/commands/context/best_practices.rs`: Best-practices guidance (4 topics)
+- `src/commands/context/best_practices.rs`: Best-practices guidance (5 topics)
 - `src/commands/context/examples.rs`: Output shape examples (6 commands)
 - `src/commands/context/tenant.rs`: Live workspace graph extraction
 - `src/commands/rest.rs`: Raw REST passthrough (method/path/body/query-params/poll); `resolve_body()` for @file/@- support; `--api powerbi` targets Power BI REST API
@@ -910,6 +910,8 @@ The release workflow (`.github/workflows/release.yml`) handles tagged version im
 - **Configurable datasource types**: Only `lakehouse_tables`, `data_warehouse`, and `kusto` support `update_configuration()` (instructions, schema_mode, user_description). Other types are read-only after creation.
 - **Description-enabled element types**: Descriptions can be set on `lakehouse_tables.table`, `lakehouse_tables.column`, `lakehouse_tables.view`, `warehouse_tables.table`, `warehouse_tables.column`, `warehouse_tables.view`, `mirrored_database.table`, `mirrored_database.column`, `mirrored_database.view`, `sql_database.table`, `sql_database.column`, `sql_database.view`.
 - **Selectable element types**: Only table-level elements can be selected/unselected: `semantic_model.table`, `lakehouse_tables.table`, `warehouse_tables.table`, `kusto.table`. Columns and measures are not independently selectable via the UX or SDK.
+- **Schema discovery is asynchronous and slow**: After `add-datasource`, the Fabric backend discovers the artifact's schema (tables, columns, types) asynchronously. For newly-created lakehouses, this can take 1-5 minutes. During this time, `list-elements` returns an empty array and `select-tables` reports 0 tables available. Agents should retry with 60s sleep intervals (up to 5 attempts). Using `--all-tables` on `select-tables` will include all tables once the schema propagates, even if 0 are reported during discovery.
+- **Querying the SQL endpoint accelerates discovery**: Executing any query against the lakehouse SQL endpoint (e.g., `fabio lakehouse query --sql "SELECT 1"`) before adding the datasource can prime the schema indexing service and reduce discovery wait time.
 - **Preview runtime feature**: `experimental.enableExperimentalFeatures: true` in `stage_config.json` enables the "preview runtime" — an agentic NL2SQL reasoning path. The SDK renamed the parameter from `enable_experimental_features` to `enable_preview_runtime` in v0.1.24a0 for consistency with the UI label.
 - **Few-shot evaluation (SDK-only, not in fabio)**: The SDK provides LLM-based few-shot quality validation via the Fabric-internal `gpt-4.1` model: quality scoring (clarity, mapping, relatedness), conflict detection between examples (semantic analysis), and batch evaluation with ground truth comparison. These features require the internal workload LLM endpoint and are not exposed via any public REST API.
 - **Ground truth evaluation (SDK-only, not in fabio)**: The SDK evaluates data agent answers against expected results: `evaluate_data_agent(df, agent_name)` runs parallel evaluations with multiple repeats, stores results in Delta tables, and generates summary reports (per-question success rate, failed thread URLs).
@@ -1703,6 +1705,8 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **No checkpoint support**: Current implementation only reads `.json` commit files (matching Microsoft's `fab` CLI behavior). For tables with 10+ commits, the schema may exist only in a Parquet checkpoint — not yet handled.
 - **Livy sessions**: `GET /workspaces/{ws}/lakehouses/{id}/livySessions` lists active sessions.
 - **Get/Update definition**: LRO via `/workspaces/{ws}/lakehouses/{id}/getDefinition` and `/updateDefinition`.
+- **ADLS Gen2 shortcut list-files limitation**: After creating an ADLS Gen2 shortcut, `list-files` on the shortcut path may not show the actual storage files. The OneLake DFS layer virtualizes the path and may return the lakehouse internal structure (Files/, Tables/, Functions/) instead of the blob contents. This is a Fabric platform behavior — the files ARE accessible for `load-table` operations. Agents should NOT waste time debugging list-files when shortcuts don't show expected files; instead proceed directly with load-table using the expected path (e.g., `Files/shortcutname/file.csv`).
+- **Shortcut propagation delay**: After creating a shortcut, allow 5-10 seconds before accessing files through it. If `load-table` returns NOT_FOUND, retry after a short wait.
 
 ## Notebook API Behaviors Discovered
 - **Creation uses generic items endpoint**: `POST /workspaces/{ws}/items` with `{"type": "Notebook", "displayName": "...", "definition": {...}}`. NOT `/notebooks`.

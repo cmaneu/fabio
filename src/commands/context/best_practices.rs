@@ -42,4 +42,8 @@ const BEST_PRACTICES: &[(&str, &str)] = &[
         "admin-apis",
         include_str!("data/best_practices/admin_apis.json"),
     ),
+    (
+        "shortcuts",
+        include_str!("data/best_practices/shortcuts.json"),
+    ),
 ];
