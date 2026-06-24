@@ -26,7 +26,7 @@ pub(super) async fn query(
     prompt: Option<&str>,
     published_url: Option<&str>,
     verbose: bool,
-    stage: &str,
+    _stage: &str,
     timeout: u64,
 ) -> Result<()> {
     // Resolve prompt text: --prompt flag or stdin
@@ -63,15 +63,8 @@ pub(super) async fn query(
     // Use the OpenAI Assistants protocol against the published URL
     let token = client.require_auth().await?;
     let max_wait = Duration::from_secs(timeout);
-    let query_result = run_assistant_query(
-        &resolved_url,
-        &token,
-        &prompt_text,
-        verbose,
-        max_wait,
-        stage,
-    )
-    .await?;
+    let query_result =
+        run_assistant_query(&resolved_url, &token, &prompt_text, verbose, max_wait).await?;
 
     let mut result = serde_json::json!({
         "question": prompt_text.trim(),
@@ -141,7 +134,6 @@ async fn run_assistant_query(
     question: &str,
     verbose: bool,
     max_wait: Duration,
-    stage: &str,
 ) -> Result<QueryResult> {
     let http = reqwest::Client::builder()
         .timeout(Duration::from_mins(6))
@@ -150,12 +142,6 @@ async fn run_assistant_query(
         .map_err(|e| FabioError::with_hint(ErrorCode::NetworkError, e.to_string(), "Verify the data agent is published. Check status: fabio data-agent show --workspace <WS> --id <ID>. Publish if needed: fabio data-agent publish --workspace <WS> --id <ID>"))?;
 
     let auth_header = token;
-
-    // Build stage-specific headers for internal workload API routing
-    let _stage_header = match stage {
-        "sandbox" | "draft" => "sandbox",
-        _ => "production",
-    };
 
     // Step 1: Create assistant + thread
     let assistant_id = create_assistant(&http, base_url, auth_header).await?;
