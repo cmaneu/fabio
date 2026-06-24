@@ -1662,6 +1662,113 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "list-role-assignments": {
+        "description": "List role assignments for a connection",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "add-role-assignment": {
+        "description": "Add a role assignment",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--principal-id": {
+            "required": true,
+            "type": "string"
+          },
+          "--principal-type": {
+            "type": "enum",
+            "values": [
+              "User",
+              "Group",
+              "ServicePrincipal"
+            ]
+          },
+          "--role": {
+            "type": "enum",
+            "values": [
+              "Owner",
+              "User",
+              "UserWithReshare"
+            ]
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "show-role-assignment": {
+        "description": "Show a specific role assignment",
+        "flags": {
+          "--assignment-id": {
+            "required": true,
+            "type": "string"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "update-role-assignment": {
+        "description": "Update a role assignment",
+        "flags": {
+          "--assignment-id": {
+            "required": true,
+            "type": "string"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--role": {
+            "type": "enum",
+            "values": [
+              "Owner",
+              "User",
+              "UserWithReshare"
+            ]
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "delete-role-assignment": {
+        "description": "Delete a role assignment",
+        "destructive": true,
+        "flags": {
+          "--assignment-id": {
+            "required": true,
+            "type": "string"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "void"
+      },
+      "test-connection": {
+        "description": "Test connectivity of a connection",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },
@@ -4488,6 +4595,47 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "get-definition": {
+        "async": true,
+        "description": "Get eventhouse definition",
+        "flags": {
+          "--decode": {
+            "type": "bool"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "update-definition": {
+        "async": true,
+        "description": "Update eventhouse definition",
+        "flags": {
+          "--content": {
+            "type": "string"
+          },
+          "--file": {
+            "type": "string"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "void"
       }
     }
   },
@@ -5829,6 +5977,33 @@
         },
         "mutates": true,
         "returns": "void"
+      },
+      "query": {
+        "description": "Execute a GraphQL query against the API",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--operation-name": {
+            "type": "string"
+          },
+          "--query": {
+            "description": "GraphQL query string",
+            "required": true,
+            "type": "string"
+          },
+          "--variables": {
+            "description": "JSON variables object",
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },
@@ -6977,6 +7152,117 @@
           }
         },
         "mutates": false,
+        "returns": "object"
+      },
+      "list-shortcuts": {
+        "description": "List shortcuts on a KQL database",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "create-shortcut": {
+        "description": "Create a shortcut on a KQL database",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--name": {
+            "required": true,
+            "type": "string"
+          },
+          "--path": {
+            "required": true,
+            "type": "string"
+          },
+          "--target": {
+            "description": "JSON target configuration",
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "get-shortcut": {
+        "description": "Get a shortcut by path and name",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--name": {
+            "required": true,
+            "type": "string"
+          },
+          "--path": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "delete-shortcut": {
+        "description": "Delete a shortcut",
+        "destructive": true,
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--name": {
+            "required": true,
+            "type": "string"
+          },
+          "--path": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "void"
+      },
+      "bulk-create-shortcuts": {
+        "async": true,
+        "description": "Create multiple shortcuts at once",
+        "flags": {
+          "--content": {
+            "description": "JSON array of shortcut requests",
+            "required": true,
+            "type": "string"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
         "returns": "object"
       }
     }
@@ -8693,21 +8979,6 @@
         "mutates": false,
         "returns": "list"
       },
-      "mirroring-status": {
-        "description": "Get mirroring status",
-        "flags": {
-          "--id": {
-            "required": true,
-            "type": "string"
-          },
-          "--workspace": {
-            "required": true,
-            "type": "string"
-          }
-        },
-        "mutates": false,
-        "returns": "object"
-      },
       "refresh-metadata": {
         "description": "Refresh metadata",
         "flags": {
@@ -9273,6 +9544,102 @@
         },
         "mutates": true,
         "returns": "void"
+      },
+      "update": {
+        "description": "Update notebook name/description",
+        "flags": {
+          "--description": {
+            "type": "string"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--name": {
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "update-definition": {
+        "async": true,
+        "description": "Update notebook definition",
+        "flags": {
+          "--content": {
+            "type": "string"
+          },
+          "--file": {
+            "type": "string"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "void"
+      },
+      "get-job-instance": {
+        "description": "Get notebook job instance details (beta)",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--job-instance-id": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "list-livy-sessions": {
+        "description": "List active Livy sessions",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "get-livy-session": {
+        "description": "Get Livy session details",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--session-id": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },
@@ -9343,6 +9710,34 @@
           },
           "--roles": {
             "description": "JSON array or @file",
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "create": {
+        "description": "Create a data access role",
+        "flags": {
+          "--conflict-policy": {
+            "description": "Abort (default) or Overwrite",
+            "type": "enum",
+            "values": [
+              "Abort",
+              "Overwrite"
+            ]
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--role": {
+            "description": "JSON or @file",
             "required": true,
             "type": "string"
           },
@@ -9954,7 +10349,7 @@
   },
   "paginated-report": {
     "auth_scope": "fabric",
-    "description": "Manage paginated reports (read-only creation via portal/SSRS)",
+    "description": "Manage paginated reports",
     "subcommands": {
       "list": {
         "description": "List paginated reports",
@@ -9966,6 +10361,45 @@
         },
         "mutates": false,
         "returns": "list"
+      },
+      "show": {
+        "description": "Show paginated report details",
+        "flags": {
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "create": {
+        "async": true,
+        "description": "Create a paginated report with definition",
+        "flags": {
+          "--description": {
+            "type": "string"
+          },
+          "--file": {
+            "description": "Path to .rdl file",
+            "required": true,
+            "type": "string"
+          },
+          "--name": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
       },
       "update": {
         "description": "Update properties",
@@ -9987,6 +10421,70 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "delete": {
+        "description": "Delete a paginated report",
+        "destructive": true,
+        "flags": {
+          "--hard-delete": {
+            "description": "Permanently delete (skip recycle bin)",
+            "type": "bool"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "void"
+      },
+      "get-definition": {
+        "async": true,
+        "description": "Get paginated report definition",
+        "flags": {
+          "--decode": {
+            "type": "bool"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "update-definition": {
+        "async": true,
+        "description": "Update paginated report definition",
+        "flags": {
+          "--content": {
+            "type": "string"
+          },
+          "--file": {
+            "type": "string"
+          },
+          "--id": {
+            "required": true,
+            "type": "string"
+          },
+          "--update-metadata": {
+            "type": "bool"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "void"
       }
     }
   },
@@ -12471,7 +12969,7 @@
         "mutates": false,
         "returns": "object"
       },
-      "get-git-outbound": {
+      "get-git-outbound-policy": {
         "description": "Get git outbound policy",
         "flags": {
           "--workspace": {
@@ -12482,7 +12980,7 @@
         "mutates": false,
         "returns": "object"
       },
-      "get-inbound-azure-resources": {
+      "get-inbound-azure-resource-rules": {
         "description": "Get inbound Azure resource rules",
         "flags": {
           "--workspace": {
@@ -12515,7 +13013,7 @@
         "mutates": false,
         "returns": "object"
       },
-      "get-outbound-cloud-connections": {
+      "get-outbound-cloud-connection-rules": {
         "description": "Get outbound cloud connection rules",
         "flags": {
           "--workspace": {
@@ -12526,7 +13024,7 @@
         "mutates": false,
         "returns": "object"
       },
-      "get-outbound-gateways": {
+      "get-outbound-gateway-rules": {
         "description": "Get outbound gateway rules",
         "flags": {
           "--workspace": {
@@ -12548,7 +13046,7 @@
         "mutates": false,
         "returns": "object"
       },
-      "get-storage-format": {
+      "get-dataset-storage-format": {
         "description": "Get default dataset storage format",
         "flags": {
           "--workspace": {
@@ -12600,20 +13098,6 @@
       "list-folders": {
         "description": "List folders in workspace",
         "flags": {
-          "--workspace": {
-            "required": true,
-            "type": "string"
-          }
-        },
-        "mutates": false,
-        "returns": "list"
-      },
-      "list-items": {
-        "description": "List all items in workspace",
-        "flags": {
-          "--type": {
-            "type": "string"
-          },
           "--workspace": {
             "required": true,
             "type": "string"
@@ -12748,7 +13232,7 @@
         "mutates": true,
         "returns": "void"
       },
-      "set-git-outbound": {
+      "set-git-outbound-policy": {
         "description": "Set git outbound policy (requires OAP)",
         "flags": {
           "--content": {
@@ -12765,7 +13249,7 @@
         "mutates": true,
         "returns": "void"
       },
-      "set-inbound-azure-resources": {
+      "set-inbound-azure-resource-rules": {
         "description": "Set inbound Azure resource rules",
         "flags": {
           "--content": {
@@ -12799,7 +13283,7 @@
         "mutates": true,
         "returns": "void"
       },
-      "set-outbound-cloud-connections": {
+      "set-outbound-cloud-connection-rules": {
         "description": "Set outbound cloud connection rules",
         "flags": {
           "--content": {
@@ -12816,7 +13300,7 @@
         "mutates": true,
         "returns": "void"
       },
-      "set-outbound-gateways": {
+      "set-outbound-gateway-rules": {
         "description": "Set outbound gateway rules",
         "flags": {
           "--content": {
@@ -12833,7 +13317,7 @@
         "mutates": true,
         "returns": "void"
       },
-      "set-storage-format": {
+      "set-dataset-storage-format": {
         "description": "Set default dataset storage format (Small/Large)",
         "flags": {
           "--format": {
@@ -12994,6 +13478,75 @@
         },
         "mutates": false,
         "returns": "object"
+      },
+      "show-role-assignment": {
+        "description": "Show a specific role assignment",
+        "flags": {
+          "--role-assignment-id": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "show-folder": {
+        "description": "Show folder details",
+        "flags": {
+          "--folder-id": {
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "get-encryption": {
+        "description": "Get CMK encryption settings",
+        "flags": {
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "assign-encryption": {
+        "async": true,
+        "description": "Assign a Customer-Managed Key",
+        "flags": {
+          "--key-identifier": {
+            "description": "Versionless Azure Key Vault URI",
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "reset-encryption": {
+        "description": "Remove CMK and revert to Microsoft-managed keys",
+        "flags": {
+          "--workspace": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "void"
       }
     }
   }
