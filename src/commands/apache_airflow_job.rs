@@ -113,6 +113,10 @@ pub enum ApacheAirflowJobCommand {
         /// Inline definition content
         #[arg(long)]
         content: Option<String>,
+
+        /// Also update item metadata from .platform file if present
+        #[arg(long)]
+        update_metadata: bool,
     },
     // ─── Environment Operations ──────────────────────────────────────────────
     /// Start the Airflow environment
@@ -416,6 +420,7 @@ pub async fn execute(
             id,
             file,
             content,
+            update_metadata,
         } => {
             update_definition(
                 cli,
@@ -424,6 +429,7 @@ pub async fn execute(
                 id,
                 file.as_deref(),
                 content.as_deref(),
+                *update_metadata,
             )
             .await
         }
@@ -712,6 +718,7 @@ async fn update_definition(
     id: &str,
     file: Option<&str>,
     content: Option<&str>,
+    update_metadata: bool,
 ) -> Result<()> {
     let script = match (file, content) {
         (Some(path), _) => std::fs::read_to_string(path)
@@ -746,18 +753,21 @@ async fn update_definition(
         &serde_json::json!({
             "workspace": workspace,
             "id": id,
-            "contentLength": script.len()
+            "contentLength": script.len(),
+            "updateMetadata": update_metadata
         }),
     ) {
         return Ok(());
     }
 
+    let url = if update_metadata {
+        format!("/workspaces/{workspace}/{BASE}/{id}/updateDefinition?updateMetadata=True")
+    } else {
+        format!("/workspaces/{workspace}/{BASE}/{id}/updateDefinition")
+    };
+
     let data = client
-        .post(
-            &format!("/workspaces/{workspace}/{BASE}/{id}/updateDefinition"),
-            &body,
-            true,
-        )
+        .post(&url, &body, true)
         .await
         .map_err(|e| enrich_forbidden(e, "apache-airflow-job update-definition", "Contributor"))?;
 
