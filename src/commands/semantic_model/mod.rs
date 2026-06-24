@@ -12,6 +12,9 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError};
 
 #[derive(Debug, Subcommand)]
+#[command(
+    after_help = "CONTEXT: fabio context schema SemanticModel | fabio context workflow direct-lake-report"
+)]
 pub enum SemanticModelCommand {
     /// List semantic models in a workspace
     #[command(display_order = 1)]

@@ -10,6 +10,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(
+    after_help = "CONTEXT: fabio context schema KQLDatabase | fabio context workflow rti-pipeline | fabio context examples kql-database list-entities"
+)]
 pub enum KqlDatabaseCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List KQL databases in a workspace

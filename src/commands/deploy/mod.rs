@@ -64,6 +64,9 @@ fn resolve_config_and_cli(
 }
 
 #[derive(Debug, Subcommand)]
+#[command(
+    after_help = "CONTEXT: fabio context workflow cicd-deploy | fabio context examples deploy plan | fabio context examples deploy apply"
+)]
 pub enum DeployCommand {
     /// Preview what would be deployed (create/update/delete/skip)
     #[command(display_order = 1)]

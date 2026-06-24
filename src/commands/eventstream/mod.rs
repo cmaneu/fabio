@@ -10,6 +10,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(
+    after_help = "CONTEXT: fabio context schema Eventstream | fabio context workflow rti-pipeline | fabio context examples eventstream validate"
+)]
 pub enum EventstreamCommand {
     /// List eventstreams in a workspace
     #[command(display_order = 1)]

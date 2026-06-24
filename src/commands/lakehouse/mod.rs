@@ -20,6 +20,9 @@ mod sync;
 mod tables;
 
 #[derive(Debug, Subcommand)]
+#[command(
+    after_help = "CONTEXT: fabio context schema Lakehouse | fabio context workflow lakehouse-etl | fabio context examples lakehouse list-tables"
+)]
 pub enum LakehouseCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List lakehouses in a workspace

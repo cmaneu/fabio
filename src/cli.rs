@@ -21,6 +21,13 @@ use crate::commands::{
 #[derive(Parser, Debug)]
 #[command(name = "fabio", version, about, long_about = None)]
 #[command(propagate_version = true)]
+#[command(after_help = "\x1b[1mFOR AI AGENTS:\x1b[0m
+  fabio context agent             Full command schema (all flags, types, mutability) as JSON
+  fabio context list              Discover workflows, schemas, examples, best-practices
+  fabio context workflow <NAME>   Step-by-step recipes (e.g. rti-pipeline, data-agent-setup)
+  fabio context examples <G> <C>  Response shape examples (e.g. lakehouse list-tables)
+  fabio context schema <TYPE>     Item definition format (e.g. Notebook, SemanticModel)
+  fabio context best-practices <T> Operational guidance (e.g. throttling, lro, pagination)")]
 #[allow(clippy::struct_excessive_bools)]
 pub struct Cli {
     /// Output format

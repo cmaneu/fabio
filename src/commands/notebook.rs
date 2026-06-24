@@ -13,6 +13,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(
+    after_help = "CONTEXT: fabio context schema Notebook | fabio context workflow lakehouse-etl | fabio context examples notebook run"
+)]
 pub enum NotebookCommand {
     // ── Lifecycle ────────────────────────────────────────────────────────
     /// List notebooks in a workspace

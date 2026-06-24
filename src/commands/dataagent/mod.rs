@@ -15,6 +15,9 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 
 #[derive(Debug, Subcommand)]
+#[command(
+    after_help = "CONTEXT: fabio context schema DataAgent | fabio context workflow data-agent-setup | fabio context examples data-agent query"
+)]
 pub enum DataAgentCommand {
     /// List data agents in a workspace
     List {

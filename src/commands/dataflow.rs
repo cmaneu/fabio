@@ -14,6 +14,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(
+    after_help = "CONTEXT: fabio context schema Dataflow | fabio context examples lakehouse list-tables"
+)]
 pub enum DataflowCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List dataflows in a workspace
