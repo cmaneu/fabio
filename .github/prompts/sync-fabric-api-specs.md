@@ -18,8 +18,9 @@ Your task:
 3. Make targeted improvements to fabio: add new subcommands, update existing request/response handling, fix field names, or add support for new parameters.
 4. Update relevant tests in tests/ if you add or modify commands.
 5. Harvest examples and behavioral details from the spec changes (see "Examples & Documentation Enrichment" below).
-6. Before committing, run the mandatory pre-commit validation defined in AGENTS.md (section "Pre-Commit Validation (MANDATORY)"). All steps must pass with zero errors and zero warnings.
-7. Write a file called /tmp/pr-body.md describing what was changed and why, referencing the spec commits.
+6. Update `fabio context` data files when spec changes introduce new item types, workflows, or best-practice patterns (see "Context Knowledge Updates" below).
+7. Before committing, run the mandatory pre-commit validation defined in AGENTS.md (section "Pre-Commit Validation (MANDATORY)"). All steps must pass with zero errors and zero warnings.
+8. Write a file called /tmp/pr-body.md describing what was changed and why, referencing the spec commits.
 
 ## Examples & Documentation Enrichment
 
@@ -37,6 +38,40 @@ The Fabric API specs contain `x-ms-examples`, example request/response bodies, e
 ### AGENTS.md API Behaviors
 - **Document discovered behaviors**: When the spec reveals non-obvious API behaviors — required field ordering, enum values, default values, error codes, LRO patterns, pagination keys, response envelope differences, or undocumented constraints — add them to the appropriate "API Behaviors Discovered" section in AGENTS.md. This is critical institutional knowledge that prevents future regressions.
 - **Look for**: required vs optional fields that differ from intuition, non-standard response keys (not `"value"`), PascalCase vs camelCase requirements, query parameter requirements (`?beta=true`, `?preview=true`), discriminated union patterns in request bodies, and fields the server auto-adds or strips.
+
+## Context Knowledge Updates
+
+The `fabio context` system provides structured knowledge for AI agents consuming the CLI. When spec changes introduce new capabilities, update the corresponding context data files so agents can discover and use them correctly.
+
+### `src/commands/context/agent.rs` — Command Schema
+
+If you add a new subcommand or modify flags/options on an existing command, update the machine-readable schema in `agent.rs`. Each command group entry lists subcommands with their flags, types, mutability, and descriptions. Agents rely on this for command discovery.
+
+### `src/commands/context/data/schemas/` — Item Definition Schemas
+
+If the spec introduces a **new item type** or changes the definition format (part paths, creation body, required fields) of an existing item type, add or update the corresponding JSON file in `data/schemas/`. Each schema file describes: `type`, `description`, `create_command`, `definition_format`, `definition_parts`, `creation_body_template`, `flags`, `notes`, and `related_commands`. See `data/schemas/lakehouse.json` for the canonical structure.
+
+### `src/commands/context/data/examples/` — Output Examples
+
+If you add a new command with a non-obvious response shape (nested objects, aggregated results, URL outputs), add a JSON example file in `data/examples/` and register it in `src/commands/context/examples.rs` in the `OUTPUT_EXAMPLES` constant via `include_str!()`. Each example has: `command`, `description`, `response` (representative JSON output), `notes`, and optional `query_examples` (JMESPath snippets for common extractions).
+
+### `src/commands/context/data/workflows/` — Workflow Recipes
+
+If the spec changes reveal a **new multi-step workflow** (e.g., a new item type requiring a create-configure-publish sequence, or a new integration between two item types), add a workflow recipe JSON. Structure: `name`, `description`, `prerequisites`, `steps` (numbered with `command` and `description`), and `tips`. Agents use these to orchestrate complex operations.
+
+### `src/commands/context/data/best_practices/` — Best Practices
+
+If the spec reveals new operational patterns (new pagination behavior, new LRO quirk, new beta/preview flag requirement, new throttling guidance, new required query parameters), add or update the relevant best-practice JSON file. Structure: `topic`, `title`, `summary`, plus domain-specific guidance sections.
+
+### Decision Criteria
+
+Update context files when ANY of these apply:
+- A new item type is implemented → add `data/schemas/{type}.json` + update `schemas.rs`
+- A new command has non-trivial output → add `data/examples/{cmd}.json` + update `examples.rs`
+- A new multi-step creation/configuration flow is needed → add `data/workflows/{flow}.json` + update `workflows.rs`
+- A spec change introduces a gotcha (required field ordering, beta flag, enum constraint) → update relevant `data/best_practices/{topic}.json`
+- Any new subcommand or flag is added → update `agent.rs` command schema
+- An API behavioral change affects how a command/subcommand works (new required fields, changed response shape, modified LRO pattern, new error codes, renamed parameters) → update the relevant schema, example, or best-practice file so agents use the updated behavior correctly
 
 ## Tool Usage Rules
 
