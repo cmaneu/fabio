@@ -7,21 +7,82 @@ use crate::output;
 
 use super::find_entry;
 
-pub(super) fn execute(cli: &Cli, group: &str, command: &str) {
-    let key = format!("{group}/{command}");
-    let normalized = key.to_lowercase().replace(['-', '_'], "");
-    if let Some(content) = find_entry(OUTPUT_EXAMPLES, &normalized) {
-        let val: Value =
-            serde_json::from_str(content).unwrap_or_else(|_| json!({"content": content}));
-        output::render_object(cli, &val, "command");
-    } else {
+pub(super) fn execute(cli: &Cli, group: &str, command: Option<&str>) {
+    if let Some(cmd) = command {
+        // Exact lookup: group/command
+        let key = format!("{group}/{cmd}");
+        let normalized = key.to_lowercase().replace(['-', '_'], "");
+        if let Some(content) = find_entry(OUTPUT_EXAMPLES, &normalized) {
+            let val: Value =
+                serde_json::from_str(content).unwrap_or_else(|_| json!({"content": content}));
+            output::render_object(cli, &val, "command");
+            return;
+        }
+        // Not found — fall through to show available for this group
+    }
+
+    // Group-only: list all examples matching this group prefix
+    let group_normalized = group.to_lowercase().replace(['-', '_'], "");
+    let matches: Vec<Value> = OUTPUT_EXAMPLES
+        .iter()
+        .filter(|(name, _)| {
+            let prefix = name
+                .split('/')
+                .next()
+                .unwrap_or("")
+                .to_lowercase()
+                .replace(['-', '_'], "");
+            prefix == group_normalized
+        })
+        .filter_map(|(name, content)| {
+            let val: Value = serde_json::from_str(content).ok()?;
+            Some(json!({
+                "name": name,
+                "command": val.get("command").and_then(Value::as_str).unwrap_or(""),
+                "description": val.get("description").and_then(Value::as_str).unwrap_or(""),
+            }))
+        })
+        .collect();
+
+    if matches.is_empty() {
         let available: Vec<&str> = OUTPUT_EXAMPLES.iter().map(|(name, _)| *name).collect();
+        let msg = command.map_or_else(
+            || format!("No output examples found for group '{group}'"),
+            |cmd| format!("No output example found for '{group} {cmd}'"),
+        );
         let result = json!({
-            "error": format!("No output example found for '{group} {command}'"),
+            "error": msg,
             "available_examples": available,
             "hint": "Use 'fabio context list' to see all available examples"
         });
         output::render_object(cli, &result, "error");
+    } else if matches.len() == 1 && command.is_none() {
+        // Single example for this group — show the full content directly
+        let (_, content) = OUTPUT_EXAMPLES
+            .iter()
+            .find(|(name, _)| {
+                let prefix = name
+                    .split('/')
+                    .next()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .replace(['-', '_'], "");
+                prefix == group_normalized
+            })
+            .unwrap();
+        let val: Value =
+            serde_json::from_str(content).unwrap_or_else(|_| json!({"content": content}));
+        output::render_object(cli, &val, "command");
+    } else {
+        // Multiple examples — show summary list
+        output::render_list_with_token(
+            cli,
+            &matches,
+            &["name", "description"],
+            &["EXAMPLE", "DESCRIPTION"],
+            "name",
+            None,
+        );
     }
 }
 

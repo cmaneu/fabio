@@ -68,13 +68,13 @@ pub enum ContextCommand {
     /// Show example output for a command (response shape + `JMESPath` tips)
     #[command(display_order = 4)]
     Examples {
-        /// Command group (e.g. `lakehouse`, `workspace`, `item`)
+        /// Command group (e.g. `lakehouse`, `warehouse`, `deploy`)
         #[arg(name = "GROUP")]
         group: String,
 
-        /// Subcommand (e.g. `list-tables`, `iceberg-table`, `list`)
+        /// Subcommand (e.g. `query`, `list-tables`, `plan`). Omit to list all examples for the group.
         #[arg(name = "COMMAND")]
-        command: String,
+        command: Option<String>,
     },
 
     /// List all available documentation topics (schemas, workflows, examples, best-practices)
@@ -147,7 +147,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
             Ok(())
         }
         ContextCommand::Examples { group, command } => {
-            examples::execute(cli, group, command);
+            examples::execute(cli, group, command.as_deref());
             Ok(())
         }
         ContextCommand::List => {
