@@ -10,6 +10,7 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context agent")]
 pub enum DigitalTwinBuilderCommand {
     /// List Digital Twin Builders in a workspace
     #[command(display_order = 1)]

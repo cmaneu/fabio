@@ -8,6 +8,7 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context examples deployment-pipeline")]
 pub enum DeploymentPipelineCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List deployment pipelines

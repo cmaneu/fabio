@@ -6,6 +6,7 @@ use crate::client::FabricClient;
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context agent")]
 pub enum LroCommand {
     /// Get the state of a long-running operation
     #[command(display_order = 1)]

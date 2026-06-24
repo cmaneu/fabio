@@ -10,6 +10,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(
+    after_help = "CONTEXT: fabio context schema Eventhouse | fabio context workflow rti-pipeline"
+)]
 pub enum EventhouseCommand {
     /// List eventhouses in a workspace
     #[command(display_order = 1)]

@@ -6,6 +6,7 @@ use crate::output;
 use crate::token_cache;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context agent")]
 pub enum AuthCommand {
     /// Log in to Microsoft Fabric via device code flow, service principal, or WAM broker
     Login {

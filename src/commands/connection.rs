@@ -8,6 +8,7 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context examples connection")]
 pub enum ConnectionCommand {
     /// List all connections you have permission to access
     #[command(display_order = 1)]

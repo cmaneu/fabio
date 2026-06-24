@@ -12,6 +12,7 @@ use crate::output;
 const BASE: &str = "apacheAirflowJobs";
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context agent")]
 pub enum ApacheAirflowJobCommand {
     /// List Apache Airflow jobs in a workspace
     #[command(display_order = 1)]

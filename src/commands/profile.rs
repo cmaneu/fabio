@@ -12,6 +12,7 @@ use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context agent")]
 pub enum ProfileCommand {
     /// Save a named profile with default settings
     Save {

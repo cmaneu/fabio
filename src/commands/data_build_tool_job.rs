@@ -14,6 +14,7 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context agent")]
 pub enum DataBuildToolJobCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List data build tool jobs in a workspace [preview]

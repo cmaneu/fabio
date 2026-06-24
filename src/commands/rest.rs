@@ -27,6 +27,7 @@ pub enum ApiTarget {
 }
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context examples rest")]
 pub enum RestCommand {
     /// Send a raw REST request to the Fabric or Power BI API
     ///

@@ -8,6 +8,7 @@ use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context agent")]
 pub enum CatalogCommand {
     /// Search the Fabric catalog
     #[command(display_order = 1)]

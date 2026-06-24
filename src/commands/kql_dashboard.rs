@@ -10,6 +10,7 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context workflow rti-pipeline")]
 pub enum KqlDashboardCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List KQL dashboards in a workspace

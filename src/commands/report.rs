@@ -10,6 +10,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(
+    after_help = "CONTEXT: fabio context schema Report | fabio context workflow direct-lake-report"
+)]
 pub enum ReportCommand {
     /// List reports in a workspace
     #[command(display_order = 1)]

@@ -8,6 +8,7 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context agent")]
 pub enum DomainCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List domains in the tenant

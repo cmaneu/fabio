@@ -10,6 +10,7 @@ use crate::output;
 const ARM_API_VERSION: &str = "2023-11-01";
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context examples capacity")]
 pub enum CapacityCommand {
     /// List capacities available to the caller (Fabric API)
     #[command(display_order = 1)]

@@ -15,6 +15,7 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError};
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context examples admin")]
 pub enum AdminCommand {
     // ── Tenant Settings ──────────────────────────────────────────────────
     /// List all tenant settings

@@ -8,6 +8,7 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context examples gateway")]
 pub enum GatewayCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List all gateways

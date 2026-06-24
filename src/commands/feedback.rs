@@ -12,6 +12,7 @@ use crate::cli::Cli;
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context agent")]
 pub enum FeedbackCommand {
     /// Record feedback about CLI friction or issues
     Send {

@@ -10,6 +10,7 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context agent")]
 pub enum CosmosDbDatabaseCommand {
     /// List Cosmos DB databases in a workspace
     #[command(display_order = 1)]

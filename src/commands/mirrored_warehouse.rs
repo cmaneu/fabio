@@ -6,6 +6,7 @@ use crate::client::FabricClient;
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context agent")]
 pub enum MirroredWarehouseCommand {
     /// List mirrored warehouses in a workspace
     #[command(display_order = 1)]

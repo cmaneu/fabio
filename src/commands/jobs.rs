@@ -14,6 +14,7 @@ use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context agent")]
 pub enum JobsCommand {
     /// List recent jobs from the local ledger
     List {

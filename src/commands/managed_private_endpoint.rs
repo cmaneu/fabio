@@ -8,6 +8,7 @@ use crate::errors::enrich_forbidden;
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context agent")]
 pub enum ManagedPrivateEndpointCommand {
     /// List managed private endpoints in a workspace
     #[command(display_order = 1)]

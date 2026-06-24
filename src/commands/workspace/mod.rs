@@ -26,6 +26,7 @@ pub(super) const KNOWN_PRINCIPAL_TYPES: &[&str] = &[
 ];
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context examples workspace")]
 pub enum WorkspaceCommand {
     /// List all workspaces
     #[command(display_order = 1)]

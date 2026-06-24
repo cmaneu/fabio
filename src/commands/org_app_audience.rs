@@ -10,6 +10,7 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context agent")]
 pub enum OrgAppAudienceCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List org app audiences in a workspace

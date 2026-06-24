@@ -8,6 +8,7 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
+#[command(after_help = "CONTEXT: fabio context examples onelake-security")]
 pub enum OnelakeSecurityCommand {
     /// List data access roles for an item
     #[command(display_order = 1)]
