@@ -3187,6 +3187,7 @@
       "execute-query": {
         "description": "Execute a query (returns Apache Arrow IPC binary)",
         "flags": {
+          "--arrow-version": "1|2 (default: 1, Apache Arrow IPC format version)",
           "--file": {
             "description": "Output file path for Arrow IPC bytes",
             "type": "string"

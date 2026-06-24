@@ -417,7 +417,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **ML Model**: list, show, create, update, delete (CRUD only, no definition support)
 - **ML Experiment**: list, show, create, update, delete (CRUD only, no definition support)
 - **Copy Job**: list, show, create, update, delete, get-definition, update-definition, reset (data movement)
-- **Dataflow**: list, show, create, update, delete, get-definition, update-definition, discover-parameters, run, execute-query (Power BI transformation)
+- **Dataflow**: list, show, create, update, delete, get-definition, update-definition, discover-parameters, run, execute-query (with --arrow-version 1|2, LRO-aware) (Power BI transformation)
 - **GraphQL API**: list, show, create, update, delete, get-definition, update-definition (schema.graphql)
 - **Report**: list, show, create (from definition file), update, delete, get-definition, update-definition
 - **Semantic Model**: list, show, create (from model.bim), update, delete, get-definition, update-definition, query, refresh, bind-connection, unbind-connection, takeover
@@ -687,7 +687,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/upgrade.rs`: upgrade (check/download/verify/replace binary from GitHub Releases)
 - `tests/common/mod.rs`: Shared E2E test harness (TestConfig, helpers)
 - `tests/e2e_auth.rs`: Auth integration tests (device code, service principal secret/certificate/federated, WAM, input validation)
-- `tests/e2e_workspace.rs`: Workspace CRUD + assign-capacity + networking + OneLake settings + folders + storage format + roles filter tests
+- `tests/e2e_workspace.rs`: Workspace CRUD + assign-capacity + networking + OneLake settings + folders + storage format + roles filter + CMK encryption tests
 - `tests/e2e_global_options.rs`: --query, --quiet, --output format tests
 - `tests/e2e_item.rs`: Item list/show/create/delete/copy/move/bulk-create/bulk-delete tests
 - `tests/e2e_lakehouse.rs`: Tables/files/upload/download/query tests
@@ -697,7 +697,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `tests/e2e_lakehouse_iceberg.rs`: Iceberg REST Catalog tests (config, namespaces, tables, schema)
 - `tests/e2e_notebook.rs`: Notebook create/get-definition/run/run --wait/status/stop/delete/strip-output tests
 - `tests/e2e_warehouse.rs`: Warehouse list/show/query/query-stdin tests
-- `tests/e2e_sql_database.rs`: SQL Database CRUD + query + import tests
+- `tests/e2e_sql_database.rs`: SQL Database CRUD + query + import + revalidate-cmk dry-run tests
 - `tests/e2e_dataagent.rs`: Data agent tests (34 tests: CRUD, query, definition, publish, datasource lifecycle, fewshot lifecycle, elements lifecycle, config, CSV upload, dry-run validations)
 - `tests/e2e_git.rs`: Git command group tests
 - `tests/e2e_ontology.rs`: Ontology CRUD + definition tests
@@ -1875,6 +1875,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Execute query endpoint**: `POST /workspaces/{ws}/dataflows/{id}/executeQuery` with body `{"queryName": "<name>", "customMashupDocument"?: "<M expression>"}`. Returns binary Apache Arrow IPC stream (NOT JSON).
 - **Execute query response handling**: Binary response saved to `--file` path. If `--file` is not specified, reports metadata only (size in bytes). Uses `post_fabric_bytes()` method for binary response.
 - **Execute query requires Contributor role**: Returns 403 without sufficient permissions.
+- **Execute query is LRO-aware (Jun 2026)**: `POST .../executeQuery` now returns 202 for long-running queries (up to 90s server-side). Supports `Accept: application/vnd.apache.arrow.stream;pq-arrow-version=1|2` header for Arrow format version selection. fabio's `--arrow-version` flag (default 1) controls this.
 
 ## SQL Database API Behaviors Discovered
 - **Creation modes**: `New` (fresh database), `Restore` (point-in-time restore from existing), `RestoreDeletedDatabase` (restore from deleted). Each mode has different `creationPayload` fields.

@@ -335,7 +335,7 @@ fabio dataflow get-definition   Get dataflow definition
 fabio dataflow update-definition Update dataflow definition
 fabio dataflow discover-parameters Discover M parameters
 fabio dataflow run           Run a dataflow (--wait, --job-type execute|apply-changes)
-fabio dataflow execute-query Execute a named query (returns Arrow IPC binary)
+fabio dataflow execute-query  Execute a query (--query-name, --mashup, --file, --arrow-version 1|2)
 
 fabio app-backend list       List app backends in a workspace [preview]
 fabio app-backend show       Show app backend details
