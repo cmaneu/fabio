@@ -241,28 +241,34 @@ fabio sql-endpoint get-audit-settings  Get audit configuration
 fabio sql-endpoint update-audit-settings Update audit settings
 fabio sql-endpoint set-audit-actions    Set audit action groups
 
-fabio data-agent list        List data agents
-fabio data-agent show        Show data agent details
-fabio data-agent create      Create a new data agent
-fabio data-agent update      Update name/description
-fabio data-agent delete      Delete a data agent
-fabio data-agent query       Chat with a published data agent (--stage, --timeout)
-fabio data-agent get-config       Get agent config (instructions, preview runtime, datasources)
-fabio data-agent update-config    Update agent config (--instructions, --instructions-file, --enable-preview-runtime)
-fabio data-agent list-datasources List configured data sources
-fabio data-agent show-datasource  Show data source details
-fabio data-agent add-datasource   Add a data source (auto-type detection from artifact)
+fabio data-agent list             List data agents
+fabio data-agent show             Show data agent details
+fabio data-agent create           Create a new data agent
+fabio data-agent update           Update name/description
+fabio data-agent delete           Delete a data agent (--hard-delete)
+fabio data-agent query            Chat with a published agent (--prompt, --published-url, --show-steps, --stage, --timeout)
+fabio data-agent get-config       Get agent config (--stage staging|published)
+fabio data-agent update-config    Update agent config (--instructions, --instructions-file, --enable-preview-runtime, --disable-preview-runtime)
+fabio data-agent list-datasources List configured data sources (--stage staging|published)
+fabio data-agent show-datasource  Show data source details (--stage staging|published)
+fabio data-agent add-datasource   Add a data source (--artifact, --artifact-type, --artifact-workspace, --instructions)
+fabio data-agent update-datasource Update datasource metadata (--instructions, --description)
 fabio data-agent remove-datasource Remove a data source
 fabio data-agent select-tables    Select/unselect tables (--tables, --all-tables, --unselect)
-fabio data-agent list-elements    List elements (tables/columns with selection state and descriptions)
-fabio data-agent describe-element Set/clear description on a table or column (--path, --description)
-fabio data-agent list-fewshots    List few-shot examples for a data source
+fabio data-agent list-elements    List elements with selection state (--stage staging|published)
+fabio data-agent describe-element Set/clear description on table/column (--path, --description)
+fabio data-agent delete-element   Delete a stale schema element (--element-id)
+fabio data-agent list-fewshots    List few-shot examples (--stage staging|published)
+fabio data-agent show-fewshot     Show a specific few-shot by ID (--fewshot-id, --stage)
 fabio data-agent add-fewshot      Add a question/answer pair (--question, --answer)
-fabio data-agent remove-fewshot   Remove a few-shot by ID
-fabio data-agent upload-fewshots  Bulk upload few-shots from JSON or CSV file
-fabio data-agent get-definition   Get definition (configuration, data sources)
-fabio data-agent update-definition Update definition (instructions, data sources)
-fabio data-agent publish     Publish a data agent (--to-m365 for M365 Copilot Agent Store)
+fabio data-agent update-fewshot   Update a few-shot (--fewshot-id, --question, --answer)
+fabio data-agent remove-fewshot   Remove a few-shot by ID (--fewshot-id)
+fabio data-agent clear-fewshots   Delete all few-shots for a datasource
+fabio data-agent upload-fewshots  Bulk upload few-shots from JSON or CSV file (--file)
+fabio data-agent get-definition   Get definition (CI/CD git integration)
+fabio data-agent update-definition Update definition (--file, --content, --update-metadata)
+fabio data-agent publish          Publish agent (promotes staging to published, --description, --to-m365)
+fabio data-agent reset            Reset staging (discard draft changes, revert to published)
 
 fabio ontology list          List ontologies
 fabio ontology show          Show ontology details

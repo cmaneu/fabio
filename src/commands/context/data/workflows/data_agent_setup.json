@@ -1,29 +1,27 @@
 {
-  "name": "Data Agent Creation and Configuration",
-  "description": "Create a Data Agent, connect to a lakehouse, configure tables, add few-shots, test, and publish.",
-  "prerequisites": ["Authenticated via fabio auth login", "Workspace with F2+ capacity", "Lakehouse with populated tables (tables must be visible via SQL endpoint)"],
+  "name": "data-agent-setup",
+  "description": "Create and configure a Data Agent end-to-end using the public staging management API",
   "steps": [
-    {"step_number": 1, "command": "fabio data-agent create --workspace $WS_ID --name \"SalesAgent\"", "description": "Create a new Data Agent.", "capture": "AGENT_ID=$(fabio data-agent create ... -q id -o plain)"},
-    {"step_number": 2, "command": "fabio data-agent add-datasource --workspace $WS_ID --id $AGENT_ID --artifact-id $LH_ID --artifact-workspace $WS_ID --name \"SalesLH\" --type lakehouse_tables", "description": "Connect agent to lakehouse. Schema discovery starts asynchronously."},
-    {"step_number": 3, "command": "fabio data-agent select-tables --workspace $WS_ID --id $AGENT_ID --datasource $LH_ID --all-tables", "description": "Select all discovered tables. If 0 tables selected, schema discovery is still in progress — wait and retry.", "retry_pattern": "sleep 60 && fabio data-agent select-tables ... --all-tables"},
-    {"step_number": 4, "command": "fabio data-agent update-config --workspace $WS_ID --id $AGENT_ID --datasource $LH_ID --instructions \"Your instructions here\"", "description": "Set agent instructions for query generation guidance."},
-    {"step_number": 5, "command": "fabio data-agent add-fewshot --workspace $WS_ID --id $AGENT_ID --datasource $LH_ID --question \"Top 5 customers by revenue?\" --sql \"SELECT TOP 5 ...\"", "description": "Add few-shot example to improve query generation."},
-    {"step_number": 6, "command": "fabio data-agent publish --workspace $WS_ID --id $AGENT_ID", "description": "Publish to production."},
-    {"step_number": 7, "command": "fabio data-agent query --workspace $WS_ID --id $AGENT_ID --prompt \"How many orders last month?\"", "description": "Query the published agent."}
+    {"step": 1, "command": "fabio data-agent create --workspace $WS --name \"SalesAgent\" --description \"Answers questions about sales data\"", "notes": "Creates the agent. Returns agent ID."},
+    {"step": 2, "command": "fabio data-agent add-datasource --workspace $WS --id $AGENT --artifact $LAKEHOUSE_ID --artifact-type Lakehouse --instructions \"Contains order history and product catalog\" --lro-timeout 300", "notes": "LRO: triggers async schema discovery (1-5 min). Use --lro-timeout 300 for reliable completion."},
+    {"step": 3, "command": "fabio data-agent list-elements --workspace $WS --id $AGENT --datasource $LAKEHOUSE_ID", "notes": "Wait for schema discovery. Elements appear once indexState=Indexed. Retry after 60s if empty."},
+    {"step": 4, "command": "fabio data-agent select-tables --workspace $WS --id $AGENT --datasource $LAKEHOUSE_ID --all-tables", "notes": "Select all discovered tables. Or use --tables \"orders,products\" for specific ones."},
+    {"step": 5, "command": "fabio data-agent update-config --workspace $WS --id $AGENT --instructions \"Answer questions about sales performance. Focus on revenue, order counts, and top products.\"", "notes": "Set AI instructions that guide the agent's query generation."},
+    {"step": 6, "command": "fabio data-agent add-fewshot --workspace $WS --id $AGENT --datasource $LAKEHOUSE_ID --question \"Total revenue last month?\" --answer \"SELECT SUM(total) FROM orders WHERE order_date >= DATEADD(month, -1, GETDATE())\"", "notes": "Add example Q&A pairs to improve accuracy. Max 100 per datasource."},
+    {"step": 7, "command": "fabio data-agent publish --workspace $WS --id $AGENT --description \"v1.0 initial release\"", "notes": "Promotes staging config to published. Agent becomes queryable."},
+    {"step": 8, "command": "fabio data-agent query --workspace $WS --id $AGENT --prompt \"What were the top 5 products by revenue?\"", "notes": "Query the published agent. Uses OpenAI Assistants protocol."}
   ],
   "schema_discovery": {
-    "behavior": "After add-datasource, Fabric asynchronously discovers the lakehouse SQL endpoint schema (tables, columns). This typically takes 1-5 minutes for new lakehouses.",
-    "detection": "Use 'fabio data-agent list-elements --workspace $WS --id $AGENT --datasource $LH' — if empty, discovery is still in progress.",
-    "retry_pattern": "Wait 60s between retries, up to 5 attempts. If tables never appear after 5 min, proceed with --all-tables anyway — it will include all tables once published.",
-    "acceleration": "Querying the lakehouse SQL endpoint directly (fabio lakehouse query --sql \"SELECT 1\") can sometimes accelerate schema indexing."
+    "behavior": "After add-datasource, schema elements are discovered asynchronously (1-5 min). list-elements returns empty until indexing completes.",
+    "retry_pattern": "Poll list-elements every 60s up to 5 attempts. Elements appear with indexState=Indexed when ready.",
+    "accelerator": "Running any SQL query against the lakehouse endpoint (fabio lakehouse query --sql \"SELECT 1\") before adding the datasource can prime schema indexing."
   },
   "tips": [
-    "Max 5 datasources per agent, 100 fewshots per datasource.",
-    "Schema discovery is async — tables may not appear immediately after add-datasource. Wait 1-2 min and retry.",
-    "Use --all-tables instead of listing individual table names to avoid case-sensitivity issues.",
-    "Use --stage production on query to test published version.",
-    "Use fabio data-agent upload-fewshots --file examples.csv for bulk loading.",
-    "Use fabio data-agent describe-element to add column descriptions.",
-    "The --datasource flag accepts either the datasource name or the artifact ID."
+    "Max 5 datasources per agent",
+    "Max 100 fewshots per datasource",
+    "Use --stage published on read commands to verify production state vs draft",
+    "Use 'fabio data-agent reset' to discard staging changes if a configuration attempt fails",
+    "Use 'fabio data-agent clear-fewshots' to start fresh if examples are incorrect",
+    "Agent responses are capped at 25 rows and 25 columns"
   ]
 }

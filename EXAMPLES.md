@@ -934,6 +934,38 @@ fabio data-agent query --workspace $WS --id $DA \
 echo "How many orders were placed last month?" | \
   fabio data-agent query --workspace $WS --id $DA
 
+# ─── New Management Commands ──────────────────────────────────────
+# Update datasource instructions after creation
+fabio data-agent update-datasource -w $WS --id $AGENT \
+  --datasource "SalesLakehouse" \
+  --instructions "Contains order history and product catalog. Use for sales analytics queries."
+
+# Show a specific few-shot example
+fabio data-agent show-fewshot -w $WS --id $AGENT \
+  --datasource "SalesLakehouse" --fewshot-id $FS_ID
+
+# Update an existing few-shot (correct a query)
+fabio data-agent update-fewshot -w $WS --id $AGENT \
+  --datasource "SalesLakehouse" --fewshot-id $FS_ID \
+  --answer "SELECT COUNT(DISTINCT customer_id) FROM orders"
+
+# Clear all few-shots for a datasource (start fresh)
+fabio data-agent clear-fewshots -w $WS --id $AGENT \
+  --datasource "SalesLakehouse"
+
+# Delete a stale schema element (table was dropped from lakehouse)
+fabio data-agent delete-element -w $WS --id $AGENT \
+  --datasource "SalesLakehouse" --element-id "dbo.deprecated_table"
+
+# Reset staging to published state (discard all draft changes)
+fabio data-agent reset -w $WS --id $AGENT
+
+# Read published (production) state instead of draft
+fabio data-agent get-config -w $WS --id $AGENT --stage published
+fabio data-agent list-datasources -w $WS --id $AGENT --stage published
+fabio data-agent list-elements -w $WS --id $AGENT --datasource "SalesLakehouse" --stage published
+fabio data-agent list-fewshots -w $WS --id $AGENT --datasource "SalesLakehouse" --stage published
+
 # ─── Low-level Definition (advanced) ──────────────────────────────
 # Get raw definition (all parts base64-encoded)
 fabio data-agent get-definition --workspace $WS --id $DA

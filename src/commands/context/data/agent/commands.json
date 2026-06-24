@@ -2259,6 +2259,10 @@
           "--workspace": {
             "required": true,
             "type": "string"
+          },
+          "--stage": {
+            "type": "string",
+            "description": "staging|published (default: staging)"
           }
         },
         "mutates": false,
@@ -2305,6 +2309,10 @@
           "--workspace": {
             "required": true,
             "type": "string"
+          },
+          "--stage": {
+            "type": "string",
+            "description": "staging|published (default: staging)"
           }
         },
         "mutates": false,
@@ -2325,6 +2333,10 @@
             "required": true,
             "type": "string",
             "description": "Data source name or ID"
+          },
+          "--stage": {
+            "type": "string",
+            "description": "staging|published (default: staging)"
           }
         },
         "mutates": false,
@@ -2427,6 +2439,10 @@
           "--datasource": {
             "required": true,
             "type": "string"
+          },
+          "--stage": {
+            "type": "string",
+            "description": "staging|published (default: staging)"
           }
         },
         "mutates": false,
@@ -2523,6 +2539,10 @@
             "required": true,
             "type": "string",
             "description": "Data source name or ID"
+          },
+          "--stage": {
+            "type": "string",
+            "description": "staging|published (default: staging)"
           }
         },
         "mutates": false,
@@ -2555,6 +2575,156 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "update-datasource": {
+        "description": "Update datasource metadata (instructions, description)",
+        "flags": {
+          "--workspace": {
+            "required": true,
+            "type": "uuid"
+          },
+          "--id": {
+            "required": true,
+            "type": "uuid"
+          },
+          "--datasource": {
+            "required": true,
+            "type": "string",
+            "description": "Name or ID"
+          },
+          "--instructions": {
+            "type": "string",
+            "description": "Data source instructions"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Data source description"
+          }
+        },
+        "mutates": true,
+        "async": false,
+        "example": "fabio data-agent update-datasource -w $WS --id $AGENT --datasource SalesLH --instructions \"Use for sales queries\""
+      },
+      "show-fewshot": {
+        "description": "Show a specific few-shot example by ID",
+        "flags": {
+          "--workspace": {
+            "required": true,
+            "type": "uuid"
+          },
+          "--id": {
+            "required": true,
+            "type": "uuid"
+          },
+          "--datasource": {
+            "required": true,
+            "type": "string"
+          },
+          "--fewshot-id": {
+            "required": true,
+            "type": "uuid"
+          },
+          "--stage": {
+            "type": "string",
+            "description": "staging|published (default: staging)"
+          }
+        },
+        "mutates": false,
+        "async": false,
+        "example": "fabio data-agent show-fewshot -w $WS --id $AGENT --datasource SalesLH --fewshot-id $FS_ID"
+      },
+      "update-fewshot": {
+        "description": "Update an existing few-shot example (question and/or query)",
+        "flags": {
+          "--workspace": {
+            "required": true,
+            "type": "uuid"
+          },
+          "--id": {
+            "required": true,
+            "type": "uuid"
+          },
+          "--datasource": {
+            "required": true,
+            "type": "string"
+          },
+          "--fewshot-id": {
+            "required": true,
+            "type": "uuid"
+          },
+          "--question": {
+            "type": "string",
+            "description": "Updated question"
+          },
+          "--answer": {
+            "type": "string",
+            "description": "Updated SQL/KQL/DAX query"
+          }
+        },
+        "mutates": true,
+        "async": false,
+        "example": "fabio data-agent update-fewshot -w $WS --id $AGENT --datasource SalesLH --fewshot-id $FS_ID --answer \"SELECT COUNT(*) FROM orders\""
+      },
+      "clear-fewshots": {
+        "description": "Delete all few-shot examples for a datasource",
+        "flags": {
+          "--workspace": {
+            "required": true,
+            "type": "uuid"
+          },
+          "--id": {
+            "required": true,
+            "type": "uuid"
+          },
+          "--datasource": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "async": false,
+        "example": "fabio data-agent clear-fewshots -w $WS --id $AGENT --datasource SalesLH"
+      },
+      "delete-element": {
+        "description": "Delete a stale schema element (only elements no longer in live schema)",
+        "flags": {
+          "--workspace": {
+            "required": true,
+            "type": "uuid"
+          },
+          "--id": {
+            "required": true,
+            "type": "uuid"
+          },
+          "--datasource": {
+            "required": true,
+            "type": "string"
+          },
+          "--element-id": {
+            "required": true,
+            "type": "string",
+            "description": "Element ID (e.g. dbo.old_table)"
+          }
+        },
+        "mutates": true,
+        "async": false,
+        "example": "fabio data-agent delete-element -w $WS --id $AGENT --datasource SalesLH --element-id dbo.old_table"
+      },
+      "reset": {
+        "description": "Reset staging configuration (discard all draft changes, revert to published state)",
+        "flags": {
+          "--workspace": {
+            "required": true,
+            "type": "uuid"
+          },
+          "--id": {
+            "required": true,
+            "type": "uuid"
+          }
+        },
+        "mutates": true,
+        "async": false,
+        "example": "fabio data-agent reset -w $WS --id $AGENT"
       }
     }
   },
