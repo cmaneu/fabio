@@ -993,6 +993,80 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "list-libraries": {
+        "description": "List installed libraries in the Airflow environment",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false
+      },
+      "get-settings": {
+        "description": "Get Airflow environment settings",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false
+      },
+      "update-settings": {
+        "description": "Update Airflow environment settings",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
+      },
+      "update-compute": {
+        "description": "Update Airflow compute configuration (pool template)",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--pool-template-id": "uuid"
+        },
+        "mutates": true,
+        "async": true
+      },
+      "update-workspace-settings": {
+        "description": "Update workspace-level Airflow settings",
+        "flags": {
+          "--workspace": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
+      },
+      "list-pool-templates": {
+        "description": "List available pool templates",
+        "flags": {
+          "--workspace": "uuid"
+        },
+        "mutates": false
+      },
+      "create-pool-template": {
+        "description": "Create a pool template",
+        "flags": {
+          "--workspace": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
+      },
+      "get-pool-template": {
+        "description": "Get a pool template by ID",
+        "flags": {
+          "--workspace": "uuid",
+          "--pool-template-id": "uuid"
+        },
+        "mutates": false
+      },
+      "delete-pool-template": {
+        "description": "Delete a pool template",
+        "flags": {
+          "--workspace": "uuid",
+          "--pool-template-id": "uuid"
+        },
+        "mutates": true
       }
     }
   },
@@ -1786,7 +1860,11 @@
         "description": "Show definition schema/template for a Fabric item type",
         "example": "fabio context schema Notebook",
         "flags": {
-          "TYPE": { "description": "Item type name (case-insensitive)", "required": true, "type": "string" }
+          "TYPE": {
+            "description": "Item type name (case-insensitive)",
+            "required": true,
+            "type": "string"
+          }
         },
         "mutates": false,
         "returns": "object",
@@ -1796,7 +1874,11 @@
         "description": "Show a multi-step workflow recipe",
         "example": "fabio context workflow direct-lake-report",
         "flags": {
-          "NAME": { "description": "Workflow name", "required": true, "type": "string" }
+          "NAME": {
+            "description": "Workflow name",
+            "required": true,
+            "type": "string"
+          }
         },
         "mutates": false,
         "returns": "object",
@@ -1806,7 +1888,11 @@
         "description": "Show best-practices guidance (throttling, lro, pagination, admin-apis)",
         "example": "fabio context best-practices throttling",
         "flags": {
-          "TOPIC": { "description": "Topic name", "required": true, "type": "string" }
+          "TOPIC": {
+            "description": "Topic name",
+            "required": true,
+            "type": "string"
+          }
         },
         "mutates": false,
         "returns": "object",
@@ -1816,8 +1902,16 @@
         "description": "Show example output for a command (response shape + JMESPath tips)",
         "example": "fabio context examples lakehouse iceberg-table",
         "flags": {
-          "GROUP": { "description": "Command group", "required": true, "type": "string" },
-          "COMMAND": { "description": "Subcommand name", "required": true, "type": "string" }
+          "GROUP": {
+            "description": "Command group",
+            "required": true,
+            "type": "string"
+          },
+          "COMMAND": {
+            "description": "Subcommand name",
+            "required": true,
+            "type": "string"
+          }
         },
         "mutates": false,
         "returns": "object"
@@ -3231,6 +3325,35 @@
         },
         "mutates": false,
         "returns": "object"
+      },
+      "get-definition": {
+        "description": "Get data pipeline definition",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false,
+        "async": true
+      },
+      "update-definition": {
+        "description": "Update data pipeline definition",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--file": "path",
+          "--content": "string"
+        },
+        "mutates": true,
+        "async": true
+      },
+      "create-schedule": {
+        "description": "Create a schedule for a data pipeline",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
       }
     }
   },
@@ -3780,6 +3903,63 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "list-operations": {
+        "description": "List deploy operations history",
+        "flags": {
+          "--pipeline-id": "uuid"
+        },
+        "mutates": false
+      },
+      "show-operation": {
+        "description": "Show details of a deploy operation",
+        "flags": {
+          "--pipeline-id": "uuid",
+          "--operation-id": "uuid"
+        },
+        "mutates": false
+      },
+      "list-role-assignments": {
+        "description": "List role assignments",
+        "flags": {
+          "--pipeline-id": "uuid"
+        },
+        "mutates": false
+      },
+      "add-role-assignment": {
+        "description": "Add a role assignment",
+        "flags": {
+          "--pipeline-id": "uuid",
+          "--principal-id": "uuid",
+          "--principal-type": "User|Group|ServicePrincipal",
+          "--role": "string"
+        },
+        "mutates": true
+      },
+      "delete-role-assignment": {
+        "description": "Delete a role assignment",
+        "flags": {
+          "--pipeline-id": "uuid",
+          "--principal-id": "uuid"
+        },
+        "mutates": true
+      },
+      "show-stage": {
+        "description": "Show details of a pipeline stage",
+        "flags": {
+          "--pipeline-id": "uuid",
+          "--stage-id": "uuid"
+        },
+        "mutates": false
+      },
+      "update-stage": {
+        "description": "Update a pipeline stage configuration",
+        "flags": {
+          "--pipeline-id": "uuid",
+          "--stage-id": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
       }
     }
   },
@@ -4364,6 +4544,94 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "get-definition": {
+        "description": "Get environment definition",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false,
+        "async": true
+      },
+      "update-definition": {
+        "description": "Update environment definition",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--file": "path",
+          "--content": "string"
+        },
+        "mutates": true,
+        "async": true
+      },
+      "list-libraries": {
+        "description": "List published libraries",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false
+      },
+      "export-libraries": {
+        "description": "Export external libraries configuration (published)",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false
+      },
+      "list-staging-libraries": {
+        "description": "List staging libraries",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false
+      },
+      "delete-staging-library": {
+        "description": "Delete a staging library by name",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--library-name": "string"
+        },
+        "mutates": true
+      },
+      "export-staging-libraries": {
+        "description": "Export external libraries configuration (staging)",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false
+      },
+      "import-staging-libraries": {
+        "description": "Import external libraries into staging",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
+      },
+      "remove-staging-library": {
+        "description": "Remove an external library from staging",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--library-name": "string"
+        },
+        "mutates": true
+      },
+      "update-staging-spark-compute": {
+        "description": "Update staging Spark compute configuration",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
       }
     }
   },
@@ -4767,7 +5035,11 @@
           "--category": {
             "description": "Filter: source, destination, all",
             "type": "enum",
-            "values": ["source", "destination", "all"]
+            "values": [
+              "source",
+              "destination",
+              "all"
+            ]
           }
         },
         "mutates": false,
@@ -5727,6 +5999,14 @@
         },
         "mutates": true,
         "returns": "void"
+      },
+      "initialize": {
+        "description": "Initialize a graph model for querying (provisions internal config)",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": true
       }
     }
   },
@@ -6418,6 +6698,108 @@
         },
         "mutates": false,
         "returns": "object"
+      },
+      "apply-tags": {
+        "description": "Apply tags to an item",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--content": "JSON (tag IDs array)"
+        },
+        "mutates": true
+      },
+      "unapply-tags": {
+        "description": "Remove tags from an item",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--content": "JSON (tag IDs array)"
+        },
+        "mutates": true
+      },
+      "bulk-export-definitions": {
+        "description": "Bulk export item definitions from workspace (beta)",
+        "flags": {
+          "--workspace": "uuid",
+          "--content": "JSON ({mode: All|Selective})"
+        },
+        "mutates": false,
+        "async": true
+      },
+      "bulk-import-definitions": {
+        "description": "Bulk import item definitions into workspace (beta)",
+        "flags": {
+          "--workspace": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true,
+        "async": true
+      },
+      "bulk-move": {
+        "description": "Bulk move items to a folder",
+        "flags": {
+          "--workspace": "uuid",
+          "--content": "JSON (item IDs + target folder)"
+        },
+        "mutates": true,
+        "async": true
+      },
+      "list-external-data-shares": {
+        "description": "List external data shares for an item",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false
+      },
+      "show-external-data-share": {
+        "description": "Show details of an external data share",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--share-id": "uuid"
+        },
+        "mutates": false
+      },
+      "revoke-external-data-share": {
+        "description": "Revoke an external data share",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--share-id": "uuid"
+        },
+        "mutates": true
+      },
+      "delete-external-data-share": {
+        "description": "Delete an external data share",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--share-id": "uuid"
+        },
+        "mutates": true
+      },
+      "assign-identity": {
+        "description": "Assign the default managed identity to an item (beta)",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": true
+      },
+      "get-invitation": {
+        "description": "Get an external data share invitation",
+        "flags": {
+          "--invitation-id": "uuid"
+        },
+        "mutates": false
+      },
+      "accept-invitation": {
+        "description": "Accept an external data share invitation",
+        "flags": {
+          "--invitation-id": "uuid"
+        },
+        "mutates": true
       }
     }
   },
@@ -7144,7 +7526,11 @@
           "--style": {
             "description": "Link style: auto, fabric, adx",
             "type": "enum",
-            "values": ["auto", "fabric", "adx"]
+            "values": [
+              "auto",
+              "fabric",
+              "adx"
+            ]
           },
           "--workspace": {
             "required": true,
@@ -7599,9 +7985,21 @@
         "description": "Create a directory in a lakehouse (DFS)",
         "example": "fabio lakehouse create-directory --workspace <WS> --id <ID> --path Files/staging/incoming",
         "flags": {
-          "--id": { "description": "Lakehouse ID", "required": true, "type": "string" },
-          "--path": { "description": "Directory path to create", "required": true, "type": "string" },
-          "--workspace": { "description": "Workspace ID", "required": true, "type": "string" }
+          "--id": {
+            "description": "Lakehouse ID",
+            "required": true,
+            "type": "string"
+          },
+          "--path": {
+            "description": "Directory path to create",
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "description": "Workspace ID",
+            "required": true,
+            "type": "string"
+          }
         },
         "mutates": true,
         "returns": "object",
@@ -8206,10 +8604,26 @@
         "description": "Check if a table exists via Iceberg REST Catalog (lightweight HEAD, returns {exists: bool})",
         "example": "fabio lakehouse iceberg-table-exists --workspace <WS> --id <ID> --namespace dbo --table customers",
         "flags": {
-          "--id": { "description": "Lakehouse ID", "required": true, "type": "string" },
-          "--namespace": { "description": "Namespace name", "required": true, "type": "string" },
-          "--table": { "description": "Table name", "required": true, "type": "string" },
-          "--workspace": { "description": "Workspace ID", "required": true, "type": "string" }
+          "--id": {
+            "description": "Lakehouse ID",
+            "required": true,
+            "type": "string"
+          },
+          "--namespace": {
+            "description": "Namespace name",
+            "required": true,
+            "type": "string"
+          },
+          "--table": {
+            "description": "Table name",
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "description": "Workspace ID",
+            "required": true,
+            "type": "string"
+          }
         },
         "mutates": false,
         "returns": "object"
@@ -8218,9 +8632,21 @@
         "description": "Check if a namespace exists via Iceberg REST Catalog (lightweight HEAD, returns {exists: bool})",
         "example": "fabio lakehouse iceberg-namespace-exists --workspace <WS> --id <ID> --namespace dbo",
         "flags": {
-          "--id": { "description": "Lakehouse ID", "required": true, "type": "string" },
-          "--namespace": { "description": "Namespace name", "required": true, "type": "string" },
-          "--workspace": { "description": "Workspace ID", "required": true, "type": "string" }
+          "--id": {
+            "description": "Lakehouse ID",
+            "required": true,
+            "type": "string"
+          },
+          "--namespace": {
+            "description": "Namespace name",
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "description": "Workspace ID",
+            "required": true,
+            "type": "string"
+          }
         },
         "mutates": false,
         "returns": "object"
@@ -8229,10 +8655,26 @@
         "description": "Load vended storage credentials scoped to a specific table (for external tools like DuckDB, Polars)",
         "example": "fabio lakehouse iceberg-credentials --workspace <WS> --id <ID> --namespace dbo --table customers",
         "flags": {
-          "--id": { "description": "Lakehouse ID", "required": true, "type": "string" },
-          "--namespace": { "description": "Namespace name", "required": true, "type": "string" },
-          "--table": { "description": "Table name", "required": true, "type": "string" },
-          "--workspace": { "description": "Workspace ID", "required": true, "type": "string" }
+          "--id": {
+            "description": "Lakehouse ID",
+            "required": true,
+            "type": "string"
+          },
+          "--namespace": {
+            "description": "Namespace name",
+            "required": true,
+            "type": "string"
+          },
+          "--table": {
+            "description": "Table name",
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "description": "Workspace ID",
+            "required": true,
+            "type": "string"
+          }
         },
         "mutates": false,
         "returns": "object"
@@ -8241,10 +8683,26 @@
         "description": "Show table statistics from latest Iceberg snapshot (records, files, size, compression, source format)",
         "example": "fabio lakehouse iceberg-stats --workspace <WS> --id <ID> --namespace dbo --table customers",
         "flags": {
-          "--id": { "description": "Lakehouse ID", "required": true, "type": "string" },
-          "--namespace": { "description": "Namespace name", "required": true, "type": "string" },
-          "--table": { "description": "Table name", "required": true, "type": "string" },
-          "--workspace": { "description": "Workspace ID", "required": true, "type": "string" }
+          "--id": {
+            "description": "Lakehouse ID",
+            "required": true,
+            "type": "string"
+          },
+          "--namespace": {
+            "description": "Namespace name",
+            "required": true,
+            "type": "string"
+          },
+          "--table": {
+            "description": "Table name",
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "description": "Workspace ID",
+            "required": true,
+            "type": "string"
+          }
         },
         "mutates": false,
         "returns": "object"
@@ -8253,10 +8711,26 @@
         "description": "Show full snapshot history with operations and record counts",
         "example": "fabio lakehouse iceberg-snapshots --workspace <WS> --id <ID> --namespace dbo --table customers",
         "flags": {
-          "--id": { "description": "Lakehouse ID", "required": true, "type": "string" },
-          "--namespace": { "description": "Namespace name", "required": true, "type": "string" },
-          "--table": { "description": "Table name", "required": true, "type": "string" },
-          "--workspace": { "description": "Workspace ID", "required": true, "type": "string" }
+          "--id": {
+            "description": "Lakehouse ID",
+            "required": true,
+            "type": "string"
+          },
+          "--namespace": {
+            "description": "Namespace name",
+            "required": true,
+            "type": "string"
+          },
+          "--table": {
+            "description": "Table name",
+            "required": true,
+            "type": "string"
+          },
+          "--workspace": {
+            "description": "Workspace ID",
+            "required": true,
+            "type": "string"
+          }
         },
         "mutates": false,
         "returns": "object"
@@ -8340,6 +8814,103 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "upload-table": {
+        "description": "Upload a file and load it into a Delta table in one step",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--file": "path",
+          "--table": "string",
+          "--format": "Csv|Parquet",
+          "--mode": "Overwrite|Append",
+          "--schema": "string (optional)"
+        },
+        "mutates": true,
+        "async": true
+      },
+      "get-definition": {
+        "description": "Get the definition of a lakehouse",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false,
+        "async": true
+      },
+      "update-definition": {
+        "description": "Update the definition of a lakehouse",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--file": "path",
+          "--content": "string"
+        },
+        "mutates": true,
+        "async": true
+      },
+      "refresh-materialized-views": {
+        "description": "Trigger refresh of materialized lake views",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": true
+      },
+      "create-materialized-views-schedule": {
+        "description": "Create a schedule for materialized view refresh",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
+      },
+      "update-materialized-views-schedule": {
+        "description": "Update a materialized view refresh schedule",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--schedule-id": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
+      },
+      "delete-materialized-views-schedule": {
+        "description": "Delete a materialized view refresh schedule",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--schedule-id": "uuid"
+        },
+        "mutates": true
+      },
+      "run-table-maintenance": {
+        "description": "Run table maintenance (optimize/vacuum)",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--table": "string",
+          "--operation": "optimize|vacuum"
+        },
+        "mutates": true
+      },
+      "list-livy-sessions": {
+        "description": "List active Livy sessions for a lakehouse",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false
+      },
+      "get-livy-session": {
+        "description": "Get Livy session details",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--session-id": "string"
+        },
+        "mutates": false
       }
     }
   },
@@ -8707,6 +9278,20 @@
         },
         "mutates": true,
         "returns": "void"
+      },
+      "list-scopes": {
+        "description": "List catalog mirroring scopes (workspace-level, beta)",
+        "flags": {
+          "--workspace": "uuid"
+        },
+        "mutates": false
+      },
+      "list-tables": {
+        "description": "List catalog mirroring tables (workspace-level, beta)",
+        "flags": {
+          "--workspace": "uuid"
+        },
+        "mutates": false
       }
     }
   },
@@ -9051,6 +9636,23 @@
         },
         "mutates": true,
         "returns": "void"
+      },
+      "discover-schemas": {
+        "description": "Discover schemas in a Databricks catalog",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false
+      },
+      "discover-tables": {
+        "description": "Discover tables in a Databricks catalog schema",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--schema": "string"
+        },
+        "mutates": false
       }
     }
   },
@@ -9242,6 +9844,95 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "get-endpoint": {
+        "description": "Get ML model serving endpoint configuration",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false
+      },
+      "update-endpoint": {
+        "description": "Update ML model serving endpoint configuration",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
+      },
+      "score": {
+        "description": "Score against the ML model endpoint",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--content": "JSON (input data)"
+        },
+        "mutates": false
+      },
+      "list-versions": {
+        "description": "List endpoint versions",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false
+      },
+      "get-version": {
+        "description": "Get a specific endpoint version",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--version-id": "string"
+        },
+        "mutates": false
+      },
+      "update-version": {
+        "description": "Update a specific endpoint version",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--version-id": "string",
+          "--content": "JSON"
+        },
+        "mutates": true
+      },
+      "activate-version": {
+        "description": "Activate a specific endpoint version",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--version-id": "string"
+        },
+        "mutates": true
+      },
+      "deactivate-version": {
+        "description": "Deactivate a specific endpoint version",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--version-id": "string"
+        },
+        "mutates": true
+      },
+      "score-version": {
+        "description": "Score against a specific endpoint version",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--version-id": "string",
+          "--content": "JSON"
+        },
+        "mutates": false
+      },
+      "deactivate-all-versions": {
+        "description": "Deactivate all endpoint versions",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": true
       }
     }
   },
@@ -9916,7 +10607,10 @@
           "--format": {
             "description": "Output format",
             "type": "enum",
-            "values": ["rdf", "jsonld"]
+            "values": [
+              "rdf",
+              "jsonld"
+            ]
           },
           "--id": {
             "required": true,
@@ -10590,7 +11284,10 @@
             "description": "Alert action type",
             "required": true,
             "type": "enum",
-            "values": ["email", "teams"]
+            "values": [
+              "email",
+              "teams"
+            ]
           },
           "--condition": {
             "description": "KQL condition expression",
@@ -10741,6 +11438,15 @@
         },
         "mutates": true,
         "returns": "void"
+      },
+      "configure-kql-source": {
+        "description": "Configure a KQL data source for the Reflex",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
       }
     }
   },
@@ -10873,6 +11579,14 @@
         },
         "mutates": true,
         "returns": "void"
+      },
+      "publish-to-web": {
+        "description": "Publish a report to the web (generates public embed URL)",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": true
       }
     }
   },
@@ -11685,6 +12399,76 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "get-capacity-settings": {
+        "description": "Get capacity-level Spark settings (beta)",
+        "flags": {
+          "--capacity-id": "uuid"
+        },
+        "mutates": false
+      },
+      "update-capacity-settings": {
+        "description": "Update capacity-level Spark settings (beta)",
+        "flags": {
+          "--capacity-id": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
+      },
+      "list-capacity-pools": {
+        "description": "List custom Spark pools in a capacity (beta)",
+        "flags": {
+          "--capacity-id": "uuid"
+        },
+        "mutates": false
+      },
+      "create-capacity-pool": {
+        "description": "Create a custom Spark pool in a capacity (beta)",
+        "flags": {
+          "--capacity-id": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
+      },
+      "get-capacity-pool": {
+        "description": "Get details of a capacity Spark pool (beta)",
+        "flags": {
+          "--capacity-id": "uuid",
+          "--pool-id": "uuid"
+        },
+        "mutates": false
+      },
+      "update-capacity-pool": {
+        "description": "Update a capacity Spark pool (beta)",
+        "flags": {
+          "--capacity-id": "uuid",
+          "--pool-id": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
+      },
+      "delete-capacity-pool": {
+        "description": "Delete a capacity Spark pool (beta)",
+        "flags": {
+          "--capacity-id": "uuid",
+          "--pool-id": "uuid"
+        },
+        "mutates": true
+      },
+      "list-livy-sessions": {
+        "description": "List Livy sessions in a workspace",
+        "flags": {
+          "--workspace": "uuid"
+        },
+        "mutates": false
+      },
+      "get-livy-session": {
+        "description": "Get details of a Livy session",
+        "flags": {
+          "--workspace": "uuid",
+          "--session-id": "string"
+        },
+        "mutates": false
       }
     }
   },
@@ -12680,6 +13464,102 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "get-sql-pools-config": {
+        "description": "Get SQL pools configuration for a workspace",
+        "flags": {
+          "--workspace": "uuid"
+        },
+        "mutates": false
+      },
+      "update-sql-pools-config": {
+        "description": "Update SQL pools configuration",
+        "flags": {
+          "--workspace": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
+      },
+      "get-audit-settings": {
+        "description": "Get SQL audit settings",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false
+      },
+      "update-audit-settings": {
+        "description": "Update SQL audit settings",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--content": "JSON"
+        },
+        "mutates": true
+      },
+      "set-audit-actions": {
+        "description": "Set audit actions and groups",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--actions": "comma-separated action group names"
+        },
+        "mutates": true
+      },
+      "list-restore-points": {
+        "description": "List restore points for a warehouse",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid"
+        },
+        "mutates": false
+      },
+      "create-restore-point": {
+        "description": "Create a manual restore point",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--label": "string"
+        },
+        "mutates": true
+      },
+      "show-restore-point": {
+        "description": "Show restore point details",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--restore-point-id": "uuid"
+        },
+        "mutates": false
+      },
+      "update-restore-point": {
+        "description": "Update a restore point",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--restore-point-id": "uuid",
+          "--label": "string"
+        },
+        "mutates": true
+      },
+      "delete-restore-point": {
+        "description": "Delete a restore point",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--restore-point-id": "uuid"
+        },
+        "mutates": true
+      },
+      "restore-to-point": {
+        "description": "Restore warehouse to a restore point",
+        "flags": {
+          "--workspace": "uuid",
+          "--id": "uuid",
+          "--restore-point-id": "uuid"
+        },
+        "mutates": true,
+        "async": true
       }
     }
   },
