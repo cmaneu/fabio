@@ -880,3 +880,27 @@ fn sql_database_import_file_not_found() {
         .failure()
         .stderr(predicates::str::contains("Cannot read CSV file"));
 }
+
+// ─── CMK Encryption ──────────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sql_database_revalidate_cmk_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "sql-database",
+            "revalidate-cmk",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "sql-database revalidate-cmk");
+}

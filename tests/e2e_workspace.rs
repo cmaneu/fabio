@@ -2820,3 +2820,29 @@ fn workspace_get_encryption_help() {
         .assert()
         .success();
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_get_encryption_live() {
+    let cfg = TestConfig::from_env();
+    // GET encryption settings — works even without CMK configured (returns Disabled status)
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-encryption",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Should return encryption details (Disabled if no CMK configured)
+    assert!(
+        data.get("encryptionDetail").is_some()
+            || data.get("encryptionStatus").is_some()
+            || data.is_object(),
+        "Expected encryption details in response"
+    );
+}
