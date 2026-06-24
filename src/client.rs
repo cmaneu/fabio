@@ -1325,6 +1325,9 @@ impl FabricClient {
 
     /// POST JSON request returning binary response bytes (retries once on 401).
     /// Used for endpoints that return non-JSON content (e.g., Apache Arrow IPC).
+    /// POST request returning raw binary bytes (no JSON parsing).
+    /// Does NOT handle LRO. Use `post_fabric_bytes_with_accept` for LRO-aware endpoints.
+    #[allow(dead_code)]
     pub async fn post_fabric_bytes(&self, path: &str, body: &Value) -> Result<Vec<u8>> {
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
@@ -1354,6 +1357,134 @@ impl FabricClient {
 
         if !resp.status().is_success() {
             // Try to parse error response as JSON
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            let msg = serde_json::from_str::<Value>(&text)
+                .ok()
+                .and_then(|v| {
+                    v.get("error")
+                        .and_then(|e| e.get("message"))
+                        .and_then(Value::as_str)
+                        .map(String::from)
+                })
+                .unwrap_or_else(|| format!("HTTP {status}"));
+            return Err(FabioError::new(ErrorCode::ApiError, msg).into());
+        }
+
+        Ok(resp.bytes().await?.to_vec())
+    }
+
+    /// POST request that returns binary bytes with a custom Accept header.
+    /// Handles LRO (202 → poll → download result) for endpoints like `executeQuery`.
+    pub async fn post_fabric_bytes_with_accept(
+        &self,
+        path: &str,
+        body: &Value,
+        accept: &str,
+    ) -> Result<Vec<u8>> {
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(path);
+
+        let resp = self
+            .http
+            .post(&url)
+            .header(AUTHORIZATION, &token)
+            .header("Accept", accept)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .post(&url)
+                .header(AUTHORIZATION, &token)
+                .header("Accept", accept)
+                .json(body)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return self.handle_bytes_lro_response(resp, &token, accept).await;
+        }
+
+        self.handle_bytes_lro_response(resp, &token, accept).await
+    }
+
+    /// Handle a response that may be 200 (immediate bytes) or 202 (LRO → poll → bytes).
+    async fn handle_bytes_lro_response(
+        &self,
+        resp: reqwest::Response,
+        token: &str,
+        accept: &str,
+    ) -> Result<Vec<u8>> {
+        // 202: LRO — poll until the operation completes, then download the result
+        if resp.status() == StatusCode::ACCEPTED {
+            let location = resp
+                .headers()
+                .get("Location")
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
+            let retry_after = resp
+                .headers()
+                .get("Retry-After")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(2);
+
+            if let Some(poll_url) = location {
+                // Poll the LRO until completion
+                let start = std::time::Instant::now();
+                loop {
+                    if start.elapsed() > self.lro_max_wait {
+                        return Err(FabioError::new(
+                            ErrorCode::Timeout,
+                            format!(
+                                "LRO polling timed out after {}s",
+                                self.lro_max_wait.as_secs()
+                            ),
+                        )
+                        .into());
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(retry_after.min(60))).await;
+
+                    let poll_resp = self
+                        .http
+                        .get(&poll_url)
+                        .header(AUTHORIZATION, token)
+                        .header("Accept", accept)
+                        .send()
+                        .await
+                        .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+                    if poll_resp.status() == StatusCode::OK {
+                        return Ok(poll_resp.bytes().await?.to_vec());
+                    }
+                    if poll_resp.status() == StatusCode::ACCEPTED {
+                        continue; // Still in progress
+                    }
+                    // Error
+                    let status = poll_resp.status();
+                    let text = poll_resp.text().await.unwrap_or_default();
+                    let msg = serde_json::from_str::<Value>(&text)
+                        .ok()
+                        .and_then(|v| {
+                            v.get("error")
+                                .and_then(|e| e.get("message"))
+                                .and_then(Value::as_str)
+                                .map(String::from)
+                        })
+                        .unwrap_or_else(|| format!("HTTP {status}"));
+                    return Err(FabioError::new(ErrorCode::ApiError, msg).into());
+                }
+            }
+            // No Location header — treat as immediate empty
+            return Ok(Vec::new());
+        }
+
+        if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             let msg = serde_json::from_str::<Value>(&text)

@@ -378,3 +378,56 @@ fn dataflow_execute_query_not_found() {
         .assert()
         .failure();
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataflow_execute_query_arrow_version_2_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "dataflow",
+            "execute-query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--query-name",
+            "TestQuery",
+            "--arrow-version",
+            "2",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "dataflow execute-query");
+    assert_eq!(data["details"]["queryName"], "TestQuery");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataflow_execute_query_with_file_output_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "dataflow",
+            "execute-query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--query-name",
+            "TestQuery",
+            "--file",
+            "/tmp/opencode/output.arrow",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "dataflow execute-query");
+}

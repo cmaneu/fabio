@@ -191,6 +191,10 @@ pub enum DataflowCommand {
         /// Output file path (writes raw Apache Arrow IPC bytes). If not specified, reports metadata only.
         #[arg(long)]
         file: Option<String>,
+
+        /// Apache Arrow version for response format: 1 (default) or 2
+        #[arg(long, default_value = "1")]
+        arrow_version: u8,
     },
 }
 
@@ -254,6 +258,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataflowCommand
             query_name,
             mashup,
             file,
+            arrow_version,
         } => {
             execute_query(
                 cli,
@@ -263,6 +268,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataflowCommand
                 query_name,
                 mashup.as_deref(),
                 file.as_deref(),
+                *arrow_version,
             )
             .await
         }
@@ -753,6 +759,7 @@ fn build_execution_body(
 
 // ─── Execute Query ──────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 async fn execute_query(
     cli: &Cli,
     client: &FabricClient,
@@ -761,6 +768,7 @@ async fn execute_query(
     query_name: &str,
     mashup: Option<&str>,
     file: Option<&str>,
+    arrow_version: u8,
 ) -> Result<()> {
     let mut body = serde_json::json!({ "queryName": query_name });
     if let Some(m) = mashup {
@@ -771,10 +779,14 @@ async fn execute_query(
         return Ok(());
     }
 
+    // The executeQuery endpoint is LRO-aware (may return 202).
+    // Use post_fabric_bytes_lro which handles both 200 (immediate) and 202 (poll).
+    let accept = format!("application/vnd.apache.arrow.stream;pq-arrow-version={arrow_version}");
     let bytes = client
-        .post_fabric_bytes(
+        .post_fabric_bytes_with_accept(
             &format!("/workspaces/{workspace}/dataflows/{id}/executeQuery"),
             &body,
+            &accept,
         )
         .await
         .map_err(|e| enrich_forbidden(e, "dataflow execute-query", "Contributor"))?;
@@ -789,7 +801,7 @@ async fn execute_query(
             "status": "written",
             "file": path,
             "sizeBytes": bytes.len(),
-            "format": "apache-arrow-ipc"
+            "format": format!("apache-arrow-ipc-v{arrow_version}")
         });
         output::render_object(cli, &obj, "status");
     } else {
@@ -797,7 +809,7 @@ async fn execute_query(
             "status": "executed",
             "queryName": query_name,
             "sizeBytes": bytes.len(),
-            "format": "apache-arrow-ipc"
+            "format": format!("apache-arrow-ipc-v{arrow_version}")
         });
         output::render_object(cli, &obj, "status");
     }
