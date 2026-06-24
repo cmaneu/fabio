@@ -1,0 +1,23 @@
+{
+  "command": "fabio data-pipeline run --workspace $WS --id $PIPELINE_ID --wait --timeout 600",
+  "description": "Trigger a data pipeline run and wait for completion. Returns job instance details.",
+  "response": {
+    "data": {
+      "id": "a1b2c3d4-0000-0000-0000-000000000001",
+      "itemId": "b2c3d4e5-0000-0000-0000-000000000002",
+      "jobType": "Pipeline",
+      "invokeType": "Manual",
+      "status": "Completed",
+      "startTimeUtc": "2026-06-20T14:00:00.000Z",
+      "endTimeUtc": "2026-06-20T14:05:30.000Z",
+      "failureReason": null
+    }
+  },
+  "notes": "Without --wait, returns immediately with {\"status\":\"accepted\",\"jobId\":\"...\"}. Pipeline runs can also be triggered via schedule: fabio data-pipeline create-schedule. List past runs: fabio data-pipeline list-instances. Cancel a running job: fabio job-scheduler cancel-instance.",
+  "query_examples": [
+    {"query": "data.status", "description": "Final job status (Completed/Failed/Cancelled)."},
+    {"query": "data.id", "description": "Job instance ID for monitoring."},
+    {"query": "data.failureReason", "description": "Error message if failed (null if succeeded)."},
+    {"query": "data.endTimeUtc", "description": "Completion timestamp."}
+  ]
+}

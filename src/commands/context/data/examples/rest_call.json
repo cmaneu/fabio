@@ -1,0 +1,22 @@
+{
+  "command": "fabio rest call --method get --path \"/workspaces/$WS/items?type=Lakehouse\"",
+  "description": "Raw REST pass-through. Execute any Fabric REST API call directly. Supports GET/POST/PUT/PATCH/DELETE, @file body, stdin piping, and --api powerbi for Power BI REST API.",
+  "response": {
+    "data": {
+      "value": [
+        {
+          "id": "d4f7211c-cc03-4a86-9f16-0bb2f2af3c59",
+          "displayName": "SalesLakehouse",
+          "type": "Lakehouse",
+          "workspaceId": "1619af1e-c97a-43f8-8f1e-c1990b0b3914"
+        }
+      ]
+    }
+  },
+  "notes": "Use --body for inline JSON, --body @file.json for file, --body @- for stdin. Use --poll for LRO endpoints. Use --api powerbi to route to https://api.powerbi.com/v1.0/myorg. Use --query-params 'key=value' for URL parameters. Dry-run supported for mutating methods (POST/PUT/PATCH/DELETE).",
+  "query_examples": [
+    {"query": "data.value[*].displayName", "description": "Extract item names from list response."},
+    {"query": "data.value | length(@)", "description": "Count items returned."},
+    {"query": "data.value[?type=='Lakehouse'].id", "description": "Filter by type."}
+  ]
+}

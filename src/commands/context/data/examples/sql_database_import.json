@@ -1,0 +1,25 @@
+{
+  "command": "fabio sql-database import --workspace $WS --id $DB_ID --file data.csv --table imported_data --drop-if-exists",
+  "description": "Import CSV/JSON data into a Fabric SQL Database with automatic type inference. Generates CREATE TABLE + batched INSERTs.",
+  "response": {
+    "data": {
+      "status": "imported",
+      "table": "imported_data",
+      "rowsInserted": 1500,
+      "columns": [
+        {"name": "id", "type": "Int"},
+        {"name": "email", "type": "NVarChar(200)"},
+        {"name": "amount", "type": "Float"},
+        {"name": "created_at", "type": "Date"}
+      ],
+      "batches": 15,
+      "timeMs": 3200
+    }
+  },
+  "notes": "Type inference: Int\u2192BigInt\u2192Float\u2192NVarChar (never narrows). JSON files infer from values; CSV infers from string parsing. Use --batch-size to control INSERT batch size (default 100). Use --no-create-table to skip DDL if table already exists. Requires F4+ capacity (F2 returns error 18456).",
+  "query_examples": [
+    {"query": "data.rowsInserted", "description": "Total rows imported."},
+    {"query": "data.columns[*].name", "description": "Inferred column names."},
+    {"query": "data.columns[*].type", "description": "Inferred SQL types."}
+  ]
+}

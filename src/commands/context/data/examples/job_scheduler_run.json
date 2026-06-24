@@ -1,0 +1,17 @@
+{
+  "command": "fabio job-scheduler run-on-demand --workspace $WS --id $ITEM_ID --job-type RunNotebook --wait --timeout 300",
+  "description": "Trigger any item job on demand with optional polling. Works for any item type (notebooks, pipelines, spark jobs, etc.).",
+  "response": {
+    "data": {
+      "id": "c3d4e5f6-0000-0000-0000-000000000003",
+      "status": "Completed",
+      "startTimeUtc": "2026-06-20T15:00:00.000Z",
+      "endTimeUtc": "2026-06-20T15:03:00.000Z"
+    }
+  },
+  "notes": "Known job types: RunNotebook, Pipeline, sparkjob, RefreshGraph, refreshMaterializedLakeViews, TableMaintenance. Without --wait, returns immediately with status=accepted and jobId. Use --cancel-on-timeout to auto-cancel if deadline is reached. Poll interval: 5 seconds.",
+  "query_examples": [
+    {"query": "data.status", "description": "Terminal status (Completed/Failed/Cancelled)."},
+    {"query": "data.id", "description": "Job instance ID for further queries."}
+  ]
+}

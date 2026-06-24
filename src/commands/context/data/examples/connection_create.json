@@ -1,0 +1,19 @@
+{
+  "command": "fabio connection create --name \"MyADLS\" --connectivity-type ShareableCloud --connection-type \"AzureDataLakeStorage\" --parameters '{\"url\": \"https://mystorageaccount.dfs.core.windows.net\"}' --credential-type Key --privacy-level Organizational",
+  "description": "Create a Fabric connection. Parameters are provided as a JSON object (auto-converted to array format for the API).",
+  "response": {
+    "data": {
+      "id": "e5f6a7b8-0000-0000-0000-000000000004",
+      "displayName": "MyADLS",
+      "connectivityType": "ShareableCloud",
+      "connectionDetails": {
+        "type": "AzureDataLakeStorage"
+      }
+    }
+  },
+  "notes": "Parameters format: user provides {\"key\": \"value\"} \u2192 CLI converts to [{\"dataType\": \"Text\", \"name\": \"key\", \"value\": \"value\"}]. Connectivity types: ShareableCloud, OnPremises, VirtualNetworkGateway, PersonalCloud. Credential types: Basic, OAuth2, Key, Anonymous, ServicePrincipal, WorkspaceIdentity. Use 'fabio connection list-supported-types' to see all available connection types.",
+  "query_examples": [
+    {"query": "data.id", "description": "Connection ID (used by shortcuts, data sources)."},
+    {"query": "data.connectivityType", "description": "Connection category."}
+  ]
+}

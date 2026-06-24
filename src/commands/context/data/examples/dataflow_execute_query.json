@@ -1,0 +1,17 @@
+{
+  "command": "fabio dataflow execute-query --workspace $WS --id $DATAFLOW_ID --query-name \"GetCustomers\" --file output.arrow --arrow-version 2",
+  "description": "Execute a named query from a dataflow and save results as Apache Arrow IPC binary. Supports LRO for long-running queries (up to 90s).",
+  "response": {
+    "data": {
+      "status": "written",
+      "file": "output.arrow",
+      "sizeBytes": 45600,
+      "format": "apache-arrow-ipc-v2"
+    }
+  },
+  "notes": "Binary Arrow response saved to --file path. Without --file, reports metadata only (size in bytes). Use --arrow-version 1 (default) or 2 for format selection. Use --mashup for custom M expression override. LRO: server may return 202 for long queries; CLI polls automatically. Read Arrow files with Python: pyarrow.ipc.open_stream('output.arrow').read_all().",
+  "query_examples": [
+    {"query": "data.sizeBytes", "description": "Size of the Arrow result file."},
+    {"query": "data.status", "description": "written (to file) or executed (metadata only)."}
+  ]
+}

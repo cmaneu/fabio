@@ -115,4 +115,46 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         "ontology/export",
         include_str!("data/examples/ontology_export.json"),
     ),
+    (
+        "warehouse/query",
+        include_str!("data/examples/warehouse_query.json"),
+    ),
+    (
+        "semantic-model/query",
+        include_str!("data/examples/semantic_model_query.json"),
+    ),
+    (
+        "sql-database/import",
+        include_str!("data/examples/sql_database_import.json"),
+    ),
+    (
+        "data-pipeline/run",
+        include_str!("data/examples/data_pipeline_run.json"),
+    ),
+    ("git/status", include_str!("data/examples/git_status.json")),
+    ("rest/call", include_str!("data/examples/rest_call.json")),
+    (
+        "capacity/list-skus",
+        include_str!("data/examples/capacity_list_skus.json"),
+    ),
+    (
+        "admin/list-workspaces",
+        include_str!("data/examples/admin_list_workspaces.json"),
+    ),
+    (
+        "job-scheduler/run-on-demand",
+        include_str!("data/examples/job_scheduler_run.json"),
+    ),
+    (
+        "connection/create",
+        include_str!("data/examples/connection_create.json"),
+    ),
+    (
+        "workspace/create-folder",
+        include_str!("data/examples/workspace_folders.json"),
+    ),
+    (
+        "dataflow/execute-query",
+        include_str!("data/examples/dataflow_execute_query.json"),
+    ),
 ];

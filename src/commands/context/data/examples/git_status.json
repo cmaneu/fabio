@@ -1,0 +1,25 @@
+{
+  "command": "fabio git status --workspace $WS",
+  "description": "Get the git sync status of a workspace. Shows pending changes between workspace and remote repository.",
+  "response": {
+    "data": {
+      "changes": [
+        {
+          "itemId": "a1b2c3d4-0000-0000-0000-000000000001",
+          "itemType": "Notebook",
+          "displayName": "SalesAnalysis",
+          "workspaceChange": "Modified",
+          "remoteChange": null
+        }
+      ],
+      "workspaceHead": "abc123def456",
+      "remoteCommitHash": "abc123def456"
+    }
+  },
+  "notes": "This is an LRO endpoint. workspaceChange values: Added, Modified, Deleted, None. remoteChange is null when no remote changes exist. Use fabio git commit to push workspace changes to the remote. Use fabio git pull (updateFromGit) to pull remote changes into the workspace.",
+  "query_examples": [
+    {"query": "data.changes | length(@)", "description": "Count of pending changes."},
+    {"query": "data.changes[?workspaceChange=='Modified'].displayName", "description": "Names of locally modified items."},
+    {"query": "data.workspaceHead", "description": "Current workspace commit SHA."}
+  ]
+}

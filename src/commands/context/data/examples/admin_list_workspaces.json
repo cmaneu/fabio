@@ -1,0 +1,28 @@
+{
+  "command": "fabio admin list-workspaces --include encryption --encryption-status Active",
+  "description": "List workspaces with admin privileges. Supports filtering by state, capacity, encryption status. Response uses 'name' field (not 'displayName').",
+  "response": {
+    "data": {
+      "workspaces": [
+        {
+          "id": "1619af1e-c97a-43f8-8f1e-c1990b0b3914",
+          "name": "ProductionWorkspace",
+          "state": "Active",
+          "type": "Workspace",
+          "capacityId": "afdf5707-dde2-41ef-9d98-df65aa40eb7f",
+          "encryption": {
+            "status": "Active",
+            "keyIdentifier": "https://myvault.vault.azure.net/keys/mykey/"
+          }
+        }
+      ],
+      "continuationToken": null
+    }
+  },
+  "notes": "Admin-only endpoint. Uses 'workspaces' array key (not 'value'). --include encryption adds encryption details. --encryption-status filter only works WITH --include encryption. Max 10,000 per page. Rate limit: 200 requests/hour.",
+  "query_examples": [
+    {"query": "data.workspaces[*].name", "description": "All workspace names."},
+    {"query": "data.workspaces[?encryption.status=='Active'].name", "description": "CMK-encrypted workspaces."},
+    {"query": "data.workspaces | length(@)", "description": "Count of workspaces returned."}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "command": "fabio workspace create-folder --workspace $WS --name \"ETL Pipelines\" --parent-folder-id $PARENT_ID",
+  "description": "Create a folder in a workspace. Folders organize items hierarchically.",
+  "response": {
+    "data": {
+      "id": "f6a7b8c9-0000-0000-0000-000000000005",
+      "displayName": "ETL Pipelines",
+      "description": ""
+    }
+  },
+  "notes": "Use --parent-folder-id for nested folders (omit for root-level). Move items into folders: fabio item move-to-folder --workspace $WS --id $ITEM --folder-id $FOLDER. List items in folder: fabio item list --workspace $WS --folder $FOLDER_ID. Delete requires empty folder (remove children first).",
+  "query_examples": [
+    {"query": "data.id", "description": "New folder ID (use with --folder-id on other commands)."},
+    {"query": "data.displayName", "description": "Folder name as created."}
+  ]
+}
