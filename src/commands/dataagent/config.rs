@@ -6,25 +6,28 @@ use crate::client::FabricClient;
 use crate::errors::FabioError;
 use crate::output;
 
-/// Get agent configuration via the staging settings API.
+/// Get agent configuration via the settings API.
 ///
-/// Uses: `GET /workspaces/{ws}/dataAgents/{id}/staging/settings`
+/// Uses: `GET /workspaces/{ws}/dataAgents/{id}/staging/settings` (staging)
+///   or: `GET /workspaces/{ws}/dataAgents/{id}/settings` (published)
 pub(super) async fn get_config(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     id: &str,
+    stage: &str,
 ) -> Result<()> {
+    let prefix = stage_prefix(stage);
     let settings = client
         .get(&format!(
-            "/workspaces/{workspace}/dataAgents/{id}/staging/settings"
+            "/workspaces/{workspace}/dataAgents/{id}{prefix}/settings"
         ))
         .await?;
 
     // Also fetch datasources list to include summary in config output
     let ds_resp = client
         .get_list(
-            &format!("/workspaces/{workspace}/dataAgents/{id}/staging/datasources"),
+            &format!("/workspaces/{workspace}/dataAgents/{id}{prefix}/datasources"),
             "value",
             true,
             None,
@@ -55,6 +58,16 @@ pub(super) async fn get_config(
 
     output::render_object(cli, &config, "instructions");
     Ok(())
+}
+
+// ─── Private Helpers ─────────────────────────────────────────────────────────
+
+const fn stage_prefix(stage: &str) -> &str {
+    if stage.eq_ignore_ascii_case("published") {
+        ""
+    } else {
+        "/staging"
+    }
 }
 
 /// Update agent configuration via the staging settings API.

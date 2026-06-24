@@ -120,6 +120,10 @@ pub enum DataAgentCommand {
         /// Data agent ID
         #[arg(long)]
         id: String,
+
+        /// Stage to read: staging (draft) or published (live). Default: staging
+        #[arg(long, default_value = "staging")]
+        stage: String,
     },
     /// Update the configuration of a data agent (instructions, preview runtime)
     #[command(display_order = 9)]
@@ -160,6 +164,10 @@ pub enum DataAgentCommand {
         /// Data agent ID
         #[arg(long)]
         id: String,
+
+        /// Stage to read: staging (draft) or published (live). Default: staging
+        #[arg(long, default_value = "staging")]
+        stage: String,
     },
     /// Show details of a configured data source
     #[command(display_order = 14)]
@@ -175,6 +183,10 @@ pub enum DataAgentCommand {
         /// Data source name or ID
         #[arg(long)]
         datasource: String,
+
+        /// Stage to read: staging (draft) or published (live). Default: staging
+        #[arg(long, default_value = "staging")]
+        stage: String,
     },
     /// Add a data source to the agent (auto-discovers schema from artifact)
     #[command(display_order = 15)]
@@ -218,6 +230,29 @@ pub enum DataAgentCommand {
         #[arg(long)]
         datasource: String,
     },
+    /// Update a data source's metadata (instructions, description)
+    #[command(display_order = 16)]
+    UpdateDatasource {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+
+        /// New data source instructions (how the agent should use this source)
+        #[arg(long)]
+        instructions: Option<String>,
+
+        /// New description for the data source
+        #[arg(long)]
+        description: Option<String>,
+    },
 
     // ── Few-shot Management ──────────────────────────────────────────────
     /// List few-shot examples for a data source
@@ -234,6 +269,33 @@ pub enum DataAgentCommand {
         /// Data source name or ID
         #[arg(long)]
         datasource: String,
+
+        /// Stage to read: staging (draft) or published (live). Default: staging
+        #[arg(long, default_value = "staging")]
+        stage: String,
+    },
+    /// Show a specific few-shot example by ID
+    #[command(display_order = 17)]
+    ShowFewshot {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+
+        /// Few-shot example ID
+        #[arg(long)]
+        fewshot_id: String,
+
+        /// Stage to read: staging (draft) or published (live). Default: staging
+        #[arg(long, default_value = "staging")]
+        stage: String,
     },
     /// Add a few-shot example (question/query pair) to a data source
     #[command(display_order = 18)]
@@ -258,6 +320,33 @@ pub enum DataAgentCommand {
         #[arg(long, visible_alias = "sql")]
         answer: String,
     },
+    /// Update an existing few-shot example (question and/or query)
+    #[command(display_order = 18)]
+    UpdateFewshot {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+
+        /// Few-shot example ID to update
+        #[arg(long)]
+        fewshot_id: String,
+
+        /// Updated natural language question
+        #[arg(long)]
+        question: Option<String>,
+
+        /// Updated SQL/KQL/DAX query
+        #[arg(long, visible_alias = "sql")]
+        answer: Option<String>,
+    },
     /// Remove a few-shot example by ID
     #[command(display_order = 19)]
     RemoveFewshot {
@@ -276,6 +365,21 @@ pub enum DataAgentCommand {
         /// Few-shot example ID to remove
         #[arg(long)]
         fewshot_id: String,
+    },
+    /// Delete all few-shot examples for a data source
+    #[command(display_order = 19)]
+    ClearFewshots {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
     },
     /// Bulk upload few-shot examples from a JSON or CSV file
     #[command(display_order = 20)]
@@ -337,6 +441,10 @@ pub enum DataAgentCommand {
         /// Data source name or ID
         #[arg(long)]
         datasource: String,
+
+        /// Stage to read: staging (draft) or published (live). Default: staging
+        #[arg(long, default_value = "staging")]
+        stage: String,
     },
     /// Set or clear a description on a table or column in a data source
     #[command(display_order = 23)]
@@ -360,6 +468,25 @@ pub enum DataAgentCommand {
         /// Description text (omit or pass empty string to clear)
         #[arg(long)]
         description: Option<String>,
+    },
+    /// Delete a stale schema element (only elements no longer in the live schema)
+    #[command(display_order = 24)]
+    DeleteElement {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+
+        /// Element ID to delete (from list-elements output)
+        #[arg(long)]
+        element_id: String,
     },
 
     // ── Definitions ──────────────────────────────────────────────────────
@@ -415,6 +542,17 @@ pub enum DataAgentCommand {
         /// Also publish to Microsoft 365 Copilot Agent Store
         #[arg(long)]
         to_m365: bool,
+    },
+    /// Reset staging (discard all draft changes, revert to published state)
+    #[command(display_order = 12)]
+    Reset {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
     },
 }
 
@@ -473,11 +611,13 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
         )
         .await
         .map_err(|e| enrich_forbidden(e, "data-agent query", "Viewer")),
-        DataAgentCommand::GetConfig { workspace, id } => {
-            config::get_config(cli, client, workspace, id)
-                .await
-                .map_err(|e| enrich_forbidden(e, "data-agent get-config", "Contributor"))
-        }
+        DataAgentCommand::GetConfig {
+            workspace,
+            id,
+            stage,
+        } => config::get_config(cli, client, workspace, id, stage)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent get-config", "Viewer")),
         DataAgentCommand::UpdateConfig {
             workspace,
             id,
@@ -497,18 +637,21 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
         )
         .await
         .map_err(|e| enrich_forbidden(e, "data-agent update-config", "Contributor")),
-        DataAgentCommand::ListDatasources { workspace, id } => {
-            datasources::list_datasources(cli, client, workspace, id)
-                .await
-                .map_err(|e| enrich_forbidden(e, "data-agent list-datasources", "Contributor"))
-        }
+        DataAgentCommand::ListDatasources {
+            workspace,
+            id,
+            stage,
+        } => datasources::list_datasources(cli, client, workspace, id, stage)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent list-datasources", "Viewer")),
         DataAgentCommand::ShowDatasource {
             workspace,
             id,
             datasource,
-        } => datasources::show_datasource(cli, client, workspace, id, datasource)
+            stage,
+        } => datasources::show_datasource(cli, client, workspace, id, datasource, stage)
             .await
-            .map_err(|e| enrich_forbidden(e, "data-agent show-datasource", "Contributor")),
+            .map_err(|e| enrich_forbidden(e, "data-agent show-datasource", "Viewer")),
         DataAgentCommand::AddDatasource {
             workspace,
             id,
@@ -535,13 +678,40 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
         } => datasources::remove_datasource(cli, client, workspace, id, datasource)
             .await
             .map_err(|e| enrich_forbidden(e, "data-agent remove-datasource", "Contributor")),
+        DataAgentCommand::UpdateDatasource {
+            workspace,
+            id,
+            datasource,
+            instructions,
+            description,
+        } => datasources::update_datasource(
+            cli,
+            client,
+            workspace,
+            id,
+            datasource,
+            instructions.as_deref(),
+            description.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-agent update-datasource", "Contributor")),
         DataAgentCommand::ListFewshots {
             workspace,
             id,
             datasource,
-        } => fewshots::list_fewshots(cli, client, workspace, id, datasource)
+            stage,
+        } => fewshots::list_fewshots(cli, client, workspace, id, datasource, stage)
             .await
-            .map_err(|e| enrich_forbidden(e, "data-agent list-fewshots", "Contributor")),
+            .map_err(|e| enrich_forbidden(e, "data-agent list-fewshots", "Viewer")),
+        DataAgentCommand::ShowFewshot {
+            workspace,
+            id,
+            datasource,
+            fewshot_id,
+            stage,
+        } => fewshots::show_fewshot(cli, client, workspace, id, datasource, fewshot_id, stage)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent show-fewshot", "Viewer")),
         DataAgentCommand::AddFewshot {
             workspace,
             id,
@@ -551,6 +721,25 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
         } => fewshots::add_fewshot(cli, client, workspace, id, datasource, question, answer)
             .await
             .map_err(|e| enrich_forbidden(e, "data-agent add-fewshot", "Contributor")),
+        DataAgentCommand::UpdateFewshot {
+            workspace,
+            id,
+            datasource,
+            fewshot_id,
+            question,
+            answer,
+        } => fewshots::update_fewshot(
+            cli,
+            client,
+            workspace,
+            id,
+            datasource,
+            fewshot_id,
+            question.as_deref(),
+            answer.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-agent update-fewshot", "Contributor")),
         DataAgentCommand::RemoveFewshot {
             workspace,
             id,
@@ -559,6 +748,13 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
         } => fewshots::remove_fewshot(cli, client, workspace, id, datasource, fewshot_id)
             .await
             .map_err(|e| enrich_forbidden(e, "data-agent remove-fewshot", "Contributor")),
+        DataAgentCommand::ClearFewshots {
+            workspace,
+            id,
+            datasource,
+        } => fewshots::clear_fewshots(cli, client, workspace, id, datasource)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent clear-fewshots", "Contributor")),
         DataAgentCommand::UploadFewshots {
             workspace,
             id,
@@ -590,9 +786,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             workspace,
             id,
             datasource,
-        } => elements::list_elements(cli, client, workspace, id, datasource)
+            stage,
+        } => elements::list_elements(cli, client, workspace, id, datasource, stage)
             .await
-            .map_err(|e| enrich_forbidden(e, "data-agent list-elements", "Contributor")),
+            .map_err(|e| enrich_forbidden(e, "data-agent list-elements", "Viewer")),
         DataAgentCommand::DescribeElement {
             workspace,
             id,
@@ -610,6 +807,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
         )
         .await
         .map_err(|e| enrich_forbidden(e, "data-agent describe-element", "Contributor")),
+        DataAgentCommand::DeleteElement {
+            workspace,
+            id,
+            datasource,
+            element_id,
+        } => elements::delete_element(cli, client, workspace, id, datasource, element_id)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent delete-element", "Contributor")),
         DataAgentCommand::GetDefinition { workspace, id } => {
             definition::get_definition(cli, client, workspace, id)
                 .await
@@ -640,6 +845,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
         } => definition::publish(cli, client, workspace, id, description.as_deref(), *to_m365)
             .await
             .map_err(|e| enrich_forbidden(e, "data-agent publish", "Contributor")),
+        DataAgentCommand::Reset { workspace, id } => definition::reset(cli, client, workspace, id)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent reset", "Contributor")),
     }
 }
 

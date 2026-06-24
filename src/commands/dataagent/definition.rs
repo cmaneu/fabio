@@ -172,3 +172,39 @@ pub(super) async fn publish(
     output::render_object(cli, &obj, "status");
     Ok(())
 }
+
+/// Reset staging configuration (discard all draft changes, revert to published state).
+///
+/// Uses: `POST /workspaces/{ws}/dataAgents/{id}/staging/reset`
+pub(super) async fn reset(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "data-agent reset",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    client
+        .post(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/staging/reset"),
+            &serde_json::json!({}),
+            false,
+        )
+        .await?;
+
+    let result = serde_json::json!({
+        "id": id,
+        "status": "staging_reset",
+    });
+    output::render_object(cli, &result, "status");
+    Ok(())
+}

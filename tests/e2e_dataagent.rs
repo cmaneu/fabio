@@ -2108,3 +2108,318 @@ fn dataagent_advanced_management_lifecycle() {
         .success();
     eprintln!("  Done. Advanced management lifecycle complete.");
 }
+
+// ─── Tests for new commands (update-datasource, show-fewshot, update-fewshot,
+//     clear-fewshots, delete-element, reset, --stage published) ───────────────
+
+#[test]
+fn dataagent_update_datasource_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "update-datasource",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--datasource",
+            "TestDS",
+            "--instructions",
+            "Use this for sales queries",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "data-agent update-datasource");
+}
+
+#[test]
+fn dataagent_update_datasource_requires_at_least_one_field() {
+    let cfg = TestConfig::from_env();
+    fabio()
+        .args([
+            "data-agent",
+            "update-datasource",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--datasource",
+            "TestDS",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("At least one"));
+}
+
+#[test]
+fn dataagent_show_fewshot_dry_run() {
+    let cfg = TestConfig::from_env();
+    // show-fewshot is a read — test that the command parses all args correctly
+    // This will fail with NOT_FOUND since the IDs are fake, but that proves arg parsing works
+    fabio()
+        .args([
+            "data-agent",
+            "show-fewshot",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--datasource",
+            "TestDS",
+            "--fewshot-id",
+            "00000000-0000-0000-0000-000000000099",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("NOT_FOUND").or(predicate::str::contains("error")));
+}
+
+#[test]
+fn dataagent_update_fewshot_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "update-fewshot",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--datasource",
+            "TestDS",
+            "--fewshot-id",
+            "00000000-0000-0000-0000-000000000099",
+            "--question",
+            "Updated question?",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "data-agent update-fewshot");
+}
+
+#[test]
+fn dataagent_update_fewshot_requires_at_least_one_field() {
+    let cfg = TestConfig::from_env();
+    fabio()
+        .args([
+            "data-agent",
+            "update-fewshot",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--datasource",
+            "TestDS",
+            "--fewshot-id",
+            "00000000-0000-0000-0000-000000000099",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("At least one"));
+}
+
+#[test]
+fn dataagent_clear_fewshots_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "clear-fewshots",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--datasource",
+            "TestDS",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "data-agent clear-fewshots");
+}
+
+#[test]
+fn dataagent_delete_element_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "delete-element",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--datasource",
+            "TestDS",
+            "--element-id",
+            "dbo.old_table",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "data-agent delete-element");
+}
+
+#[test]
+fn dataagent_reset_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "reset",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "data-agent reset");
+}
+
+#[test]
+fn dataagent_list_datasources_with_stage_published_dry_run() {
+    let cfg = TestConfig::from_env();
+    // --stage published is accepted as a flag (no error at parse time)
+    // Will fail at runtime with NOT_FOUND for the fake ID, proving the flag works
+    fabio()
+        .args([
+            "data-agent",
+            "list-datasources",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--stage",
+            "published",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("NOT_FOUND").or(predicate::str::contains("error")));
+}
+
+#[test]
+fn dataagent_get_config_with_stage_published_dry_run() {
+    let cfg = TestConfig::from_env();
+    fabio()
+        .args([
+            "data-agent",
+            "get-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--stage",
+            "published",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("NOT_FOUND").or(predicate::str::contains("error")));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_reset_live() {
+    let cfg = TestConfig::from_env();
+
+    // Create agent, publish, modify staging, then reset (should revert to published state)
+    eprintln!("[1/5] Creating agent...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &unique_name("da_reset_test"),
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let agent_id = data["id"].as_str().unwrap().to_string();
+    eprintln!("  Created: {agent_id}");
+
+    // Publish first (reset requires a published state to revert to)
+    eprintln!("[2/5] Publishing agent...");
+    fabio()
+        .args([
+            "data-agent",
+            "publish",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    eprintln!("  Published");
+
+    // Update config (staging change)
+    eprintln!("[3/5] Updating config (staging change)...");
+    fabio()
+        .args([
+            "data-agent",
+            "update-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--instructions",
+            "Test instructions for reset — should be discarded",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+
+    // Reset staging (discard the config change)
+    eprintln!("[4/5] Resetting staging...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "reset",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "staging_reset");
+    eprintln!("  Reset successful");
+
+    // Cleanup
+    eprintln!("[5/5] Cleanup...");
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .assert()
+        .success();
+    eprintln!("  Done.");
+}

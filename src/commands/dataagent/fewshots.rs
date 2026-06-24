@@ -10,20 +10,23 @@ use super::resolve_datasource_id;
 
 /// List few-shot examples for a specific data source.
 ///
-/// Uses: `GET /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}/fewshots`
+/// Uses: `GET /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}/fewshots` (staging)
+///   or: `GET /workspaces/{ws}/dataAgents/{id}/datasources/{dsId}/fewshots` (published)
 pub(super) async fn list_fewshots(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     id: &str,
     datasource: &str,
+    stage: &str,
 ) -> Result<()> {
     let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
+    let prefix = stage_prefix(stage);
 
     let resp = client
         .get_list(
             &format!(
-                "/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}/fewshots"
+                "/workspaces/{workspace}/dataAgents/{id}{prefix}/datasources/{ds_id}/fewshots"
             ),
             "value",
             true,
@@ -144,6 +147,150 @@ pub(super) async fn remove_fewshot(
     Ok(())
 }
 
+/// Show a specific few-shot example by ID.
+///
+/// Uses: `GET /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}/fewshots/{fewshotId}` (staging)
+///   or: `GET /workspaces/{ws}/dataAgents/{id}/datasources/{dsId}/fewshots/{fewshotId}` (published)
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn show_fewshot(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    datasource: &str,
+    fewshot_id: &str,
+    stage: &str,
+) -> Result<()> {
+    let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
+    let prefix = stage_prefix(stage);
+
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/dataAgents/{id}{prefix}/datasources/{ds_id}/fewshots/{fewshot_id}"
+        ))
+        .await?;
+
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+/// Update an existing few-shot example (question and/or query).
+///
+/// Uses: `PATCH /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}/fewshots/{fewshotId}`
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn update_fewshot(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    datasource: &str,
+    fewshot_id: &str,
+    question: Option<&str>,
+    answer: Option<&str>,
+) -> Result<()> {
+    if question.is_none() && answer.is_none() {
+        return Err(FabioError::invalid_input(
+            "At least one of --question or --answer must be provided",
+        )
+        .into());
+    }
+
+    if output::dry_run_guard(
+        cli,
+        "data-agent update-fewshot",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "datasource": datasource,
+            "fewshotId": fewshot_id,
+            "question": question,
+            "answer": answer,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
+
+    let mut body = serde_json::Map::new();
+    if let Some(q) = question {
+        body.insert("question".to_string(), Value::from(q));
+    }
+    if let Some(a) = answer {
+        body.insert("query".to_string(), Value::from(a));
+    }
+
+    let resp = client
+        .patch(
+            &format!(
+                "/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}/fewshots/{fewshot_id}"
+            ),
+            &Value::Object(body),
+        )
+        .await?;
+
+    let result = if resp.is_null() || resp.as_object().is_some_and(serde_json::Map::is_empty) {
+        serde_json::json!({
+            "id": id,
+            "status": "fewshot_updated",
+            "fewshotId": fewshot_id,
+            "question": question,
+            "answer": answer,
+        })
+    } else {
+        let mut r = resp;
+        if let Some(obj) = r.as_object_mut() {
+            obj.insert("status".to_string(), Value::from("fewshot_updated"));
+        }
+        r
+    };
+    output::render_object(cli, &result, "status");
+    Ok(())
+}
+
+/// Delete all few-shot examples for a data source.
+///
+/// Uses: `POST /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}/fewshots/deleteAll`
+pub(super) async fn clear_fewshots(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    datasource: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "data-agent clear-fewshots",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "datasource": datasource,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
+
+    client
+        .post(
+            &format!(
+                "/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}/fewshots/deleteAll"
+            ),
+            &serde_json::json!({}),
+            false,
+        )
+        .await?;
+
+    let result = serde_json::json!({
+        "id": id,
+        "status": "fewshots_cleared",
+        "datasource": datasource,
+    });
+    output::render_object(cli, &result, "status");
+    Ok(())
+}
+
 /// Bulk upload few-shot examples from a JSON or CSV file.
 ///
 /// Uses: `POST .../fewshots` in a loop for each item.
@@ -256,6 +403,14 @@ pub(super) async fn upload_fewshots(
 }
 
 // ─── Private Helpers ─────────────────────────────────────────────────────────
+
+const fn stage_prefix(stage: &str) -> &str {
+    if stage.eq_ignore_ascii_case("published") {
+        ""
+    } else {
+        "/staging"
+    }
+}
 
 /// Parse few-shot examples from a CSV/TSV file.
 ///

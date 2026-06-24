@@ -8,9 +8,10 @@ use crate::output;
 
 use super::resolve_datasource_id;
 
-/// List elements (tables/columns) in a datasource via the staging elements API.
+/// List elements (tables/columns) in a datasource via the elements API.
 ///
-/// Uses: `GET /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}/elements`
+/// Uses: `GET /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}/elements` (staging)
+///   or: `GET /workspaces/{ws}/dataAgents/{id}/datasources/{dsId}/elements` (published)
 /// Navigates the schema tree level-by-level (schemas → tables → columns).
 pub(super) async fn list_elements(
     cli: &Cli,
@@ -18,10 +19,12 @@ pub(super) async fn list_elements(
     workspace: &str,
     id: &str,
     datasource: &str,
+    stage: &str,
 ) -> Result<()> {
     let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
+    let prefix = stage_prefix(stage);
     let base_path =
-        format!("/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}/elements");
+        format!("/workspaces/{workspace}/dataAgents/{id}{prefix}/datasources/{ds_id}/elements");
 
     // Get root-level elements (typically schemas)
     let root_resp = client.get_list(&base_path, "value", true, None).await?;
@@ -97,7 +100,57 @@ pub(super) async fn describe_element(
     Ok(())
 }
 
+/// Delete a stale schema element from a datasource.
+///
+/// Uses: `DELETE /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}/elements?id={elementId}`
+pub(super) async fn delete_element(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    datasource: &str,
+    element_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "data-agent delete-element",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "datasource": datasource,
+            "elementId": element_id,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
+
+    client
+        .delete(&format!(
+            "/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}/elements?id={element_id}"
+        ))
+        .await?;
+
+    let result = serde_json::json!({
+        "id": id,
+        "status": "element_deleted",
+        "datasource": datasource,
+        "elementId": element_id,
+    });
+    output::render_object(cli, &result, "status");
+    Ok(())
+}
+
 // ─── Private Helpers ─────────────────────────────────────────────────────────
+
+const fn stage_prefix(stage: &str) -> &str {
+    if stage.eq_ignore_ascii_case("published") {
+        ""
+    } else {
+        "/staging"
+    }
+}
 
 /// Recursively flatten an element and its children into a flat list for display.
 async fn flatten_element(

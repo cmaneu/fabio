@@ -8,18 +8,21 @@ use crate::output;
 
 use super::resolve_datasource_id;
 
-/// List configured data sources via the staging datasources API.
+/// List configured data sources via the datasources API.
 ///
-/// Uses: `GET /workspaces/{ws}/dataAgents/{id}/staging/datasources`
+/// Uses: `GET /workspaces/{ws}/dataAgents/{id}/staging/datasources` (staging)
+///   or: `GET /workspaces/{ws}/dataAgents/{id}/datasources` (published)
 pub(super) async fn list_datasources(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     id: &str,
+    stage: &str,
 ) -> Result<()> {
+    let prefix = stage_prefix(stage);
     let resp = client
         .get_list(
-            &format!("/workspaces/{workspace}/dataAgents/{id}/staging/datasources"),
+            &format!("/workspaces/{workspace}/dataAgents/{id}{prefix}/datasources"),
             "value",
             true,
             None,
@@ -39,19 +42,22 @@ pub(super) async fn list_datasources(
 
 /// Show details of a specific data source.
 ///
-/// Uses: `GET /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}`
+/// Uses: `GET /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}` (staging)
+///   or: `GET /workspaces/{ws}/dataAgents/{id}/datasources/{dsId}` (published)
 pub(super) async fn show_datasource(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     id: &str,
     datasource: &str,
+    stage: &str,
 ) -> Result<()> {
     let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
+    let prefix = stage_prefix(stage);
 
     let data = client
         .get(&format!(
-            "/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}"
+            "/workspaces/{workspace}/dataAgents/{id}{prefix}/datasources/{ds_id}"
         ))
         .await?;
 
@@ -173,6 +179,76 @@ pub(super) async fn remove_datasource(
         "datasource": datasource,
         "datasourceId": ds_id,
     });
+    output::render_object(cli, &result, "status");
+    Ok(())
+}
+
+/// Update a data source's metadata (instructions, description).
+///
+/// Uses: `PATCH /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}`
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn update_datasource(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    datasource: &str,
+    instructions: Option<&str>,
+    description: Option<&str>,
+) -> Result<()> {
+    if instructions.is_none() && description.is_none() {
+        return Err(FabioError::invalid_input(
+            "At least one of --instructions or --description must be provided",
+        )
+        .into());
+    }
+
+    if output::dry_run_guard(
+        cli,
+        "data-agent update-datasource",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "datasource": datasource,
+            "instructions": instructions,
+            "description": description,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
+
+    let mut body = serde_json::Map::new();
+    if let Some(instr) = instructions {
+        body.insert("instructions".to_string(), Value::from(instr));
+    }
+    if let Some(desc) = description {
+        body.insert("userDescription".to_string(), Value::from(desc));
+    }
+
+    let resp = client
+        .patch(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}"),
+            &Value::Object(body),
+        )
+        .await?;
+
+    let result = if resp.is_null() || resp.as_object().is_some_and(serde_json::Map::is_empty) {
+        serde_json::json!({
+            "id": id,
+            "status": "datasource_updated",
+            "datasourceId": ds_id,
+            "instructions": instructions,
+            "description": description,
+        })
+    } else {
+        let mut r = resp;
+        if let Some(obj) = r.as_object_mut() {
+            obj.insert("status".to_string(), Value::from("datasource_updated"));
+        }
+        r
+    };
     output::render_object(cli, &result, "status");
     Ok(())
 }
@@ -319,6 +395,14 @@ pub(super) async fn select_tables(
 }
 
 // ─── Private Helpers ─────────────────────────────────────────────────────────
+
+const fn stage_prefix(stage: &str) -> &str {
+    if stage.eq_ignore_ascii_case("published") {
+        ""
+    } else {
+        "/staging"
+    }
+}
 
 /// Resolve an artifact (name or ID) to its type, ID, and display name.
 async fn resolve_artifact(
