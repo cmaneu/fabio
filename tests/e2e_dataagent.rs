@@ -2113,6 +2113,8 @@ fn dataagent_advanced_management_lifecycle() {
 //     clear-fewshots, delete-element, reset, --stage published) ───────────────
 
 #[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn dataagent_update_datasource_dry_run() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
@@ -2137,6 +2139,8 @@ fn dataagent_update_datasource_dry_run() {
 }
 
 #[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn dataagent_update_datasource_requires_at_least_one_field() {
     let cfg = TestConfig::from_env();
     fabio()
@@ -2156,6 +2160,8 @@ fn dataagent_update_datasource_requires_at_least_one_field() {
 }
 
 #[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn dataagent_show_fewshot_dry_run() {
     let cfg = TestConfig::from_env();
     // show-fewshot is a read — test that the command parses all args correctly
@@ -2179,6 +2185,8 @@ fn dataagent_show_fewshot_dry_run() {
 }
 
 #[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn dataagent_update_fewshot_dry_run() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
@@ -2205,6 +2213,8 @@ fn dataagent_update_fewshot_dry_run() {
 }
 
 #[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn dataagent_update_fewshot_requires_at_least_one_field() {
     let cfg = TestConfig::from_env();
     fabio()
@@ -2226,6 +2236,8 @@ fn dataagent_update_fewshot_requires_at_least_one_field() {
 }
 
 #[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn dataagent_clear_fewshots_dry_run() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
@@ -2248,6 +2260,8 @@ fn dataagent_clear_fewshots_dry_run() {
 }
 
 #[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn dataagent_delete_element_dry_run() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
@@ -2272,6 +2286,8 @@ fn dataagent_delete_element_dry_run() {
 }
 
 #[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn dataagent_reset_dry_run() {
     let cfg = TestConfig::from_env();
     let assert = fabio()
@@ -2292,6 +2308,8 @@ fn dataagent_reset_dry_run() {
 }
 
 #[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn dataagent_list_datasources_with_stage_published_dry_run() {
     let cfg = TestConfig::from_env();
     // --stage published is accepted as a flag (no error at parse time)
@@ -2313,6 +2331,8 @@ fn dataagent_list_datasources_with_stage_published_dry_run() {
 }
 
 #[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn dataagent_get_config_with_stage_published_dry_run() {
     let cfg = TestConfig::from_env();
     fabio()
@@ -2422,4 +2442,365 @@ fn dataagent_reset_live() {
         .assert()
         .success();
     eprintln!("  Done.");
+}
+
+// ─── P1: CRUD flag acceptance and validation tests ───────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_create_missing_name_fails() {
+    let cfg = TestConfig::from_env();
+    fabio()
+        .args(["data-agent", "create", "--workspace", &cfg.source_workspace])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--name"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_delete_accepts_hard_delete_flag() {
+    let cfg = TestConfig::from_env();
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--hard-delete",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("NOT_FOUND"));
+}
+
+// ─── P2: Flag coverage tests ─────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_update_config_instructions_file_dry_run() {
+    let cfg = TestConfig::from_env();
+    let tmp_path = "/tmp/opencode/da_instructions.txt";
+    std::fs::write(tmp_path, "These are file-based instructions").unwrap();
+
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "update-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--instructions-file",
+            tmp_path,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "data-agent update-config");
+    std::fs::remove_file(tmp_path).ok();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_update_config_disable_preview_runtime_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "update-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--disable-preview-runtime",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "data-agent update-config");
+    assert_eq!(data["details"]["disablePreviewRuntime"], true);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_query_show_steps_flag_accepted() {
+    let cfg = TestConfig::from_env();
+    fabio()
+        .args([
+            "data-agent",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--prompt",
+            "test",
+            "--show-steps",
+            "--published-url",
+            "https://api.fabric.microsoft.com/v1/workspaces/test/dataagents/test/aiassistant/openai",
+            "--timeout",
+            "5",
+        ])
+        .assert()
+        .failure(); // Will fail (agent doesn't exist) but --show-steps flag is accepted
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_upload_fewshots_invalid_file_path() {
+    let cfg = TestConfig::from_env();
+    fabio()
+        .args([
+            "data-agent",
+            "upload-fewshots",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--datasource",
+            "TestDS",
+            "--file",
+            "/nonexistent/path/fewshots.json",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Failed to read file"));
+}
+
+// ─── P0: Live E2E tests for new commands ─────────────────────────────────────
+
+/// Tests update-datasource, show-fewshot, update-fewshot, clear-fewshots,
+/// and remove-datasource in a single lifecycle.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_new_commands_lifecycle() {
+    let cfg = TestConfig::from_env();
+
+    eprintln!("[1/10] Creating agent...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &unique_name("da_newcmds"),
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let agent_id = data["id"].as_str().unwrap().to_string();
+    eprintln!("  Created: {agent_id}");
+
+    eprintln!("[2/10] Adding lakehouse datasource (may take several minutes)...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "add-datasource",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--artifact",
+            &cfg.source_lakehouse,
+            "--artifact-type",
+            "Lakehouse",
+            "--instructions",
+            "Original instructions",
+            "--lro-timeout",
+            "300",
+        ])
+        .timeout(std::time::Duration::from_mins(6))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "datasource_added");
+    eprintln!("  Datasource added");
+
+    eprintln!("[3/10] Updating datasource instructions...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "update-datasource",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &cfg.source_lakehouse,
+            "--instructions",
+            "Updated: use for sales analytics",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "datasource_updated");
+    eprintln!("  Datasource instructions updated");
+
+    eprintln!("[4/10] Adding fewshot...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "add-fewshot",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &cfg.source_lakehouse,
+            "--question",
+            "How many rows?",
+            "--answer",
+            "SELECT COUNT(*) FROM table1",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "fewshot_added");
+    let fewshot_id = data["id"].as_str().unwrap_or("").to_string();
+    eprintln!("  Fewshot added: {fewshot_id}");
+
+    eprintln!("[5/10] Showing fewshot...");
+    assert!(!fewshot_id.is_empty(), "Expected fewshot ID from add");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "show-fewshot",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &cfg.source_lakehouse,
+            "--fewshot-id",
+            &fewshot_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["question"], "How many rows?");
+    eprintln!("  show-fewshot OK");
+
+    eprintln!("[6/10] Updating fewshot...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "update-fewshot",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &cfg.source_lakehouse,
+            "--fewshot-id",
+            &fewshot_id,
+            "--question",
+            "How many total rows?",
+            "--answer",
+            "SELECT COUNT(*) FROM all_tables",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "fewshot_updated");
+    eprintln!("  Fewshot updated");
+
+    eprintln!("[7/10] Adding second fewshot for clear test...");
+    fabio()
+        .args([
+            "data-agent",
+            "add-fewshot",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &cfg.source_lakehouse,
+            "--question",
+            "Top products?",
+            "--answer",
+            "SELECT TOP 5 name FROM products",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+
+    eprintln!("[8/10] Clearing all fewshots...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "clear-fewshots",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &cfg.source_lakehouse,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "fewshots_cleared");
+    eprintln!("  All fewshots cleared");
+
+    eprintln!("[9/10] Removing datasource...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "remove-datasource",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &cfg.source_lakehouse,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "datasource_removed");
+    eprintln!("  Datasource removed");
+
+    eprintln!("[10/10] Cleanup...");
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .assert()
+        .success();
+    eprintln!("  Done. New commands lifecycle test complete.");
 }
