@@ -11,7 +11,7 @@ use crate::output;
 
 #[derive(Debug, Subcommand)]
 #[command(
-    after_help = "CONTEXT: fabio context schema Eventstream | fabio context workflow rti-pipeline | fabio context examples eventstream validate"
+    after_help = "Before using this command, run: fabio context examples eventstream\nAlso available: fabio context schema Eventstream | fabio context workflow rti-pipeline"
 )]
 pub enum EventstreamCommand {
     /// List eventstreams in a workspace

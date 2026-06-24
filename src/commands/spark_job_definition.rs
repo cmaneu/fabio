@@ -10,7 +10,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context schema SparkJobDefinition")]
+#[command(
+    after_help = "Before creating items, run: fabio context schema SparkJobDefinition\nReturns the definition template with required fields and format."
+)]
 pub enum SparkJobDefinitionCommand {
     /// List Spark job definitions in a workspace
     #[command(display_order = 1)]

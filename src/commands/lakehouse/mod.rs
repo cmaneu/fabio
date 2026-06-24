@@ -21,7 +21,7 @@ mod tables;
 
 #[derive(Debug, Subcommand)]
 #[command(
-    after_help = "CONTEXT: fabio context schema Lakehouse | fabio context workflow lakehouse-etl | fabio context examples lakehouse list-tables"
+    after_help = "Before using this command, run: fabio context examples lakehouse\nAlso available: fabio context schema Lakehouse | fabio context workflow lakehouse-etl"
 )]
 pub enum LakehouseCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────

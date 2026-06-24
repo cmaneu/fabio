@@ -11,7 +11,7 @@ use crate::output;
 
 #[derive(Debug, Subcommand)]
 #[command(
-    after_help = "CONTEXT: fabio context schema Eventhouse | fabio context workflow rti-pipeline"
+    after_help = "Before using, run: fabio context schema Eventhouse | fabio context workflow rti-pipeline\nReturns definition templates and step-by-step setup recipes."
 )]
 pub enum EventhouseCommand {
     /// List eventhouses in a workspace

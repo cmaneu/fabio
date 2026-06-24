@@ -15,7 +15,9 @@ mod definitions;
 mod tags;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context examples item")]
+#[command(
+    after_help = "Before using this command, run: fabio context examples item\nReturns response shapes, required parameters, and JMESPath queries as JSON."
+)]
 pub enum ItemCommand {
     // ── Read ─────────────────────────────────────────────────────────────
     /// List items in a workspace

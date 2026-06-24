@@ -8,7 +8,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context examples git")]
+#[command(
+    after_help = "Before using this command, run: fabio context examples git\nReturns response shapes, required parameters, and JMESPath queries as JSON."
+)]
 pub enum GitCommand {
     // ── Daily Operations ─────────────────────────────────────────────────
     /// Show workspace Git status (changes, conflicts)

@@ -11,7 +11,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context examples warehouse")]
+#[command(
+    after_help = "Before using this command, run: fabio context examples warehouse\nReturns response shapes, required parameters, and JMESPath queries as JSON."
+)]
 pub enum WarehouseCommand {
     /// List warehouses in a workspace
     #[command(display_order = 1)]

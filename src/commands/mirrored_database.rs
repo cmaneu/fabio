@@ -10,7 +10,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context schema MirroredDatabase")]
+#[command(
+    after_help = "Before creating items, run: fabio context schema MirroredDatabase\nReturns the definition template with required fields and format."
+)]
 pub enum MirroredDatabaseCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List mirrored databases in a workspace

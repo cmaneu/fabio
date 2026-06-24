@@ -8,7 +8,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context examples onelake-security")]
+#[command(
+    after_help = "Before using this command, run: fabio context examples onelake-security\nReturns response shapes, required parameters, and JMESPath queries as JSON."
+)]
 pub enum OnelakeSecurityCommand {
     /// List data access roles for an item
     #[command(display_order = 1)]

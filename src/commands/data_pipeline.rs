@@ -10,7 +10,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context examples data-pipeline")]
+#[command(
+    after_help = "Before using this command, run: fabio context examples data-pipeline\nReturns response shapes, required parameters, and JMESPath queries as JSON."
+)]
 pub enum DataPipelineCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List data pipelines in a workspace

@@ -11,7 +11,7 @@ use crate::output;
 
 #[derive(Debug, Subcommand)]
 #[command(
-    after_help = "CONTEXT: fabio context schema Report | fabio context workflow direct-lake-report"
+    after_help = "Before creating reports, run: fabio context schema Report | fabio context workflow direct-lake-report\nReturns definition templates and step-by-step creation recipes."
 )]
 pub enum ReportCommand {
     /// List reports in a workspace

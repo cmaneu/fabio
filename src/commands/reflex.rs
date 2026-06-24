@@ -11,7 +11,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context examples reflex")]
+#[command(
+    after_help = "Before using this command, run: fabio context examples reflex\nReturns response shapes, required parameters, and JMESPath queries as JSON."
+)]
 pub enum ReflexCommand {
     /// List reflexes in a workspace
     #[command(display_order = 1)]

@@ -15,7 +15,7 @@ use crate::output;
 
 #[derive(Debug, Subcommand)]
 #[command(
-    after_help = "CONTEXT: fabio context schema Dataflow | fabio context examples lakehouse list-tables"
+    after_help = "Before using this command, run: fabio context examples dataflow\nAlso available: fabio context schema Dataflow"
 )]
 pub enum DataflowCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────

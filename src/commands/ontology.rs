@@ -12,7 +12,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context examples ontology")]
+#[command(
+    after_help = "Before using this command, run: fabio context examples ontology\nReturns response shapes, required parameters, and JMESPath queries as JSON."
+)]
 pub enum OntologyCommand {
     /// List ontologies in a workspace
     List {

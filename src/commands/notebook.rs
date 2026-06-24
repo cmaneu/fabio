@@ -14,7 +14,7 @@ use crate::output;
 
 #[derive(Debug, Subcommand)]
 #[command(
-    after_help = "CONTEXT: fabio context schema Notebook | fabio context workflow lakehouse-etl | fabio context examples notebook run"
+    after_help = "Before using this command, run: fabio context examples notebook\nAlso available: fabio context schema Notebook | fabio context workflow lakehouse-etl"
 )]
 pub enum NotebookCommand {
     // ── Lifecycle ────────────────────────────────────────────────────────

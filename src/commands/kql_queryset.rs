@@ -11,7 +11,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context workflow rti-pipeline")]
+#[command(
+    after_help = "For step-by-step setup, run: fabio context workflow rti-pipeline\nReturns a complete RTI pipeline recipe with exact command syntax."
+)]
 pub enum KqlQuerysetCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List KQL querysets in a workspace

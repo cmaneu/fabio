@@ -12,7 +12,9 @@ use crate::cli::Cli;
 use crate::client::FabricClient;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context examples sql-database")]
+#[command(
+    after_help = "Before using this command, run: fabio context examples sql-database\nReturns response shapes, required parameters, and JMESPath queries as JSON."
+)]
 pub enum SqlDatabaseCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List SQL databases in a workspace

@@ -10,7 +10,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context schema CopyJob")]
+#[command(
+    after_help = "Before creating items, run: fabio context schema CopyJob\nReturns the definition template with required fields and format."
+)]
 pub enum CopyJobCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List copy jobs in a workspace

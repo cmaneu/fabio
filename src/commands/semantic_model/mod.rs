@@ -13,7 +13,7 @@ use crate::errors::{ErrorCode, FabioError};
 
 #[derive(Debug, Subcommand)]
 #[command(
-    after_help = "CONTEXT: fabio context schema SemanticModel | fabio context workflow direct-lake-report"
+    after_help = "Before using this command, run: fabio context examples semantic-model\nAlso available: fabio context schema SemanticModel | fabio context workflow direct-lake-report"
 )]
 pub enum SemanticModelCommand {
     /// List semantic models in a workspace

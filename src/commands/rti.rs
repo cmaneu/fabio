@@ -7,7 +7,9 @@ use crate::client::FabricClient;
 use crate::output;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context agent")]
+#[command(
+    after_help = "For complete flag reference, run: fabio context agent\nReturns machine-readable JSON schema of all commands, flags, and types."
+)]
 pub enum RtiCommand {
     /// Convert natural language to a KQL query (beta)
     #[command(display_order = 1)]

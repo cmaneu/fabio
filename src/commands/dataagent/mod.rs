@@ -16,7 +16,7 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 
 #[derive(Debug, Subcommand)]
 #[command(
-    after_help = "CONTEXT: fabio context schema DataAgent | fabio context workflow data-agent-setup | fabio context examples data-agent query"
+    after_help = "Before using this command, run: fabio context examples data-agent\nAlso available: fabio context schema DataAgent | fabio context workflow data-agent-setup"
 )]
 pub enum DataAgentCommand {
     /// List data agents in a workspace

@@ -12,7 +12,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context schema GraphQLApi")]
+#[command(
+    after_help = "Before creating items, run: fabio context schema GraphQLApi\nReturns the definition template with required fields and format."
+)]
 pub enum GraphqlApiCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List GraphQL APIs in a workspace

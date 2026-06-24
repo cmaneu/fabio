@@ -22,7 +22,9 @@ pub const KNOWN_JOB_TYPES: &[&str] = &[
 ];
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context examples job-scheduler")]
+#[command(
+    after_help = "Before using this command, run: fabio context examples job-scheduler\nReturns response shapes, required parameters, and JMESPath queries as JSON."
+)]
 pub enum JobSchedulerCommand {
     // ── Instances ────────────────────────────────────────────────────────
     /// List job instances for an item

@@ -10,7 +10,9 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
-#[command(after_help = "CONTEXT: fabio context schema Environment")]
+#[command(
+    after_help = "Before creating items, run: fabio context schema Environment\nReturns the definition template with required fields and format."
+)]
 pub enum EnvironmentCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List environments in a workspace

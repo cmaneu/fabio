@@ -11,7 +11,7 @@ use crate::output;
 
 #[derive(Debug, Subcommand)]
 #[command(
-    after_help = "CONTEXT: fabio context schema KQLDatabase | fabio context workflow rti-pipeline | fabio context examples kql-database list-entities"
+    after_help = "Before using this command, run: fabio context examples kql-database\nAlso available: fabio context schema KQLDatabase | fabio context workflow rti-pipeline"
 )]
 pub enum KqlDatabaseCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
