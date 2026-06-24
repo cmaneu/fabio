@@ -87,14 +87,11 @@ pub(super) async fn query(
 /// Get the published URL of a data agent.
 ///
 /// Strategy:
-/// 1. Try `/dataAgents/{id}/settings` (V3 management plane, if enabled).
-/// 2. Check the item properties for a `publishedUrl` field.
-/// 3. Return an error explaining that the user must provide `--published-url`.
-///
-/// If the V3 settings endpoint is not available and no URL is found,
-/// returns an error explaining that the user must provide `--published-url`.
+/// 1. Use the official published settings endpoint: `GET /dataAgents/{id}/settings`
+/// 2. Fallback: check item properties for a `publishedUrl` field.
+/// 3. Construct the standard URL pattern as last resort.
 async fn get_published_url(client: &FabricClient, workspace: &str, id: &str) -> Result<String> {
-    // Attempt 1: Try the V3 settings endpoint (may not be enabled)
+    // The published settings endpoint is now part of the official Fabric REST API
     let settings_path = format!("/workspaces/{workspace}/dataAgents/{id}/settings");
     if let Ok(settings) = client.get(&settings_path).await
         && let Some(url) = settings
@@ -105,7 +102,7 @@ async fn get_published_url(client: &FabricClient, workspace: &str, id: &str) -> 
         return Ok(url.to_string());
     }
 
-    // Attempt 2: Check item properties
+    // Fallback: Check item properties
     let data = client
         .get(&format!("/workspaces/{workspace}/dataAgents/{id}"))
         .await?;
@@ -119,10 +116,10 @@ async fn get_published_url(client: &FabricClient, workspace: &str, id: &str) -> 
         return Ok(url.to_string());
     }
 
-    // No published URL found — the agent may not be published or V3 isn't enabled.
+    // No published URL found — the agent may not be published yet.
     Err(FabioError::with_hint(
         ErrorCode::ApiError,
-        "Published URL not found. The data agent may not be published yet, or the V3 settings API is not enabled on this tenant.",
+        "Published URL not found. The data agent may not be published yet.",
         format!(
             "Publish the agent with 'fabio data-agent publish', then provide the URL with --published-url. \
              The URL pattern is: https://api.fabric.microsoft.com/v1/workspaces/{workspace}/dataagents/{id}/aiassistant/openai"

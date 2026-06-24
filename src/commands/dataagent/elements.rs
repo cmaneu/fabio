@@ -1,6 +1,4 @@
 use anyhow::Result;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -8,9 +6,12 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
-use super::{decode_part_payload, find_datasource_dir, get_definition_parts};
+use super::resolve_datasource_id;
 
-/// List elements (tables/columns) in a datasource with selection state and descriptions.
+/// List elements (tables/columns) in a datasource via the staging elements API.
+///
+/// Uses: `GET /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}/elements`
+/// Navigates the schema tree level-by-level (schemas → tables → columns).
 pub(super) async fn list_elements(
     cli: &Cli,
     client: &FabricClient,
@@ -18,47 +19,19 @@ pub(super) async fn list_elements(
     id: &str,
     datasource: &str,
 ) -> Result<()> {
-    let parts = get_definition_parts(client, workspace, id).await?;
-    let ds_dir = find_datasource_dir(&parts, datasource)?;
-    let ds_path = format!("{ds_dir}/datasource.json");
+    let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
+    let base_path =
+        format!("/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}/elements");
 
-    let ds_payload = parts
-        .iter()
-        .find_map(|part| {
-            let path = part.get("path").and_then(Value::as_str)?;
-            if path == ds_path {
-                part.get("payload")
-                    .and_then(Value::as_str)
-                    .map(String::from)
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| {
-            FabioError::new(
-                ErrorCode::NotFound,
-                format!("Datasource file not found at '{ds_path}'"),
-            )
-        })?;
+    // Get root-level elements (typically schemas)
+    let root_resp = client.get_list(&base_path, "value", true, None).await?;
 
-    let ds_json: Value = decode_part_payload(&ds_payload)
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .ok_or_else(|| {
-            FabioError::new(
-                ErrorCode::ApiError,
-                "Failed to decode datasource definition",
-            )
-        })?;
-
-    let elements = ds_json
-        .get("elements")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-
-    // Flatten the tree into a list of rows for output
     let mut flat: Vec<Value> = Vec::new();
-    flatten_elements(&elements, &mut flat, 0);
+
+    // Flatten the tree by navigating level-by-level
+    for elem in &root_resp.items {
+        flatten_element(&mut flat, elem, client, &base_path, 0).await?;
+    }
 
     output::render_list_with_token(
         cli,
@@ -72,6 +45,8 @@ pub(super) async fn list_elements(
 }
 
 /// Set or clear a description on a specific element identified by dot-path.
+///
+/// Uses: `PATCH /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}/elements?id={elementId}`
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn describe_element(
     cli: &Cli,
@@ -96,90 +71,21 @@ pub(super) async fn describe_element(
         return Ok(());
     }
 
-    let parts = get_definition_parts(client, workspace, id).await?;
-    let ds_dir = find_datasource_dir(&parts, datasource)?;
-    let ds_path = format!("{ds_dir}/datasource.json");
+    let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
+    let base_path =
+        format!("/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}/elements");
 
-    let ds_payload = parts
-        .iter()
-        .find_map(|part| {
-            let p = part.get("path").and_then(Value::as_str)?;
-            if p == ds_path {
-                part.get("payload")
-                    .and_then(Value::as_str)
-                    .map(String::from)
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| {
-            FabioError::new(
-                ErrorCode::NotFound,
-                format!("Datasource file not found at '{ds_path}'"),
-            )
-        })?;
+    // Navigate tree to find the element by dot-path
+    let element_id = resolve_element_id_by_path(client, &base_path, path).await?;
 
-    let mut ds_json: Value = decode_part_payload(&ds_payload)
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .ok_or_else(|| {
-            FabioError::new(
-                ErrorCode::ApiError,
-                "Failed to decode datasource definition",
-            )
-        })?;
+    // PATCH the element to set/clear description
+    let patch_body = match description {
+        Some(desc) if !desc.is_empty() => serde_json::json!({ "description": desc }),
+        _ => serde_json::json!({ "description": "" }),
+    };
 
-    // Navigate to the element by dot-path
-    let path_parts: Vec<&str> = path.split('.').collect();
-    let element = find_element_by_path(
-        ds_json.get_mut("elements").and_then(Value::as_array_mut),
-        &path_parts,
-    )
-    .ok_or_else(|| {
-        FabioError::with_hint(
-            ErrorCode::NotFound,
-            format!("Element not found at path '{path}'"),
-            "Use 'fabio data-agent list-elements' to see available paths. Path format: schema.table or schema.table.column",
-        )
-    })?;
-
-    // Set or clear the description
-    match description {
-        Some(desc) if !desc.is_empty() => {
-            element["description"] = Value::from(desc);
-        }
-        _ => {
-            // Clear description
-            if let Some(obj) = element.as_object_mut() {
-                obj.remove("description");
-            }
-        }
-    }
-
-    // Re-encode and push updated definition
-    let encoded = BASE64.encode(serde_json::to_string(&ds_json)?.as_bytes());
-
-    let new_parts: Vec<Value> = parts
-        .iter()
-        .map(|p| {
-            if p.get("path").and_then(Value::as_str) == Some(&ds_path) {
-                serde_json::json!({
-                    "path": ds_path,
-                    "payload": encoded,
-                    "payloadType": "InlineBase64"
-                })
-            } else {
-                p.clone()
-            }
-        })
-        .collect();
-
-    let update_body = serde_json::json!({ "definition": { "parts": new_parts } });
     client
-        .post(
-            &format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition"),
-            &update_body,
-            true,
-        )
+        .patch(&format!("{base_path}?id={element_id}"), &patch_body)
         .await?;
 
     let result = serde_json::json!({
@@ -193,193 +99,147 @@ pub(super) async fn describe_element(
 
 // ─── Private Helpers ─────────────────────────────────────────────────────────
 
-/// Flatten the element tree into a list of rows with indented paths.
-fn flatten_elements(elements: &[Value], output: &mut Vec<Value>, depth: usize) {
-    for elem in elements {
-        let display_name = elem
-            .get("display_name")
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        let elem_type = elem.get("type").and_then(Value::as_str).unwrap_or("");
-        let is_selected = elem.get("is_selected").and_then(Value::as_bool);
-        let description = elem
-            .get("description")
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        let id_path = elem
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or(display_name);
+/// Recursively flatten an element and its children into a flat list for display.
+async fn flatten_element(
+    output_vec: &mut Vec<Value>,
+    elem: &Value,
+    client: &FabricClient,
+    base_path: &str,
+    depth: usize,
+) -> Result<()> {
+    let display_name = elem
+        .get("displayName")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let elem_type = elem.get("type").and_then(Value::as_str).unwrap_or("");
+    let is_selected = elem.get("isSelected").and_then(Value::as_bool);
+    let description = elem
+        .get("description")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let elem_id = elem
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or(display_name);
+    let has_sub = elem
+        .get("hasSubElements")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
 
-        // Build indented display name for tree visualization
-        let indent = "  ".repeat(depth);
-        let display_path = format!("{indent}{display_name}");
+    let indent = "  ".repeat(depth);
+    let display_path = format!("{indent}{display_name}");
 
-        let mut row = serde_json::json!({
-            "path": id_path,
-            "displayPath": display_path,
-            "name": display_name,
-            "type": elem_type,
-        });
+    let mut row = serde_json::json!({
+        "path": elem_id,
+        "displayPath": display_path,
+        "name": display_name,
+        "type": elem_type,
+    });
 
-        if let Some(selected) = is_selected {
-            row["selected"] = Value::Bool(selected);
-        }
-        if !description.is_empty() {
-            row["description"] = Value::from(description);
-        }
-        if let Some(dt) = elem.get("data_type").and_then(Value::as_str) {
-            row["dataType"] = Value::from(dt);
-        }
+    if let Some(selected) = is_selected {
+        row["selected"] = Value::Bool(selected);
+    }
+    if !description.is_empty() {
+        row["description"] = Value::from(description);
+    }
+    if let Some(dt) = elem.get("dataType").and_then(Value::as_str) {
+        row["dataType"] = Value::from(dt);
+    }
+    if let Some(state) = elem.get("state").and_then(Value::as_str) {
+        row["state"] = Value::from(state);
+    }
 
-        output.push(row);
+    output_vec.push(row);
 
-        // Recurse into children
-        if let Some(children) = elem.get("children").and_then(Value::as_array) {
-            flatten_elements(children, output, depth + 1);
+    // Navigate into sub-elements if present
+    if has_sub && !elem_id.is_empty() {
+        let sub_resp = client
+            .get_list(
+                &format!("{base_path}?rootId={elem_id}"),
+                "value",
+                true,
+                None,
+            )
+            .await;
+        if let Ok(sub) = sub_resp {
+            for child in &sub.items {
+                Box::pin(flatten_element(
+                    output_vec,
+                    child,
+                    client,
+                    base_path,
+                    depth + 1,
+                ))
+                .await?;
+            }
         }
     }
+
+    Ok(())
 }
 
-/// Navigate the element tree by dot-path (e.g. `dbo.orders.total_amount`).
-///
-/// Matches elements by `display_name` at each level of the path hierarchy.
-fn find_element_by_path<'a>(
-    elements: Option<&'a mut Vec<Value>>,
-    path_parts: &[&str],
-) -> Option<&'a mut Value> {
-    let elements = elements?;
-    let (first, rest) = path_parts.split_first()?;
+/// Resolve a dot-path (e.g., `dbo.orders.total_amount`) to an element ID
+/// by navigating the schema tree level-by-level.
+async fn resolve_element_id_by_path(
+    client: &FabricClient,
+    base_path: &str,
+    dot_path: &str,
+) -> Result<String> {
+    let path_parts: Vec<&str> = dot_path.split('.').collect();
+    let mut current_root: Option<String> = None;
 
-    for elem in elements.iter_mut() {
-        let name = elem
-            .get("display_name")
+    for (i, part_name) in path_parts.iter().enumerate() {
+        let url = current_root.as_ref().map_or_else(
+            || base_path.to_string(),
+            |root_id| format!("{base_path}?rootId={root_id}"),
+        );
+
+        let resp = client.get_list(&url, "value", true, None).await?;
+
+        let found = resp.items.iter().find(|elem| {
+            elem.get("displayName")
+                .and_then(Value::as_str)
+                .is_some_and(|name| name.eq_ignore_ascii_case(part_name))
+        });
+
+        let Some(elem) = found else {
+            return Err(FabioError::with_hint(
+                ErrorCode::NotFound,
+                format!("Element not found at path '{dot_path}' (failed at segment '{part_name}')"),
+                "Use 'fabio data-agent list-elements' to see available paths. Path format: schema.table or schema.table.column",
+            ).into());
+        };
+
+        let elem_id = elem
+            .get("id")
             .and_then(Value::as_str)
-            .unwrap_or("");
-        if name.eq_ignore_ascii_case(first) {
-            if rest.is_empty() {
-                return Some(elem);
+            .unwrap_or("")
+            .to_string();
+
+        if i == path_parts.len() - 1 {
+            // This is the target element
+            if elem_id.is_empty() {
+                return Err(FabioError::new(
+                    ErrorCode::ApiError,
+                    format!("Element at path '{dot_path}' has no ID"),
+                )
+                .into());
             }
-            // Recurse into children
-            return find_element_by_path(
-                elem.get_mut("children").and_then(Value::as_array_mut),
-                rest,
-            );
+            return Ok(elem_id);
         }
+        // Navigate deeper
+        current_root = Some(elem_id);
     }
-    None
+
+    Err(FabioError::new(
+        ErrorCode::NotFound,
+        format!("Element not found at path '{dot_path}'"),
+    )
+    .into())
 }
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
-    use super::*;
-
-    #[test]
-    fn flatten_elements_basic_tree() {
-        let elements = vec![json!({
-            "display_name": "dbo",
-            "type": "lakehouse_tables.schema",
-            "id": "dbo",
-            "is_selected": true,
-            "children": [
-                {
-                    "display_name": "orders",
-                    "type": "lakehouse_tables.table",
-                    "id": "dbo.orders",
-                    "is_selected": true,
-                    "description": "Customer orders",
-                    "children": [
-                        {"display_name": "order_id", "type": "lakehouse_tables.column", "id": "dbo.orders.order_id", "data_type": "int", "children": []}
-                    ]
-                }
-            ]
-        })];
-
-        let mut flat = Vec::new();
-        flatten_elements(&elements, &mut flat, 0);
-        assert_eq!(flat.len(), 3);
-        assert_eq!(flat[0]["path"], "dbo");
-        assert_eq!(flat[0]["selected"], true);
-        assert_eq!(flat[1]["path"], "dbo.orders");
-        assert_eq!(flat[1]["description"], "Customer orders");
-        assert_eq!(flat[2]["path"], "dbo.orders.order_id");
-        assert_eq!(flat[2]["dataType"], "int");
-    }
-
-    #[test]
-    fn flatten_elements_empty() {
-        let mut flat = Vec::new();
-        flatten_elements(&[], &mut flat, 0);
-        assert!(flat.is_empty());
-    }
-
-    #[test]
-    fn find_element_by_path_schema_level() {
-        let mut elements = vec![json!({
-            "display_name": "dbo",
-            "type": "lakehouse_tables.schema",
-            "children": []
-        })];
-        let found = find_element_by_path(Some(&mut elements), &["dbo"]);
-        assert!(found.is_some());
-        assert_eq!(found.unwrap()["display_name"], "dbo");
-    }
-
-    #[test]
-    fn find_element_by_path_table_level() {
-        let mut elements = vec![json!({
-            "display_name": "dbo",
-            "type": "lakehouse_tables.schema",
-            "children": [
-                {"display_name": "orders", "type": "lakehouse_tables.table", "children": []}
-            ]
-        })];
-        let found = find_element_by_path(Some(&mut elements), &["dbo", "orders"]);
-        assert!(found.is_some());
-        assert_eq!(found.unwrap()["display_name"], "orders");
-    }
-
-    #[test]
-    fn find_element_by_path_column_level() {
-        let mut elements = vec![json!({
-            "display_name": "dbo",
-            "type": "lakehouse_tables.schema",
-            "children": [{
-                "display_name": "orders",
-                "type": "lakehouse_tables.table",
-                "children": [
-                    {"display_name": "total_amount", "type": "lakehouse_tables.column", "children": []}
-                ]
-            }]
-        })];
-        let found = find_element_by_path(Some(&mut elements), &["dbo", "orders", "total_amount"]);
-        assert!(found.is_some());
-        assert_eq!(found.unwrap()["display_name"], "total_amount");
-    }
-
-    #[test]
-    fn find_element_by_path_not_found() {
-        let mut elements = vec![json!({
-            "display_name": "dbo",
-            "type": "lakehouse_tables.schema",
-            "children": []
-        })];
-        let found = find_element_by_path(Some(&mut elements), &["dbo", "nonexistent"]);
-        assert!(found.is_none());
-    }
-
-    #[test]
-    fn find_element_by_path_case_insensitive() {
-        let mut elements = vec![json!({
-            "display_name": "DBO",
-            "type": "lakehouse_tables.schema",
-            "children": [
-                {"display_name": "Orders", "type": "lakehouse_tables.table", "children": []}
-            ]
-        })];
-        let found = find_element_by_path(Some(&mut elements), &["dbo", "orders"]);
-        assert!(found.is_some());
-    }
+    // Integration tests in tests/e2e_dataagent.rs cover the full flow.
+    // Unit tests for tree navigation helpers require mocking the HTTP client.
 }

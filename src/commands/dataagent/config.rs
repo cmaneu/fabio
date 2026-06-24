@@ -1,6 +1,4 @@
 use anyhow::Result;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -8,85 +6,61 @@ use crate::client::FabricClient;
 use crate::errors::FabioError;
 use crate::output;
 
-use super::{decode_part_payload, get_definition_parts};
-
-/// Get agent configuration by parsing the definition's `stage_config.json`.
+/// Get agent configuration via the staging settings API.
+///
+/// Uses: `GET /workspaces/{ws}/dataAgents/{id}/staging/settings`
 pub(super) async fn get_config(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     id: &str,
 ) -> Result<()> {
-    let definition_resp = client
-        .post(
-            &format!("/workspaces/{workspace}/dataAgents/{id}/getDefinition"),
-            &serde_json::json!({}),
+    let settings = client
+        .get(&format!(
+            "/workspaces/{workspace}/dataAgents/{id}/staging/settings"
+        ))
+        .await?;
+
+    // Also fetch datasources list to include summary in config output
+    let ds_resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/staging/datasources"),
+            "value",
             true,
+            None,
         )
         .await?;
 
-    let parts = definition_resp
-        .get("definition")
-        .and_then(|d| d.get("parts"))
-        .and_then(Value::as_array)
+    let ai_instructions = settings
+        .get("aiInstructions")
         .cloned()
-        .unwrap_or_default();
+        .unwrap_or(Value::Null);
 
-    let mut config = serde_json::json!({
-        "instructions": null,
-        "enablePreviewRuntime": false,
-        "dataSources": [],
+    let datasources: Vec<Value> = ds_resp
+        .items
+        .iter()
+        .map(|ds| {
+            serde_json::json!({
+                "id": ds.get("id").and_then(Value::as_str),
+                "displayName": ds.get("displayName").and_then(Value::as_str),
+                "type": ds.get("type").and_then(Value::as_str),
+            })
+        })
+        .collect();
+
+    let config = serde_json::json!({
+        "instructions": ai_instructions,
+        "dataSources": datasources,
     });
-
-    for part in &parts {
-        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
-        let payload = part.get("payload").and_then(Value::as_str).unwrap_or("");
-
-        if path == "Files/Config/draft/stage_config.json"
-            && let Some(decoded) = decode_part_payload(payload)
-            && let Ok(parsed) = serde_json::from_str::<Value>(&decoded)
-        {
-            config["instructions"] = parsed
-                .get("aiInstructions")
-                .or_else(|| parsed.get("additionalInstructions"))
-                .cloned()
-                .unwrap_or(Value::Null);
-            if let Some(experimental) = parsed.get("experimental") {
-                let enabled = experimental
-                    .get("enableExperimentalFeatures")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-                config["enablePreviewRuntime"] = Value::Bool(enabled);
-            }
-        }
-
-        // Collect datasource names
-        if path.starts_with("Files/Config/draft/")
-            && path.ends_with("/datasource.json")
-            && let Some(decoded) = decode_part_payload(payload)
-            && let Ok(parsed) = serde_json::from_str::<Value>(&decoded)
-        {
-            let ds_info = serde_json::json!({
-                "displayName": parsed.get("displayName").or_else(|| parsed.get("display_name")),
-                "type": parsed.get("type"),
-                "artifactId": parsed.get("artifactId").or_else(|| parsed.get("id")),
-            });
-            if let Some(arr) = config["dataSources"].as_array_mut() {
-                arr.push(ds_info);
-            }
-        }
-    }
 
     output::render_object(cli, &config, "instructions");
     Ok(())
 }
 
-/// Update agent configuration by modifying `stage_config.json` in the definition.
-#[allow(
-    clippy::fn_params_excessive_bools,
-    clippy::too_many_lines,
-    clippy::too_many_arguments
-)]
+/// Update agent configuration via the staging settings API.
+///
+/// Uses: `PATCH /workspaces/{ws}/dataAgents/{id}/staging/settings`
+#[allow(clippy::fn_params_excessive_bools, clippy::too_many_arguments)]
 pub(super) async fn update_config(
     cli: &Cli,
     client: &FabricClient,
@@ -130,85 +104,35 @@ pub(super) async fn update_config(
         return Ok(());
     }
 
-    // Fetch current definition
-    let parts = get_definition_parts(client, workspace, id).await?;
-
-    // Find and modify stage_config.json
-    let mut new_parts: Vec<Value> = Vec::new();
-    let mut found_config = false;
-
-    for part in &parts {
-        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
-        if path == "Files/Config/draft/stage_config.json" {
-            found_config = true;
-            let payload = part.get("payload").and_then(Value::as_str).unwrap_or("");
-            let mut config = decode_part_payload(payload)
-                .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-                .unwrap_or_else(|| serde_json::json!({}));
-
-            if let Some(instr) = &resolved_instructions {
-                config["aiInstructions"] = Value::from(instr.as_str());
-            }
-            if enable_preview_runtime || disable_preview_runtime {
-                let experimental = config.as_object_mut().map(|o| {
-                    o.entry("experimental")
-                        .or_insert_with(|| serde_json::json!({}))
-                });
-                if let Some(exp) = experimental
-                    && let Some(obj) = exp.as_object_mut()
-                {
-                    obj.insert(
-                        "enableExperimentalFeatures".to_string(),
-                        Value::Bool(enable_preview_runtime),
-                    );
-                }
-            }
-
-            let encoded = BASE64.encode(config.to_string().as_bytes());
-            new_parts.push(serde_json::json!({
-                "path": path,
-                "payload": encoded,
-                "payloadType": "InlineBase64"
-            }));
-        } else {
-            new_parts.push(part.clone());
-        }
+    // Build PATCH body — only include provided fields (partial update)
+    let mut body = serde_json::Map::new();
+    if let Some(instr) = &resolved_instructions {
+        body.insert("aiInstructions".to_string(), Value::from(instr.as_str()));
     }
 
-    // If no stage_config exists yet, create one
-    if !found_config {
-        let mut config = serde_json::json!({
-            "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/stageConfiguration/1.0.0/schema.json"
-        });
-        if let Some(instr) = &resolved_instructions {
-            config["aiInstructions"] = Value::from(instr.as_str());
-        }
-        if enable_preview_runtime {
-            config["experimental"] = serde_json::json!({"enableExperimentalFeatures": true});
-        }
-        let encoded = BASE64.encode(config.to_string().as_bytes());
-        new_parts.push(serde_json::json!({
-            "path": "Files/Config/draft/stage_config.json",
-            "payload": encoded,
-            "payloadType": "InlineBase64"
-        }));
-    }
-
-    let update_body = serde_json::json!({ "definition": { "parts": new_parts } });
-    client
-        .post(
-            &format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition"),
-            &update_body,
-            true,
+    let resp = client
+        .patch(
+            &format!("/workspaces/{workspace}/dataAgents/{id}/staging/settings"),
+            &Value::Object(body),
         )
         .await?;
 
-    let result = serde_json::json!({
-        "id": id,
-        "status": "config_updated",
-        "instructions": resolved_instructions.as_deref(),
-        "enablePreviewRuntime": enable_preview_runtime,
-    });
+    let result = if resp.is_null() || resp.as_object().is_some_and(serde_json::Map::is_empty) {
+        serde_json::json!({
+            "id": id,
+            "status": "config_updated",
+            "instructions": resolved_instructions.as_deref(),
+        })
+    } else {
+        let mut r = serde_json::json!({
+            "id": id,
+            "status": "config_updated",
+        });
+        if let Some(instr) = resp.get("aiInstructions") {
+            r["instructions"] = instr.clone();
+        }
+        r
+    };
     output::render_object(cli, &result, "status");
     Ok(())
 }

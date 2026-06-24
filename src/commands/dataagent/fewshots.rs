@@ -1,6 +1,4 @@
 use anyhow::Result;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -8,9 +6,11 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
-use super::{decode_part_payload, find_datasource_dir, get_definition_parts};
+use super::resolve_datasource_id;
 
 /// List few-shot examples for a specific data source.
+///
+/// Uses: `GET /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}/fewshots`
 pub(super) async fn list_fewshots(
     cli: &Cli,
     client: &FabricClient,
@@ -18,22 +18,34 @@ pub(super) async fn list_fewshots(
     id: &str,
     datasource: &str,
 ) -> Result<()> {
-    let parts = get_definition_parts(client, workspace, id).await?;
-    let fewshots = extract_fewshots_for_datasource(&parts, datasource)?;
+    let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
+
+    let resp = client
+        .get_list(
+            &format!(
+                "/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}/fewshots"
+            ),
+            "value",
+            true,
+            None,
+        )
+        .await?;
 
     output::render_list_with_token(
         cli,
-        &fewshots,
+        &resp.items,
         &["id", "question", "query"],
         &["ID", "QUESTION", "QUERY"],
         "id",
-        None,
+        resp.continuation_token.as_deref(),
     );
     Ok(())
 }
 
 /// Add a few-shot example to a data source.
-#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+///
+/// Uses: `POST /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}/fewshots`
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn add_fewshot(
     cli: &Cli,
     client: &FabricClient,
@@ -57,118 +69,43 @@ pub(super) async fn add_fewshot(
         return Ok(());
     }
 
-    let parts = get_definition_parts(client, workspace, id).await?;
+    let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
 
-    // Find the fewshots part for this datasource and the datasource directory prefix
-    let ds_dir = find_datasource_dir(&parts, datasource)?;
-    let fewshots_path = format!("{ds_dir}/fewshots.json");
-
-    // Find existing fewshots content or create empty
-    let existing_payload = parts.iter().find_map(|part| {
-        let path = part.get("path").and_then(Value::as_str)?;
-        if path == fewshots_path {
-            part.get("payload")
-                .and_then(Value::as_str)
-                .map(String::from)
-        } else {
-            None
-        }
-    });
-
-    let mut fewshots_data = existing_payload.as_ref().map_or_else(
-        || serde_json::json!({
-            "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/fewShots/1.0.0/schema.json",
-            "fewShots": []
-        }),
-        |payload| {
-            decode_part_payload(payload)
-                .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-                .unwrap_or_else(|| serde_json::json!({"fewShots": []}))
-        },
-    );
-
-    // Add the new fewshot (with duplicate detection)
-    let fewshots_arr = fewshots_data
-        .get_mut("fewShots")
-        .and_then(Value::as_array_mut)
-        .ok_or_else(|| {
-            FabioError::new(
-                ErrorCode::ApiError,
-                "Invalid fewshots structure in definition",
-            )
-        })?;
-
-    // Check for duplicates (case-insensitive)
-    let question_lower = question.to_lowercase();
-    let has_duplicate = fewshots_arr.iter().any(|f| {
-        f.get("question")
-            .or_else(|| f.get("Question"))
-            .and_then(Value::as_str)
-            .is_some_and(|q| q.to_lowercase() == question_lower)
-    });
-
-    let saved_question = if has_duplicate {
-        // Find next available suffix
-        let mut suffix = 1;
-        loop {
-            let candidate = format!("{question} [{suffix}]").to_lowercase();
-            let exists = fewshots_arr.iter().any(|f| {
-                f.get("question")
-                    .or_else(|| f.get("Question"))
-                    .and_then(Value::as_str)
-                    .is_some_and(|q| q.to_lowercase() == candidate)
-            });
-            if !exists {
-                break;
-            }
-            suffix += 1;
-        }
-        format!("{question} [{suffix}]")
-    } else {
-        question.to_string()
-    };
-
-    let new_id = uuid::Uuid::new_v4().to_string();
-    fewshots_arr.push(serde_json::json!({
-        "id": new_id,
-        "question": saved_question,
+    let body = serde_json::json!({
+        "question": question,
         "query": query_text,
-    }));
+    });
 
-    // Rebuild definition parts
-    let encoded = BASE64.encode(serde_json::to_string(&fewshots_data)?.as_bytes());
-
-    let mut new_parts: Vec<Value> = parts
-        .iter()
-        .filter(|p| p.get("path").and_then(Value::as_str) != Some(&fewshots_path))
-        .cloned()
-        .collect();
-    new_parts.push(serde_json::json!({
-        "path": fewshots_path,
-        "payload": encoded,
-        "payloadType": "InlineBase64"
-    }));
-
-    let update_body = serde_json::json!({ "definition": { "parts": new_parts } });
-    client
+    let resp = client
         .post(
-            &format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition"),
-            &update_body,
-            true,
+            &format!(
+                "/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}/fewshots"
+            ),
+            &body,
+            false,
         )
         .await?;
 
-    let result = serde_json::json!({
-        "status": "fewshot_added",
-        "id": new_id,
-        "question": saved_question,
-        "query": query_text,
-    });
+    let result = if resp.is_null() || resp.as_object().is_some_and(serde_json::Map::is_empty) {
+        serde_json::json!({
+            "status": "fewshot_added",
+            "question": question,
+            "query": query_text,
+        })
+    } else {
+        let mut r = resp;
+        if let Some(obj) = r.as_object_mut() {
+            obj.insert("status".to_string(), Value::from("fewshot_added"));
+        }
+        r
+    };
     output::render_object(cli, &result, "status");
     Ok(())
 }
 
 /// Remove a few-shot example by ID.
+///
+/// Uses: `DELETE /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}/fewshots/{fewshotId}`
 pub(super) async fn remove_fewshot(
     cli: &Cli,
     client: &FabricClient,
@@ -190,78 +127,12 @@ pub(super) async fn remove_fewshot(
         return Ok(());
     }
 
-    let parts = get_definition_parts(client, workspace, id).await?;
-    let ds_dir = find_datasource_dir(&parts, datasource)?;
-    let fewshots_path = format!("{ds_dir}/fewshots.json");
+    let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
 
-    let payload = parts
-        .iter()
-        .find_map(|part| {
-            let path = part.get("path").and_then(Value::as_str)?;
-            if path == fewshots_path {
-                part.get("payload").and_then(Value::as_str).map(String::from)
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| {
-            FabioError::with_hint(
-                ErrorCode::NotFound,
-                format!("No fewshots found for data source '{datasource}'"),
-                "Add fewshots first: fabio data-agent add-fewshot -w <workspace> --id <id> --datasource <ds> --question '...' --answer '...'",
-            )
-        })?;
-
-    let mut fewshots_data = decode_part_payload(&payload)
-        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-        .unwrap_or_else(|| serde_json::json!({"fewShots": []}));
-
-    let arr = fewshots_data
-        .get_mut("fewShots")
-        .and_then(Value::as_array_mut)
-        .ok_or_else(|| FabioError::new(ErrorCode::ApiError, "Invalid fewshots structure"))?;
-
-    let removed: Vec<_> = arr
-        .extract_if(.., |f| {
-            f.get("id")
-                .and_then(Value::as_str)
-                .is_some_and(|fid| fid == fewshot_id)
-        })
-        .collect();
-
-    if removed.is_empty() {
-        return Err(FabioError::with_hint(
-            ErrorCode::NotFound,
-            format!("Few-shot '{fewshot_id}' not found"),
-            "List fewshots: fabio data-agent list-fewshots -w <workspace> --id <id> --datasource <ds>",
-        )
-        .into());
-    }
-
-    let encoded = BASE64.encode(serde_json::to_string(&fewshots_data)?.as_bytes());
-
-    let new_parts: Vec<Value> = parts
-        .iter()
-        .map(|p| {
-            if p.get("path").and_then(Value::as_str) == Some(&fewshots_path) {
-                serde_json::json!({
-                    "path": fewshots_path,
-                    "payload": encoded,
-                    "payloadType": "InlineBase64"
-                })
-            } else {
-                p.clone()
-            }
-        })
-        .collect();
-
-    let update_body = serde_json::json!({ "definition": { "parts": new_parts } });
     client
-        .post(
-            &format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition"),
-            &update_body,
-            true,
-        )
+        .delete(&format!(
+            "/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}/fewshots/{fewshot_id}"
+        ))
         .await?;
 
     let result = serde_json::json!({
@@ -273,7 +144,9 @@ pub(super) async fn remove_fewshot(
     Ok(())
 }
 
-/// Bulk upload few-shot examples from a JSON file.
+/// Bulk upload few-shot examples from a JSON or CSV file.
+///
+/// Uses: `POST .../fewshots` in a loop for each item.
 #[allow(clippy::too_many_lines)]
 pub(super) async fn upload_fewshots(
     cli: &Cli,
@@ -344,59 +217,12 @@ pub(super) async fn upload_fewshots(
         return Ok(());
     }
 
-    let parts = get_definition_parts(client, workspace, id).await?;
-    let ds_dir = find_datasource_dir(&parts, datasource)?;
-    let fewshots_path = format!("{ds_dir}/fewshots.json");
-
-    // Load existing fewshots
-    let existing_payload = parts.iter().find_map(|part| {
-        let path = part.get("path").and_then(Value::as_str)?;
-        if path == fewshots_path {
-            part.get("payload")
-                .and_then(Value::as_str)
-                .map(String::from)
-        } else {
-            None
-        }
-    });
-
-    let mut fewshots_data = existing_payload.as_ref().map_or_else(
-        || {
-            serde_json::json!({
-                "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/fewShots/1.0.0/schema.json",
-                "fewShots": []
-            })
-        },
-        |payload| {
-            decode_part_payload(payload)
-                .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-                .unwrap_or_else(|| serde_json::json!({"fewShots": []}))
-        },
-    );
-
-    let fewshots_arr = fewshots_data
-        .get_mut("fewShots")
-        .and_then(Value::as_array_mut)
-        .ok_or_else(|| {
-            FabioError::new(
-                ErrorCode::ApiError,
-                "Invalid fewshots structure in definition",
-            )
-        })?;
-
-    // Build set of existing questions for duplicate detection
-    let mut existing_questions: std::collections::HashSet<String> = fewshots_arr
-        .iter()
-        .filter_map(|f| {
-            f.get("question")
-                .or_else(|| f.get("Question"))
-                .and_then(Value::as_str)
-                .map(str::to_lowercase)
-        })
-        .collect();
+    let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
+    let fewshots_url =
+        format!("/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}/fewshots");
 
     let mut added = 0;
-    let mut renamed = 0;
+    let mut errors = 0;
 
     for item in &items {
         let question = item
@@ -408,88 +234,28 @@ pub(super) async fn upload_fewshots(
             .and_then(Value::as_str)
             .unwrap_or_default();
 
-        let mut saved_question = question.to_string();
-        if existing_questions.contains(&saved_question.to_lowercase()) {
-            let mut suffix = 1;
-            loop {
-                let candidate = format!("{question} [{suffix}]").to_lowercase();
-                if !existing_questions.contains(&candidate) {
-                    break;
-                }
-                suffix += 1;
-            }
-            saved_question = format!("{question} [{suffix}]");
-            renamed += 1;
-        }
-
-        existing_questions.insert(saved_question.to_lowercase());
-        fewshots_arr.push(serde_json::json!({
-            "id": uuid::Uuid::new_v4().to_string(),
-            "question": saved_question,
+        let body = serde_json::json!({
+            "question": question,
             "query": query_text,
-        }));
-        added += 1;
+        });
+
+        match client.post(&fewshots_url, &body, false).await {
+            Ok(_) => added += 1,
+            Err(_) => errors += 1,
+        }
     }
-
-    let total = fewshots_arr.len();
-
-    // Update definition (fewshots_arr borrow ends here)
-    let encoded = BASE64.encode(serde_json::to_string(&fewshots_data)?.as_bytes());
-
-    let new_parts: Vec<Value> = parts
-        .iter()
-        .filter(|p| p.get("path").and_then(Value::as_str) != Some(&fewshots_path))
-        .cloned()
-        .chain(std::iter::once(serde_json::json!({
-            "path": fewshots_path,
-            "payload": encoded,
-            "payloadType": "InlineBase64"
-        })))
-        .collect();
-
-    let update_body = serde_json::json!({ "definition": { "parts": new_parts } });
-    client
-        .post(
-            &format!("/workspaces/{workspace}/dataAgents/{id}/updateDefinition"),
-            &update_body,
-            true,
-        )
-        .await?;
 
     let result = serde_json::json!({
         "status": "fewshots_uploaded",
         "added": added,
-        "renamed": renamed,
-        "total": total,
+        "errors": errors,
+        "total": added,
     });
     output::render_object(cli, &result, "status");
     Ok(())
 }
 
 // ─── Private Helpers ─────────────────────────────────────────────────────────
-
-/// Extract few-shot examples for a specific data source.
-fn extract_fewshots_for_datasource(parts: &[Value], datasource: &str) -> Result<Vec<Value>> {
-    let ds_dir = find_datasource_dir(parts, datasource)?;
-    let fewshots_path = format!("{ds_dir}/fewshots.json");
-
-    for part in parts {
-        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
-        if path == fewshots_path {
-            let payload = part.get("payload").and_then(Value::as_str).unwrap_or("");
-            if let Some(decoded) = decode_part_payload(payload)
-                && let Ok(parsed) = serde_json::from_str::<Value>(&decoded)
-            {
-                return Ok(parsed
-                    .get("fewShots")
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_default());
-            }
-        }
-    }
-    Ok(Vec::new())
-}
 
 /// Parse few-shot examples from a CSV/TSV file.
 ///
@@ -573,57 +339,7 @@ fn parse_fewshots_csv(content: &str, file: &str) -> Result<Vec<Value>> {
 
 #[cfg(test)]
 mod tests {
-    use base64::Engine;
-    use base64::engine::general_purpose::STANDARD as BASE64;
-    use serde_json::json;
-
     use super::*;
-
-    #[test]
-    fn extract_fewshots_for_datasource_found() {
-        let ds_json =
-            json!({"displayName": "TestLH", "type": "lakehouse_tables", "artifactId": "x"});
-        let ds_payload = BASE64.encode(ds_json.to_string().as_bytes());
-        let fs_json = json!({
-            "fewShots": [
-                {"id": "fs1", "question": "How many?", "query": "SELECT COUNT(*) FROM t"}
-            ]
-        });
-        let fs_payload = BASE64.encode(fs_json.to_string().as_bytes());
-
-        let parts = vec![
-            json!({
-                "path": "Files/Config/draft/lakehouse_tables-TestLH/datasource.json",
-                "payload": ds_payload,
-                "payloadType": "InlineBase64"
-            }),
-            json!({
-                "path": "Files/Config/draft/lakehouse_tables-TestLH/fewshots.json",
-                "payload": fs_payload,
-                "payloadType": "InlineBase64"
-            }),
-        ];
-
-        let fewshots = extract_fewshots_for_datasource(&parts, "TestLH").unwrap();
-        assert_eq!(fewshots.len(), 1);
-        assert_eq!(fewshots[0]["id"], "fs1");
-        assert_eq!(fewshots[0]["question"], "How many?");
-    }
-
-    #[test]
-    fn extract_fewshots_empty_when_no_file() {
-        let ds_json =
-            json!({"displayName": "TestLH", "type": "lakehouse_tables", "artifactId": "x"});
-        let ds_payload = BASE64.encode(ds_json.to_string().as_bytes());
-        let parts = vec![json!({
-            "path": "Files/Config/draft/lakehouse_tables-TestLH/datasource.json",
-            "payload": ds_payload,
-            "payloadType": "InlineBase64"
-        })];
-
-        let fewshots = extract_fewshots_for_datasource(&parts, "TestLH").unwrap();
-        assert!(fewshots.is_empty());
-    }
 
     #[test]
     fn parse_csv_fewshots_basic() {
@@ -645,7 +361,6 @@ mod tests {
 
     #[test]
     fn parse_csv_fewshots_answer_column() {
-        // 'answer' is an alias for 'query' column
         let csv = "question,answer\nHow many?,SELECT COUNT(*) FROM t\n";
         let items = parse_fewshots_csv(csv, "test.csv").unwrap();
         assert_eq!(items.len(), 1);
