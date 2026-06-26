@@ -146,6 +146,10 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
 
 2. **`src/commands/context/agent.rs`** — Update the machine-readable command schema so AI agents can discover the new commands (flags, types, mutability, examples).
 
+   **Auto-generation (preferred)**: Run `cargo test generate_agent_schema -- --ignored` to regenerate `commands.json` from clap metadata. This extracts group names, subcommand names, flag names/types/required/descriptions directly from the CLI definition. After regeneration, manually add semantic annotations (`mutates`, `returns`, `async`, `destructive`, `auth_scope`) to the new entries — these cannot be derived from clap.
+
+   **Drift detection**: Two unit tests (`agent_schema_covers_all_groups`, `agent_schema_covers_all_subcommands`) will FAIL if `commands.json` is missing any group or subcommand present in the actual CLI. These tests run as part of `cargo test` and prevent drift from accumulating.
+
    **`src/commands/context/`** — If the new feature introduces an item type, add a schema file in `context/data/schemas/`. If it's part of a multi-step workflow, consider adding a workflow recipe in `context/data/workflows/`. If the new feature adds significant query/output patterns, add output examples in `context/data/examples/` so agents understand the response shapes (e.g., new KQL intelligence commands like `list-entities`, `diagnostics`, `deeplink` should have representative output examples).
 
    **Output examples format** — Each example is a JSON file in `src/commands/context/data/examples/` with the structure: `{"command": "fabio ...", "description": "...", "response": {...}, "notes": "...", "query_examples": [...]}`. After creating the file, it MUST be registered in `src/commands/context/examples.rs` in the `OUTPUT_EXAMPLES` constant using `include_str!()`. Without registration, the example won't be discoverable via `fabio context examples <group> <command>`.
@@ -474,7 +478,13 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - **Catalog**: search (tenant-level full-text search across workspaces)
 - **Context**: tenant (workspace graph extraction — builds a relationship graph of items with nodes/edges/summary for agent memory; three-layer discovery: properties, definitions via `--deep`, connections via `--include-connections`; parallel execution; supports multi-workspace, `--item-types` filter, `--concurrency`; incremental building via `--output-file` + `--merge`; fast inventory via `--no-properties`; 5 output formats: `graph` native, `jsonld` RDF instances, `owl` OWL JSON-LD schema, `rdf` OWL RDF/XML schema, `full` combined schema+instances RDF/XML)
 - **Context (agent knowledge)**: `fabio context` provides structured knowledge for AI agents. Subcommands:
-  - `fabio context agent` — Machine-readable JSON schema of all commands (flags, types, mutability, error codes)
+  - `fabio context agent` — Compact index of all command groups + subcommand names (default). Flags:
+    - `--group <G>` — Full flags/types/descriptions for a single group
+    - `--full` — Complete 14K-line schema dump (all metadata)
+    - `--format mcp` — MCP tool definitions (JSON Schema `inputSchema`, `annotations`)
+    - `--format openai` — OpenAI function-calling format
+  - `fabio context describe <GROUP> <CMD>` — Deep-dive on one command: all flags, output example, auth scope, notes
+  - `fabio context find "<query>"` — Keyword search across commands (returns top-10 ranked results)
   - `fabio context list` — Discover all available topics (workflows, best-practices, schemas, examples)
   - `fabio context workflow <NAME>` — Multi-step workflow recipes with exact command syntax:
     - `rti-pipeline` — Eventhouse + KQL DB + EventStream end-to-end
@@ -490,6 +500,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
     - `admin-apis` — When to use admin vs workspace-scoped commands
   - `fabio context schema <TYPE>` — Item definition schemas (22 types: notebook, lakehouse, semantic_model, etc.)
   - `fabio context examples <GROUP> <CMD>` — Output shape examples for command responses
+- **MCP Server**: `fabio mcp serve` starts a JSON-RPC 2.0 server over stdio implementing the Model Context Protocol. Exposes all 807 subcommands as MCP tools with `inputSchema` (JSON Schema), `annotations` (readOnlyHint, destructiveHint, auth_scope). Handles `initialize`, `tools/list`, `tools/call`, `ping`. Agent frameworks (Claude Desktop, VS Code Copilot, custom agents) can integrate fabio as a native tool server without shell-exec.
 - **Dashboard**: list (read-only, portal-created)
 - **Datamart**: list (read-only, portal-created)
 - **Paginated Report**: list/show/create/update/delete/get-definition/update-definition (previously only list+update)
@@ -673,12 +684,14 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/profile.rs`: save/use/list/show/delete (named profiles with defaults)
 - `src/commands/jobs.rs`: list/get/prune (local async job ledger)
 - `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
-- `src/commands/context/agent.rs`: Machine-readable command schema for AI agents
+- `src/commands/context/agent.rs`: Machine-readable command schema for AI agents (hierarchical access, MCP/OpenAI format emission, drift detection, auto-generation)
 - `src/commands/context/schemas.rs`: Item definition schemas (22 types)
 - `src/commands/context/workflows.rs`: Multi-step workflow recipes (5 recipes)
 - `src/commands/context/best_practices.rs`: Best-practices guidance (5 topics)
-- `src/commands/context/examples.rs`: Output shape examples (6 commands)
+- `src/commands/context/examples.rs`: Output shape examples (34 commands)
 - `src/commands/context/tenant.rs`: Live workspace graph extraction
+- `src/commands/mcp/mod.rs`: MCP command group (serve subcommand)
+- `src/commands/mcp/serve.rs`: MCP JSON-RPC 2.0 server (initialize, tools/list, tools/call over stdio)
 - `src/commands/rest.rs`: Raw REST passthrough (method/path/body/query-params/poll); `resolve_body()` for @file/@- support; `--api powerbi` targets Power BI REST API
 - `src/commands/rti.rs`: nl-to-kql (natural language to KQL translation)
 - `src/commands/data_build_tool_job.rs`: list/show/create/update/delete/get-definition/update-definition/run (with --wait/--timeout/--cancel-on-timeout) [preview]
