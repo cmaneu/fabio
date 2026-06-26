@@ -150,6 +150,36 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
 
    **Drift detection**: Two unit tests (`agent_schema_covers_all_groups`, `agent_schema_covers_all_subcommands`) will FAIL if `commands.json` is missing any group or subcommand present in the actual CLI. These tests run as part of `cargo test` and prevent drift from accumulating.
 
+   **NEVER manually edit `commands.json`** — The file at `src/commands/context/data/agent/commands.json` is auto-generated. Manual edits will be overwritten on the next regeneration. All structural data (groups, subcommands, flags, types, descriptions) comes from clap derive annotations in the source code. Only semantic annotations (`mutates`, `returns`, `async`, `destructive`, `auth_scope`) are preserved across regenerations via merge logic.
+
+   **Exact steps when adding a new command or subcommand:**
+
+   ```bash
+   # 1. Write the command code with proper clap derive annotations
+   #    (doc comments become descriptions, arg types become flag types)
+
+   # 2. Regenerate commands.json from the actual CLI surface
+   cargo test generate_agent_schema -- --ignored
+
+   # 3. Add semantic annotations to the NEW entries only.
+   #    Open src/commands/context/data/agent/commands.json and find your new
+   #    subcommand(s). Add these fields that clap cannot infer:
+   #
+   #    "mutates": true/false       — does it change state?
+   #    "returns": "list|object|void" — what shape is the output?
+   #    "async": true               — (optional) is it an LRO?
+   #    "destructive": true         — (optional) does it delete data?
+   #
+   #    For new command GROUPS, also set:
+   #    "auth_scope": "fabric|storage|arm|mixed"
+
+   # 4. Verify drift detection passes
+   cargo test agent_schema_covers
+
+   # 5. Done — the MCP server, --format mcp, --group, describe, find
+   #    all automatically pick up the new commands with zero extra work.
+   ```
+
    **`src/commands/context/`** — If the new feature introduces an item type, add a schema file in `context/data/schemas/`. If it's part of a multi-step workflow, consider adding a workflow recipe in `context/data/workflows/`. If the new feature adds significant query/output patterns, add output examples in `context/data/examples/` so agents understand the response shapes (e.g., new KQL intelligence commands like `list-entities`, `diagnostics`, `deeplink` should have representative output examples).
 
    **Output examples format** — Each example is a JSON file in `src/commands/context/data/examples/` with the structure: `{"command": "fabio ...", "description": "...", "response": {...}, "notes": "...", "query_examples": [...]}`. After creating the file, it MUST be registered in `src/commands/context/examples.rs` in the `OUTPUT_EXAMPLES` constant using `include_str!()`. Without registration, the example won't be discoverable via `fabio context examples <group> <command>`.
