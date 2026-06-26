@@ -35,14 +35,51 @@ pub enum ContextFormat {
     Full,
 }
 
+/// Output format for the agent schema.
+#[derive(Debug, Clone, Copy, Default, clap::ValueEnum)]
+pub enum AgentFormat {
+    /// Native fabio format: rich metadata with `auth_scope`, async, returns, destructive fields
+    #[default]
+    Native,
+    /// MCP (Model Context Protocol) tool definitions — standard `JSON Schema` `inputSchema` per tool
+    Mcp,
+    /// `OpenAI` function-calling format — standard `JSON Schema` parameters per function
+    Openai,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum ContextCommand {
     /// Machine-readable CLI schema for agent introspection (flags, types, mutability, examples)
     #[command(display_order = 0)]
-    Agent,
+    Agent {
+        /// Return schema for a single command group only (e.g. `lakehouse`, `workspace`, `deploy`)
+        #[arg(long)]
+        group: Option<String>,
+
+        /// Emit the full 14K-line schema dump (all commands, all flags, all metadata).
+        /// Without this flag, returns a compact index of groups + subcommand names.
+        #[arg(long)]
+        full: bool,
+
+        /// Schema output format: native (default), mcp (Model Context Protocol), openai (function calling)
+        #[arg(long, value_enum, default_value = "native")]
+        format: AgentFormat,
+    },
+
+    /// Deep-dive on a single command: flags, examples, output shape, notes — everything to invoke it
+    #[command(display_order = 1)]
+    Describe {
+        /// Command group (e.g. `lakehouse`, `workspace`, `deploy`)
+        #[arg(name = "GROUP")]
+        group: String,
+
+        /// Subcommand (e.g. `sync`, `list-tables`, `plan`)
+        #[arg(name = "COMMAND")]
+        command: String,
+    },
 
     /// Show the definition schema/template for a Fabric item type
-    #[command(display_order = 1)]
+    #[command(display_order = 2)]
     Schema {
         /// Item type (e.g. `Notebook`, `DataPipeline`, `SemanticModel`)
         #[arg(name = "TYPE")]
@@ -50,7 +87,7 @@ pub enum ContextCommand {
     },
 
     /// Show a multi-step workflow recipe
-    #[command(display_order = 2)]
+    #[command(display_order = 3)]
     Workflow {
         /// Workflow name (use `fabio context list` to see available workflows)
         #[arg(name = "NAME")]
@@ -58,7 +95,7 @@ pub enum ContextCommand {
     },
 
     /// Show best-practices guidance for a topic
-    #[command(display_order = 3)]
+    #[command(display_order = 4)]
     BestPractices {
         /// Topic name (`throttling`, `lro`, `pagination`, `admin-apis`)
         #[arg(name = "TOPIC")]
@@ -66,7 +103,7 @@ pub enum ContextCommand {
     },
 
     /// Show example output for a command (response shape + `JMESPath` tips)
-    #[command(display_order = 4)]
+    #[command(display_order = 5)]
     Examples {
         /// Command group (e.g. `lakehouse`, `warehouse`, `deploy`)
         #[arg(name = "GROUP")]
@@ -78,8 +115,16 @@ pub enum ContextCommand {
     },
 
     /// List all available documentation topics (schemas, workflows, examples, best-practices)
-    #[command(display_order = 5)]
+    #[command(display_order = 6)]
     List,
+
+    /// Search commands by keyword (matches descriptions, flag names, and notes)
+    #[command(display_order = 7)]
+    Find {
+        /// Search query (e.g. "upload file", "sync lakehouse", "create table")
+        #[arg(name = "QUERY")]
+        query: String,
+    },
 
     /// Scan your Fabric tenant — build a relationship graph from workspace(s)
     #[command(display_order = 10)]
@@ -130,8 +175,16 @@ pub enum ContextCommand {
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand) -> Result<()> {
     match command {
-        ContextCommand::Agent => {
-            agent::execute(cli);
+        ContextCommand::Agent {
+            group,
+            full,
+            format,
+        } => {
+            agent::execute(cli, group.as_deref(), *full, *format);
+            Ok(())
+        }
+        ContextCommand::Describe { group, command } => {
+            agent::execute_describe(cli, group, command);
             Ok(())
         }
         ContextCommand::Schema { item_type } => {
@@ -152,6 +205,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
         }
         ContextCommand::List => {
             list_topics(cli);
+            Ok(())
+        }
+        ContextCommand::Find { query } => {
+            agent::execute_find(cli, query);
             Ok(())
         }
         ContextCommand::Tenant {
@@ -205,4 +262,10 @@ fn find_entry<'a>(entries: &[(&str, &'a str)], normalized_key: &str) -> Option<&
         .iter()
         .find(|(name, _)| name.to_lowercase().replace(['-', '_'], "") == *normalized_key)
         .map(|(_, content)| *content)
+}
+
+/// Expose the commands schema for reuse by the MCP server.
+pub fn agent_commands_schema() -> serde_json::Value {
+    serde_json::from_str(include_str!("data/agent/commands.json"))
+        .expect("commands.json must contain valid JSON")
 }

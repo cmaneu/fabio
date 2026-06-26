@@ -12,7 +12,10 @@ use serial_test::serial;
 
 #[test]
 fn context_agent_returns_schema() {
-    let assert = fabio().args(["context", "agent"]).assert().success();
+    let assert = fabio()
+        .args(["context", "agent", "--full"])
+        .assert()
+        .success();
 
     let json = parse_json(&assert);
     let data = extract_data(&json);

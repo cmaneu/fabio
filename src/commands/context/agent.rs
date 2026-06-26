@@ -3,6 +3,8 @@ use serde::Serialize;
 use crate::cli::Cli;
 use crate::output;
 
+use super::AgentFormat;
+
 /// Schema version for the agent-context output. Bump on breaking changes.
 const SCHEMA_VERSION: &str = "2";
 
@@ -37,7 +39,239 @@ struct ErrorCodeInfo {
     exit_code: u8,
 }
 
-pub(super) fn execute(cli: &Cli) {
+pub(super) fn execute(cli: &Cli, group_filter: Option<&str>, full: bool, format: AgentFormat) {
+    // MCP/OpenAI formats always emit full tool definitions (filtered by --group if provided).
+    if !matches!(format, AgentFormat::Native) {
+        execute_standard_format(cli, group_filter, format);
+        return;
+    }
+
+    // --group: return full details for a single group.
+    if let Some(group) = group_filter {
+        execute_group(cli, group);
+        return;
+    }
+
+    // --full: return the complete 14K-line schema dump.
+    if full {
+        execute_full(cli);
+        return;
+    }
+
+    // Default (no flags): compact index — group names + subcommand lists.
+    execute_compact(cli, None);
+}
+
+/// Describe a single subcommand: all metadata + cross-referenced example.
+pub(super) fn execute_describe(cli: &Cli, group: &str, command: &str) {
+    let commands = commands_schema();
+    let group_normalized = group.to_lowercase().replace(['-', '_'], "");
+
+    // Find the group.
+    let Some((group_key, group_obj)) = find_group(&commands, &group_normalized) else {
+        let available: Vec<&str> = commands
+            .as_object()
+            .map(|m| m.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        let result = serde_json::json!({
+            "error": format!("No command group found for '{group}'"),
+            "available_groups": available,
+            "hint": "Use 'fabio context agent' to see all groups"
+        });
+        output::render_object(cli, &result, "error");
+        return;
+    };
+
+    // Find the subcommand within the group.
+    let cmd_normalized = command.to_lowercase().replace('_', "-");
+    let subcommands = group_obj
+        .get("subcommands")
+        .and_then(serde_json::Value::as_object);
+
+    let Some(subcmds) = subcommands else {
+        let result = serde_json::json!({
+            "error": format!("Group '{group_key}' has no subcommands"),
+            "hint": format!("Run 'fabio context agent --group {group_key}' for full details")
+        });
+        output::render_object(cli, &result, "error");
+        return;
+    };
+
+    let Some((cmd_key, cmd_obj)) = subcmds
+        .iter()
+        .find(|(k, _)| k.to_lowercase().replace('_', "-") == cmd_normalized)
+    else {
+        let available: Vec<&str> = subcmds.keys().map(String::as_str).collect();
+        let result = serde_json::json!({
+            "error": format!("No subcommand '{command}' in group '{group_key}'"),
+            "available_subcommands": available,
+            "hint": format!("Run 'fabio context agent --group {group_key}' for full details")
+        });
+        output::render_object(cli, &result, "error");
+        return;
+    };
+
+    // Build the describe output — merge command metadata with cross-referenced example.
+    let mut result = serde_json::Map::new();
+    result.insert(
+        "command".to_owned(),
+        serde_json::json!(format!("fabio {group_key} {cmd_key}")),
+    );
+
+    // Copy all fields from the command schema.
+    if let Some(obj) = cmd_obj.as_object() {
+        for (k, v) in obj {
+            result.insert(k.clone(), v.clone());
+        }
+    }
+
+    // Add group-level auth_scope if not already present.
+    if !result.contains_key("auth_scope")
+        && let Some(scope) = group_obj.get("auth_scope")
+    {
+        result.insert("auth_scope".to_owned(), scope.clone());
+    }
+
+    // Cross-reference: look for a matching output example.
+    let example_key = format!("{group_key}/{cmd_key}");
+    let example_normalized = example_key.to_lowercase().replace(['-', '_'], "");
+    if let Some(content) =
+        super::find_entry(super::examples::example_entries(), &example_normalized)
+        && let Ok(val) = serde_json::from_str::<serde_json::Value>(content)
+    {
+        result.insert("output_example".to_owned(), val);
+    }
+
+    let obj = serde_json::Value::Object(result);
+    output::render_object(cli, &obj, "command");
+}
+
+/// Search commands by keyword, returning ranked results.
+pub(super) fn execute_find(cli: &Cli, query: &str) {
+    let commands = commands_schema();
+    let Some(commands_map) = commands.as_object() else {
+        return;
+    };
+
+    // Tokenize query into lowercase words.
+    let query_tokens: Vec<&str> = query.split_whitespace().collect();
+    let query_lower = query.to_lowercase();
+
+    let mut results: Vec<(f64, serde_json::Value)> = Vec::new();
+
+    for (group_name, group_val) in commands_map {
+        let Some(subcommands) = group_val
+            .get("subcommands")
+            .and_then(serde_json::Value::as_object)
+        else {
+            continue;
+        };
+
+        for (cmd_name, cmd_val) in subcommands {
+            let score =
+                compute_relevance(group_name, cmd_name, cmd_val, &query_tokens, &query_lower);
+            if score > 0.0 {
+                results.push((score, serde_json::json!({
+                    "command": format!("fabio {group_name} {cmd_name}"),
+                    "score": (score * 100.0).round() / 100.0,
+                    "description": cmd_val.get("description").and_then(serde_json::Value::as_str).unwrap_or(""),
+                    "mutates": cmd_val.get("mutates").and_then(serde_json::Value::as_bool).unwrap_or(false),
+                })));
+            }
+        }
+    }
+
+    // Sort by score descending, take top 10.
+    results.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    let top_results: Vec<serde_json::Value> =
+        results.into_iter().take(10).map(|(_, v)| v).collect();
+
+    if top_results.is_empty() {
+        let result = serde_json::json!({
+            "results": [],
+            "query": query,
+            "hint": "Try broader keywords, or use 'fabio context agent' to browse all groups"
+        });
+        output::render_object(cli, &result, "query");
+    } else {
+        let result = serde_json::json!({
+            "results": top_results,
+            "query": query,
+            "hint": "Use 'fabio context describe <GROUP> <CMD>' for full details on any result"
+        });
+        output::render_object(cli, &result, "query");
+    }
+}
+
+/// Compute relevance score for a command against the query tokens.
+fn compute_relevance(
+    group: &str,
+    cmd: &str,
+    cmd_val: &serde_json::Value,
+    tokens: &[&str],
+    query_lower: &str,
+) -> f64 {
+    let mut score = 0.0;
+
+    // Build searchable text from command metadata.
+    let description = cmd_val
+        .get("description")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let notes = cmd_val
+        .get("notes")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let hint = cmd_val
+        .get("hint")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+
+    let cmd_full = format!("{group} {cmd}");
+    let desc_lower = description.to_lowercase();
+    let notes_lower = notes.to_lowercase();
+    let hint_lower = hint.to_lowercase();
+    let cmd_lower = cmd_full.to_lowercase();
+
+    // Exact substring match in command name (highest weight).
+    if cmd_lower.contains(query_lower) {
+        score += 5.0;
+    }
+
+    // Token-based matching.
+    for token in tokens {
+        let token_lower = token.to_lowercase();
+
+        // Match in command/group name.
+        if cmd_lower.contains(&token_lower) {
+            score += 3.0;
+        }
+        // Match in description.
+        if desc_lower.contains(&token_lower) {
+            score += 2.0;
+        }
+        // Match in notes/hint.
+        if notes_lower.contains(&token_lower) || hint_lower.contains(&token_lower) {
+            score += 1.0;
+        }
+        // Match in flag names.
+        if let Some(flags) = cmd_val.get("flags").and_then(serde_json::Value::as_object) {
+            for flag_name in flags.keys() {
+                if flag_name.to_lowercase().contains(&token_lower) {
+                    score += 1.5;
+                    break; // Only count once per token
+                }
+            }
+        }
+    }
+
+    score
+}
+
+// ─── Implementation details ──────────────────────────────────────────────────
+
+/// Full schema dump (the original `fabio context agent` behavior).
+fn execute_full(cli: &Cli) {
     // Build the JSON object field-by-field to avoid deep serde recursion on the stack.
     // On Windows the default stack is ~1 MB; serde_json::to_value() on a deeply nested
     // 146 KB JSON tree overflows it. By constructing the envelope manually and inserting
@@ -81,6 +315,376 @@ pub(super) fn execute(cli: &Cli) {
 
     let obj = serde_json::Value::Object(value);
     output::render_object(cli, &obj, "name");
+}
+
+/// Compact mode: group names + descriptions + subcommand name lists only.
+fn execute_compact(cli: &Cli, group_filter: Option<&str>) {
+    let commands = commands_schema();
+    let Some(commands_map) = commands.as_object() else {
+        output::render_object(cli, &commands, "commands");
+        return;
+    };
+
+    let mut compact = serde_json::Map::new();
+
+    for (group_name, group_val) in commands_map {
+        // If --group was also specified, filter to that single group.
+        if let Some(filter) = group_filter {
+            let filter_normalized = filter.to_lowercase().replace(['-', '_'], "");
+            if group_name.to_lowercase().replace(['-', '_'], "") != filter_normalized {
+                continue;
+            }
+        }
+
+        let description = group_val
+            .get("description")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+
+        let subcommand_names: Vec<&str> = group_val
+            .get("subcommands")
+            .and_then(serde_json::Value::as_object)
+            .map(|m| m.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+
+        compact.insert(
+            group_name.clone(),
+            serde_json::json!({
+                "description": description,
+                "subcommands": subcommand_names,
+            }),
+        );
+    }
+
+    if compact.is_empty()
+        && let Some(filter) = group_filter
+    {
+        let available: Vec<&str> = commands_map.keys().map(String::as_str).collect();
+        let result = serde_json::json!({
+            "error": format!("No command group found for '{filter}'"),
+            "available_groups": available,
+            "hint": "Use 'fabio context agent' to see all groups"
+        });
+        output::render_object(cli, &result, "error");
+        return;
+    }
+
+    let mut result = serde_json::Map::new();
+    result.insert(
+        "schema_version".to_owned(),
+        serde_json::json!(SCHEMA_VERSION),
+    );
+    result.insert(
+        "version".to_owned(),
+        serde_json::json!(env!("CARGO_PKG_VERSION")),
+    );
+    result.insert("commands".to_owned(), serde_json::Value::Object(compact));
+    result.insert(
+        "hint".to_owned(),
+        serde_json::json!(
+            "Use 'fabio context agent --group <GROUP>' for full details on a specific group"
+        ),
+    );
+
+    let obj = serde_json::Value::Object(result);
+    output::render_object(cli, &obj, "schema_version");
+}
+
+/// Single group mode: returns full command details for one group only.
+fn execute_group(cli: &Cli, group: &str) {
+    let commands = commands_schema();
+    let group_normalized = group.to_lowercase().replace(['-', '_'], "");
+
+    let Some((group_key, group_val)) = find_group(&commands, &group_normalized) else {
+        let available: Vec<&str> = commands
+            .as_object()
+            .map(|m| m.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        let result = serde_json::json!({
+            "error": format!("No command group found for '{group}'"),
+            "available_groups": available,
+            "hint": "Use 'fabio context agent' to see all groups"
+        });
+        output::render_object(cli, &result, "error");
+        return;
+    };
+
+    let mut result = serde_json::Map::new();
+    result.insert(
+        "schema_version".to_owned(),
+        serde_json::json!(SCHEMA_VERSION),
+    );
+    result.insert(
+        "version".to_owned(),
+        serde_json::json!(env!("CARGO_PKG_VERSION")),
+    );
+    result.insert(
+        "global_flags".to_owned(),
+        serde_json::to_value(global_flags()).expect("serialize global_flags"),
+    );
+    result.insert(
+        "error_codes".to_owned(),
+        serde_json::to_value(error_codes()).expect("serialize error_codes"),
+    );
+    result.insert("group".to_owned(), serde_json::json!(group_key));
+    result.insert("group_details".to_owned(), group_val.clone());
+
+    let obj = serde_json::Value::Object(result);
+    output::render_object(cli, &obj, "group");
+}
+
+/// Find a group in the commands schema by normalized key.
+fn find_group<'a>(
+    commands: &'a serde_json::Value,
+    normalized_key: &str,
+) -> Option<(&'a str, &'a serde_json::Value)> {
+    commands.as_object().and_then(|m| {
+        m.iter()
+            .find(|(k, _)| k.to_lowercase().replace(['-', '_'], "") == *normalized_key)
+            .map(|(k, v)| (k.as_str(), v))
+    })
+}
+
+// ─── Standard format emission (MCP / OpenAI) ────────────────────────────────
+
+/// Emit the schema in MCP or `OpenAI` tool-definition format.
+fn execute_standard_format(cli: &Cli, group_filter: Option<&str>, format: AgentFormat) {
+    let commands = commands_schema();
+    let Some(commands_map) = commands.as_object() else {
+        output::render_object(cli, &commands, "commands");
+        return;
+    };
+
+    let mut tools: Vec<serde_json::Value> = Vec::new();
+
+    for (group_name, group_val) in commands_map {
+        // Apply --group filter if provided.
+        if let Some(filter) = group_filter {
+            let filter_normalized = filter.to_lowercase().replace(['-', '_'], "");
+            if group_name.to_lowercase().replace(['-', '_'], "") != filter_normalized {
+                continue;
+            }
+        }
+
+        let auth_scope = group_val
+            .get("auth_scope")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("fabric");
+
+        let Some(subcommands) = group_val
+            .get("subcommands")
+            .and_then(serde_json::Value::as_object)
+        else {
+            continue;
+        };
+
+        for (cmd_name, cmd_val) in subcommands {
+            let tool = match format {
+                AgentFormat::Mcp => build_mcp_tool(group_name, cmd_name, cmd_val, auth_scope),
+                AgentFormat::Openai => build_openai_tool(group_name, cmd_name, cmd_val, auth_scope),
+                AgentFormat::Native => unreachable!(),
+            };
+            tools.push(tool);
+        }
+    }
+
+    if tools.is_empty()
+        && let Some(filter) = group_filter
+    {
+        let available: Vec<&str> = commands_map.keys().map(String::as_str).collect();
+        let result = serde_json::json!({
+            "error": format!("No command group found for '{filter}'"),
+            "available_groups": available,
+            "hint": "Use 'fabio context agent' to see all groups"
+        });
+        output::render_object(cli, &result, "error");
+        return;
+    }
+
+    let key = match format {
+        AgentFormat::Mcp => "tools",
+        AgentFormat::Openai => "functions",
+        AgentFormat::Native => unreachable!(),
+    };
+
+    let mut result = serde_json::Map::new();
+    result.insert(
+        "schema_version".to_owned(),
+        serde_json::json!(SCHEMA_VERSION),
+    );
+    result.insert(
+        "version".to_owned(),
+        serde_json::json!(env!("CARGO_PKG_VERSION")),
+    );
+    result.insert(key.to_owned(), serde_json::Value::Array(tools));
+    let obj = serde_json::Value::Object(result);
+    output::render_object(cli, &obj, key);
+}
+
+/// Build a single MCP tool definition from a fabio subcommand.
+fn build_mcp_tool(
+    group: &str,
+    cmd: &str,
+    cmd_val: &serde_json::Value,
+    auth_scope: &str,
+) -> serde_json::Value {
+    let tool_name = format!("fabio_{group}_{cmd}").replace('-', "_");
+    let description = cmd_val
+        .get("description")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+
+    let (properties, required) = build_json_schema_params(cmd_val);
+
+    let mut annotations = serde_json::Map::new();
+    annotations.insert("auth_scope".to_owned(), serde_json::json!(auth_scope));
+    if cmd_val.get("mutates").and_then(serde_json::Value::as_bool) == Some(true) {
+        annotations.insert("readOnlyHint".to_owned(), serde_json::json!(false));
+    } else {
+        annotations.insert("readOnlyHint".to_owned(), serde_json::json!(true));
+    }
+    if cmd_val
+        .get("destructive")
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
+    {
+        annotations.insert("destructiveHint".to_owned(), serde_json::json!(true));
+    }
+    if cmd_val.get("async").and_then(serde_json::Value::as_bool) == Some(true) {
+        annotations.insert("async".to_owned(), serde_json::json!(true));
+    }
+
+    // Build invocation template.
+    let invocation = format!("fabio {group} {cmd}");
+
+    let mut input_schema = serde_json::Map::new();
+    input_schema.insert("type".to_owned(), serde_json::json!("object"));
+    input_schema.insert(
+        "properties".to_owned(),
+        serde_json::Value::Object(properties),
+    );
+    if !required.is_empty() {
+        input_schema.insert("required".to_owned(), serde_json::json!(required));
+    }
+
+    serde_json::json!({
+        "name": tool_name,
+        "description": description,
+        "inputSchema": input_schema,
+        "annotations": annotations,
+        "invocation": invocation,
+    })
+}
+
+/// Build a single `OpenAI` function-calling definition from a fabio subcommand.
+fn build_openai_tool(
+    group: &str,
+    cmd: &str,
+    cmd_val: &serde_json::Value,
+    auth_scope: &str,
+) -> serde_json::Value {
+    let tool_name = format!("fabio_{group}_{cmd}").replace('-', "_");
+    let description = cmd_val
+        .get("description")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+
+    // Add auth_scope and mutation hints to the description for OpenAI (no annotations field).
+    let mutates = cmd_val.get("mutates").and_then(serde_json::Value::as_bool) == Some(true);
+    let full_description = if mutates {
+        format!("{description} [mutates, scope={auth_scope}]")
+    } else {
+        format!("{description} [read-only, scope={auth_scope}]")
+    };
+
+    let (properties, required) = build_json_schema_params(cmd_val);
+
+    let mut parameters = serde_json::Map::new();
+    parameters.insert("type".to_owned(), serde_json::json!("object"));
+    parameters.insert(
+        "properties".to_owned(),
+        serde_json::Value::Object(properties),
+    );
+    if !required.is_empty() {
+        parameters.insert("required".to_owned(), serde_json::json!(required));
+    }
+    parameters.insert("additionalProperties".to_owned(), serde_json::json!(false));
+
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": tool_name,
+            "description": full_description,
+            "parameters": parameters,
+        }
+    })
+}
+
+/// Convert fabio flag definitions to JSON Schema properties + required array.
+fn build_json_schema_params(
+    cmd_val: &serde_json::Value,
+) -> (serde_json::Map<String, serde_json::Value>, Vec<String>) {
+    let mut properties = serde_json::Map::new();
+    let mut required = Vec::new();
+
+    let Some(flags) = cmd_val.get("flags").and_then(serde_json::Value::as_object) else {
+        return (properties, required);
+    };
+
+    for (flag_name, flag_val) in flags {
+        // Strip leading -- and convert hyphens to underscores for JSON Schema.
+        let param_name = flag_name.trim_start_matches('-').replace('-', "_");
+
+        let mut prop = serde_json::Map::new();
+
+        // Determine if flag_val is a structured object or shorthand string.
+        if let Some(obj) = flag_val.as_object() {
+            // Map fabio types to JSON Schema types.
+            let fabio_type = obj
+                .get("type")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("string");
+            match fabio_type {
+                "bool" => {
+                    prop.insert("type".to_owned(), serde_json::json!("boolean"));
+                }
+                "integer" | "u64" => {
+                    prop.insert("type".to_owned(), serde_json::json!("integer"));
+                }
+                "enum" => {
+                    prop.insert("type".to_owned(), serde_json::json!("string"));
+                    if let Some(values) = obj.get("values") {
+                        prop.insert("enum".to_owned(), values.clone());
+                    }
+                }
+                _ => {
+                    prop.insert("type".to_owned(), serde_json::json!("string"));
+                }
+            }
+
+            // Add description if present.
+            if let Some(desc) = obj.get("description") {
+                prop.insert("description".to_owned(), desc.clone());
+            }
+
+            // Add default if present.
+            if let Some(default) = obj.get("default") {
+                prop.insert("default".to_owned(), default.clone());
+            }
+
+            // Track required flags.
+            if obj.get("required").and_then(serde_json::Value::as_bool) == Some(true) {
+                required.push(param_name.clone());
+            }
+        } else {
+            // Shorthand: value is just a type string.
+            prop.insert("type".to_owned(), serde_json::json!("string"));
+        }
+
+        properties.insert(param_name, serde_json::Value::Object(prop));
+    }
+
+    (properties, required)
 }
 
 fn global_flags() -> Vec<Flag> {

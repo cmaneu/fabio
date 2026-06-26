@@ -23,11 +23,14 @@ use crate::commands::{
 #[command(propagate_version = true)]
 #[command(
     after_help = "\x1b[1mFOR AI AGENTS — read before writing commands:\x1b[0m
-  fabio context agent              JSON schema of ALL commands (flags, types, mutability, examples)
-  fabio context examples <GROUP>   Response shapes + JMESPath queries (e.g. fabio context examples lakehouse)
-  fabio context workflow <NAME>    Step-by-step recipes: rti-pipeline, data-agent-setup, cicd-deploy, lakehouse-etl, direct-lake-report
-  fabio context best-practices <T> Operational guidance: throttling, lro, pagination, shortcuts, admin-apis
-  fabio context schema <TYPE>      Item definition templates for 22 types (Notebook, SemanticModel, Lakehouse, ...)"
+  fabio context agent              Compact index of all command groups (default)
+  fabio context agent --group <G>  Full flags/types for one group (e.g. lakehouse, deploy)
+  fabio context describe <G> <C>   Deep-dive on one command with output example
+  fabio context find \"<query>\"     Search commands by keyword
+  fabio context agent --format mcp MCP tool definitions (JSON Schema inputSchema)
+  fabio mcp serve                  Start MCP server (JSON-RPC 2.0 over stdio)
+  fabio context workflow <NAME>    Step-by-step recipes: rti-pipeline, data-agent-setup, cicd-deploy
+  fabio context schema <TYPE>      Item definition templates for 22 types"
 )]
 #[allow(clippy::struct_excessive_bools)]
 pub struct Cli {
@@ -579,5 +582,11 @@ pub enum Command {
         /// Shell to generate completions for
         #[arg(value_enum)]
         shell: clap_complete::Shell,
+    },
+    /// MCP (Model Context Protocol) server for native agent integration
+    #[command(display_order = 68)]
+    Mcp {
+        #[command(subcommand)]
+        command: crate::commands::mcp::McpCommand,
     },
 }

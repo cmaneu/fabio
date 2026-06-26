@@ -42,6 +42,7 @@ pub mod lakehouse;
 pub mod lro;
 pub mod managed_private_endpoint;
 pub mod map;
+pub mod mcp;
 pub mod mirrored_catalog;
 pub mod mirrored_database;
 pub mod mirrored_databricks_catalog;
@@ -245,6 +246,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
             force,
         } => upgrade::execute(&cli, *check, target_version.as_deref(), *force).await,
         Command::Completions { shell } => completions::execute(*shell),
+        Command::Mcp { command } => mcp::execute(&cli, command).await,
     }
 }
 

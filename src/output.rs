@@ -621,7 +621,11 @@ mod tests {
             profile: None,
             lro_timeout: None,
             command: Command::Context {
-                command: crate::commands::context::ContextCommand::Agent,
+                command: crate::commands::context::ContextCommand::Agent {
+                    group: None,
+                    full: false,
+                    format: crate::commands::context::AgentFormat::Native,
+                },
             },
         };
 

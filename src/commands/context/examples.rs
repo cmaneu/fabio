@@ -90,6 +90,11 @@ pub(super) fn list_names() -> Vec<&'static str> {
     OUTPUT_EXAMPLES.iter().map(|(name, _)| *name).collect()
 }
 
+/// Expose example entries for cross-referencing by other context subcommands.
+pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)] {
+    OUTPUT_EXAMPLES
+}
+
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
         "lakehouse/list-tables",
