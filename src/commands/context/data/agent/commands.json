@@ -1829,7 +1829,8 @@
             "description": "Comma-separated tag IDs"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "unapply-tags": {
         "description": "Remove tags from an item",
@@ -1849,7 +1850,8 @@
             "description": "Comma-separated tag IDs"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "bulk-export-definitions": {
         "description": "Bulk export item definitions (LRO)",
@@ -1869,7 +1871,8 @@
           }
         },
         "mutates": false,
-        "async": true
+        "async": true,
+        "returns": "object"
       },
       "bulk-import-definitions": {
         "description": "Bulk import item definitions (LRO)",
@@ -1889,7 +1892,8 @@
           }
         },
         "mutates": true,
-        "async": true
+        "async": true,
+        "returns": "object"
       },
       "bulk-move": {
         "description": "Bulk move items to another workspace (LRO)",
@@ -1909,7 +1913,8 @@
           }
         },
         "mutates": true,
-        "async": true
+        "async": true,
+        "returns": "object"
       },
       "bulk-create": {
         "description": "Bulk create items in parallel (client-side concurrency)",
@@ -1962,7 +1967,8 @@
             "description": "Item ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "list"
       },
       "create-external-data-share": {
         "description": "Create an external data share for an item",
@@ -2017,7 +2023,8 @@
             "description": "External data share ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "revoke-external-data-share": {
         "description": "Revoke an external data share",
@@ -2038,7 +2045,8 @@
             "description": "External data share ID"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "delete-external-data-share": {
         "description": "Delete an external data share",
@@ -2059,7 +2067,8 @@
             "description": "External data share ID"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "assign-identity": {
         "description": "Assign a managed identity to an item",
@@ -2075,7 +2084,8 @@
             "description": "Item ID"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "get-invitation": {
         "description": "Get an external data share invitation (platform-level)",
@@ -2086,7 +2096,8 @@
             "description": "Invitation ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "accept-invitation": {
         "description": "Accept an external data share invitation",
@@ -2107,7 +2118,8 @@
             "description": "Display name for the created item"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       }
     }
   },
@@ -2384,7 +2396,8 @@
           }
         },
         "mutates": true,
-        "async": true
+        "async": true,
+        "returns": "object"
       },
       "load-table": {
         "description": "Load a file (already in the lakehouse) into a Delta table",
@@ -2894,7 +2907,8 @@
           }
         },
         "mutates": false,
-        "async": true
+        "async": true,
+        "returns": "object"
       },
       "update-definition": {
         "description": "Update the definition of a lakehouse",
@@ -2919,7 +2933,8 @@
           }
         },
         "mutates": true,
-        "async": true
+        "async": true,
+        "returns": "void"
       },
       "refresh-materialized-views": {
         "description": "Trigger a refresh of materialized lake views",
@@ -2935,7 +2950,8 @@
             "description": "Lakehouse ID"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "create-materialized-views-schedule": {
         "description": "Create a schedule for materialized lake view refresh",
@@ -2959,7 +2975,8 @@
             "description": "Schedule definition content (inline JSON)"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "update-materialized-views-schedule": {
         "description": "Update a schedule for materialized lake view refresh",
@@ -2988,7 +3005,8 @@
             "description": "Schedule definition content (inline JSON)"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "delete-materialized-views-schedule": {
         "description": "Delete a schedule for materialized lake view refresh",
@@ -3009,7 +3027,8 @@
             "description": "Schedule ID"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "run-table-maintenance": {
         "description": "Run table maintenance on a lakehouse",
@@ -3033,7 +3052,8 @@
             "description": "Configuration content (optional inline JSON)"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "optimize-table": {
         "description": "Optimize a Delta table (V-Order compaction + optional Z-Order)",
@@ -3372,7 +3392,8 @@
             "description": "Lakehouse ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "list"
       },
       "get-livy-session": {
         "description": "Get details of a Livy session for a lakehouse",
@@ -3393,7 +3414,8 @@
             "description": "Livy session ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       }
     }
   },
@@ -3685,7 +3707,7 @@
         "notes": "Returns the full command surface as JSON. Call once at session start for tool discovery."
       },
       "describe": {
-        "description": "Deep-dive on a single command: flags, examples, output shape, notes — everything to invoke it",
+        "description": "Deep-dive on a single command: flags, examples, output shape, notes \u2014 everything to invoke it",
         "mutates": false,
         "returns": "object",
         "notes": "Cross-references command metadata with output examples when available. Use after `fabio context agent` to get full details on a specific command."
@@ -3725,7 +3747,7 @@
         "notes": "Returns top-10 matching commands ranked by relevance. Use when unsure which command to use."
       },
       "tenant": {
-        "description": "Scan your Fabric tenant — build a relationship graph from workspace(s)",
+        "description": "Scan your Fabric tenant \u2014 build a relationship graph from workspace(s)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -3756,7 +3778,7 @@
               "rdf",
               "full"
             ],
-            "description": "Output format: graph (default) — native arrays for fabio merge/query; jsonld — instance data as RDF for triple stores; owl — OWL schema as JSON-LD for `fabio ontology import`; rdf — OWL schema as RDF/XML for `fabio ontology import` and Ontology Playground"
+            "description": "Output format: graph (default) \u2014 native arrays for fabio merge/query; jsonld \u2014 instance data as RDF for triple stores; owl \u2014 OWL schema as JSON-LD for `fabio ontology import`; rdf \u2014 OWL schema as RDF/XML for `fabio ontology import` and Ontology Playground"
           },
           "--merge": {
             "type": "string",
@@ -4260,7 +4282,8 @@
             "description": "Workspace ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "update-sql-pools-config": {
         "description": "Update SQL pools configuration for a workspace",
@@ -4279,7 +4302,8 @@
             "description": "Inline JSON content"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "get-audit-settings": {
         "description": "Get SQL audit settings for a warehouse",
@@ -4295,7 +4319,8 @@
             "description": "Warehouse item ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "update-audit-settings": {
         "description": "Update SQL audit settings for a warehouse",
@@ -4323,7 +4348,8 @@
             "description": "Comma-separated list of audit actions"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "set-audit-actions": {
         "description": "Set audit actions and groups for a warehouse",
@@ -4343,7 +4369,8 @@
             "description": "Comma-separated list of audit actions and groups"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "list-restore-points": {
         "description": "List restore points for a warehouse",
@@ -4359,7 +4386,8 @@
             "description": "Warehouse item ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "list"
       },
       "create-restore-point": {
         "description": "Create a restore point for a warehouse",
@@ -4379,7 +4407,8 @@
             "description": "Optional label for the restore point"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "show-restore-point": {
         "description": "Show details of a restore point",
@@ -4400,7 +4429,8 @@
             "description": "Restore point ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "update-restore-point": {
         "description": "Update a restore point",
@@ -4425,7 +4455,8 @@
             "description": "New label for the restore point"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "delete-restore-point": {
         "description": "Delete a restore point",
@@ -4446,7 +4477,8 @@
             "description": "Restore point ID"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "restore-to-point": {
         "description": "Restore a warehouse to a restore point",
@@ -4473,7 +4505,8 @@
           }
         },
         "mutates": true,
-        "async": true
+        "async": true,
+        "returns": "object"
       }
     }
   },
@@ -5351,7 +5384,8 @@
           }
         },
         "mutates": true,
-        "async": false
+        "async": false,
+        "returns": "void"
       },
       "list-fewshots": {
         "description": "List few-shot examples for a data source",
@@ -5408,7 +5442,8 @@
           }
         },
         "mutates": false,
-        "async": false
+        "async": false,
+        "returns": "object"
       },
       "add-fewshot": {
         "description": "Add a few-shot example (question/query pair) to a data source",
@@ -5475,7 +5510,8 @@
           }
         },
         "mutates": true,
-        "async": false
+        "async": false,
+        "returns": "void"
       },
       "remove-fewshot": {
         "description": "Remove a few-shot example by ID",
@@ -5525,7 +5561,8 @@
           }
         },
         "mutates": true,
-        "async": false
+        "async": false,
+        "returns": "void"
       },
       "upload-fewshots": {
         "description": "Bulk upload few-shot examples from a JSON or CSV file",
@@ -5670,7 +5707,8 @@
           }
         },
         "mutates": true,
-        "async": false
+        "async": false,
+        "returns": "void"
       },
       "get-definition": {
         "description": "Get the definition of a data agent (configuration, data sources, etc.)",
@@ -5760,7 +5798,8 @@
           }
         },
         "mutates": true,
-        "async": false
+        "async": false,
+        "returns": "void"
       }
     }
   },
@@ -6186,7 +6225,8 @@
           }
         },
         "mutates": false,
-        "async": true
+        "async": true,
+        "returns": "object"
       },
       "update-definition": {
         "description": "Update the definition of an environment",
@@ -6211,7 +6251,8 @@
           }
         },
         "mutates": true,
-        "async": true
+        "async": true,
+        "returns": "void"
       },
       "list-libraries": {
         "description": "List published libraries of an environment",
@@ -6227,7 +6268,8 @@
             "description": "Environment ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "list"
       },
       "export-libraries": {
         "description": "Export external libraries configuration (published)",
@@ -6243,7 +6285,8 @@
             "description": "Environment ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "list-staging-libraries": {
         "description": "List staging libraries of an environment",
@@ -6259,7 +6302,8 @@
             "description": "Environment ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "list"
       },
       "delete-staging-library": {
         "description": "Delete a staging library by name",
@@ -6280,7 +6324,8 @@
             "description": "Library filename to delete"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "export-staging-libraries": {
         "description": "Export external libraries configuration (staging)",
@@ -6296,7 +6341,8 @@
             "description": "Environment ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "import-staging-libraries": {
         "description": "Import external libraries configuration into staging",
@@ -6320,7 +6366,8 @@
             "description": "Inline JSON content with external libraries config"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "remove-staging-library": {
         "description": "Remove an external library from staging",
@@ -6341,7 +6388,8 @@
             "description": "Library name to remove"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "upload-staging-library": {
         "description": "Upload a custom library file into staging",
@@ -6391,7 +6439,8 @@
             "description": "Inline JSON content with spark compute config"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       }
     }
   },
@@ -6542,7 +6591,8 @@
           }
         },
         "mutates": false,
-        "async": true
+        "async": true,
+        "returns": "object"
       },
       "update-definition": {
         "description": "Update the definition of a data pipeline",
@@ -6567,7 +6617,8 @@
           }
         },
         "mutates": true,
-        "async": true
+        "async": true,
+        "returns": "void"
       },
       "create-schedule": {
         "description": "Create a schedule for a data pipeline",
@@ -6591,7 +6642,8 @@
             "description": "Inline JSON schedule configuration"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "list-schedules": {
         "description": "List execute schedules for a data pipeline",
@@ -7306,7 +7358,7 @@
           "--file": {
             "type": "string",
             "required": true,
-            "description": "Path to definition.pbir file (semantic model binding — always required)"
+            "description": "Path to definition.pbir file (semantic model binding \u2014 always required)"
           },
           "--report-json": {
             "type": "string",
@@ -7331,7 +7383,8 @@
             "description": "Report ID"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       }
     }
   },
@@ -9901,7 +9954,8 @@
             "description": "Reflex ID"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       }
     }
   },
@@ -10020,7 +10074,8 @@
             "description": "ML model ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "update-endpoint": {
         "description": "Update the ML model serving endpoint configuration",
@@ -10044,7 +10099,8 @@
             "description": "Inline JSON content with endpoint config"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "score": {
         "description": "Score against the ML model endpoint",
@@ -10068,7 +10124,8 @@
             "description": "Inline JSON input data"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "list-versions": {
         "description": "List endpoint versions",
@@ -10084,7 +10141,8 @@
             "description": "ML model ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "list"
       },
       "get-version": {
         "description": "Get a specific endpoint version",
@@ -10105,7 +10163,8 @@
             "description": "Version name"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "update-version": {
         "description": "Update a specific endpoint version",
@@ -10134,7 +10193,8 @@
             "description": "Inline JSON content with version config"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "activate-version": {
         "description": "Activate a specific endpoint version",
@@ -10155,7 +10215,8 @@
             "description": "Version name"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "deactivate-version": {
         "description": "Deactivate a specific endpoint version",
@@ -10176,7 +10237,8 @@
             "description": "Version name"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "score-version": {
         "description": "Score against a specific endpoint version",
@@ -10205,7 +10267,8 @@
             "description": "Inline JSON input data"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "deactivate-all-versions": {
         "description": "Deactivate all endpoint versions",
@@ -10221,7 +10284,8 @@
             "description": "ML model ID"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       }
     }
   },
@@ -10495,7 +10559,8 @@
             "description": "Capacity ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "update-capacity-settings": {
         "description": "Update capacity-level Spark settings",
@@ -10514,7 +10579,8 @@
             "description": "JSON content with settings (inline)"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "list-capacity-pools": {
         "description": "List custom Spark pools in a capacity",
@@ -10525,7 +10591,8 @@
             "description": "Capacity ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "list"
       },
       "create-capacity-pool": {
         "description": "Create a custom Spark pool in a capacity",
@@ -10549,7 +10616,8 @@
             "description": "JSON content with pool configuration (inline)"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "get-capacity-pool": {
         "description": "Get details of a capacity Spark pool",
@@ -10565,7 +10633,8 @@
             "description": "Pool ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "update-capacity-pool": {
         "description": "Update a capacity Spark pool",
@@ -10589,7 +10658,8 @@
             "description": "JSON content with pool configuration (inline)"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "delete-capacity-pool": {
         "description": "Delete a capacity Spark pool",
@@ -10605,7 +10675,8 @@
             "description": "Pool ID"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "list-livy-sessions": {
         "description": "List Livy sessions in a workspace",
@@ -10616,7 +10687,8 @@
             "description": "Workspace ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "list"
       },
       "get-livy-session": {
         "description": "Get details of a Livy session",
@@ -10632,7 +10704,8 @@
             "description": "Livy session ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       }
     }
   },
@@ -11481,7 +11554,7 @@
           "--name": {
             "type": "string",
             "required": true,
-            "description": "Display name (letters, numbers, underscores only — no hyphens)"
+            "description": "Display name (letters, numbers, underscores only \u2014 no hyphens)"
           },
           "--dtb-id": {
             "type": "string",
@@ -12883,7 +12956,8 @@
             "description": "Graph model ID"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       }
     }
   },
@@ -13063,7 +13137,8 @@
             "description": "Workspace ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "list"
       },
       "list-tables": {
         "description": "List catalog mirroring tables (workspace-level)",
@@ -13074,7 +13149,8 @@
             "description": "Workspace ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "list"
       },
       "mirroring-status": {
         "description": "Get mirroring status",
@@ -13304,7 +13380,8 @@
             "description": "Catalog name"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "discover-tables": {
         "description": "Discover tables in a Databricks catalog schema",
@@ -13325,7 +13402,8 @@
             "description": "Schema name"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       }
     }
   },
@@ -14024,7 +14102,8 @@
             "description": "Apache Airflow job ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "list"
       },
       "deploy-requirements": {
         "description": "Deploy requirements.txt to the environment",
@@ -14065,7 +14144,8 @@
             "description": "Apache Airflow job ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "update-settings": {
         "description": "Update environment settings",
@@ -14089,7 +14169,8 @@
             "description": "Inline settings JSON"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "get-compute": {
         "description": "Get environment compute information",
@@ -14128,7 +14209,8 @@
           }
         },
         "mutates": true,
-        "async": true
+        "async": true,
+        "returns": "void"
       },
       "list-files": {
         "description": "List files (DAGs) in the Airflow job",
@@ -14247,7 +14329,8 @@
             "description": "Inline settings JSON"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "list-pool-templates": {
         "description": "List pool templates",
@@ -14258,7 +14341,8 @@
             "description": "Workspace ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "list"
       },
       "create-pool-template": {
         "description": "Create a pool template",
@@ -14281,7 +14365,8 @@
             "description": "Inline pool template JSON"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "get-pool-template": {
         "description": "Get a pool template",
@@ -14297,7 +14382,8 @@
             "description": "Pool template ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "delete-pool-template": {
         "description": "Delete a pool template",
@@ -14313,7 +14399,8 @@
             "description": "Pool template ID"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       }
     }
   },
@@ -16071,7 +16158,8 @@
             "description": "Deployment pipeline ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "list"
       },
       "show-operation": {
         "description": "Show details of a deploy operation",
@@ -16087,7 +16175,8 @@
             "description": "Operation ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "list-role-assignments": {
         "description": "List role assignments for a deployment pipeline",
@@ -16098,7 +16187,8 @@
             "description": "Deployment pipeline ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "list"
       },
       "add-role-assignment": {
         "description": "Add a role assignment to a deployment pipeline",
@@ -16124,7 +16214,8 @@
             "description": "Role (e.g. Admin, Contributor, Viewer)"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "object"
       },
       "delete-role-assignment": {
         "description": "Delete a role assignment from a deployment pipeline",
@@ -16140,7 +16231,8 @@
             "description": "Principal ID to remove"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "show-stage": {
         "description": "Show details of a deployment pipeline stage",
@@ -16156,7 +16248,8 @@
             "description": "Stage ID"
           }
         },
-        "mutates": false
+        "mutates": false,
+        "returns": "object"
       },
       "update-stage": {
         "description": "Update a deployment pipeline stage configuration",
@@ -16180,7 +16273,8 @@
             "description": "Inline JSON content with stage configuration"
           }
         },
-        "mutates": true
+        "mutates": true,
+        "returns": "void"
       },
       "deploy": {
         "description": "Deploy items from one stage to another",
@@ -16453,7 +16547,7 @@
           },
           "--no-workspace-id-replace": {
             "type": "bool",
-            "description": "Skip automatic workspace ID replacement (00000000-... → target workspace)"
+            "description": "Skip automatic workspace ID replacement (00000000-... \u2192 target workspace)"
           }
         },
         "mutates": false,
@@ -17405,11 +17499,6 @@
   "upgrade": {
     "auth_scope": "local",
     "description": "Upgrade fabio to the latest release from GitHub",
-    "subcommands": {}
-  },
-  "completions": {
-    "auth_scope": "fabric",
-    "description": "Generate shell completion scripts",
     "subcommands": {}
   },
   "mcp": {
