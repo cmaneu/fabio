@@ -1036,7 +1036,7 @@ fn generate_subcommands(
             sc_obj.insert("flags".to_owned(), serde_json::Value::Object(flags));
         }
 
-        // Preserve annotations from existing schema.
+        // Preserve annotations from existing schema (takes priority over inference).
         if let Some(existing) = existing_sc {
             for key in [
                 "mutates",
@@ -1053,6 +1053,23 @@ fn generate_subcommands(
                     sc_obj.insert(key.to_owned(), val.clone());
                 }
             }
+        }
+
+        // Auto-infer missing semantic annotations from command name conventions.
+        if !sc_obj.contains_key("mutates") {
+            sc_obj.insert(
+                "mutates".to_owned(),
+                serde_json::json!(infer_mutates(&sc_name)),
+            );
+        }
+        if !sc_obj.contains_key("returns") {
+            sc_obj.insert(
+                "returns".to_owned(),
+                serde_json::json!(infer_returns(&sc_name)),
+            );
+        }
+        if !sc_obj.contains_key("destructive") && infer_destructive(&sc_name) {
+            sc_obj.insert("destructive".to_owned(), serde_json::json!(true));
         }
 
         subcommands.insert(sc_name, serde_json::Value::Object(sc_obj));
@@ -1138,6 +1155,101 @@ fn generate_flags(
     }
 
     flags
+}
+
+/// Infer whether a command mutates state from its name.
+/// Read-only patterns: list, show, get-*, query, describe, status, check-*, search, diagnostics.
+#[cfg(test)]
+fn infer_mutates(cmd_name: &str) -> bool {
+    const READ_ONLY_PREFIXES: &[&str] = &[
+        "list",
+        "show",
+        "get-",
+        "query",
+        "describe",
+        "status",
+        "check-",
+        "search",
+        "diagnostics",
+        "deeplink",
+        "connection-string",
+        "exists",
+        "sample",
+        "show-queryplan",
+        "discover-",
+        "iceberg-",
+        "table-schema",
+    ];
+
+    for prefix in READ_ONLY_PREFIXES {
+        if cmd_name.starts_with(prefix) || cmd_name == *prefix {
+            return false;
+        }
+    }
+    true
+}
+
+/// Infer the return type from a command name.
+#[cfg(test)]
+fn infer_returns(cmd_name: &str) -> &'static str {
+    if cmd_name.starts_with("list") {
+        return "list";
+    }
+    if cmd_name.starts_with("show")
+        || cmd_name.starts_with("get-")
+        || cmd_name.starts_with("create")
+        || cmd_name.starts_with("add-")
+        || cmd_name == "query"
+        || cmd_name == "search"
+        || cmd_name == "status"
+        || cmd_name.starts_with("describe")
+        || cmd_name.starts_with("discover-")
+        || cmd_name.starts_with("iceberg-")
+        || cmd_name == "table-schema"
+        || cmd_name == "connection-string"
+        || cmd_name == "exists"
+        || cmd_name == "sample"
+        || cmd_name == "diagnostics"
+        || cmd_name == "deeplink"
+        || cmd_name == "plan"
+        || cmd_name == "export"
+        || cmd_name == "import"
+        || cmd_name == "url"
+        || cmd_name == "inspect"
+    {
+        return "object";
+    }
+    if cmd_name.starts_with("delete")
+        || cmd_name.starts_with("remove")
+        || cmd_name.starts_with("update")
+        || cmd_name.starts_with("set-")
+        || cmd_name.starts_with("assign")
+        || cmd_name.starts_with("unassign")
+        || cmd_name == "run"
+        || cmd_name == "deploy"
+        || cmd_name == "publish"
+        || cmd_name == "reset"
+        || cmd_name == "stop"
+        || cmd_name == "start"
+        || cmd_name == "cancel"
+        || cmd_name == "restart"
+        || cmd_name == "shutdown"
+        || cmd_name.starts_with("clear")
+        || cmd_name == "commit"
+        || cmd_name == "pull"
+        || cmd_name == "connect"
+        || cmd_name == "disconnect"
+        || cmd_name == "initialize"
+    {
+        return "void";
+    }
+    "object"
+}
+
+/// Infer whether a command is destructive (deletes data permanently).
+#[cfg(test)]
+fn infer_destructive(cmd_name: &str) -> bool {
+    cmd_name.starts_with("delete") || cmd_name.starts_with("remove") || cmd_name == "vacuum-table"
 }
 
 #[cfg(test)]

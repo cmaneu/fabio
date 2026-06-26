@@ -146,7 +146,7 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
 
 2. **`src/commands/context/agent.rs`** — Update the machine-readable command schema so AI agents can discover the new commands (flags, types, mutability, examples).
 
-   **Auto-generation (preferred)**: Run `cargo test generate_agent_schema -- --ignored` to regenerate `commands.json` from clap metadata. This extracts group names, subcommand names, flag names/types/required/descriptions directly from the CLI definition. After regeneration, manually add semantic annotations (`mutates`, `returns`, `async`, `destructive`, `auth_scope`) to the new entries — these cannot be derived from clap.
+   **Auto-generation (preferred)**: Run `cargo test generate_agent_schema -- --ignored` to regenerate `commands.json` from clap metadata. This extracts group names, subcommand names, flag names/types/required/descriptions directly from the CLI definition. Semantic annotations (`mutates`, `returns`, `destructive`) are auto-inferred from command naming conventions (e.g., `list*` → read-only + returns list, `delete*` → mutates + destructive + returns void). Only `async` (LRO) and `auth_scope` (per-group) cannot be inferred and must be added manually for new entries that need them.
 
    **Drift detection**: Two unit tests (`agent_schema_covers_all_groups`, `agent_schema_covers_all_subcommands`) will FAIL if `commands.json` is missing any group or subcommand present in the actual CLI. These tests run as part of `cargo test` and prevent drift from accumulating.
 
