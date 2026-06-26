@@ -913,3 +913,336 @@ fn output_conventions() -> serde_json::Value {
     serde_json::from_str(include_str!("data/agent/output_conventions.json"))
         .expect("output_conventions.json must contain valid JSON")
 }
+
+// ─── Schema drift detection & auto-generation ────────────────────────────────
+
+/// Extract the actual CLI surface from clap's `Command` metadata.
+/// Returns a map of `group_name` -> vec of subcommand names.
+#[cfg(test)]
+fn extract_clap_surface() -> std::collections::BTreeMap<String, Vec<String>> {
+    use clap::CommandFactory;
+
+    // Commands that are internal utilities, not agent-facing.
+    const EXCLUDED: &[&str] = &["completions", "help"];
+
+    let cmd = crate::cli::Cli::command();
+    let mut surface = std::collections::BTreeMap::new();
+
+    for group in cmd.get_subcommands() {
+        let group_name = group.get_name().to_owned();
+
+        if EXCLUDED.contains(&group_name.as_str()) {
+            continue;
+        }
+
+        let subcommands: Vec<String> = group
+            .get_subcommands()
+            .filter(|sc| sc.get_name() != "help")
+            .map(|sc| sc.get_name().to_owned())
+            .collect();
+
+        surface.insert(group_name, subcommands);
+    }
+
+    surface
+}
+
+/// Generate a complete `commands.json` from clap metadata, merging with existing
+/// annotations (mutates, returns, async, destructive, `auth_scope`) from the
+/// current `commands.json`.
+#[cfg(test)]
+fn generate_schema_from_clap() -> serde_json::Value {
+    use clap::CommandFactory;
+    let cmd = crate::cli::Cli::command();
+    let existing = commands_schema();
+    let existing_map = existing.as_object();
+
+    let mut result = serde_json::Map::new();
+
+    for group in cmd.get_subcommands() {
+        let group_name = group.get_name().to_owned();
+        if group_name == "help" {
+            continue;
+        }
+
+        let existing_group = existing_map.and_then(|m| m.get(&group_name));
+        let auth_scope = existing_group
+            .and_then(|g| g.get("auth_scope"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("fabric");
+
+        let group_desc = group
+            .get_about()
+            .map(ToString::to_string)
+            .or_else(|| {
+                existing_group
+                    .and_then(|g| g.get("description"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(String::from)
+            })
+            .unwrap_or_default();
+
+        let subcommands = generate_subcommands(group, existing_group);
+
+        let mut group_obj = serde_json::Map::new();
+        group_obj.insert("auth_scope".to_owned(), serde_json::json!(auth_scope));
+        group_obj.insert("description".to_owned(), serde_json::json!(group_desc));
+        group_obj.insert(
+            "subcommands".to_owned(),
+            serde_json::Value::Object(subcommands),
+        );
+
+        result.insert(group_name, serde_json::Value::Object(group_obj));
+    }
+
+    serde_json::Value::Object(result)
+}
+
+/// Generate subcommand entries for a single group.
+#[cfg(test)]
+fn generate_subcommands(
+    group: &clap::Command,
+    existing_group: Option<&serde_json::Value>,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut subcommands = serde_json::Map::new();
+
+    for sc in group.get_subcommands() {
+        let sc_name = sc.get_name().to_owned();
+        if sc_name == "help" {
+            continue;
+        }
+
+        let existing_sc = existing_group
+            .and_then(|g| g.get("subcommands"))
+            .and_then(serde_json::Value::as_object)
+            .and_then(|s| s.get(&sc_name));
+
+        let sc_desc = sc
+            .get_about()
+            .map(ToString::to_string)
+            .or_else(|| {
+                existing_sc
+                    .and_then(|s| s.get("description"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(String::from)
+            })
+            .unwrap_or_default();
+
+        let flags = generate_flags(sc, existing_sc);
+
+        let mut sc_obj = serde_json::Map::new();
+        sc_obj.insert("description".to_owned(), serde_json::json!(sc_desc));
+        if !flags.is_empty() {
+            sc_obj.insert("flags".to_owned(), serde_json::Value::Object(flags));
+        }
+
+        // Preserve annotations from existing schema.
+        if let Some(existing) = existing_sc {
+            for key in [
+                "mutates",
+                "returns",
+                "async",
+                "destructive",
+                "examples",
+                "hint",
+                "notes",
+                "output_fields",
+                "aliases",
+            ] {
+                if let Some(val) = existing.get(key) {
+                    sc_obj.insert(key.to_owned(), val.clone());
+                }
+            }
+        }
+
+        subcommands.insert(sc_name, serde_json::Value::Object(sc_obj));
+    }
+
+    subcommands
+}
+
+/// Generate flag entries for a single subcommand from clap arg metadata.
+#[cfg(test)]
+fn generate_flags(
+    sc: &clap::Command,
+    existing_sc: Option<&serde_json::Value>,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut flags = serde_json::Map::new();
+
+    for arg in sc.get_arguments() {
+        let Some(long) = arg.get_long() else {
+            continue;
+        };
+        if arg.is_global_set() {
+            continue;
+        }
+
+        let flag_name = format!("--{long}");
+        let mut flag_obj = serde_json::Map::new();
+
+        // Determine type: check action first (bool/count), then possible values (enum).
+        let action = arg.get_action();
+        match action {
+            clap::ArgAction::SetTrue | clap::ArgAction::SetFalse => {
+                flag_obj.insert("type".to_owned(), serde_json::json!("bool"));
+            }
+            clap::ArgAction::Count => {
+                flag_obj.insert("type".to_owned(), serde_json::json!("integer"));
+            }
+            _ => {
+                let possible_values: Vec<String> = arg
+                    .get_possible_values()
+                    .iter()
+                    .filter_map(|pv| pv.get_name_and_aliases().next().map(String::from))
+                    .collect();
+
+                if possible_values.is_empty() {
+                    let type_str = existing_sc
+                        .and_then(|s| s.get("flags"))
+                        .and_then(serde_json::Value::as_object)
+                        .and_then(|f| f.get(&flag_name))
+                        .and_then(|fv| fv.get("type"))
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("string");
+                    flag_obj.insert("type".to_owned(), serde_json::json!(type_str));
+                } else {
+                    flag_obj.insert("type".to_owned(), serde_json::json!("enum"));
+                    flag_obj.insert("values".to_owned(), serde_json::json!(possible_values));
+                }
+            }
+        }
+
+        if arg.is_required_set() {
+            flag_obj.insert("required".to_owned(), serde_json::json!(true));
+        }
+
+        if let Some(help) = arg.get_help() {
+            let help_str = help.to_string();
+            if !help_str.is_empty() {
+                flag_obj.insert("description".to_owned(), serde_json::json!(help_str));
+            }
+        }
+
+        // Preserve existing default annotations.
+        if let Some(default) = existing_sc
+            .and_then(|s| s.get("flags"))
+            .and_then(serde_json::Value::as_object)
+            .and_then(|f| f.get(&flag_name))
+            .and_then(serde_json::Value::as_object)
+            .and_then(|ef| ef.get("default"))
+        {
+            flag_obj.insert("default".to_owned(), default.clone());
+        }
+
+        flags.insert(flag_name, serde_json::Value::Object(flag_obj));
+    }
+
+    flags
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Run a closure on a thread with 8 MB stack (clap `Command` tree is deeply nested).
+    fn with_large_stack<F: FnOnce() + Send + 'static>(f: F) {
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(f)
+            .expect("spawn thread")
+            .join()
+            .expect("thread panicked");
+    }
+
+    /// Drift detection: ensures `commands.json` covers all CLI groups.
+    #[test]
+    fn agent_schema_covers_all_groups() {
+        with_large_stack(|| {
+            let clap_surface = extract_clap_surface();
+            let schema = commands_schema();
+            let schema_map = schema.as_object().expect("commands.json should be object");
+
+            let mut missing_groups = Vec::new();
+            for group_name in clap_surface.keys() {
+                let normalized = group_name.to_lowercase().replace('_', "-");
+                if !schema_map
+                    .keys()
+                    .any(|k| k == &normalized || k == group_name)
+                {
+                    missing_groups.push(group_name.clone());
+                }
+            }
+
+            assert!(
+                missing_groups.is_empty(),
+                "commands.json is missing these command groups: {missing_groups:?}\n\
+                 Run `cargo test generate_agent_schema -- --ignored` to regenerate."
+            );
+        });
+    }
+
+    /// Drift detection: ensures `commands.json` covers all subcommands within each group.
+    #[test]
+    fn agent_schema_covers_all_subcommands() {
+        with_large_stack(|| {
+            let clap_surface = extract_clap_surface();
+            let schema = commands_schema();
+            let schema_map = schema.as_object().expect("commands.json should be object");
+
+            let mut missing = Vec::new();
+
+            for (group_name, subcommands) in &clap_surface {
+                let normalized_group = group_name.to_lowercase().replace('_', "-");
+                let Some(group_val) = schema_map
+                    .get(&normalized_group)
+                    .or_else(|| schema_map.get(group_name))
+                else {
+                    continue;
+                };
+
+                let Some(schema_subcmds) = group_val
+                    .get("subcommands")
+                    .and_then(serde_json::Value::as_object)
+                else {
+                    if !subcommands.is_empty() {
+                        missing.push(format!(
+                            "{normalized_group}: all ({} subcommands)",
+                            subcommands.len()
+                        ));
+                    }
+                    continue;
+                };
+
+                for sc_name in subcommands {
+                    if !schema_subcmds.contains_key(sc_name) {
+                        missing.push(format!("{normalized_group} {sc_name}"));
+                    }
+                }
+            }
+
+            assert!(
+                missing.is_empty(),
+                "commands.json is missing these subcommands:\n  {}\n\
+                 Run `cargo test generate_agent_schema -- --ignored` to regenerate.",
+                missing.join("\n  ")
+            );
+        });
+    }
+
+    /// Auto-generation: regenerate `commands.json` from clap metadata + existing annotations.
+    /// Run with: `cargo test generate_agent_schema -- --ignored`
+    #[test]
+    #[ignore = "writes to filesystem — run manually to regenerate commands.json"]
+    fn generate_agent_schema() {
+        with_large_stack(|| {
+            let generated = generate_schema_from_clap();
+            let pretty =
+                serde_json::to_string_pretty(&generated).expect("serialize generated schema");
+
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src/commands/context/data/agent/commands.json");
+            std::fs::write(&path, pretty + "\n").expect("write commands.json");
+            eprintln!("Regenerated: {}", path.display());
+        });
+    }
+}
