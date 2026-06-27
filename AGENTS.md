@@ -149,12 +149,8 @@ cargo test --bin fabio generate_agent_schema -- --include-ignored
 # 2. Regenerate COMMANDS.md (command reference derived from commands.json)
 cargo test --bin fabio generate_commands_md -- --include-ignored
 
-# 3. Regenerate EXAMPLES.md (examples and workflow pointers from commands.json)
-cargo test --bin fabio generate_examples_md -- --include-ignored
-
-# 4. Verify drift detection passes (these run in cargo test / CI)
+# 3. Verify drift detection passes (these run in cargo test / CI)
 cargo test --bin fabio commands_md_is_up_to_date
-cargo test --bin fabio examples_md_is_up_to_date
 cargo test --bin fabio agent_schema_covers
 ```
 
@@ -164,7 +160,6 @@ cargo test --bin fabio agent_schema_covers
 |------|---------------|------------|-------------------|
 | `src/commands/context/data/agent/commands.json` | clap metadata | `agent_schema_covers_all_groups`, `agent_schema_covers_all_subcommands` | New command/subcommand/flag added |
 | `COMMANDS.md` | `commands.json` | `commands_md_is_up_to_date` | After regenerating `commands.json` |
-| `EXAMPLES.md` | `commands.json` + static templates | `examples_md_is_up_to_date` | After regenerating `commands.json` or changing workflow names |
 
 ### How Drift Detection Works
 
@@ -180,8 +175,7 @@ These tests run as part of the standard `cargo test` suite and in CI. If a contr
 
 ```bash
 cargo test --bin fabio generate_agent_schema -- --include-ignored && \
-cargo test --bin fabio generate_commands_md -- --include-ignored && \
-cargo test --bin fabio generate_examples_md -- --include-ignored
+cargo test --bin fabio generate_commands_md -- --include-ignored
 ```
 
 ## Documentation Updates (MANDATORY)
@@ -245,11 +239,7 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
    ```
    A drift detection test (`commands_md_is_up_to_date`) runs in CI and will FAIL if the committed file doesn't match what the generator produces.
 
-5. **EXAMPLES.md** — **Auto-generated. Do NOT edit manually.** Regenerate after changing workflows or examples in `commands.json`:
-   ```bash
-   cargo test --bin fabio generate_examples_md -- --include-ignored
-   ```
-   A drift detection test (`examples_md_is_up_to_date`) runs in CI and will FAIL if the committed file doesn't match.
+5. **EXAMPLES.md** — Manually curated usage examples. Update when adding new commands or workflows with practical shell examples showing composability (shell variables, piping, `@file` input). This file is NOT auto-generated because rich workflow examples require human judgment about what patterns are most useful.
 
 **Rules:**
 - Documentation updates are part of the feature — do NOT commit code without corresponding doc updates.

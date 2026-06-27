@@ -1502,23 +1502,6 @@ mod tests {
         });
     }
 
-    /// Drift detection: ensures EXAMPLES.md matches what would be generated from commands.json.
-    #[test]
-    fn examples_md_is_up_to_date() {
-        let schema = commands_schema();
-        let schema_map = schema.as_object().expect("commands.json should be object");
-        let expected = generate_examples_md_content(schema_map);
-
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("EXAMPLES.md");
-        let actual = std::fs::read_to_string(&path).unwrap_or_default();
-
-        assert_eq!(
-            actual, expected,
-            "EXAMPLES.md is out of date.\n\
-             Run: cargo test --bin fabio generate_examples_md -- --include-ignored"
-        );
-    }
-
     /// Auto-generation: regenerate `commands.json` from clap metadata + existing annotations.
     /// Run with: `cargo test generate_agent_schema -- --ignored`
     #[test]
@@ -1554,24 +1537,6 @@ mod tests {
                 md.len()
             );
         });
-    }
-
-    /// Auto-generation: regenerate `EXAMPLES.md` from context data files.
-    /// Run with: `cargo test generate_examples_md -- --ignored`
-    #[test]
-    #[ignore = "writes to filesystem — run manually to regenerate EXAMPLES.md"]
-    fn generate_examples_md() {
-        let schema = commands_schema();
-        let schema_map = schema.as_object().expect("commands.json should be object");
-        let md = generate_examples_md_content(schema_map);
-
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("EXAMPLES.md");
-        std::fs::write(&path, &md).expect("write EXAMPLES.md");
-        eprintln!(
-            "Regenerated EXAMPLES.md: {} ({} bytes)",
-            path.display(),
-            md.len()
-        );
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1834,154 +1799,6 @@ mod tests {
         let _ = writeln!(
             md,
             "---\n\n*{total_groups} command groups, {total_subcommands} subcommands total. Auto-generated from `commands.json`.*"
-        );
-
-        md
-    }
-
-    #[allow(clippy::too_many_lines)]
-    fn generate_examples_md_content(
-        schema_map: &serde_json::Map<String, serde_json::Value>,
-    ) -> String {
-        use std::fmt::Write as _;
-
-        let mut md = String::with_capacity(64 * 1024);
-        md.push_str("<!-- Auto-generated from context data files. Do not edit manually. -->\n");
-        md.push_str("<!-- Regenerate with: cargo test generate_examples_md -- --ignored -->\n\n");
-        md.push_str("# Examples\n\n");
-        md.push_str(
-            "> **AI agents**: Run `fabio context examples <group> <command>` to get \
-             machine-readable output examples with JMESPath queries. \
-             Run `fabio context workflow <name>` for multi-step recipes.\n\n",
-        );
-
-        // Section 1: Output formats.
-        md.push_str("## Output Formats & Filtering\n\n```bash\n");
-        md.push_str("# JSON (default) -- structured envelope for agents\n");
-        md.push_str("fabio workspace list\n");
-        md.push_str("# {\"data\":[...],\"count\":5}\n\n");
-        md.push_str("# Table -- human-readable columns\n");
-        md.push_str("fabio workspace list -o table\n\n");
-        md.push_str("# Plain -- one value per line, great for shell scripting\n");
-        md.push_str("fabio workspace list -o plain\n\n");
-        md.push_str("# CSV/TSV -- tabular export\n");
-        md.push_str("fabio workspace list -o csv\n");
-        md.push_str("fabio workspace list -o tsv\n\n");
-        md.push_str("# JMESPath field projection\n");
-        md.push_str("fabio workspace list --query 'data[].{name: displayName, id: id}'\n\n");
-        md.push_str("# Limit results\n");
-        md.push_str("fabio workspace list --limit 3\n\n");
-        md.push_str("# Fetch all pages automatically\n");
-        md.push_str("fabio item list --workspace $WS --all\n\n");
-        md.push_str("# Dry-run a mutation\n");
-        md.push_str("fabio workspace delete --id $WS --dry-run\n");
-        md.push_str("```\n\n");
-
-        // Section 2: Workflow recipes.
-        md.push_str("## Workflow Recipes\n\n");
-        md.push_str("Use `fabio context workflow <name>` for full step-by-step details.\n\n");
-        let workflow_names = [
-            ("lakehouse-etl", "Lakehouse ETL Pipeline"),
-            ("rti-pipeline", "Real-Time Intelligence Pipeline"),
-            ("direct-lake-report", "Direct Lake Report"),
-            ("cicd-deploy", "CI/CD Deployment"),
-            ("data-agent-setup", "Data Agent Setup"),
-        ];
-        for (name, title) in &workflow_names {
-            let _ = writeln!(
-                md,
-                "### {title}\n\n```bash\nfabio context workflow {name}\n```\n"
-            );
-        }
-
-        // Section 3: Common patterns from commands.json examples field.
-        md.push_str("## Common Patterns\n\n");
-        let mut example_count = 0;
-        let pattern_groups = [
-            ("workspace", "Workspace Management"),
-            ("lakehouse", "Lakehouse Operations"),
-            ("notebook", "Notebook Operations"),
-            ("deploy", "CI/CD Deployment"),
-            ("semantic-model", "Semantic Models"),
-            ("kql-database", "KQL Queries"),
-            ("data-agent", "Data Agent"),
-            ("git", "Git Integration"),
-        ];
-
-        for (group_name, section_title) in &pattern_groups {
-            if let Some(group_val) = schema_map.get(*group_name) {
-                let mut group_examples: Vec<String> = Vec::new();
-                if let Some(subcmds) = group_val
-                    .get("subcommands")
-                    .and_then(serde_json::Value::as_object)
-                {
-                    for (sc_name, sc_val) in subcmds {
-                        if let Some(examples) =
-                            sc_val.get("examples").and_then(serde_json::Value::as_array)
-                        {
-                            for ex in examples {
-                                if let Some(s) = ex.as_str() {
-                                    group_examples.push(s.to_owned());
-                                }
-                            }
-                        }
-                        if group_examples.is_empty()
-                            && !sc_val
-                                .get("mutates")
-                                .and_then(serde_json::Value::as_bool)
-                                .unwrap_or(true)
-                        {
-                            let has_workspace = sc_val
-                                .get("flags")
-                                .and_then(serde_json::Value::as_object)
-                                .is_some_and(|f| f.contains_key("--workspace"));
-                            if has_workspace {
-                                group_examples
-                                    .push(format!("fabio {group_name} {sc_name} --workspace $WS"));
-                                break;
-                            }
-                        }
-                    }
-                }
-                if !group_examples.is_empty() {
-                    let _ = writeln!(md, "### {section_title}\n\n```bash");
-                    for ex in &group_examples {
-                        let _ = writeln!(md, "{ex}");
-                    }
-                    md.push_str("```\n\n");
-                    example_count += group_examples.len();
-                }
-            }
-        }
-
-        // Section 4: Best practices summary.
-        md.push_str("## Best Practices\n\n");
-        md.push_str("Use `fabio context best-practices <topic>` for detailed guidance on:\n\n");
-        md.push_str("- **throttling** -- Automatic 429 retry, bounded parallelism\n");
-        md.push_str("- **lro** -- Long-running operation polling, `--wait` for jobs\n");
-        md.push_str("- **pagination** -- `--all`, `--limit`, `--continuation-token`\n");
-        md.push_str("- **admin-apis** -- When to use admin vs workspace-scoped commands\n");
-        md.push_str("- **shortcuts** -- ADLS Gen2 connection + shortcut two-step pattern\n\n");
-
-        // Section 5: Critical API behaviors.
-        md.push_str("## Critical API Behaviors\n\n");
-        md.push_str("These non-obvious behaviors cause silent failures if ignored:\n\n");
-        md.push_str(
-            "1. **PascalCase values required** -- `Overwrite` not `overwrite`, `Csv` not `csv`\n",
-        );
-        md.push_str("2. **Workspace-scoped vs tenant-scoped** -- `deployment-pipeline`, `connection`, `domain` have no `--workspace`\n");
-        md.push_str("3. **LRO awareness** -- Create/definition operations return 202; use `--wait` for jobs\n");
-        md.push_str("4. **Token sharing** -- Same Fabric token works for both `api.fabric.microsoft.com` and `api.powerbi.com`\n");
-        md.push_str("5. **Load-table format** -- Only `Csv` and `Parquet` supported (not JSON)\n");
-        md.push_str(
-            "6. **Hard delete** -- 38 item types support `--hard-delete` to skip recycle bin\n",
-        );
-        md.push_str("7. **Notebook source format** -- Cell `source` must be a list of strings, not a single string\n");
-        md.push_str("8. **KQL Database query URI** -- Scoped to `{kusto_uri}/.default`, not the standard Fabric scope\n\n");
-
-        let _ = writeln!(
-            md,
-            "---\n\n*{example_count} examples extracted from commands.json. Auto-generated from context data files.*"
         );
 
         md
