@@ -625,6 +625,7 @@ mod tests {
                     group: None,
                     full: false,
                     format: crate::commands::context::AgentFormat::Native,
+                    budget: None,
                 },
             },
         };

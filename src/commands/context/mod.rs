@@ -64,6 +64,11 @@ pub enum ContextCommand {
         /// Schema output format: native (default), mcp (Model Context Protocol), openai (function calling)
         #[arg(long, value_enum, default_value = "native")]
         format: AgentFormat,
+
+        /// Approximate token budget — returns the most compact useful subset that fits
+        /// within this many tokens (4 chars/token estimate). Overrides --full.
+        #[arg(long)]
+        budget: Option<usize>,
     },
 
     /// Deep-dive on a single command: flags, examples, output shape, notes — everything to invoke it
@@ -179,8 +184,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
             group,
             full,
             format,
+            budget,
         } => {
-            agent::execute(cli, group.as_deref(), *full, *format);
+            agent::execute(cli, group.as_deref(), *full, *format, *budget);
             Ok(())
         }
         ContextCommand::Describe { group, command } => {

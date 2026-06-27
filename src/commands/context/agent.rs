@@ -39,7 +39,13 @@ struct ErrorCodeInfo {
     exit_code: u8,
 }
 
-pub(super) fn execute(cli: &Cli, group_filter: Option<&str>, full: bool, format: AgentFormat) {
+pub(super) fn execute(
+    cli: &Cli,
+    group_filter: Option<&str>,
+    full: bool,
+    format: AgentFormat,
+    budget: Option<usize>,
+) {
     // MCP/OpenAI formats always emit full tool definitions (filtered by --group if provided).
     if !matches!(format, AgentFormat::Native) {
         execute_standard_format(cli, group_filter, format);
@@ -49,6 +55,12 @@ pub(super) fn execute(cli: &Cli, group_filter: Option<&str>, full: bool, format:
     // --group: return full details for a single group.
     if let Some(group) = group_filter {
         execute_group(cli, group);
+        return;
+    }
+
+    // --budget: return progressively more detail until budget is exhausted.
+    if let Some(token_budget) = budget {
+        execute_budget(cli, token_budget);
         return;
     }
 
@@ -383,6 +395,136 @@ fn execute_compact(cli: &Cli, group_filter: Option<&str>) {
         "hint".to_owned(),
         serde_json::json!(
             "Use 'fabio context agent --group <GROUP>' for full details on a specific group"
+        ),
+    );
+
+    let obj = serde_json::Value::Object(result);
+    output::render_object(cli, &obj, "schema_version");
+}
+
+/// Budget mode: progressively includes groups with full detail until the token budget
+/// is exhausted. Starts with the most commonly-used groups and adds more until the
+/// serialized output exceeds the budget. Uses a 4 chars/token approximation.
+#[allow(clippy::too_many_lines)]
+fn execute_budget(cli: &Cli, token_budget: usize) {
+    const PRIORITY_GROUPS: &[&str] = &[
+        "workspace",
+        "lakehouse",
+        "item",
+        "notebook",
+        "warehouse",
+        "deploy",
+        "semantic-model",
+        "report",
+        "kql-database",
+        "data-pipeline",
+        "auth",
+        "data-agent",
+        "eventstream",
+        "eventhouse",
+        "sql-database",
+        "connection",
+        "git",
+        "capacity",
+        "environment",
+        "job-scheduler",
+        "context",
+        "catalog",
+    ];
+
+    let commands = commands_schema();
+    let Some(commands_map) = commands.as_object() else {
+        output::render_object(cli, &commands, "commands");
+        return;
+    };
+
+    let char_budget = token_budget * 4; // ~4 chars per token approximation
+
+    let mut result = serde_json::Map::new();
+    result.insert(
+        "schema_version".to_owned(),
+        serde_json::json!(SCHEMA_VERSION),
+    );
+    result.insert(
+        "version".to_owned(),
+        serde_json::json!(env!("CARGO_PKG_VERSION")),
+    );
+    result.insert("budget_tokens".to_owned(), serde_json::json!(token_budget));
+
+    // Phase 1: Add groups with full detail in priority order.
+    let mut included_groups = serde_json::Map::new();
+    let mut remaining_groups: Vec<&str> = Vec::new();
+
+    // Build ordered list: priority groups first, then the rest alphabetically.
+    let mut ordered_groups: Vec<&str> = Vec::new();
+    for &g in PRIORITY_GROUPS {
+        if commands_map.contains_key(g) {
+            ordered_groups.push(g);
+        }
+    }
+    for key in commands_map.keys() {
+        if !PRIORITY_GROUPS.contains(&key.as_str()) {
+            ordered_groups.push(key.as_str());
+        }
+    }
+
+    for group_name in &ordered_groups {
+        let Some(group_val) = commands_map.get(*group_name) else {
+            continue;
+        };
+
+        // Try adding this group with full detail.
+        included_groups.insert((*group_name).to_owned(), group_val.clone());
+
+        // Check size.
+        result.insert(
+            "commands".to_owned(),
+            serde_json::Value::Object(included_groups.clone()),
+        );
+        let serialized =
+            serde_json::to_string(&serde_json::Value::Object(result.clone())).unwrap_or_default();
+
+        if serialized.len() > char_budget {
+            // Over budget — remove this group and stop adding full detail.
+            included_groups.remove(*group_name);
+            remaining_groups.push(group_name);
+        }
+    }
+
+    // Phase 2: Add remaining groups as compact entries (name + description only).
+    if !remaining_groups.is_empty() {
+        let mut compact_remainder = serde_json::Map::new();
+        for group_name in &remaining_groups {
+            if let Some(group_val) = commands_map.get(*group_name) {
+                let desc = group_val
+                    .get("description")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("");
+                let subcmd_names: Vec<&str> = group_val
+                    .get("subcommands")
+                    .and_then(serde_json::Value::as_object)
+                    .map(|m| m.keys().map(String::as_str).collect())
+                    .unwrap_or_default();
+                compact_remainder.insert(
+                    (*group_name).to_owned(),
+                    serde_json::json!({"description": desc, "subcommands": subcmd_names}),
+                );
+            }
+        }
+        result.insert(
+            "commands_compact".to_owned(),
+            serde_json::Value::Object(compact_remainder),
+        );
+    }
+
+    result.insert(
+        "commands".to_owned(),
+        serde_json::Value::Object(included_groups),
+    );
+    result.insert(
+        "hint".to_owned(),
+        serde_json::json!(
+            "Use 'fabio context agent --group <GROUP>' for full details on groups shown in commands_compact"
         ),
     );
 
