@@ -17,60 +17,110 @@ Your task:
 2. Compare against the current fabio implementation in src/commands/ and src/client.rs.
 3. Make targeted improvements to fabio: add new subcommands, update existing request/response handling, fix field names, or add support for new parameters.
 4. Update relevant tests in tests/ if you add or modify commands.
-5. Harvest examples and behavioral details from the spec changes (see "Examples & Documentation Enrichment" below).
-6. Update `fabio context` data files when spec changes introduce new item types, workflows, or best-practice patterns (see "Context Knowledge Updates" below).
-7. Before committing, run the mandatory pre-commit validation defined in AGENTS.md (section "Pre-Commit Validation (MANDATORY)"). All steps must pass with zero errors and zero warnings.
+5. Enrich the runtime agent knowledge (see "Agent Knowledge Enrichment" below).
+6. Before committing, run the mandatory pre-commit validation defined in AGENTS.md (section "Pre-Commit Validation (MANDATORY)"). All steps must pass with zero errors and zero warnings.
+7. After all code changes, regenerate `commands.json`:
+   ```bash
+   cargo test --bin fabio generate_agent_schema -- --include-ignored
+   ```
 8. Write a file called /tmp/pr-body.md describing what was changed and why, referencing the spec commits.
 
-## Examples & Documentation Enrichment
+## Agent Knowledge Enrichment
 
-The Fabric API specs contain `x-ms-examples`, example request/response bodies, enum value lists, and behavioral annotations (required fields, default values, validation rules, error codes). These are high-value artifacts — extract and propagate them:
+fabio's agent discoverability is entirely runtime-based. There are NO separate documentation files to maintain (no COMMANDS.md, no EXAMPLES.md). All agent-facing knowledge lives in:
 
-### Tests
-- **Unit tests**: When the spec provides example request/response JSON, add unit tests in the relevant `src/commands/*.rs` `#[cfg(test)]` module that verify serialization/deserialization against those examples. Cover edge cases revealed by the spec (optional fields, enum variants, default values).
-- **E2E tests**: Add or update integration tests in `tests/e2e_*.rs` that exercise the new or changed endpoints. Use spec examples as reference for expected request bodies and response shapes. Include `--dry-run` tests that verify the constructed request body matches the spec's example format.
+- `src/commands/context/data/agent/commands.json` — Auto-generated command schema with manually-preserved `examples` arrays
+- `src/commands/context/data/examples/*.json` — Output shape examples (registered in `examples.rs`)
+- `src/commands/context/data/schemas/*.json` — Item definition schemas (registered in `schemas.rs`)
+- `src/commands/context/data/workflows/*.json` — Multi-step workflow recipes (registered in `workflows.rs`)
+- `src/commands/context/data/best_practices/*.json` — Operational guidance (registered in `best_practices.rs`)
 
-### Documentation
-- **README.md**: Update command listings, feature descriptions, and GitHub Actions examples if the spec reveals new capabilities.
-- **commands.json examples**: Add practical usage examples to the `examples` field in `commands.json` for new or changed commands, using the spec's example payloads as realistic `--content` or `--file` values. Regenerate with `cargo test --bin fabio generate_agent_schema -- --include-ignored`.
+### commands.json — Command Examples (MANDATORY for new commands)
 
-### AGENTS.md API Behaviors
-- **Document discovered behaviors**: When the spec reveals non-obvious API behaviors — required field ordering, enum values, default values, error codes, LRO patterns, pagination keys, response envelope differences, or undocumented constraints — add them to the appropriate "API Behaviors Discovered" section in AGENTS.md. This is critical institutional knowledge that prevents future regressions.
-- **Look for**: required vs optional fields that differ from intuition, non-standard response keys (not `"value"`), PascalCase vs camelCase requirements, query parameter requirements (`?beta=true`, `?preview=true`), discriminated union patterns in request bodies, and fields the server auto-adds or strips.
+After adding a new subcommand, add practical CLI examples to its `examples` field in `commands.json`. These are preserved across regeneration. Add 1-3 examples per subcommand showing non-obvious flag usage:
 
-## Context Knowledge Updates
+```json
+"my-new-command": {
+  "description": "...",
+  "flags": {...},
+  "mutates": true,
+  "returns": "object",
+  "examples": [
+    "fabio <group> my-new-command --workspace $WS --id $ID --some-flag Value"
+  ]
+}
+```
 
-The `fabio context` system provides structured knowledge for AI agents consuming the CLI. When spec changes introduce new capabilities, update the corresponding context data files so agents can discover and use them correctly.
+After adding examples, regenerate to pick up structural changes:
+```bash
+cargo test --bin fabio generate_agent_schema -- --include-ignored
+```
 
-### `src/commands/context/agent.rs` — Command Schema
+### Output Shape Examples (MANDATORY for non-obvious responses)
 
-If you add a new subcommand or modify flags/options on an existing command, update the machine-readable schema in `agent.rs`. Each command group entry lists subcommands with their flags, types, mutability, and descriptions. Agents rely on this for command discovery.
+If the new command returns non-trivial JSON (nested objects, aggregated results, non-standard envelope), add a file in `data/examples/` and register it in `examples.rs`:
 
-### `src/commands/context/data/schemas/` — Item Definition Schemas
+```json
+{
+  "command": "fabio <group> <cmd> --workspace $WS ...",
+  "description": "What this shows",
+  "response": {"data": {...}},
+  "notes": "Important agent-relevant notes",
+  "query_examples": [
+    {"query": "data.id", "description": "Extract the ID"}
+  ]
+}
+```
 
-If the spec introduces a **new item type** or changes the definition format (part paths, creation body, required fields) of an existing item type, add or update the corresponding JSON file in `data/schemas/`. Each schema file describes: `type`, `description`, `create_command`, `definition_format`, `definition_parts`, `creation_body_template`, `flags`, `notes`, and `related_commands`. See `data/schemas/lakehouse.json` for the canonical structure.
+Standard CRUD responses (create returns object with id/displayName, list returns `{"data":[...],"count":N}`, delete returns `{"status":"deleted","id":"..."}`) do NOT need output examples — agents already know these patterns.
 
-### `src/commands/context/data/examples/` — Output Examples
+### Item Definition Schemas (for new item types)
 
-If you add a new command with a non-obvious response shape (nested objects, aggregated results, URL outputs), add a JSON example file in `data/examples/` and register it in `src/commands/context/examples.rs` in the `OUTPUT_EXAMPLES` constant via `include_str!()`. Each example has: `command`, `description`, `response` (representative JSON output), `notes`, and optional `query_examples` (JMESPath snippets for common extractions).
+If the spec introduces a new item type, add `data/schemas/<type>.json` and register in `schemas.rs`. Structure: `type`, `description`, `create_command`, `definition_format`, `definition_parts`, `creation_body_template`, `flags`, `notes`, `related_commands`.
 
-### `src/commands/context/data/workflows/` — Workflow Recipes
+### Workflow Recipes (for new multi-step flows)
 
-If the spec changes reveal a **new multi-step workflow** (e.g., a new item type requiring a create-configure-publish sequence, or a new integration between two item types), add a workflow recipe JSON. Structure: `name`, `description`, `prerequisites`, `steps` (numbered with `command` and `description`), and `tips`. Agents use these to orchestrate complex operations.
+If spec changes reveal a new multi-step workflow (create-configure-publish sequence, new integration between item types), add `data/workflows/<name>.json` and register in `workflows.rs`. Structure: `name`, `description`, `prerequisites`, `steps` (numbered with `command` + `description`), `tips`.
 
-### `src/commands/context/data/best_practices/` — Best Practices
+### Best Practices (for new operational patterns)
 
-If the spec reveals new operational patterns (new pagination behavior, new LRO quirk, new beta/preview flag requirement, new throttling guidance, new required query parameters), add or update the relevant best-practice JSON file. Structure: `topic`, `title`, `summary`, plus domain-specific guidance sections.
+If the spec reveals new gotchas (required field ordering, beta/preview flags, new throttling behavior, PascalCase requirements, non-standard response keys), update `data/best_practices/<topic>.json`.
 
-### Decision Criteria
+## Tests
 
-Update context files when ANY of these apply:
-- A new item type is implemented → add `data/schemas/{type}.json` + update `schemas.rs`
-- A new command has non-trivial output → add `data/examples/{cmd}.json` + update `examples.rs`
-- A new multi-step creation/configuration flow is needed → add `data/workflows/{flow}.json` + update `workflows.rs`
-- A spec change introduces a gotcha (required field ordering, beta flag, enum constraint) → update relevant `data/best_practices/{topic}.json`
-- Any new subcommand or flag is added → update `agent.rs` command schema
-- An API behavioral change affects how a command/subcommand works (new required fields, changed response shape, modified LRO pattern, new error codes, renamed parameters) → update the relevant schema, example, or best-practice file so agents use the updated behavior correctly
+### Unit tests
+When the spec provides example request/response JSON, add unit tests in the relevant `src/commands/*.rs` `#[cfg(test)]` module that verify serialization/deserialization against those examples. Cover edge cases (optional fields, enum variants, default values).
+
+### E2E tests
+Add or update integration tests in `tests/e2e_*.rs` that exercise new or changed endpoints. Include `--dry-run` tests verifying the constructed request body matches the spec format.
+
+## AGENTS.md API Behaviors
+
+Document non-obvious API behaviors discovered from the spec in the appropriate "API Behaviors Discovered" section in AGENTS.md:
+- Required vs optional fields that differ from intuition
+- Non-standard response keys (not `"value"`)
+- PascalCase vs camelCase requirements
+- Query parameter requirements (`?beta=true`, `?preview=true`)
+- Discriminated union patterns in request bodies
+- Fields the server auto-adds or strips
+- Error codes and their meaning
+
+## README.md
+
+Update only if the spec reveals major new capabilities that change the project's feature description (new item type categories, new authentication methods, new deployment capabilities).
+
+## Decision Criteria
+
+| Spec change type | Action required |
+|-----------------|----------------|
+| New endpoint for existing item type | Add subcommand + examples in commands.json |
+| New item type | Add full command module + schema + examples + update AGENTS.md |
+| Modified request schema (new required field) | Update command handler + tests + AGENTS.md behavior |
+| Modified response schema | Update output handling + add/update output example |
+| New enum values | Update clap `possible_values` + commands.json |
+| New LRO/async pattern | Update handler + best-practices if novel |
+| New beta/preview flag requirement | Add query param + document in AGENTS.md |
+| Deprecated field | Remove from request body + add note to AGENTS.md |
 
 ## Tool Usage Rules
 
