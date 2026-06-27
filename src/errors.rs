@@ -38,6 +38,37 @@ impl ErrorCode {
             Self::Unknown => "UNKNOWN",
         }
     }
+
+    /// Returns the stable process exit code for this error.
+    ///
+    /// These are stable and documented — agents can branch on `$?` without
+    /// parsing JSON. New codes may be added but existing ones never change.
+    ///
+    /// | Code | Name | Meaning |
+    /// |------|------|---------|
+    /// | 0 | ok | Success |
+    /// | 1 | error | Generic or unclassified failure |
+    /// | 2 | usage | Invalid command syntax (clap) |
+    /// | 3 | auth_required | Not authenticated |
+    /// | 4 | forbidden | Permission denied or command blocked |
+    /// | 5 | not_found | Resource does not exist |
+    /// | 6 | conflict | Resource already exists |
+    /// | 7 | rate_limited | API quota or rate limit reached |
+    /// | 8 | timeout | Operation timed out |
+    /// | 9 | network | Network connectivity failure |
+    /// | 10 | readonly | Mutation blocked by --readonly |
+    pub const fn exit_code(self) -> i32 {
+        match self {
+            Self::AuthRequired => 3,
+            Self::Forbidden | Self::ReadonlyMode => 4,
+            Self::NotFound => 5,
+            Self::Conflict => 6,
+            Self::RateLimited | Self::CapacityInactive => 7,
+            Self::Timeout => 8,
+            Self::NetworkError => 9,
+            Self::InvalidInput | Self::ApiError | Self::Unknown => 1,
+        }
+    }
 }
 
 impl fmt::Display for ErrorCode {

@@ -72,12 +72,12 @@ fn run() -> std::result::Result<(), i32> {
         Err(e) => {
             if let Some(fabio_err) = e.downcast_ref::<errors::FabioError>() {
                 output::render_error(fabio_err);
-                return Err(1);
+                return Err(fabio_err.code.exit_code());
             }
             // Unexpected error - still render as structured JSON
             let fabio_err = errors::FabioError::new(errors::ErrorCode::Unknown, e.to_string());
             output::render_error(&fabio_err);
-            Err(1)
+            Err(fabio_err.code.exit_code())
         }
     }
 }
