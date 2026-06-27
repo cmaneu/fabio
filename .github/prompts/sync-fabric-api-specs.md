@@ -31,9 +31,8 @@ The Fabric API specs contain `x-ms-examples`, example request/response bodies, e
 - **E2E tests**: Add or update integration tests in `tests/e2e_*.rs` that exercise the new or changed endpoints. Use spec examples as reference for expected request bodies and response shapes. Include `--dry-run` tests that verify the constructed request body matches the spec's example format.
 
 ### Documentation
-- **EXAMPLES.md**: Add practical usage examples for new or changed commands, using the spec's example payloads as realistic `--content` or `--file` values. Show both the fabio command and the expected output shape.
-- **README.md**: Update command listings and feature descriptions if the spec reveals new capabilities.
-- **COMMANDS.md**: Update flag/option signatures for modified commands.
+- **README.md**: Update command listings, feature descriptions, and GitHub Actions examples if the spec reveals new capabilities.
+- **commands.json examples**: Add practical usage examples to the `examples` field in `commands.json` for new or changed commands, using the spec's example payloads as realistic `--content` or `--file` values. Regenerate with `cargo test --bin fabio generate_agent_schema -- --include-ignored`.
 
 ### AGENTS.md API Behaviors
 - **Document discovered behaviors**: When the spec reveals non-obvious API behaviors — required field ordering, enum values, default values, error codes, LRO patterns, pagination keys, response envelope differences, or undocumented constraints — add them to the appropriate "API Behaviors Discovered" section in AGENTS.md. This is critical institutional knowledge that prevents future regressions.

@@ -218,9 +218,27 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 
 ## Commands
 
-See [COMMANDS.md](COMMANDS.md) for the full list of 76 command groups and 830+ subcommands.
+76 command groups with 807+ subcommands covering the full Fabric REST API surface. Use the built-in introspection to discover commands:
 
-If you are an AI agent, run `fabio context agent` to get a machine-readable command schema with flags, types, mutability, and examples. Run `fabio context schema <TYPE>` to understand definition formats, `fabio context workflow <NAME>` for multi-step recipes, and `fabio context best-practices <TOPIC>` for operational guidance.
+```bash
+# Compact index of all groups + subcommand names
+fabio context agent
+
+# Full details for a specific group (all flags, types, examples)
+fabio context agent --group lakehouse
+
+# Deep-dive on one command
+fabio context describe lakehouse sync
+
+# Search by keyword
+fabio context find "upload"
+
+# Multi-step workflow recipes
+fabio context workflow cicd-deploy
+
+# Best practices
+fabio context best-practices throttling
+```
 
 ## Authentication
 
@@ -326,7 +344,99 @@ fabio lakehouse list --out<Tab> → --output
 
 ## Examples
 
-See [EXAMPLES.md](EXAMPLES.md) for usage examples covering all major workflows (lakehouse, notebooks, warehouses, real-time intelligence, semantic models, CI/CD, GitHub Actions, and more).
+Use `fabio context describe <group> <command>` for examples of any specific command. Use `fabio context workflow <name>` for multi-step recipes. Available workflows:
+
+- `lakehouse-etl` -- Lakehouse + notebook + load-table + schedule
+- `rti-pipeline` -- Eventhouse + KQL DB + EventStream end-to-end
+- `direct-lake-report` -- Semantic model (TMDL) + report creation
+- `cicd-deploy` -- Export + plan + apply with content-hash convergence
+- `data-agent-setup` -- Create + datasource + few-shots + publish
+
+## GitHub Actions
+
+Use fabio in CI/CD workflows to deploy Fabric artifacts automatically.
+
+### OIDC Federated Credentials (Recommended)
+
+No long-lived secrets. Uses GitHub's OIDC token exchange:
+
+```yaml
+name: Fabric Deploy
+on: [push]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Install fabio
+        run: |
+          ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
+          curl -fsSL "https://github.com/iemejia/fabio/releases/latest/download/fabio-linux-${ARCH}.tar.gz" \
+            | tar -xz -C /usr/local/bin
+
+      - name: Deploy to Fabric
+        run: |
+          fabio deploy plan --source ./fabric-items/ --workspace "Production"
+          fabio deploy apply --source ./fabric-items/ --workspace "Production"
+```
+
+### Service Principal with Client Secret
+
+Simplest setup -- just set environment variables:
+
+```yaml
+name: Fabric Deploy
+on: [push]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install fabio
+        run: |
+          ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
+          curl -fsSL "https://github.com/iemejia/fabio/releases/latest/download/fabio-linux-${ARCH}.tar.gz" \
+            | tar -xz -C /usr/local/bin
+
+      - name: Deploy to Fabric
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          fabio deploy plan --source ./fabric-items/ --workspace "Production"
+          fabio deploy apply --source ./fabric-items/ --workspace "Production"
+```
+
+### Agent Safety
+
+When giving agents access to fabio, use the safety flags:
+
+```bash
+# Read-only mode: blocks all mutations at the HTTP layer
+FABIO_READONLY=1 fabio lakehouse list --workspace $WS
+
+# Command allowlist: only these groups are available
+FABIO_ENABLE_COMMANDS=workspace,lakehouse,context fabio workspace list
+
+# Combined: agent can only read, only from allowed groups
+FABIO_READONLY=1 FABIO_ENABLE_COMMANDS=workspace,lakehouse fabio lakehouse list-tables --workspace $WS --id $LH
+```
 
 ## Updating
 

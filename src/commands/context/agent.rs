@@ -1093,6 +1093,7 @@ fn extract_clap_surface() -> std::collections::BTreeMap<String, Vec<String>> {
 /// annotations (mutates, returns, async, destructive, `auth_scope`) from the
 /// current `commands.json`.
 #[cfg(test)]
+#[allow(dead_code)]
 fn generate_schema_from_clap() -> serde_json::Value {
     use clap::CommandFactory;
     let cmd = crate::cli::Cli::command();
@@ -1142,6 +1143,7 @@ fn generate_schema_from_clap() -> serde_json::Value {
 
 /// Generate subcommand entries for a single group.
 #[cfg(test)]
+#[allow(dead_code)]
 fn generate_subcommands(
     group: &clap::Command,
     existing_group: Option<&serde_json::Value>,
@@ -1222,6 +1224,7 @@ fn generate_subcommands(
 
 /// Generate flag entries for a single subcommand from clap arg metadata.
 #[cfg(test)]
+#[allow(dead_code)]
 fn generate_flags(
     sc: &clap::Command,
     existing_sc: Option<&serde_json::Value>,
@@ -1302,6 +1305,7 @@ fn generate_flags(
 /// Infer whether a command mutates state from its name.
 /// Read-only patterns: list, show, get-*, query, describe, status, check-*, search, diagnostics.
 #[cfg(test)]
+#[allow(dead_code)]
 fn infer_mutates(cmd_name: &str) -> bool {
     const READ_ONLY_PREFIXES: &[&str] = &[
         "list",
@@ -1333,6 +1337,7 @@ fn infer_mutates(cmd_name: &str) -> bool {
 
 /// Infer the return type from a command name.
 #[cfg(test)]
+#[allow(dead_code)]
 fn infer_returns(cmd_name: &str) -> &'static str {
     if cmd_name.starts_with("list") {
         return "list";
@@ -1390,6 +1395,7 @@ fn infer_returns(cmd_name: &str) -> &'static str {
 
 /// Infer whether a command is destructive (deletes data permanently).
 #[cfg(test)]
+#[allow(dead_code)]
 fn infer_destructive(cmd_name: &str) -> bool {
     cmd_name.starts_with("delete") || cmd_name.starts_with("remove") || cmd_name == "vacuum-table"
 }
@@ -1481,326 +1487,5 @@ mod tests {
                 missing.join("\n  ")
             );
         });
-    }
-
-    /// Drift detection: ensures COMMANDS.md matches what would be generated from commands.json.
-    #[test]
-    fn commands_md_is_up_to_date() {
-        with_large_stack(|| {
-            let schema = commands_schema();
-            let schema_map = schema.as_object().expect("commands.json should be object");
-            let expected = generate_commands_md_content(schema_map);
-
-            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("COMMANDS.md");
-            let actual = std::fs::read_to_string(&path).unwrap_or_default();
-
-            assert_eq!(
-                actual, expected,
-                "COMMANDS.md is out of date.\n\
-                 Run: cargo test --bin fabio generate_commands_md -- --include-ignored"
-            );
-        });
-    }
-
-    /// Auto-generation: regenerate `commands.json` from clap metadata + existing annotations.
-    /// Run with: `cargo test generate_agent_schema -- --ignored`
-    #[test]
-    #[ignore = "writes to filesystem — run manually to regenerate commands.json"]
-    fn generate_agent_schema() {
-        with_large_stack(|| {
-            let generated = generate_schema_from_clap();
-            let pretty =
-                serde_json::to_string_pretty(&generated).expect("serialize generated schema");
-
-            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("src/commands/context/data/agent/commands.json");
-            std::fs::write(&path, pretty + "\n").expect("write commands.json");
-            eprintln!("Regenerated: {}", path.display());
-        });
-    }
-
-    /// Auto-generation: regenerate `COMMANDS.md` from `commands.json`.
-    /// Run with: `cargo test generate_commands_md -- --ignored`
-    #[test]
-    #[ignore = "writes to filesystem — run manually to regenerate COMMANDS.md"]
-    fn generate_commands_md() {
-        with_large_stack(|| {
-            let schema = commands_schema();
-            let schema_map = schema.as_object().expect("commands.json should be object");
-            let md = generate_commands_md_content(schema_map);
-
-            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("COMMANDS.md");
-            std::fs::write(&path, &md).expect("write COMMANDS.md");
-            eprintln!(
-                "Regenerated COMMANDS.md: {} ({} bytes)",
-                path.display(),
-                md.len()
-            );
-        });
-    }
-
-    #[allow(clippy::too_many_lines)]
-    fn generate_commands_md_content(
-        schema_map: &serde_json::Map<String, serde_json::Value>,
-    ) -> String {
-        use std::fmt::Write as _;
-
-        let mut md = String::with_capacity(64 * 1024);
-        md.push_str("<!-- Auto-generated from commands.json. Do not edit manually. -->\n");
-        md.push_str("<!-- Regenerate with: cargo test generate_commands_md -- --ignored -->\n\n");
-        md.push_str("# Commands\n\n");
-        md.push_str(
-            "> **AI agents**: Instead of parsing this file, run `fabio context agent` \
-             to get a machine-readable command schema with flags, types, mutability, \
-             and examples. Run `fabio context list` to discover item schemas, workflow \
-             recipes, and best practices.\n\n",
-        );
-
-        // Global flags section.
-        md.push_str("## Global Flags\n\n");
-        md.push_str("All commands accept these global flags:\n\n");
-        md.push_str("| Flag | Short | Description |\n");
-        md.push_str("|------|-------|-------------|\n");
-        md.push_str(
-            "| `--output` | `-o` | Output format: `json`, `table`, `plain`, `csv`, `tsv` |\n",
-        );
-        md.push_str("| `--json` | | Shorthand for `--output json` |\n");
-        md.push_str("| `--query` | `-q` | JMESPath expression (see [jmespath.org](https://jmespath.org/)) |\n");
-        md.push_str("| `--quiet` | | Suppress all stdout output |\n");
-        md.push_str("| `--verbose` | `-v` | HTTP/LRO/auth diagnostic tracing on stderr |\n");
-        md.push_str("| `--dry-run` | | Preview mutations without executing |\n");
-        md.push_str("| `--limit` | | Maximum items for list commands |\n");
-        md.push_str("| `--all` | | Fetch all pages (auto-paginate) |\n");
-        md.push_str("| `--continuation-token` | | Resume from a previous page |\n");
-        md.push_str("| `--profile` | | Named profile for default settings |\n");
-        md.push_str("| `--lro-timeout` | | LRO polling timeout in seconds (default: 120) |\n");
-        md.push_str("| `--force` | | Skip confirmation prompts |\n\n");
-
-        // Categorize command groups.
-        let categories: &[(&str, &[&str])] = &[
-            (
-                "Core",
-                &[
-                    "auth",
-                    "workspace",
-                    "item",
-                    "lakehouse",
-                    "capacity",
-                    "catalog",
-                    "context",
-                ],
-            ),
-            (
-                "Data Engineering",
-                &[
-                    "notebook",
-                    "environment",
-                    "spark",
-                    "spark-job-definition",
-                    "data-pipeline",
-                    "apache-airflow-job",
-                    "data-build-tool-job",
-                ],
-            ),
-            (
-                "Data Warehousing & SQL",
-                &[
-                    "warehouse",
-                    "warehouse-snapshot",
-                    "sql-database",
-                    "sql-endpoint",
-                ],
-            ),
-            (
-                "Real-Time Intelligence",
-                &[
-                    "eventhouse",
-                    "kql-database",
-                    "kql-queryset",
-                    "kql-dashboard",
-                    "eventstream",
-                    "rti",
-                ],
-            ),
-            (
-                "Data Integration",
-                &[
-                    "copy-job",
-                    "dataflow",
-                    "mirrored-database",
-                    "mirrored-catalog",
-                    "mirrored-databricks-catalog",
-                    "mirrored-warehouse",
-                    "mounted-data-factory",
-                ],
-            ),
-            (
-                "Analytics & Visualization",
-                &[
-                    "semantic-model",
-                    "report",
-                    "paginated-report",
-                    "dashboard",
-                    "datamart",
-                    "map",
-                ],
-            ),
-            (
-                "AI & Machine Learning",
-                &[
-                    "data-agent",
-                    "ml-model",
-                    "ml-experiment",
-                    "operations-agent",
-                    "anomaly-detector",
-                ],
-            ),
-            (
-                "Graph & Ontology",
-                &[
-                    "ontology",
-                    "graph-model",
-                    "graph-query-set",
-                    "digital-twin-builder",
-                    "digital-twin-builder-flow",
-                ],
-            ),
-            (
-                "Connectors & APIs",
-                &[
-                    "graphql-api",
-                    "connection",
-                    "cosmos-db-database",
-                    "snowflake-database",
-                    "azure-databricks-storage",
-                ],
-            ),
-            (
-                "Reactive & Events",
-                &[
-                    "reflex",
-                    "event-schema-set",
-                    "user-data-function",
-                    "variable-library",
-                ],
-            ),
-            (
-                "Governance & Administration",
-                &[
-                    "domain",
-                    "deployment-pipeline",
-                    "gateway",
-                    "managed-private-endpoint",
-                    "onelake-security",
-                    "admin",
-                    "deploy",
-                ],
-            ),
-            (
-                "Applications",
-                &["app-backend", "org-app", "org-app-audience"],
-            ),
-            (
-                "Configuration & Tooling",
-                &[
-                    "rest",
-                    "profile",
-                    "jobs",
-                    "feedback",
-                    "operation",
-                    "job-scheduler",
-                    "upgrade",
-                    "mcp",
-                ],
-            ),
-            ("Git Integration", &["git"]),
-        ];
-
-        let mut categorized: std::collections::HashSet<&str> = std::collections::HashSet::new();
-        for (_, groups) in categories {
-            for g in *groups {
-                categorized.insert(g);
-            }
-        }
-
-        for (category_name, groups) in categories {
-            let _ = writeln!(md, "## {category_name}\n\n```");
-            for group_name in *groups {
-                if let Some(group_val) = schema_map.get(*group_name) {
-                    let desc = group_val
-                        .get("description")
-                        .and_then(serde_json::Value::as_str)
-                        .unwrap_or("");
-                    let subcommands = group_val
-                        .get("subcommands")
-                        .and_then(serde_json::Value::as_object);
-
-                    if let Some(subcmds) = subcommands {
-                        if subcmds.is_empty() {
-                            let padded = format!("fabio {group_name}");
-                            let _ = writeln!(md, "{padded:<40} {desc}");
-                        } else {
-                            for (sc_name, sc_val) in subcmds {
-                                let sc_desc = sc_val
-                                    .get("description")
-                                    .and_then(serde_json::Value::as_str)
-                                    .unwrap_or("");
-                                let cmd_str = format!("fabio {group_name} {sc_name}");
-                                let _ = writeln!(md, "{cmd_str:<40} {sc_desc}");
-                            }
-                        }
-                    } else {
-                        let padded = format!("fabio {group_name}");
-                        let _ = writeln!(md, "{padded:<40} {desc}");
-                    }
-                    md.push('\n');
-                }
-            }
-            md.push_str("```\n\n");
-        }
-
-        // Emit any uncategorized groups.
-        let mut uncategorized: Vec<&String> = schema_map
-            .keys()
-            .filter(|k| !categorized.contains(k.as_str()))
-            .collect();
-        uncategorized.sort();
-        if !uncategorized.is_empty() {
-            md.push_str("## Other\n\n```\n");
-            for group_name in &uncategorized {
-                if let Some(group_val) = schema_map.get(*group_name) {
-                    if let Some(subcmds) = group_val
-                        .get("subcommands")
-                        .and_then(serde_json::Value::as_object)
-                    {
-                        for (sc_name, sc_val) in subcmds {
-                            let sc_desc = sc_val
-                                .get("description")
-                                .and_then(serde_json::Value::as_str)
-                                .unwrap_or("");
-                            let cmd_str = format!("fabio {group_name} {sc_name}");
-                            let _ = writeln!(md, "{cmd_str:<40} {sc_desc}");
-                        }
-                    }
-                    md.push('\n');
-                }
-            }
-            md.push_str("```\n\n");
-        }
-
-        // Summary stats.
-        let total_groups = schema_map.len();
-        let total_subcommands: usize = schema_map
-            .values()
-            .filter_map(|v| v.get("subcommands"))
-            .filter_map(serde_json::Value::as_object)
-            .map(serde_json::Map::len)
-            .sum();
-        let _ = writeln!(
-            md,
-            "---\n\n*{total_groups} command groups, {total_subcommands} subcommands total. Auto-generated from `commands.json`.*"
-        );
-
-        md
     }
 }
