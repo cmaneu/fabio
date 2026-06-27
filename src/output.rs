@@ -9,6 +9,33 @@ use serde_json::Value;
 use crate::cli::{Cli, OutputFormat};
 use crate::errors::{ErrorDetail, FabioError, RelatedResource};
 
+/// Fields that contain user-authored content and should be wrapped with untrusted markers.
+const UNTRUSTED_FIELDS: &[&str] = &["displayName", "description", "name", "message"];
+
+/// Wrap user-authored string fields in a JSON value with untrusted content markers.
+/// Recursively walks the JSON tree and wraps values of keys matching `UNTRUSTED_FIELDS`.
+fn wrap_untrusted_fields(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            for (key, val) in map.iter_mut() {
+                if UNTRUSTED_FIELDS.contains(&key.as_str()) {
+                    if let Value::String(s) = val {
+                        *s = format!("<<<UNTRUSTED>>>{s}<<<END_UNTRUSTED>>>");
+                    }
+                } else {
+                    wrap_untrusted_fields(val);
+                }
+            }
+        }
+        Value::Array(arr) => {
+            for item in arr.iter_mut() {
+                wrap_untrusted_fields(item);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// JSON envelope for single-object responses.
 #[derive(Serialize)]
 pub struct ObjectEnvelope {
@@ -93,6 +120,9 @@ pub fn render_list_with_token(
             if let Some(token) = continuation_token {
                 envelope["continuationToken"] = Value::from(token);
             }
+            if cli.wrap_untrusted {
+                wrap_untrusted_fields(&mut envelope);
+            }
             println!(
                 "{}",
                 serde_json::to_string(&envelope).unwrap_or_else(|_| r#"{"error":{"code":"SERIALIZATION_ERROR","message":"Failed to serialize output"}}"#.to_string())
@@ -173,8 +203,12 @@ pub fn render_object(cli: &Cli, obj: &Value, plain_key: &str) {
 
     match cli.effective_output() {
         OutputFormat::Json => {
+            let mut envelope_data = output_data.into_owned();
+            if cli.wrap_untrusted {
+                wrap_untrusted_fields(&mut envelope_data);
+            }
             let envelope = ObjectEnvelope {
-                data: output_data.into_owned(),
+                data: envelope_data,
             };
             println!(
                 "{}",
@@ -616,6 +650,7 @@ mod tests {
             dry_run: false,
             verbose: false,
             readonly: false,
+            wrap_untrusted: false,
             enable_commands: None,
             disable_commands: None,
             limit: None,

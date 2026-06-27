@@ -93,6 +93,12 @@ pub struct Cli {
     #[arg(long, global = true, env = "FABIO_READONLY")]
     pub readonly: bool,
 
+    /// Wrap API-returned free-text fields with untrusted content markers.
+    /// Prevents prompt injection when agent processes fabio output containing user-authored text.
+    /// Wraps: displayName, description, message fields.
+    #[arg(long, global = true, env = "FABIO_WRAP_UNTRUSTED")]
+    pub wrap_untrusted: bool,
+
     /// Allow only these command paths (comma-separated). Parent paths allow children:
     /// e.g. "workspace" allows all workspace subcommands. Unlisted commands are blocked.
     #[arg(
