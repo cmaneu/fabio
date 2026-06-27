@@ -681,6 +681,11 @@
           "displayName",
           "type",
           "capacityId"
+        ],
+        "examples": [
+          "fabio workspace list --query displayName",
+          "fabio workspace list --limit 3",
+          "fabio workspace list -o table"
         ]
       },
       "show": {
@@ -733,6 +738,9 @@
         "output_fields": [
           "id",
           "displayName"
+        ],
+        "examples": [
+          "fabio workspace create --name \"my-project\""
         ]
       },
       "update": {
@@ -766,7 +774,10 @@
         },
         "mutates": true,
         "returns": "void",
-        "destructive": true
+        "destructive": true,
+        "examples": [
+          "fabio workspace delete --id $WS --dry-run"
+        ]
       },
       "assign-capacity": {
         "description": "Assign a workspace to a capacity",
@@ -783,7 +794,10 @@
           }
         },
         "mutates": true,
-        "returns": "void"
+        "returns": "void",
+        "examples": [
+          "fabio workspace assign-capacity --id $WS --capacity $CAP_ID"
+        ]
       },
       "unassign-capacity": {
         "description": "Unassign a workspace from its capacity",
@@ -812,6 +826,9 @@
         "output_fields": [
           "applicationId",
           "servicePrincipalId"
+        ],
+        "examples": [
+          "fabio workspace provision-identity --id $WS"
         ]
       },
       "deprovision-identity": {
@@ -863,7 +880,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio workspace add-role-assignment --id $WS --principal $USER_ID --principal-type User --role Contributor"
+        ]
       },
       "update-role-assignment": {
         "description": "Update a workspace role assignment",
@@ -957,7 +977,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio workspace create-folder --id $WS --name \"Production\""
+        ]
       },
       "show-folder": {
         "description": "Show details of a workspace folder",
@@ -1054,7 +1077,10 @@
           }
         },
         "mutates": true,
-        "returns": "void"
+        "returns": "void",
+        "examples": [
+          "fabio workspace apply-tags --id $WS --tag-ids '[\"tag-uuid-1\"]'"
+        ]
       },
       "unapply-tags": {
         "description": "Remove tags from a workspace",
@@ -1087,7 +1113,10 @@
           }
         },
         "mutates": true,
-        "returns": "void"
+        "returns": "void",
+        "examples": [
+          "fabio workspace assign-to-domain --id $WS --domain $DOMAIN_ID"
+        ]
       },
       "unassign-from-domain": {
         "description": "Unassign workspace from its domain",
@@ -1126,7 +1155,10 @@
           }
         },
         "mutates": true,
-        "returns": "void"
+        "returns": "void",
+        "examples": [
+          "fabio workspace modify-default-tier --id $WS --tier Cold"
+        ]
       },
       "modify-diagnostics": {
         "description": "Modify `OneLake` diagnostics configuration",
@@ -1509,6 +1541,10 @@
           "displayName",
           "type",
           "description"
+        ],
+        "examples": [
+          "fabio item list --workspace $WS --all",
+          "fabio item list --workspace $WS --continuation-token \"eyJ...\""
         ]
       },
       "show": {
@@ -2199,6 +2235,9 @@
         "output_fields": [
           "id",
           "displayName"
+        ],
+        "examples": [
+          "fabio lakehouse create --workspace $WS --name \"DataLake\""
         ]
       },
       "update": {
@@ -2266,6 +2305,9 @@
         "returns": "list",
         "aliases": [
           "tables"
+        ],
+        "examples": [
+          "fabio lakehouse list-tables --workspace $WS --id $LH -o table"
         ]
       },
       "list-files": {
@@ -2290,6 +2332,9 @@
         "returns": "list",
         "aliases": [
           "files"
+        ],
+        "examples": [
+          "fabio lakehouse list-files --workspace $WS --id $LH --path Files/raw/"
         ]
       },
       "query": {
@@ -2339,7 +2384,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "hint": "For incremental sync (only upload new/changed files), use: fabio lakehouse sync --local <dir> --dest-workspace <ws> --dest-id <id> --dest-path <path>. Supports --checksum, --include/--exclude, --delete, and other rsync-inspired flags."
+        "hint": "For incremental sync (only upload new/changed files), use: fabio lakehouse sync --local <dir> --dest-workspace <ws> --dest-id <id> --dest-path <path>. Supports --checksum, --include/--exclude, --delete, and other rsync-inspired flags.",
+        "examples": [
+          "fabio lakehouse upload --workspace $WS --id $LH --source \"data/*.parquet\" --dest Files/raw/"
+        ]
       },
       "download": {
         "description": "Download a file from a lakehouse",
@@ -2366,7 +2414,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse download --workspace $WS --id $LH --path Files/raw/report.csv --dest ./local/"
+        ]
       },
       "upload-table": {
         "description": "Upload a local file and load it into a Delta table (upload + load-table in one step)",
@@ -2402,7 +2453,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio lakehouse upload-table --workspace $WS --id $LH --source sales.csv --table sales --mode Overwrite --format Csv"
+        ]
       },
       "load-table": {
         "description": "Load a file (already in the lakehouse) into a Delta table",
@@ -2455,7 +2509,10 @@
           }
         },
         "mutates": true,
-        "returns": "void"
+        "returns": "void",
+        "examples": [
+          "fabio lakehouse load-table --workspace $WS --id $LH --path Files/raw/products.parquet --table products --mode Append --format Parquet"
+        ]
       },
       "copy-file": {
         "description": "Copy files between lakehouses (supports glob patterns for parallel copy)",
@@ -2492,7 +2549,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse copy-file --workspace $WS --id $LH --source \"Files/raw/*.csv\" --dest-workspace $WS2 --dest-id $LH2 --dest Files/imported/"
+        ]
       },
       "move-file": {
         "description": "Move files between lakehouses (supports glob patterns for parallel move)",
@@ -2530,7 +2590,10 @@
         },
         "mutates": true,
         "returns": "void",
-        "destructive": true
+        "destructive": true,
+        "examples": [
+          "fabio lakehouse move-file --workspace $WS --id $LH --source \"Files/staging/*\" --dest Files/archive/"
+        ]
       },
       "copy-table": {
         "description": "Copy a table between lakehouses",
@@ -2566,7 +2629,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse copy-table --workspace $WS --id $LH --table sales --dest-workspace $WS2 --dest-id $LH2"
+        ]
       },
       "move-table": {
         "description": "Move a table between lakehouses (copy + delete source)",
@@ -2697,7 +2763,13 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse sync --source-workspace $WS --source-id $LH --source-path Files/data --dest-workspace $WS2 --dest-id $LH2 --dest-path Files/data --delete",
+          "fabio lakehouse sync --source-workspace $WS --source-id $LH --source-path Files/data --dest-workspace $WS2 --dest-id $LH2 --dest-path Files/data --delete --checksum",
+          "fabio lakehouse sync --source-workspace $WS --source-id $LH --source-path Files/data --dest-workspace $WS2 --dest-id $LH2 --dest-path Files/data --include \"*.csv;*.parquet\" --exclude \"*.tmp;_delta_log/*\"",
+          "fabio lakehouse sync --local ./data/ --dest-workspace $WS --dest-id $LH --dest-path Files/data"
+        ]
       },
       "create-directory": {
         "description": "Create a directory in a lakehouse (DFS)",
@@ -2807,7 +2879,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse create-shortcut --workspace $WS --id $LH --name \"external-data\" --path Files/ --target-type adls --location \"https://storageacct.dfs.core.windows.net/container\" --subpath \"data/2024/\""
+        ]
       },
       "get-shortcut": {
         "description": "Get shortcut details",
@@ -3165,7 +3240,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse iceberg-config --workspace $WS --id $LH"
+        ]
       },
       "iceberg-namespaces": {
         "description": "List table namespaces (schemas) via the Iceberg REST Catalog",
@@ -3182,7 +3260,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse iceberg-namespaces --workspace $WS --id $LH"
+        ]
       },
       "iceberg-namespace": {
         "description": "Get metadata for a specific namespace via the Iceberg REST Catalog",
@@ -3226,7 +3307,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse iceberg-tables --workspace $WS --id $LH --namespace dbo"
+        ]
       },
       "iceberg-table": {
         "description": "Get table definition (schema, partitions, properties) via the Iceberg REST Catalog",
@@ -3253,7 +3337,11 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse iceberg-table --workspace $WS --id $LH --namespace dbo --table customers",
+          "fabio lakehouse iceberg-table --workspace $WS --id $LH --namespace dbo --table sales --query \"metadata.schemas[-1].fields[].{name: name, type: type}\""
+        ]
       },
       "iceberg-table-exists": {
         "description": "Check if a table exists via the Iceberg REST Catalog (lightweight HEAD)",
@@ -3280,7 +3368,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse iceberg-table-exists --workspace $WS --id $LH --namespace dbo --table sales"
+        ]
       },
       "iceberg-namespace-exists": {
         "description": "Check if a namespace exists via the Iceberg REST Catalog (lightweight HEAD)",
@@ -3329,7 +3420,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse iceberg-credentials --workspace $WS --id $LH --namespace dbo --table sales"
+        ]
       },
       "iceberg-stats": {
         "description": "Show table statistics from the latest Iceberg snapshot (record/file counts, size)",
@@ -3356,7 +3450,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse iceberg-stats --workspace $WS --id $LH --namespace dbo --table sales"
+        ]
       },
       "iceberg-snapshots": {
         "description": "Show snapshot history for a table via the Iceberg REST Catalog",
@@ -3383,7 +3480,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse iceberg-snapshots --workspace $WS --id $LH --namespace dbo --table sales"
+        ]
       },
       "list-livy-sessions": {
         "description": "List Livy sessions for a lakehouse",
@@ -3715,7 +3815,10 @@
         },
         "mutates": false,
         "returns": "object",
-        "notes": "Returns the full command surface as JSON. Call once at session start for tool discovery."
+        "notes": "Returns the full command surface as JSON. Call once at session start for tool discovery.",
+        "examples": [
+          "fabio context agent | jq '.commands[] | select(.group == \"lakehouse\")'"
+        ]
       },
       "describe": {
         "description": "Deep-dive on a single command: flags, examples, output shape, notes — everything to invoke it",
@@ -3727,24 +3830,39 @@
         "description": "Show the definition schema/template for a Fabric item type",
         "mutates": false,
         "returns": "object",
-        "notes": "Returns creation body template, definition parts, flags, and tips for the specified item type."
+        "notes": "Returns creation body template, definition parts, flags, and tips for the specified item type.",
+        "examples": [
+          "fabio context schema Notebook",
+          "fabio context schema DataPipeline"
+        ]
       },
       "workflow": {
         "description": "Show a multi-step workflow recipe",
         "mutates": false,
         "returns": "object",
-        "notes": "Returns ordered steps with fabio commands for common multi-step tasks."
+        "notes": "Returns ordered steps with fabio commands for common multi-step tasks.",
+        "examples": [
+          "fabio context workflow direct-lake-report",
+          "fabio context workflow cicd-deploy"
+        ]
       },
       "best-practices": {
         "description": "Show best-practices guidance for a topic",
         "mutates": false,
         "returns": "object",
-        "notes": "Returns operational guidance tailored for agents using fabio as execution layer."
+        "notes": "Returns operational guidance tailored for agents using fabio as execution layer.",
+        "examples": [
+          "fabio context best-practices throttling",
+          "fabio context best-practices lro"
+        ]
       },
       "examples": {
         "description": "Show example output for a command (response shape + `JMESPath` tips)",
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio context examples lakehouse iceberg-table"
+        ]
       },
       "list": {
         "description": "List all available documentation topics (schemas, workflows, examples, best-practices)",
@@ -3806,7 +3924,13 @@
         },
         "mutates": false,
         "returns": "object",
-        "notes": "Output is a graph with nodes (items), edges (relationships), workspaces metadata, and a summary. Use --deep for full relationship discovery via definition scanning. Use --no-properties for fast inventory-only extraction. Use --output-file + --merge for incremental context building across sessions."
+        "notes": "Output is a graph with nodes (items), edges (relationships), workspaces metadata, and a summary. Use --deep for full relationship discovery via definition scanning. Use --no-properties for fast inventory-only extraction. Use --output-file + --merge for incremental context building across sessions.",
+        "examples": [
+          "fabio context tenant --workspace $WS",
+          "fabio context tenant --workspace $WS --deep --include-connections",
+          "fabio context tenant --workspace $WS --deep --output-file context.json",
+          "fabio context tenant --workspace $NEW_WS --deep --merge context.json --output-file context.json"
+        ]
       }
     }
   },
@@ -3880,6 +4004,9 @@
         "output_fields": [
           "id",
           "displayName"
+        ],
+        "examples": [
+          "fabio notebook create --workspace $WS --name \"ETL-Pipeline\" --lakehouse $LH --source etl_notebook.py"
         ]
       },
       "update": {
@@ -3926,7 +4053,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio notebook get-definition --workspace $WS --id $NB --strip-output"
+        ]
       },
       "update-definition": {
         "description": "Update the definition (source code) of a notebook",
@@ -3952,7 +4082,10 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio notebook update-definition --workspace $WS --id $NB --source updated_etl.py"
+        ]
       },
       "delete": {
         "description": "Delete a notebook",
@@ -4013,7 +4146,12 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio notebook run --workspace $WS --id $NB --wait",
+          "fabio notebook run --workspace $WS --id $NB --wait --parameters '[{\"name\":\"start_date\",\"value\":\"2024-01-01\",\"type\":\"Text\"}]'",
+          "fabio notebook run --workspace $WS --id $NB --wait --timeout 1800"
+        ]
       },
       "status": {
         "description": "Check the status of a notebook run",
@@ -4035,7 +4173,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio notebook status --workspace $WS --id $NB"
+        ]
       },
       "get-job-instance": {
         "description": "Get details of a specific job instance",
@@ -4079,7 +4220,10 @@
           }
         },
         "mutates": true,
-        "returns": "void"
+        "returns": "void",
+        "examples": [
+          "fabio notebook stop --workspace $WS --id $NB"
+        ]
       },
       "list-livy-sessions": {
         "description": "List Livy sessions for a notebook",
@@ -4189,6 +4333,9 @@
         "output_fields": [
           "id",
           "displayName"
+        ],
+        "examples": [
+          "fabio warehouse create --workspace $WS --name \"SalesWarehouse\""
         ]
       },
       "update": {
@@ -4257,7 +4404,11 @@
           }
         },
         "mutates": true,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio warehouse query --workspace $WS --id $WH --sql \"SELECT TOP 100 * FROM dbo.fact_sales ORDER BY order_date DESC\"",
+          "fabio warehouse query --workspace $WS --id $WH --sql @queries/monthly_report.sql"
+        ]
       },
       "connection-string": {
         "description": "Get the connection string for a warehouse",
@@ -4282,7 +4433,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio warehouse connection-string --workspace $WS --id $WH"
+        ]
       },
       "get-sql-pools-config": {
         "description": "Get SQL pools configuration for a workspace",
@@ -4398,7 +4552,10 @@
           }
         },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio warehouse list-restore-points --workspace $WS --id $WH -o table"
+        ]
       },
       "create-restore-point": {
         "description": "Create a restore point for a warehouse",
@@ -4419,7 +4576,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio warehouse create-restore-point --workspace $WS --id $WH --name \"pre-migration\""
+        ]
       },
       "show-restore-point": {
         "description": "Show details of a restore point",
@@ -4602,7 +4762,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio sql-database create --workspace $WS --name \"OrdersDB\""
+        ]
       },
       "update": {
         "description": "Update SQL database properties",
@@ -4836,7 +4999,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio sql-database query --workspace $WS --id $DB --sql \"SELECT status, COUNT(*) as cnt FROM orders GROUP BY status\""
+        ]
       },
       "connection-string": {
         "description": "Show the TDS connection string for a SQL database",
@@ -4853,7 +5019,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio sql-database connection-string --workspace $WS --id $DB"
+        ]
       },
       "import": {
         "description": "Import data from a CSV or JSON file into a SQL database table",
@@ -4892,7 +5061,11 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio sql-database import --workspace $WS --id $DB --file orders.csv --table orders --drop-if-exists",
+          "fabio sql-database import --workspace $WS --id $DB --file events.json --table events --batch-size 500"
+        ]
       }
     }
   },
@@ -4910,7 +5083,10 @@
           }
         },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio sql-endpoint list --workspace $WS -o table"
+        ]
       },
       "show": {
         "description": "Show details of a SQL endpoint",
@@ -4952,7 +5128,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio sql-endpoint connection-string --workspace $WS --id $SQLEP"
+        ]
       },
       "query": {
         "description": "Execute a SQL query against a SQL endpoint",
@@ -4977,7 +5156,8 @@
         "examples": [
           "fabio sql-endpoint query --workspace $WS --id $ID --sql \"SELECT TOP 10 * FROM dbo.my_table\"",
           "fabio sql-endpoint query --workspace $WS --id $ID --sql @query.sql",
-          "echo \"SELECT 1\" | fabio sql-endpoint query --workspace $WS --id $ID"
+          "echo \"SELECT 1\" | fabio sql-endpoint query --workspace $WS --id $ID",
+          "fabio sql-endpoint query --workspace $WS --id $SQLEP --sql \"SELECT TOP 10 * FROM dbo.sales ORDER BY order_date DESC\""
         ]
       },
       "refresh-metadata": {
@@ -5122,7 +5302,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio data-agent create --workspace $WS --name \"SalesAssistant\""
+        ]
       },
       "update": {
         "description": "Update a data agent (name and/or description)",
@@ -5208,7 +5391,12 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio data-agent query --workspace $WS --id $DA --prompt \"Who is the top customer by revenue?\"",
+          "fabio data-agent query --workspace $WS --id $DA --stage sandbox --prompt \"Test: how many orders?\"",
+          "fabio data-agent query --workspace $WS --id $DA --prompt \"Complex query...\" --timeout 600 --show-steps"
+        ]
       },
       "get-config": {
         "description": "Get the configuration of a data agent (instructions, data sources, preview runtime)",
@@ -5229,7 +5417,11 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio data-agent get-config --workspace $WS --id $DA",
+          "fabio data-agent get-config -w $WS --id $AGENT --stage published"
+        ]
       },
       "update-config": {
         "description": "Update the configuration of a data agent (instructions, preview runtime)",
@@ -5262,7 +5454,12 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio data-agent update-config --workspace $WS --id $DA --instructions \"Answer questions about sales data. Use SQL for lakehouse tables.\"",
+          "fabio data-agent update-config --workspace $WS --id $DA --instructions-file instructions.txt",
+          "fabio data-agent update-config --workspace $WS --id $DA --enable-preview-runtime"
+        ]
       },
       "list-datasources": {
         "description": "List configured data sources for a data agent",
@@ -5283,7 +5480,10 @@
           }
         },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio data-agent list-datasources --workspace $WS --id $DA"
+        ]
       },
       "show-datasource": {
         "description": "Show details of a configured data source",
@@ -5309,7 +5509,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio data-agent show-datasource --workspace $WS --id $DA --datasource \"SalesLakehouse\""
+        ]
       },
       "add-datasource": {
         "description": "Add a data source to the agent (auto-discovers schema from artifact)",
@@ -5343,7 +5546,11 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio data-agent add-datasource --workspace $WS --id $DA --artifact \"SalesLakehouse\"",
+          "fabio data-agent add-datasource --workspace $WS --id $DA --artifact $LAKEHOUSE_ID --artifact-type Lakehouse --instructions \"Contains product catalog and order history\""
+        ]
       },
       "remove-datasource": {
         "description": "Remove a data source from the agent",
@@ -5366,7 +5573,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "destructive": true
+        "destructive": true,
+        "examples": [
+          "fabio data-agent remove-datasource --workspace $WS --id $DA --datasource \"SalesLakehouse\""
+        ]
       },
       "update-datasource": {
         "description": "Update a data source's metadata (instructions, description)",
@@ -5397,7 +5607,10 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": false
+        "async": false,
+        "examples": [
+          "fabio data-agent update-datasource -w $WS --id $AGENT --datasource \"SalesLakehouse\" --instructions \"Contains order history and product catalog. Use for sales analytics queries.\""
+        ]
       },
       "list-fewshots": {
         "description": "List few-shot examples for a data source",
@@ -5423,7 +5636,10 @@
           }
         },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio data-agent list-fewshots --workspace $WS --id $DA --datasource $LH_ID"
+        ]
       },
       "show-fewshot": {
         "description": "Show a specific few-shot example by ID",
@@ -5455,7 +5671,10 @@
         },
         "mutates": false,
         "returns": "object",
-        "async": false
+        "async": false,
+        "examples": [
+          "fabio data-agent show-fewshot -w $WS --id $AGENT --datasource \"SalesLakehouse\" --fewshot-id $FS_ID"
+        ]
       },
       "add-fewshot": {
         "description": "Add a few-shot example (question/query pair) to a data source",
@@ -5487,7 +5706,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio data-agent add-fewshot --workspace $WS --id $DA --datasource $LH_ID --question \"Who is the top customer by revenue?\" --answer \"SELECT TOP 1 customer_name, SUM(total_amount) as revenue FROM orders GROUP BY customer_name ORDER BY revenue DESC\""
+        ]
       },
       "update-fewshot": {
         "description": "Update an existing few-shot example (question and/or query)",
@@ -5523,7 +5745,10 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": false
+        "async": false,
+        "examples": [
+          "fabio data-agent update-fewshot -w $WS --id $AGENT --datasource \"SalesLakehouse\" --fewshot-id $FS_ID --answer \"SELECT COUNT(DISTINCT customer_id) FROM orders\""
+        ]
       },
       "remove-fewshot": {
         "description": "Remove a few-shot example by ID",
@@ -5551,7 +5776,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "destructive": true
+        "destructive": true,
+        "examples": [
+          "fabio data-agent remove-fewshot --workspace $WS --id $DA --datasource $LH_ID --fewshot-id $FEWSHOT_ID"
+        ]
       },
       "clear-fewshots": {
         "description": "Delete all few-shot examples for a data source",
@@ -5574,7 +5802,10 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": false
+        "async": false,
+        "examples": [
+          "fabio data-agent clear-fewshots -w $WS --id $AGENT --datasource \"SalesLakehouse\""
+        ]
       },
       "upload-fewshots": {
         "description": "Bulk upload few-shot examples from a JSON or CSV file",
@@ -5601,7 +5832,11 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio data-agent upload-fewshots --workspace $WS --id $DA --datasource $LH_ID --file fewshots.json",
+          "fabio data-agent upload-fewshots --workspace $WS --id $DA --datasource $LH_ID --file fewshots.csv"
+        ]
       },
       "select-tables": {
         "description": "Select or unselect tables in a data source",
@@ -5635,7 +5870,12 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio data-agent select-tables --workspace $WS --id $DA --datasource $LH_ID --tables \"orders,products,customers\"",
+          "fabio data-agent select-tables --workspace $WS --id $DA --datasource $LH_ID --all-tables",
+          "fabio data-agent select-tables --workspace $WS --id $DA --datasource $LH_ID --tables \"staging_raw\" --unselect"
+        ]
       },
       "list-elements": {
         "description": "List elements (tables, columns) in a data source with selection state and descriptions",
@@ -5661,7 +5901,10 @@
           }
         },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio data-agent list-elements --workspace $WS --id $DA --datasource $LH_ID"
+        ]
       },
       "describe-element": {
         "description": "Set or clear a description on a table or column in a data source",
@@ -5692,7 +5935,11 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio data-agent describe-element --workspace $WS --id $DA --datasource $LH_ID --path \"dbo.orders\" --description \"Customer orders with amounts and shipping dates\"",
+          "fabio data-agent describe-element --workspace $WS --id $DA --datasource $LH_ID --path \"dbo.orders.total_amount\" --description \"Total order value in USD including tax\""
+        ]
       },
       "delete-element": {
         "description": "Delete a stale schema element (only elements no longer in the live schema)",
@@ -5721,7 +5968,10 @@
         "mutates": true,
         "returns": "void",
         "async": false,
-        "destructive": true
+        "destructive": true,
+        "examples": [
+          "fabio data-agent delete-element -w $WS --id $AGENT --datasource \"SalesLakehouse\" --element-id \"dbo.deprecated_table\""
+        ]
       },
       "get-definition": {
         "description": "Get the definition of a data agent (configuration, data sources, etc.)",
@@ -5794,7 +6044,11 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio data-agent publish --workspace $WS --id $DA --description \"v1.0 production\"",
+          "fabio data-agent publish --workspace $WS --id $DA --to-m365"
+        ]
       },
       "reset": {
         "description": "Reset staging (discard all draft changes, revert to published state)",
@@ -5812,7 +6066,10 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": false
+        "async": false,
+        "examples": [
+          "fabio data-agent reset -w $WS --id $AGENT"
+        ]
       }
     }
   },
@@ -5880,7 +6137,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio ontology create --workspace $WS --name \"ManufacturingOntology\""
+        ]
       },
       "update": {
         "description": "Update ontology properties (name and/or description)",
@@ -5987,7 +6247,10 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio ontology update-definition --workspace $WS --id $ONT --dir ./ontology/"
+        ]
       },
       "import": {
         "description": "Import an OWL ontology (RDF/XML or JSON-LD) and convert to Fabric format",
@@ -6011,7 +6274,12 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio ontology import --workspace $WS --id $ONT --file cosmic-coffee.rdf",
+          "fabio ontology import --workspace $WS --id $ONT --file domain-model.jsonld",
+          "fabio ontology import --file ontology.rdf --output-dir ./fabric-format/"
+        ]
       },
       "export": {
         "description": "Export a Fabric Ontology to OWL format (RDF/XML or JSON-LD)",
@@ -6040,7 +6308,11 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio ontology export --workspace $WS --id $ONT --format rdf --file exported.rdf",
+          "fabio ontology export --workspace $WS --id $ONT --format jsonld --file exported.jsonld"
+        ]
       }
     }
   },
@@ -6105,6 +6377,9 @@
         "output_fields": [
           "id",
           "displayName"
+        ],
+        "examples": [
+          "fabio environment create --workspace $WS --name \"DataScience-Env\""
         ]
       },
       "update": {
@@ -6170,7 +6445,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio environment publish --workspace $WS --id $ENV"
+        ]
       },
       "cancel-publish": {
         "description": "Cancel a pending publish operation",
@@ -6520,6 +6798,9 @@
         "output_fields": [
           "id",
           "displayName"
+        ],
+        "examples": [
+          "fabio data-pipeline create --workspace $WS --name \"Daily-ETL\""
         ]
       },
       "update": {
@@ -6585,7 +6866,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio data-pipeline run --workspace $WS --id $DP"
+        ]
       },
       "get-definition": {
         "description": "Get the definition of a data pipeline",
@@ -6658,7 +6942,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio data-pipeline create-schedule --workspace $WS --id $DP --content '{\"enabled\":true,\"configuration\":{\"type\":\"Cron\",\"interval\":10,\"startDateTime\":\"2026-01-01T00:00:00\",\"endDateTime\":\"2026-12-31T23:59:00\",\"localTimeZoneId\":\"Central Standard Time\"}}'"
+        ]
       },
       "list-schedules": {
         "description": "List execute schedules for a data pipeline",
@@ -6680,6 +6967,9 @@
           "id",
           "enabled",
           "createdDateTime"
+        ],
+        "examples": [
+          "fabio data-pipeline list-schedules --workspace $WS --id $DP"
         ]
       },
       "get-schedule": {
@@ -6732,7 +7022,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio data-pipeline update-schedule --workspace $WS --id $DP --schedule-id $SCHED_ID --content '{\"enabled\":false}'"
+        ]
       },
       "delete-schedule": {
         "description": "Delete an execute schedule for a data pipeline",
@@ -6779,6 +7072,9 @@
           "invokeType",
           "startTimeUtc",
           "endTimeUtc"
+        ],
+        "examples": [
+          "fabio data-pipeline list-instances --workspace $WS --id $DP -o table"
         ]
       },
       "get-instance": {
@@ -6801,7 +7097,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio data-pipeline get-instance --workspace $WS --id $DP --instance-id $INST_ID"
+        ]
       }
     }
   },
@@ -7286,7 +7585,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio report create --workspace $WS --name \"Sales Dashboard\" --dataset $SM"
+        ]
       },
       "update": {
         "description": "Update report properties (name and/or description)",
@@ -7382,7 +7684,10 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio report update-definition --workspace $WS --id $RPT --file definition.pbir --report-json report.json"
+        ]
       },
       "publish-to-web": {
         "description": "Publish a report to the web (generates a publicly accessible embed URL)",
@@ -7479,6 +7784,9 @@
         "output_fields": [
           "id",
           "displayName"
+        ],
+        "examples": [
+          "fabio semantic-model create --workspace $WS --name \"SalesModel\" --file model.tmdl --connection $SQL_ENDPOINT_ID"
         ]
       },
       "update": {
@@ -7592,7 +7900,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio semantic-model query --workspace $WS --id $SM --dax \"EVALUATE SUMMARIZECOLUMNS('Sales'[Country], \\\"Revenue\\\", SUM('Sales'[Amount]))\""
+        ]
       },
       "bind-connection": {
         "description": "Bind a semantic model to a connection",
@@ -7652,7 +7963,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio semantic-model refresh --workspace $WS --id $SM"
+        ]
       },
       "takeover": {
         "description": "Take over a semantic model (converts definition-managed to service-managed for portal editing)",
@@ -7669,7 +7983,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio semantic-model takeover --workspace $WS --id $SM"
+        ]
       },
       "list-parameters": {
         "description": "List parameters of a semantic model",
@@ -8013,6 +8330,9 @@
         "output_fields": [
           "id",
           "displayName"
+        ],
+        "examples": [
+          "fabio eventhouse create --workspace $WS --name \"TelemetryHub\""
         ]
       },
       "update": {
@@ -8164,7 +8484,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio eventstream create --workspace $WS --name \"SensorIngestion\""
+        ]
       },
       "update": {
         "description": "Update eventstream properties (name and/or description)",
@@ -8438,7 +8761,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio eventstream get-source-connection --workspace $WS --id $ES --source-id $SRC"
+        ]
       },
       "pause-source": {
         "description": "Pause a source",
@@ -8513,7 +8839,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio eventstream add-source --workspace $WS --id $ES --name \"app-source\" --source-type CustomEndpoint"
+        ]
       },
       "add-destination": {
         "description": "Add a destination to an eventstream (fetches current definition, merges, and updates)",
@@ -8549,7 +8878,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio eventstream add-destination --workspace $WS --id $ES --name \"kql-sink\" --destination-type Eventhouse --input-node \"app-source-stream\" --properties '{\"dataIngestionMode\":\"DirectIngestion\",\"workspaceId\":\"'$WS'\",\"itemId\":\"'$KDB'\",\"tableName\":\"SensorEvents\",\"connectionName\":\"es-conn-1\",\"mappingRuleName\":\"JsonMapping\"}'"
+        ]
       },
       "add-sample-source": {
         "description": "Add a sample data source to an eventstream (high-level helper)",
@@ -8571,7 +8903,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio eventstream add-sample-source --workspace $WS --id $ES --name \"test-data\""
+        ]
       },
       "add-derived-stream": {
         "description": "Add a derived stream (filtered/transformed) between existing nodes",
@@ -8602,7 +8937,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio eventstream add-derived-stream --workspace $WS --id $ES --name \"high-temp-stream\" --input-node \"app-source-stream\""
+        ]
       },
       "validate": {
         "description": "Validate an eventstream definition (client-side checks, no API call)",
@@ -8621,7 +8959,11 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio eventstream validate --file my-eventstream-def.json",
+          "fabio eventstream validate --workspace $WS --id $ES"
+        ]
       },
       "list-components": {
         "description": "List available eventstream component types (sources, destinations, operators)",
@@ -8632,7 +8974,11 @@
           }
         },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio eventstream list-components --category source",
+          "fabio eventstream list-components --category destination"
+        ]
       }
     }
   },
@@ -8701,7 +9047,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio kql-database create --workspace $WS --name \"SensorDB\" --eventhouse-id $EH"
+        ]
       },
       "update": {
         "description": "Update KQL database properties (name and/or description)",
@@ -8773,7 +9122,11 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio kql-database query --workspace $WS --id $KDB --kql \".create table SensorEvents (DeviceId: string, Temperature: real, Timestamp: datetime)\"",
+          "fabio kql-database query --workspace $WS --id $KDB --kql \"SensorEvents | where Timestamp > ago(1h) | summarize avg(Temperature) by DeviceId\""
+        ]
       },
       "list-entities": {
         "description": "List entities (tables, materialized views, external tables, functions) in a database",
@@ -8798,7 +9151,11 @@
           }
         },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio kql-database list-entities --workspace $WS --id $KDB",
+          "fabio kql-database list-entities --workspace $WS --id $KDB --entity-type table"
+        ]
       },
       "describe": {
         "description": "Get schema for all entities in a database",
@@ -8819,7 +9176,10 @@
           }
         },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio kql-database describe --workspace $WS --id $KDB"
+        ]
       },
       "describe-entity": {
         "description": "Get detailed schema for a specific entity (table, view, function)",
@@ -8849,7 +9209,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio kql-database describe-entity --workspace $WS --id $KDB --entity-name SensorEvents"
+        ]
       },
       "sample": {
         "description": "Sample rows from a table, materialized view, external table, or function",
@@ -8883,7 +9246,10 @@
           }
         },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio kql-database sample --workspace $WS --id $KDB --entity-name SensorEvents --count 5"
+        ]
       },
       "ingest": {
         "description": "Ingest inline data into a KQL table",
@@ -8913,7 +9279,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio kql-database ingest --workspace $WS --id $KDB --table SensorEvents --data \"DeviceId,Temperature,Timestamp\\ndev-001,23.5,2026-06-18T10:00:00Z\""
+        ]
       },
       "show-queryplan": {
         "description": "Show execution plan for a KQL query without running it",
@@ -8938,7 +9307,10 @@
           }
         },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio kql-database show-queryplan --workspace $WS --id $KDB --kql \"SensorEvents | summarize avg(Temperature) by bin(Timestamp, 1h)\""
+        ]
       },
       "diagnostics": {
         "description": "Run cluster diagnostics (capacity, health, ingestion failures)",
@@ -8959,7 +9331,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio kql-database diagnostics --workspace $WS --id $KDB"
+        ]
       },
       "deeplink": {
         "description": "Generate a deeplink URL for a KQL query in Fabric portal or ADX Web Explorer",
@@ -8989,7 +9364,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio kql-database deeplink --workspace $WS --id $KDB --kql \"SensorEvents | where Temperature > 30 | take 100\""
+        ]
       },
       "get-definition": {
         "description": "Get the definition of a KQL database (KQL script)",
@@ -9327,7 +9705,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio kql-queryset run --workspace $WS --id $QS --tab \"Hourly Summary\""
+        ]
       }
     }
   },
@@ -9580,7 +9961,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio mirrored-database create --workspace $WS --name \"MirroredSalesDB\""
+        ]
       },
       "update": {
         "description": "Update mirrored database properties (name and/or description)",
@@ -9692,7 +10076,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio mirrored-database start --workspace $WS --id $MDB"
+        ]
       },
       "stop": {
         "description": "Stop mirroring",
@@ -9726,7 +10113,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio mirrored-database status --workspace $WS --id $MDB"
+        ]
       },
       "table-status": {
         "description": "Get tables mirroring status",
@@ -9743,7 +10133,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio mirrored-database table-status --workspace $WS --id $MDB -o table"
+        ]
       }
     }
   },
@@ -9761,7 +10154,10 @@
           }
         },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio reflex list --workspace $WS"
+        ]
       },
       "show": {
         "description": "Show details of a reflex",
@@ -9868,7 +10264,10 @@
         },
         "mutates": false,
         "returns": "object",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio reflex get-definition --workspace $WS --id $REFLEX --decode"
+        ]
       },
       "update-definition": {
         "description": "Update the definition of a reflex",
@@ -9953,7 +10352,11 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio reflex create-trigger --workspace $WS --name \"Flood Alert Illinois\" --eventhouse-id $EH --database \"WeatherDB\" --table \"StormEvents\" --condition \"State == 'ILLINOIS' and EventType == 'Flood'\" --action email --recipients \"ops@company.com,alerts@company.com\" --interval 120",
+          "fabio reflex create-trigger --workspace $WS --name \"High Temperature Alert\" --eventhouse-id $EH --database \"SensorDB\" --table \"SensorEvents\" --condition \"Temperature > 50\" --action teams --recipients \"team@company.com\" --message \"Temperature threshold exceeded!\""
+        ]
       },
       "configure-kql-source": {
         "description": "Configure a KQL data source (portal-only operation)",
@@ -10026,7 +10429,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio ml-model create --workspace $WS --name \"ChurnPredictor\""
+        ]
       },
       "update": {
         "description": "Update ML model properties (name and/or description)",
@@ -10421,7 +10827,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio spark get-settings --workspace $WS"
+        ]
       },
       "update-settings": {
         "description": "Update workspace-level Spark settings",
@@ -10523,7 +10932,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio spark create-pool --workspace $WS --content '{\"name\":\"HighMem\",\"nodeFamily\":\"MemoryOptimized\",\"nodeSize\":\"Large\",\"autoScale\":{\"enabled\":true,\"minNodeCount\":1,\"maxNodeCount\":10}}'"
+        ]
       },
       "update-pool": {
         "description": "Update a custom Spark pool",
@@ -10777,7 +11189,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio spark-job-definition create --workspace $WS --name \"DailyAgg\" --file spark_job.json"
+        ]
       },
       "update": {
         "description": "Update Spark job definition properties (name and/or description)",
@@ -10889,7 +11304,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio spark-job-definition run --workspace $WS --id $SJD --wait"
+        ]
       }
     }
   },
@@ -11125,7 +11543,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio cosmos-db-database create --workspace $WS --name \"CosmosOrders\""
+        ]
       },
       "update": {
         "description": "Update Cosmos DB database properties",
@@ -12796,7 +13217,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio graph-model create --workspace $WS --name \"FactoryGraph\" --ontology $ONT"
+        ]
       },
       "update": {
         "description": "Update graph model properties (name and/or description)",
@@ -12939,7 +13363,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio graph-model execute-query --workspace $WS --id $GM --query \"nodes('Equipment') | where status == 'Offline'\""
+        ]
       },
       "get-queryable-graph-type": {
         "description": "Get the queryable graph type",
@@ -13952,7 +14379,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio apache-airflow-job create --workspace $WS --name \"DataOrchestrator\""
+        ]
       },
       "update": {
         "description": "Update Apache Airflow job properties (name and/or description)",
@@ -14068,7 +14498,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio apache-airflow-job start-environment --workspace $WS --id $AJ"
+        ]
       },
       "stop-environment": {
         "description": "Stop the Airflow environment",
@@ -14102,7 +14535,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio apache-airflow-job get-environment --workspace $WS --id $AJ"
+        ]
       },
       "list-libraries": {
         "description": "List installed libraries in the environment",
@@ -14144,7 +14580,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio apache-airflow-job deploy-requirements --workspace $WS --id $AJ --content \"pandas>=2.0\\npyarrow>=14.0\""
+        ]
       },
       "get-settings": {
         "description": "Get environment settings",
@@ -14292,7 +14731,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio apache-airflow-job upload-file --workspace $WS --id $AJ --path dags/daily_etl.py --source ./dags/daily_etl.py"
+        ]
       },
       "delete-file": {
         "description": "Delete a file from the Airflow job",
@@ -14545,6 +14987,9 @@
           "id",
           "displayName",
           "description"
+        ],
+        "examples": [
+          "fabio azure-databricks-storage list --workspace $WS"
         ]
       },
       "show": {
@@ -14588,6 +15033,9 @@
         "output_fields": [
           "id",
           "displayName"
+        ],
+        "examples": [
+          "fabio azure-databricks-storage create --workspace $WS --name \"My Databricks Storage\""
         ]
       },
       "update": {
@@ -14635,7 +15083,10 @@
         },
         "mutates": true,
         "returns": "void",
-        "destructive": true
+        "destructive": true,
+        "examples": [
+          "fabio azure-databricks-storage delete --workspace $WS --id $ADS_ID --hard-delete"
+        ]
       },
       "get-definition": {
         "description": "Get the definition of an Azure Databricks storage item",
@@ -14657,7 +15108,10 @@
         },
         "mutates": false,
         "returns": "object",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio azure-databricks-storage get-definition --workspace $WS --id $ADS_ID --decode"
+        ]
       },
       "update-definition": {
         "description": "Update the definition of an Azure Databricks storage item",
@@ -14683,7 +15137,10 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio azure-databricks-storage update-definition --workspace $WS --id $ADS_ID --file definition.json"
+        ]
       }
     }
   },
@@ -15233,7 +15690,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio gateway create --name \"data-gateway\" --capacity $CAP --subscription $SUB --resource-group $RG --vnet myVNet --subnet data-subnet"
+        ]
       },
       "update": {
         "description": "Update gateway properties",
@@ -15510,7 +15970,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio git status --workspace $WS -o table"
+        ]
       },
       "commit": {
         "description": "Commit workspace changes to the connected remote branch",
@@ -15547,7 +16010,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio git commit --workspace $WS --message \"feat: add sales pipeline\" --wait"
+        ]
       },
       "pull": {
         "description": "Pull remote changes into the workspace (update from Git)",
@@ -15588,7 +16054,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio git pull --workspace $WS --strategy prefer-remote --wait"
+        ]
       },
       "connect": {
         "description": "Connect a workspace to a Git repository",
@@ -15643,7 +16112,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio git connect --workspace $WS --provider github --owner myorg --repo fabric-project --branch main --directory \"/\" --connection-id $GIT_CONN"
+        ]
       },
       "disconnect": {
         "description": "Disconnect a workspace from Git",
@@ -15685,7 +16157,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio git init --workspace $WS --strategy prefer-workspace"
+        ]
       },
       "checkout": {
         "description": "Switch to a different branch (disconnect + connect + init)",
@@ -15720,7 +16195,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio git checkout --workspace $WS --branch feature/new-model --strategy prefer-remote"
+        ]
       },
       "connection": {
         "description": "Show or manage Git connection and credentials",
@@ -15841,6 +16319,9 @@
         "output_fields": [
           "id",
           "displayName"
+        ],
+        "examples": [
+          "fabio connection create --name \"AzureSQL-Prod\" --connectivity-type ShareableCloud --type Sql --parameters '{\"server\":\"myserver.database.windows.net\",\"database\":\"mydb\"}' --credential-type Basic --credentials '{\"username\":\"admin\",\"password\":\"***\"}'"
         ]
       },
       "update": {
@@ -15903,7 +16384,10 @@
       "list-supported-types": {
         "description": "List supported connection types (gateway types catalog)",
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio connection list-supported-types -o table"
+        ]
       },
       "list-role-assignments": {
         "description": "List role assignments for a connection",
@@ -16065,7 +16549,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio deployment-pipeline create --name \"Analytics Pipeline\""
+        ]
       },
       "update": {
         "description": "Update a deployment pipeline",
@@ -16149,7 +16636,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio deployment-pipeline assign-workspace --id $DP --stage-id $DEV_STAGE --workspace $DEV_WS"
+        ]
       },
       "unassign-workspace": {
         "description": "Unassign the workspace from a deployment pipeline stage",
@@ -16324,7 +16814,11 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio deployment-pipeline deploy --id $DP --source-stage $DEV_STAGE --target-stage $PROD_STAGE --wait",
+          "fabio deployment-pipeline deploy --id $DP --source-stage $DEV_STAGE --items '[{\"itemId\":\"abc\",\"itemType\":\"Notebook\"}]'"
+        ]
       }
     }
   },
@@ -16367,7 +16861,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio domain create --name \"Finance\""
+        ]
       },
       "update": {
         "description": "Update domain properties",
@@ -16428,7 +16925,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio domain assign-workspaces --id $DOM --workspace-ids '[\"ws1\",\"ws2\"]'"
+        ]
       },
       "unassign-workspaces": {
         "description": "Unassign workspaces from a domain",
@@ -16578,6 +17078,10 @@
           "warnings",
           "errors",
           "summary"
+        ],
+        "examples": [
+          "fabio deploy plan --source ./fabric-items/ --workspace \"Staging\"",
+          "fabio deploy plan --source ./fabric-items/ --workspace \"Staging\" --out plan.json"
         ]
       },
       "apply": {
@@ -16687,6 +17191,12 @@
           "duration_ms",
           "failures",
           "post_hooks"
+        ],
+        "examples": [
+          "fabio deploy apply --source ./fabric-items/ --workspace \"Staging\"",
+          "fabio deploy apply --source ./fabric-items/ --workspace \"Staging\" --dry-run",
+          "fabio deploy apply --source ./fabric-items/ --workspace \"Production\" --parameters params.json --env prod",
+          "fabio deploy apply --source ./fabric-items/ --workspace \"Staging\" --delete-orphans"
         ]
       },
       "export": {
@@ -16720,6 +17230,9 @@
           "total_items",
           "exported",
           "skipped"
+        ],
+        "examples": [
+          "fabio deploy export --workspace \"Production\" --dir ./fabric-items/ --overwrite"
         ]
       },
       "init-params": {
@@ -16755,6 +17268,10 @@
           "source_items",
           "rules_generated",
           "guids_found"
+        ],
+        "examples": [
+          "fabio deploy init-params --source ./fabric-items/ --out params.json",
+          "fabio deploy init-params --source ./dev-items/ --compare ./prod-items/ --source-env dev --compare-env prod --out params.json"
         ]
       },
       "validate": {
@@ -16775,7 +17292,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio deploy validate --source ./fabric-items/"
+        ]
       }
     }
   },
@@ -17118,7 +17638,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio onelake-security upsert --workspace $WS --id $LH --content '[{\"name\":\"AnalystRole\",\"members\":[{\"principalId\":\"...\",\"principalType\":\"User\"}],\"decisionRules\":[{\"effect\":\"Permit\",\"paths\":[\"Tables/sales\"]}]}]'"
+        ]
       },
       "delete": {
         "description": "Delete a data access role",
@@ -17207,7 +17730,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio managed-private-endpoint create --workspace $WS --name \"sql-private\" --resource-id \"/subscriptions/.../Microsoft.Sql/servers/myserver\" --group-id sqlServer"
+        ]
       },
       "delete": {
         "description": "Delete a managed private endpoint",
@@ -17326,7 +17852,12 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio profile save --name dev --workspace $DEV_WS --default-output table",
+          "fabio profile save --name prod --workspace $PROD_WS --capacity $PROD_CAP --default-output json",
+          "fabio profile save --name private --workspace $WS --private-link-workspace $PRIVATE_WS_ID"
+        ]
       },
       "use": {
         "description": "Set the active profile",
@@ -17338,12 +17869,18 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio profile use --name dev"
+        ]
       },
       "list": {
         "description": "List all saved profiles",
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio profile list -o table"
+        ]
       },
       "show": {
         "description": "Show details of a profile",
@@ -17355,7 +17892,10 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio profile show --name dev"
+        ]
       },
       "delete": {
         "description": "Delete a profile",
@@ -17368,7 +17908,10 @@
         },
         "mutates": true,
         "returns": "void",
-        "destructive": true
+        "destructive": true,
+        "examples": [
+          "fabio profile delete --name old-env"
+        ]
       }
     }
   },
@@ -17519,7 +18062,13 @@
   "upgrade": {
     "auth_scope": "local",
     "description": "Upgrade fabio to the latest release from GitHub",
-    "subcommands": {}
+    "subcommands": {},
+    "examples": [
+      "fabio upgrade --check",
+      "fabio upgrade --dry-run",
+      "fabio upgrade --target-version 0.23.0",
+      "fabio upgrade --force"
+    ]
   },
   "completions": {
     "auth_scope": "fabric",
