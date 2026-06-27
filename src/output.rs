@@ -616,6 +616,8 @@ mod tests {
             dry_run: false,
             verbose: false,
             readonly: false,
+            enable_commands: None,
+            disable_commands: None,
             limit: None,
             all: false,
             continuation_token: None,

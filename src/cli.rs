@@ -93,6 +93,26 @@ pub struct Cli {
     #[arg(long, global = true, env = "FABIO_READONLY")]
     pub readonly: bool,
 
+    /// Allow only these command paths (comma-separated). Parent paths allow children:
+    /// e.g. "workspace" allows all workspace subcommands. Unlisted commands are blocked.
+    #[arg(
+        long,
+        global = true,
+        env = "FABIO_ENABLE_COMMANDS",
+        value_delimiter = ','
+    )]
+    pub enable_commands: Option<Vec<String>>,
+
+    /// Block these command paths (comma-separated). Deny rules override allow rules.
+    /// e.g. "workspace.delete,lakehouse.delete" blocks those specific subcommands.
+    #[arg(
+        long,
+        global = true,
+        env = "FABIO_DISABLE_COMMANDS",
+        value_delimiter = ','
+    )]
+    pub disable_commands: Option<Vec<String>>,
+
     #[command(subcommand)]
     pub command: Command,
 }

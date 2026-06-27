@@ -115,6 +115,9 @@ pub async fn execute(cli: Cli) -> Result<()> {
         client = client.with_private_link(ws_id);
     }
 
+    // Enforce --enable-commands / --disable-commands before dispatch.
+    check_command_policy(&cli)?;
+
     match &cli.command {
         // Admin
         Command::Admin { command } => admin::execute(&cli, &client, command).await,
@@ -261,4 +264,153 @@ fn resolve_private_link_workspace(cli: &Cli) -> Option<String> {
     let profile_name = cli.profile.as_deref().or(store.active.as_deref())?;
     let p = store.profiles.get(profile_name)?;
     p.private_link_workspace.clone()
+}
+
+/// Enforce `--enable-commands` and `--disable-commands` policies.
+///
+/// Command paths use dot notation: `workspace.create`, `lakehouse.list-tables`.
+/// Parent paths allow/deny all children: `workspace` matches `workspace.create`, etc.
+/// Deny rules always override allow rules.
+fn check_command_policy(cli: &Cli) -> Result<()> {
+    let enable = cli.enable_commands.as_ref();
+    let disable = cli.disable_commands.as_ref();
+
+    // No policy configured — everything is allowed.
+    if enable.is_none() && disable.is_none() {
+        return Ok(());
+    }
+
+    // Extract the command path from the CLI (e.g., "workspace.create").
+    let cmd_path = extract_command_path(cli);
+
+    // Check deny list first (deny always wins).
+    if let Some(deny_list) = disable {
+        for rule in deny_list {
+            let rule_lower = rule.to_lowercase();
+            if cmd_path == rule_lower || cmd_path.starts_with(&format!("{rule_lower}.")) {
+                return Err(crate::errors::FabioError::with_hint(
+                    crate::errors::ErrorCode::Forbidden,
+                    format!("Command '{cmd_path}' is blocked by --disable-commands policy"),
+                    format!(
+                        "This command is in the deny list. Allowed commands can be \
+                         inspected via: fabio context agent. Blocked rule: {rule}"
+                    ),
+                )
+                .into());
+            }
+        }
+    }
+
+    // Check allow list (if present, only listed commands are permitted).
+    if let Some(allow_list) = enable {
+        let allowed = allow_list.iter().any(|rule| {
+            let rule_lower = rule.to_lowercase();
+            // Exact match or parent prefix match.
+            cmd_path == rule_lower
+                || cmd_path.starts_with(&format!("{rule_lower}."))
+                || rule_lower.starts_with(&format!("{cmd_path}."))
+        });
+        if !allowed {
+            return Err(crate::errors::FabioError::with_hint(
+                crate::errors::ErrorCode::Forbidden,
+                format!("Command '{cmd_path}' is not in the --enable-commands allowlist"),
+                format!("Only these commands are allowed: {}", allow_list.join(", ")),
+            )
+            .into());
+        }
+    }
+
+    Ok(())
+}
+
+/// Extract the dotted command path from the Cli struct (e.g., "workspace.create").
+fn extract_command_path(cli: &Cli) -> String {
+    use std::fmt::Write as _;
+
+    // Use clap to get the actual subcommand names from the parsed command.
+    // We reconstruct the path from the Command enum variant name + inner subcommand.
+    let mut path = String::new();
+
+    // Get the group name from the Command variant.
+    let group = match &cli.command {
+        Command::Admin { .. } => "admin",
+        Command::Workspace { .. } => "workspace",
+        Command::Item { .. } => "item",
+        Command::Lakehouse { .. } => "lakehouse",
+        Command::Capacity { .. } => "capacity",
+        Command::Catalog { .. } => "catalog",
+        Command::Context { .. } => "context",
+        Command::Notebook { .. } => "notebook",
+        Command::Warehouse { .. } => "warehouse",
+        Command::SqlDatabase { .. } => "sql-database",
+        Command::SqlEndpoint { .. } => "sql-endpoint",
+        Command::DataAgent { .. } => "data-agent",
+        Command::Ontology { .. } => "ontology",
+        Command::Environment { .. } => "environment",
+        Command::DataPipeline { .. } => "data-pipeline",
+        Command::CopyJob { .. } => "copy-job",
+        Command::Dataflow { .. } => "dataflow",
+        Command::Report { .. } => "report",
+        Command::SemanticModel { .. } => "semantic-model",
+        Command::Eventhouse { .. } => "eventhouse",
+        Command::Eventstream { .. } => "eventstream",
+        Command::KqlDatabase { .. } => "kql-database",
+        Command::KqlQueryset { .. } => "kql-queryset",
+        Command::KqlDashboard { .. } => "kql-dashboard",
+        Command::MirroredDatabase { .. } => "mirrored-database",
+        Command::Reflex { .. } => "reflex",
+        Command::MlModel { .. } => "ml-model",
+        Command::MlExperiment { .. } => "ml-experiment",
+        Command::Spark { .. } => "spark",
+        Command::SparkJobDefinition { .. } => "spark-job-definition",
+        Command::GraphqlApi { .. } => "graphql-api",
+        Command::GraphModel { .. } => "graph-model",
+        Command::GraphQuerySet { .. } => "graph-query-set",
+        Command::DigitalTwinBuilder { .. } => "digital-twin-builder",
+        Command::DigitalTwinBuilderFlow { .. } => "digital-twin-builder-flow",
+        Command::CosmosDbDatabase { .. } => "cosmos-db-database",
+        Command::SnowflakeDatabase { .. } => "snowflake-database",
+        Command::Map { .. } => "map",
+        Command::Connection { .. } => "connection",
+        Command::DeploymentPipeline { .. } => "deployment-pipeline",
+        Command::Domain { .. } => "domain",
+        Command::Deploy { .. } => "deploy",
+        Command::Gateway { .. } => "gateway",
+        Command::Git { .. } => "git",
+        Command::JobScheduler { .. } => "job-scheduler",
+        Command::OnelakeSecurity { .. } => "onelake-security",
+        Command::ManagedPrivateEndpoint { .. } => "managed-private-endpoint",
+        Command::Auth { .. } => "auth",
+        Command::Profile { .. } => "profile",
+        Command::Jobs { .. } => "jobs",
+        Command::Feedback { .. } => "feedback",
+        Command::Lro { .. } => "operation",
+        Command::Rest { .. } => "rest",
+        Command::Rti { .. } => "rti",
+        Command::Upgrade { .. } => "upgrade",
+        Command::Completions { .. } => "completions",
+        Command::Mcp { .. } => "mcp",
+        Command::VariableLibrary { .. } => "variable-library",
+        Command::EventSchemaSet { .. } => "event-schema-set",
+        Command::UserDataFunction { .. } => "user-data-function",
+        Command::OperationsAgent { .. } => "operations-agent",
+        Command::MountedDataFactory { .. } => "mounted-data-factory",
+        Command::PaginatedReport { .. } => "paginated-report",
+        Command::Dashboard { .. } => "dashboard",
+        Command::Datamart { .. } => "datamart",
+        Command::WarehouseSnapshot { .. } => "warehouse-snapshot",
+        Command::MirroredCatalog { .. } => "mirrored-catalog",
+        Command::MirroredDatabricksCatalog { .. } => "mirrored-databricks-catalog",
+        Command::MirroredWarehouse { .. } => "mirrored-warehouse",
+        Command::ApacheAirflowJob { .. } => "apache-airflow-job",
+        Command::AnomalyDetector { .. } => "anomaly-detector",
+        Command::AppBackend { .. } => "app-backend",
+        Command::AzureDatabricksStorage { .. } => "azure-databricks-storage",
+        Command::DataBuildToolJob { .. } => "data-build-tool-job",
+        Command::OrgApp { .. } => "org-app",
+        Command::OrgAppAudience { .. } => "org-app-audience",
+    };
+
+    let _ = write!(path, "{group}");
+    path
 }
