@@ -3707,6 +3707,10 @@
               "openai"
             ],
             "description": "Schema output format: native (default), mcp (Model Context Protocol), openai (function calling)"
+          },
+          "--budget": {
+            "type": "string",
+            "description": "Approximate token budget — returns the most compact useful subset that fits within this many tokens (4 chars/token estimate). Overrides --full"
           }
         },
         "mutates": false,
