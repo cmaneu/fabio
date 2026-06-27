@@ -134,6 +134,56 @@ Before pushing changes to the remote, you MUST run the cross-compilation check t
 - You can target a single platform to iterate faster: `./scripts/cross-check.sh --target windows-x64`
 - This catches issues that local clippy/tests miss: Windows-only code paths (`windows-sys`, `windows` crates), macOS Darwin targets, and ARM64 variants.
 
+## Auto-Generated Files (MANDATORY)
+
+The following files are auto-generated from the CLI source of truth. **NEVER edit them manually** — edits will be overwritten on regeneration and drift detection tests will fail in CI.
+
+### Regeneration Commands
+
+After adding, modifying, or removing commands/flags, run ALL of these:
+
+```bash
+# 1. Regenerate commands.json (the single source of truth for all agent-facing metadata)
+cargo test --bin fabio generate_agent_schema -- --include-ignored
+
+# 2. Regenerate COMMANDS.md (command reference derived from commands.json)
+cargo test --bin fabio generate_commands_md -- --include-ignored
+
+# 3. Regenerate EXAMPLES.md (examples and workflow pointers from commands.json)
+cargo test --bin fabio generate_examples_md -- --include-ignored
+
+# 4. Verify drift detection passes (these run in cargo test / CI)
+cargo test --bin fabio commands_md_is_up_to_date
+cargo test --bin fabio examples_md_is_up_to_date
+cargo test --bin fabio agent_schema_covers
+```
+
+### File Inventory
+
+| File | Generated from | Drift test | When to regenerate |
+|------|---------------|------------|-------------------|
+| `src/commands/context/data/agent/commands.json` | clap metadata | `agent_schema_covers_all_groups`, `agent_schema_covers_all_subcommands` | New command/subcommand/flag added |
+| `COMMANDS.md` | `commands.json` | `commands_md_is_up_to_date` | After regenerating `commands.json` |
+| `EXAMPLES.md` | `commands.json` + static templates | `examples_md_is_up_to_date` | After regenerating `commands.json` or changing workflow names |
+
+### How Drift Detection Works
+
+Each auto-generated file has a corresponding unit test that:
+1. Regenerates the expected content in memory (same algorithm as the generator)
+2. Reads the committed file from disk
+3. Asserts they are identical
+4. Fails with a message showing the exact regeneration command
+
+These tests run as part of the standard `cargo test` suite and in CI. If a contributor adds a command but forgets to regenerate, CI will fail with a clear error message.
+
+### One-Liner (Regenerate Everything)
+
+```bash
+cargo test --bin fabio generate_agent_schema -- --include-ignored && \
+cargo test --bin fabio generate_commands_md -- --include-ignored && \
+cargo test --bin fabio generate_examples_md -- --include-ignored
+```
+
 ## Documentation Updates (MANDATORY)
 
 When adding new features, commands, or discovering API behaviors, you MUST update the following documentation before committing:
@@ -189,9 +239,17 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
    - Update feature descriptions if capabilities have expanded.
    - Update installation or usage instructions if relevant.
 
-4. **COMMANDS.md** — Add the new command(s) with their full flag/option signatures.
+4. **COMMANDS.md** — **Auto-generated. Do NOT edit manually.** Regenerate after adding commands:
+   ```bash
+   cargo test --bin fabio generate_commands_md -- --include-ignored
+   ```
+   A drift detection test (`commands_md_is_up_to_date`) runs in CI and will FAIL if the committed file doesn't match what the generator produces.
 
-5. **EXAMPLES.md** — Add practical usage examples for new commands when applicable.
+5. **EXAMPLES.md** — **Auto-generated. Do NOT edit manually.** Regenerate after changing workflows or examples in `commands.json`:
+   ```bash
+   cargo test --bin fabio generate_examples_md -- --include-ignored
+   ```
+   A drift detection test (`examples_md_is_up_to_date`) runs in CI and will FAIL if the committed file doesn't match.
 
 **Rules:**
 - Documentation updates are part of the feature — do NOT commit code without corresponding doc updates.

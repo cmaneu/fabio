@@ -1483,6 +1483,42 @@ mod tests {
         });
     }
 
+    /// Drift detection: ensures COMMANDS.md matches what would be generated from commands.json.
+    #[test]
+    fn commands_md_is_up_to_date() {
+        with_large_stack(|| {
+            let schema = commands_schema();
+            let schema_map = schema.as_object().expect("commands.json should be object");
+            let expected = generate_commands_md_content(schema_map);
+
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("COMMANDS.md");
+            let actual = std::fs::read_to_string(&path).unwrap_or_default();
+
+            assert_eq!(
+                actual, expected,
+                "COMMANDS.md is out of date.\n\
+                 Run: cargo test --bin fabio generate_commands_md -- --include-ignored"
+            );
+        });
+    }
+
+    /// Drift detection: ensures EXAMPLES.md matches what would be generated from commands.json.
+    #[test]
+    fn examples_md_is_up_to_date() {
+        let schema = commands_schema();
+        let schema_map = schema.as_object().expect("commands.json should be object");
+        let expected = generate_examples_md_content(schema_map);
+
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("EXAMPLES.md");
+        let actual = std::fs::read_to_string(&path).unwrap_or_default();
+
+        assert_eq!(
+            actual, expected,
+            "EXAMPLES.md is out of date.\n\
+             Run: cargo test --bin fabio generate_examples_md -- --include-ignored"
+        );
+    }
+
     /// Auto-generation: regenerate `commands.json` from clap metadata + existing annotations.
     /// Run with: `cargo test generate_agent_schema -- --ignored`
     #[test]
