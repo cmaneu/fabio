@@ -88,6 +88,11 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub lro_timeout: Option<u64>,
 
+    /// Block all mutating operations (POST/PUT/PATCH/DELETE) before network dispatch.
+    /// Read-only operations (GET/HEAD) are unaffected. Use for agent safety.
+    #[arg(long, global = true, env = "FABIO_READONLY")]
+    pub readonly: bool,
+
     #[command(subcommand)]
     pub command: Command,
 }

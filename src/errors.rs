@@ -16,6 +16,7 @@ pub enum ErrorCode {
     ApiError,
     Timeout,
     NetworkError,
+    ReadonlyMode,
     Unknown,
 }
 
@@ -33,6 +34,7 @@ impl ErrorCode {
             Self::ApiError => "API_ERROR",
             Self::Timeout => "TIMEOUT",
             Self::NetworkError => "NETWORK_ERROR",
+            Self::ReadonlyMode => "READONLY_MODE",
             Self::Unknown => "UNKNOWN",
         }
     }

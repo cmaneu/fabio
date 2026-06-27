@@ -105,6 +105,11 @@ pub async fn execute(cli: Cli) -> Result<()> {
         client = client.with_lro_timeout(std::time::Duration::from_secs(timeout_secs));
     }
 
+    // Apply readonly mode from --readonly flag or FABIO_READONLY env var
+    if cli.readonly {
+        client = client.with_readonly(true);
+    }
+
     // Apply private link routing from profile if configured
     if let Some(ws_id) = resolve_private_link_workspace(&cli) {
         client = client.with_private_link(ws_id);

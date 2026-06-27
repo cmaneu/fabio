@@ -615,6 +615,7 @@ mod tests {
             force: false,
             dry_run: false,
             verbose: false,
+            readonly: false,
             limit: None,
             all: false,
             continuation_token: None,

@@ -198,6 +198,8 @@ pub struct FabricClient {
     lro_max_wait: Duration,
     /// When true, emit HTTP request/response diagnostics to stderr.
     verbose: bool,
+    /// When true, block all mutating HTTP requests (POST/PUT/PATCH/DELETE).
+    readonly: bool,
 }
 
 impl FabricClient {
@@ -222,6 +224,7 @@ impl FabricClient {
             private_link_workspace: None,
             lro_max_wait: LRO_MAX_WAIT,
             verbose: false,
+            readonly: false,
         }
     }
 
@@ -242,6 +245,30 @@ impl FabricClient {
     pub const fn with_verbose(mut self, verbose: bool) -> Self {
         self.verbose = verbose;
         self
+    }
+
+    /// Enable readonly mode — all mutating HTTP requests (POST/PUT/PATCH/DELETE) are
+    /// blocked before network dispatch. Read-only operations (GET/HEAD) are unaffected.
+    pub const fn with_readonly(mut self, readonly: bool) -> Self {
+        self.readonly = readonly;
+        self
+    }
+
+    /// Guard: reject mutating requests when readonly mode is active.
+    /// Call at the top of every POST/PUT/PATCH/DELETE method.
+    fn guard_readonly(&self, method: &str, url: &str) -> Result<()> {
+        if self.readonly {
+            return Err(FabioError::with_hint(
+                ErrorCode::ReadonlyMode,
+                format!("Blocked {method} request — readonly mode is active"),
+                format!(
+                    "Remove --readonly flag or set FABIO_READONLY=0 to allow mutations. \
+                     Blocked URL: {url}"
+                ),
+            )
+            .into());
+        }
+        Ok(())
     }
 
     /// Construct the Fabric API base URL, applying private link transform if configured.
@@ -920,6 +947,7 @@ impl FabricClient {
         item: &str,
         path: &str,
     ) -> Result<Value> {
+        self.guard_readonly("DELETE", path)?;
         validate_uuid(workspace, "workspace")?;
         validate_uuid(item, "item")?;
         let token = self.require_storage_auth().await?;
@@ -1173,6 +1201,7 @@ impl FabricClient {
     pub async fn post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
         const MAX_RATE_LIMIT_RETRIES: u32 = 3;
         const MAX_TRANSIENT_RETRIES: u32 = 3;
+        self.guard_readonly("POST", path)?;
         let url = self.fabric_url(path);
         let mut attempt: u32 = 0;
         let mut transient_attempt: u32 = 0;
@@ -1259,6 +1288,7 @@ impl FabricClient {
 
     /// POST request with raw text body (text/plain content type).
     pub async fn post_raw(&self, path: &str, content: &str) -> Result<Value> {
+        self.guard_readonly("POST", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
@@ -1292,6 +1322,7 @@ impl FabricClient {
 
     /// POST binary data with `application/octet-stream` content type (retries once on 401).
     pub async fn post_octet_stream(&self, path: &str, data: Vec<u8>) -> Result<Value> {
+        self.guard_readonly("POST", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
@@ -1329,6 +1360,7 @@ impl FabricClient {
     /// Does NOT handle LRO. Use `post_fabric_bytes_with_accept` for LRO-aware endpoints.
     #[allow(dead_code)]
     pub async fn post_fabric_bytes(&self, path: &str, body: &Value) -> Result<Vec<u8>> {
+        self.guard_readonly("POST", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
@@ -1382,6 +1414,7 @@ impl FabricClient {
         body: &Value,
         accept: &str,
     ) -> Result<Vec<u8>> {
+        self.guard_readonly("POST", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
@@ -1510,6 +1543,7 @@ impl FabricClient {
         wait: bool,
         timeout_secs: u64,
     ) -> Result<Value> {
+        self.guard_readonly("POST", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
@@ -1615,6 +1649,7 @@ impl FabricClient {
 
     /// PATCH request to Fabric REST API (retries once on 401).
     pub async fn patch(&self, path: &str, body: &Value) -> Result<Value> {
+        self.guard_readonly("PATCH", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
@@ -1655,6 +1690,7 @@ impl FabricClient {
 
     /// PUT request to Fabric REST API (retries once on 401).
     pub async fn put(&self, path: &str, body: &Value) -> Result<Value> {
+        self.guard_readonly("PUT", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
@@ -1695,6 +1731,7 @@ impl FabricClient {
 
     /// PUT request with raw text body (e.g., for file uploads requiring text/plain).
     pub async fn put_raw(&self, path: &str, content: &str) -> Result<Value> {
+        self.guard_readonly("PUT", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
@@ -1728,6 +1765,7 @@ impl FabricClient {
 
     /// DELETE request to Fabric REST API (retries once on 401).
     pub async fn delete(&self, path: &str) -> Result<Value> {
+        self.guard_readonly("DELETE", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
@@ -1764,6 +1802,7 @@ impl FabricClient {
     /// Used for Power BI-specific operations like Publish to Web.
     /// PATCH request to Power BI REST API (retries once on 401).
     pub async fn patch_powerbi(&self, path: &str, body: &Value) -> Result<Value> {
+        self.guard_readonly("PATCH", path)?;
         let token = self.require_auth().await?;
         let url = format!("{}{path}", *POWERBI_BASE_URL);
 
@@ -1827,6 +1866,7 @@ impl FabricClient {
     }
 
     pub async fn post_powerbi(&self, path: &str, body: &Value) -> Result<Value> {
+        self.guard_readonly("POST", path)?;
         let token = self.require_auth().await?;
         let url = format!("{}{path}", *POWERBI_BASE_URL);
 
@@ -1867,6 +1907,7 @@ impl FabricClient {
 
     /// PUT request to Power BI REST API (retries once on 401).
     pub async fn put_powerbi(&self, path: &str, body: &Value) -> Result<Value> {
+        self.guard_readonly("PUT", path)?;
         let token = self.require_auth().await?;
         let url = format!("{}{path}", *POWERBI_BASE_URL);
 
@@ -1907,6 +1948,7 @@ impl FabricClient {
 
     /// DELETE request to Power BI REST API (retries once on 401).
     pub async fn delete_powerbi(&self, path: &str) -> Result<Value> {
+        self.guard_readonly("DELETE", path)?;
         let token = self.require_auth().await?;
         let url = format!("{}{path}", *POWERBI_BASE_URL);
 
@@ -1941,6 +1983,7 @@ impl FabricClient {
 
     /// POST request to Power BI REST API returning raw bytes (for binary downloads like PBIX export).
     pub async fn post_powerbi_bytes(&self, path: &str, body: &Value) -> Result<Vec<u8>> {
+        self.guard_readonly("POST", path)?;
         let token = self.require_auth().await?;
         let url = format!("{}{path}", *POWERBI_BASE_URL);
 
@@ -1987,6 +2030,7 @@ impl FabricClient {
         path: &str,
         form: reqwest::multipart::Form,
     ) -> Result<Value> {
+        self.guard_readonly("POST", path)?;
         let token = self.require_auth().await?;
         let url = format!("{}{path}", *POWERBI_BASE_URL);
 
@@ -2037,6 +2081,7 @@ impl FabricClient {
 
     /// POST request to Azure Resource Manager API (with optional LRO polling).
     pub async fn arm_post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
+        self.guard_readonly("POST", path)?;
         let token = self.require_arm_auth().await?;
         let url = format!("{}{path}", *ARM_BASE_URL);
 
@@ -2073,6 +2118,7 @@ impl FabricClient {
 
     /// PUT request to Azure Resource Manager API (with LRO polling).
     pub async fn arm_put(&self, path: &str, body: &Value) -> Result<Value> {
+        self.guard_readonly("PUT", path)?;
         let token = self.require_arm_auth().await?;
         let url = format!("{}{path}", *ARM_BASE_URL);
 
@@ -2107,6 +2153,7 @@ impl FabricClient {
 
     /// PATCH request to Azure Resource Manager API (with LRO polling).
     pub async fn arm_patch(&self, path: &str, body: &Value) -> Result<Value> {
+        self.guard_readonly("PATCH", path)?;
         let token = self.require_arm_auth().await?;
         let url = format!("{}{path}", *ARM_BASE_URL);
 
@@ -2141,6 +2188,7 @@ impl FabricClient {
 
     /// DELETE request to Azure Resource Manager API (with LRO polling).
     pub async fn arm_delete(&self, path: &str) -> Result<Value> {
+        self.guard_readonly("DELETE", path)?;
         let token = self.require_arm_auth().await?;
         let url = format!("{}{path}", *ARM_BASE_URL);
 
@@ -2404,6 +2452,7 @@ impl FabricClient {
         item: &str,
         path: &str,
     ) -> Result<Value> {
+        self.guard_readonly("DELETE", path)?;
         validate_uuid(workspace, "workspace")?;
         validate_uuid(item, "item")?;
         let token = self.require_storage_auth().await?;
