@@ -1,0 +1,43 @@
+{
+  "command": "fabio connection list",
+  "description": "Lists all connections accessible to the authenticated user (tenant-level, not workspace-scoped).",
+  "response": {
+    "data": [
+      {
+        "id": "e5f6a7b8-0000-0000-0000-000000000001",
+        "displayName": "ADLS Sales Storage",
+        "connectivityType": "ShareableCloud",
+        "connectionDetails": {
+          "type": "AzureDataLakeStorage",
+          "path": "https://salesstorageacct.dfs.core.windows.net"
+        },
+        "privacyLevel": "Organizational",
+        "credentialDetails": {
+          "credentialType": "Key",
+          "singleSignOnType": "None"
+        }
+      },
+      {
+        "id": "e5f6a7b8-0000-0000-0000-000000000002",
+        "displayName": "Azure SQL Prod",
+        "connectivityType": "ShareableCloud",
+        "connectionDetails": {
+          "type": "Sql",
+          "path": "prodserver.database.windows.net"
+        },
+        "privacyLevel": "Organizational",
+        "credentialDetails": {
+          "credentialType": "OAuth2",
+          "singleSignOnType": "None"
+        }
+      }
+    ],
+    "count": 2
+  },
+  "notes": "Connections are tenant-level (no workspace prefix). Connectivity types: ShareableCloud, OnPremises, VirtualNetworkGateway, PersonalCloud. Credential types: Basic, OAuth2, Key, Anonymous, ServicePrincipal, WorkspaceIdentity. Use the connection ID when creating shortcuts or data sources.",
+  "query_examples": [
+    {"query": "data[].{name: displayName, type: connectionDetails.type}", "description": "Names and types of all connections."},
+    {"query": "data[?connectionDetails.type=='AzureDataLakeStorage'].id", "description": "IDs of ADLS connections."},
+    {"query": "data[?credentialDetails.credentialType=='OAuth2'].displayName", "description": "Connections using OAuth2."}
+  ]
+}

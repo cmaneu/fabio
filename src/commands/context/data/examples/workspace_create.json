@@ -1,0 +1,19 @@
+{
+  "command": "fabio workspace create --name \"Analytics Dev\" --description \"Development workspace for analytics team\"",
+  "description": "Creates a new Fabric workspace. Returns the workspace object without capacity (assign separately).",
+  "response": {
+    "data": {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "displayName": "Analytics Dev",
+      "description": "Development workspace for analytics team",
+      "type": "Workspace",
+      "capacityId": null,
+      "capacityRegion": null
+    }
+  },
+  "notes": "Workspace is created without capacity. Use 'fabio workspace assign-capacity --id $WS --capacity $CAP_ID' to assign. Capacity is required before creating items that need compute (notebooks, warehouses, SQL databases).",
+  "query_examples": [
+    {"query": "data.id", "description": "Get the workspace ID for subsequent commands."},
+    {"query": "data.displayName", "description": "Confirm the workspace name."}
+  ]
+}

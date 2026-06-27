@@ -1,0 +1,18 @@
+{
+  "command": "fabio notebook create --workspace $WS_ID --name \"DailyETL\" --file ./etl_notebook.ipynb --lakehouse $LH_ID",
+  "description": "Creates a notebook from an .ipynb file with optional lakehouse binding.",
+  "response": {
+    "data": {
+      "id": "e5f6a7b8-c9d0-1234-ef01-34567890abcd",
+      "displayName": "DailyETL",
+      "description": "",
+      "type": "Notebook",
+      "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    }
+  },
+  "notes": "The --lakehouse flag injects trident metadata for default lakehouse binding (available as 'lakehouse' in Spark session). Accepts .ipynb (Jupyter) or .py (Fabric notebook format) files. Cell source must be a list of strings in .ipynb format. Creation is LRO.",
+  "query_examples": [
+    {"query": "data.id", "description": "Notebook ID for run/get-definition/delete."},
+    {"query": "data.displayName", "description": "Confirm notebook name."}
+  ]
+}

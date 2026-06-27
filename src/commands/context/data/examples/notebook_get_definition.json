@@ -1,0 +1,27 @@
+{
+  "command": "fabio notebook get-definition --workspace $WS_ID --id $NB_ID",
+  "description": "Retrieves the notebook definition (format + base64-encoded parts). Use --strip-output to clear cell outputs.",
+  "response": {
+    "data": {
+      "format": "ipynb",
+      "parts": [
+        {
+          "path": "notebook-content.py",
+          "payload": "eyJuYmZvcm1hdCI6IDQsICJuYmZvcm1hdF9taW5v...",
+          "payloadType": "InlineBase64"
+        },
+        {
+          "path": ".platform",
+          "payload": "eyIkc2NoZW1hIjogImh0dHBzOi8vZGV2ZWxvcGVy...",
+          "payloadType": "InlineBase64"
+        }
+      ]
+    }
+  },
+  "notes": "Despite the path being 'notebook-content.py', the payload is base64-encoded Jupyter JSON (.ipynb). Use --strip-output to remove outputs/execution_count from cells (useful for git-friendly definitions). getDefinition is LRO (may take 2-6s). Decode payload with base64 decode to get the actual content.",
+  "query_examples": [
+    {"query": "data.format", "description": "Definition format (ipynb or py)."},
+    {"query": "data.parts[0].path", "description": "Primary content file path."},
+    {"query": "data.parts | length(@)", "description": "Number of definition parts."}
+  ]
+}

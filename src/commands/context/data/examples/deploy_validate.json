@@ -1,0 +1,26 @@
+{
+  "command": "fabio deploy validate --source ./my-workspace-export",
+  "description": "Local-only validation of a source directory (no API calls). Checks .platform files, item types, and definition structure.",
+  "response": {
+    "data": {
+      "status": "valid",
+      "items_found": 8,
+      "items": [
+        {"name": "SalesLakehouse", "type": "Lakehouse", "has_definition": false, "has_creation_payload": true},
+        {"name": "DailyETL", "type": "Notebook", "has_definition": true, "has_creation_payload": false},
+        {"name": "SalesModel", "type": "SemanticModel", "has_definition": true, "has_creation_payload": false}
+      ],
+      "warnings": [
+        "DailyETL.Notebook: references logical ID c1d2e3f4-a5b6-7890-cdef-0123456789ab not found in source"
+      ],
+      "errors": []
+    }
+  },
+  "notes": "Validate runs entirely offline (no Fabric API calls, no auth required). Checks: .platform file presence and schema, item type validity, definition part structure, logical ID cross-references. Use before 'deploy plan' to catch structural issues early. Non-zero exit on errors; warnings are informational.",
+  "query_examples": [
+    {"query": "data.status", "description": "Overall validation result (valid/invalid)."},
+    {"query": "data.errors", "description": "Fatal errors that would block deployment."},
+    {"query": "data.warnings", "description": "Non-fatal issues (e.g., unresolved references)."},
+    {"query": "data.items[?has_definition==`false`].name", "description": "Items without definition parts (Lakehouse, MLModel)."}
+  ]
+}

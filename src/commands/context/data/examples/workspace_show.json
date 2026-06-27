@@ -1,0 +1,26 @@
+{
+  "command": "fabio workspace show --id a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "description": "Shows full workspace details including capacity, region, and OneLake endpoints.",
+  "response": {
+    "data": {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "displayName": "Analytics Dev",
+      "description": "Development workspace for analytics team",
+      "type": "Workspace",
+      "capacityId": "f9e8d7c6-b5a4-3210-fedc-ba9876543210",
+      "capacityRegion": "westeurope",
+      "capacityAssignmentProgress": "Completed",
+      "oneLakeEndpoints": {
+        "blobEndpoint": "https://onelake.blob.fabric.microsoft.com",
+        "dfsEndpoint": "https://onelake.dfs.fabric.microsoft.com"
+      }
+    }
+  },
+  "notes": "The oneLakeEndpoints are used for direct storage access (DFS for file operations, Blob for copy). capacityAssignmentProgress shows 'Completed' when capacity is fully active.",
+  "query_examples": [
+    {"query": "data.capacityId", "description": "Get assigned capacity ID."},
+    {"query": "data.oneLakeEndpoints.dfsEndpoint", "description": "Get DFS endpoint for direct file access."},
+    {"query": "data.capacityRegion", "description": "Check the capacity region."},
+    {"query": "data.capacityAssignmentProgress", "description": "Verify capacity assignment is complete."}
+  ]
+}

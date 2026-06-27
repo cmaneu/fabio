@@ -1,0 +1,29 @@
+{
+  "command": "fabio lakehouse create --workspace $WS_ID --name \"SalesLakehouse\"",
+  "description": "Creates a new lakehouse in the workspace. Returns item metadata with OneLake paths.",
+  "response": {
+    "data": {
+      "id": "d4e5f6a7-b8c9-0123-def0-234567890abc",
+      "displayName": "SalesLakehouse",
+      "description": "",
+      "type": "Lakehouse",
+      "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "properties": {
+        "oneLakeTablesPath": "https://onelake.dfs.fabric.microsoft.com/a1b2c3d4-e5f6-7890-abcd-ef1234567890/d4e5f6a7-b8c9-0123-def0-234567890abc/Tables",
+        "oneLakeFilesPath": "https://onelake.dfs.fabric.microsoft.com/a1b2c3d4-e5f6-7890-abcd-ef1234567890/d4e5f6a7-b8c9-0123-def0-234567890abc/Files",
+        "sqlEndpointProperties": {
+          "id": "e5f6a7b8-c9d0-1234-ef01-34567890abcd",
+          "connectionString": "x7y8z9a0.datawarehouse.fabric.microsoft.com",
+          "provisioningStatus": "Success"
+        }
+      }
+    }
+  },
+  "notes": "Creation is LRO (may take 15-30s). The sqlEndpointProperties.id is the SQL Analytics Endpoint used for queries. Use --enable-schemas to create a multi-schema lakehouse.",
+  "query_examples": [
+    {"query": "data.id", "description": "Get the lakehouse ID."},
+    {"query": "data.properties.oneLakeFilesPath", "description": "DFS path for file uploads."},
+    {"query": "data.properties.sqlEndpointProperties.id", "description": "SQL endpoint ID for queries."},
+    {"query": "data.properties.sqlEndpointProperties.connectionString", "description": "TDS connection string."}
+  ]
+}

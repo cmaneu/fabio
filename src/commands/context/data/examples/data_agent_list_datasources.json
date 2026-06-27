@@ -1,0 +1,39 @@
+{
+  "command": "fabio data-agent list-datasources --workspace $WS_ID --id $AGENT_ID --stage staging",
+  "description": "Lists all datasources configured for a data agent (staging or published).",
+  "response": {
+    "data": [
+      {
+        "id": "b3c4d5e6-f7a8-9012-bcde-345678901234",
+        "displayName": "SalesLakehouse",
+        "type": "FabricItem",
+        "fabricItemType": "Lakehouse",
+        "itemReference": {
+          "itemId": "d4e5f6a7-b8c9-0123-def0-234567890abc",
+          "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        },
+        "description": "Main sales data lakehouse",
+        "instructions": "Use the orders table for revenue queries"
+      },
+      {
+        "id": "c4d5e6f7-a8b9-0123-cdef-456789012345",
+        "displayName": "SalesModel",
+        "type": "FabricItem",
+        "fabricItemType": "SemanticModel",
+        "itemReference": {
+          "itemId": "f6a7b8c9-d0e1-2345-f012-4567890abcde",
+          "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        },
+        "description": "",
+        "instructions": ""
+      }
+    ],
+    "count": 2
+  },
+  "notes": "Use --stage staging (default) or --stage published to view the respective configuration. The datasource ID is needed for list-elements, add-fewshot, and remove-datasource commands.",
+  "query_examples": [
+    {"query": "data[].displayName", "description": "List all datasource names."},
+    {"query": "data[?fabricItemType=='Lakehouse'].id", "description": "IDs of lakehouse datasources."},
+    {"query": "data[0].id", "description": "First datasource ID (for element/fewshot operations)."}
+  ]
+}

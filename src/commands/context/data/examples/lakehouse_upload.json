@@ -1,0 +1,23 @@
+{
+  "command": "fabio lakehouse upload --workspace $WS_ID --id $LH_ID --source ./data/*.csv --dest-path Files/raw/",
+  "description": "Uploads local files to the lakehouse Files area. Supports glob patterns and parallel upload.",
+  "response": {
+    "data": {
+      "status": "uploaded",
+      "files": [
+        {"name": "sales_2024.csv", "path": "Files/raw/sales_2024.csv", "size": 2450382},
+        {"name": "customers.csv", "path": "Files/raw/customers.csv", "size": 184320},
+        {"name": "products.csv", "path": "Files/raw/products.csv", "size": 51200}
+      ],
+      "totalFiles": 3,
+      "totalBytes": 2685902
+    }
+  },
+  "notes": "Upload uses DFS create+append+flush with Content-MD5 for integrity. Glob patterns expand locally. For large datasets, use lakehouse sync --local instead (only uploads new/changed files). Files are immediately accessible via the Files/ path in notebooks.",
+  "query_examples": [
+    {"query": "data.totalFiles", "description": "Number of files uploaded."},
+    {"query": "data.totalBytes", "description": "Total bytes transferred."},
+    {"query": "data.files[].path", "description": "Remote paths of uploaded files."},
+    {"query": "data.files[?size > `1000000`].name", "description": "Files larger than 1MB."}
+  ]
+}

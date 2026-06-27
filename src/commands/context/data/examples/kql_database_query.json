@@ -1,0 +1,19 @@
+{
+  "command": "fabio kql-database query --workspace $WS_ID --id $DB_ID --kql \"SensorEvents | summarize avg(temperature) by bin(timestamp, 1h) | top 3 by avg_temperature desc\"",
+  "description": "Executes a KQL query against a Fabric KQL Database and returns structured results.",
+  "response": {
+    "data": [
+      {"timestamp": "2026-06-20T14:00:00Z", "avg_temperature": 42.7},
+      {"timestamp": "2026-06-20T13:00:00Z", "avg_temperature": 41.3},
+      {"timestamp": "2026-06-20T15:00:00Z", "avg_temperature": 39.8}
+    ],
+    "count": 3
+  },
+  "notes": "KQL input via --kql (inline), @file.kql (file), or stdin pipe. Management commands (starting with '.') use /v1/rest/mgmt endpoint; data queries use /v2/rest/query. Token is scoped to the Kusto query URI (not standard Fabric scope). The query URI is auto-resolved from item properties.",
+  "query_examples": [
+    {"query": "data[0]", "description": "First result row."},
+    {"query": "data[].avg_temperature", "description": "All temperature values."},
+    {"query": "data[?avg_temperature > `40`]", "description": "Filter rows above threshold."},
+    {"query": "count", "description": "Number of result rows."}
+  ]
+}

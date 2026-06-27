@@ -1,0 +1,37 @@
+{
+  "command": "fabio lakehouse list-files --workspace $WS_ID --id $LH_ID --path Files/raw",
+  "description": "Lists files and directories in a lakehouse path.",
+  "response": {
+    "data": [
+      {
+        "name": "sales_2024.csv",
+        "isDirectory": false,
+        "contentLength": 2450382,
+        "lastModified": "2026-06-20T14:30:00Z",
+        "etag": "0x8DEC5A604A12DD4"
+      },
+      {
+        "name": "customers.csv",
+        "isDirectory": false,
+        "contentLength": 184320,
+        "lastModified": "2026-06-20T14:30:05Z",
+        "etag": "0x8DEC5A605B23EE5"
+      },
+      {
+        "name": "archive",
+        "isDirectory": true,
+        "contentLength": 0,
+        "lastModified": "2026-06-19T09:15:00Z",
+        "etag": "0x8DEC4B301A02CC3"
+      }
+    ],
+    "count": 3
+  },
+  "notes": "Paths are relative to the lakehouse root. Top-level directories are 'Files/' and 'Tables/'. ETags are OneLake DateTime ticks in hex (NOT content hashes). Use --recursive to list all nested files.",
+  "query_examples": [
+    {"query": "data[?isDirectory==`false`].name", "description": "List only files (not directories)."},
+    {"query": "data[?isDirectory==`true`].name", "description": "List only directories."},
+    {"query": "data[].{name: name, size: contentLength}", "description": "Name and size of each entry."},
+    {"query": "data[?contentLength > `1000000`].name", "description": "Files larger than 1MB."}
+  ]
+}

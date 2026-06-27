@@ -1,0 +1,18 @@
+{
+  "command": "fabio semantic-model create --workspace $WS_ID --name \"SalesModel\" --file ./model.tmdl --file ./definition/tables/Orders.tmdl --connection $SQL_ENDPOINT_ID",
+  "description": "Creates a semantic model from TMDL files with Direct Lake connection.",
+  "response": {
+    "data": {
+      "id": "f6a7b8c9-d0e1-2345-f012-4567890abcde",
+      "displayName": "SalesModel",
+      "description": "",
+      "type": "SemanticModel",
+      "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    }
+  },
+  "notes": "Direct Lake models require TMDL format (model.bim cannot express mode:directLake). The --connection flag is the SQL Analytics Endpoint ID (not lakehouse ID). Creation is LRO. After creation, trigger a refresh: 'fabio semantic-model refresh --workspace $WS --id $ID'. For editable models, call 'fabio semantic-model takeover' to unlock portal editing.",
+  "query_examples": [
+    {"query": "data.id", "description": "Semantic model ID (used for report binding, refresh, query)."},
+    {"query": "data.displayName", "description": "Model display name."}
+  ]
+}

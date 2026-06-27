@@ -1,0 +1,39 @@
+{
+  "command": "fabio profile list",
+  "description": "Lists all saved profiles with the active profile marked.",
+  "response": {
+    "data": [
+      {
+        "name": "dev",
+        "active": true,
+        "workspace": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "capacity": "a0b1c2d3-e4f5-6789-abcd-0123456789ab",
+        "output": "json",
+        "private_link_workspace": null
+      },
+      {
+        "name": "prod",
+        "active": false,
+        "workspace": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+        "capacity": "f9e8d7c6-b5a4-3210-fedc-ba9876543210",
+        "output": "table",
+        "private_link_workspace": null
+      },
+      {
+        "name": "secure",
+        "active": false,
+        "workspace": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+        "capacity": null,
+        "output": "json",
+        "private_link_workspace": "c3d4e5f6-a7b8-9012-cdef-123456789012"
+      }
+    ],
+    "count": 3
+  },
+  "notes": "Profile values are used as defaults (CLI flags and env vars override). Use 'fabio profile use --name X' to switch active profile. Use --profile X on any command for one-time override. private_link_workspace routes API calls through private endpoints.",
+  "query_examples": [
+    {"query": "data[?active==`true`].name | [0]", "description": "Name of the active profile."},
+    {"query": "data[].name", "description": "All profile names."},
+    {"query": "data[?workspace!=null].name", "description": "Profiles with a default workspace set."}
+  ]
+}

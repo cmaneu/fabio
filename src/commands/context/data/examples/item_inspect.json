@@ -1,0 +1,36 @@
+{
+  "command": "fabio item inspect --workspace $WS_ID --id e5f6a7b8-c9d0-1234-ef01-34567890abcd",
+  "description": "Aggregates item metadata, definition parts, and connections in a single response.",
+  "response": {
+    "data": {
+      "metadata": {
+        "id": "e5f6a7b8-c9d0-1234-ef01-34567890abcd",
+        "type": "Notebook",
+        "displayName": "DailyETL",
+        "description": "Daily ETL processing notebook",
+        "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      },
+      "definition": {
+        "format": "ipynb",
+        "parts": [
+          {"path": "notebook-content.py", "payloadType": "InlineBase64", "sizeBytes": 4520},
+          {"path": ".platform", "payloadType": "InlineBase64", "sizeBytes": 312}
+        ]
+      },
+      "connections": [
+        {
+          "id": "e5f6a7b8-0000-0000-0000-000000000001",
+          "displayName": "ADLS Sales Storage",
+          "connectivityType": "ShareableCloud"
+        }
+      ]
+    }
+  },
+  "notes": "Combines three API calls (GET item, getDefinition LRO, list connections) into one response. Definition may be null for items that don't support getDefinition. Connections may be empty. Useful for understanding an item's full context in one call.",
+  "query_examples": [
+    {"query": "data.metadata.type", "description": "Item type."},
+    {"query": "data.definition.parts[].path", "description": "Definition file paths."},
+    {"query": "data.connections[].displayName", "description": "Connected data sources."},
+    {"query": "data.definition.format", "description": "Definition format (ipynb, json, etc)."}
+  ]
+}

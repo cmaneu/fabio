@@ -1,0 +1,23 @@
+{
+  "command": "fabio deploy export --workspace \"Production\" --dir ./exported --item-types Notebook,Lakehouse,SemanticModel",
+  "description": "Exports all item definitions from a workspace to a local directory (for CI/CD source control).",
+  "response": {
+    "data": {
+      "status": "exported",
+      "workspace_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "output_dir": "./exported",
+      "total_items": 12,
+      "exported": 9,
+      "skipped": [
+        "MLModel_Predictions: no definition parts",
+        "SQLEndpoint_SalesLakehouse: getDefinition not supported"
+      ]
+    }
+  },
+  "notes": "Each item becomes a directory named '{DisplayName}.{ItemType}/' containing .platform + definition files. Use --overwrite to replace existing directory contents. Items that don't support getDefinition are skipped (reported in output). Use --item-types to filter. The exported directory is the --source input for 'deploy plan/apply'.",
+  "query_examples": [
+    {"query": "data.exported", "description": "Number of items successfully exported."},
+    {"query": "data.skipped", "description": "Items that could not be exported with reasons."},
+    {"query": "data.total_items", "description": "Total items found in workspace."}
+  ]
+}
