@@ -41,12 +41,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
         run: |
           if [ -z "$GITHUB_TOKEN" ]; then
-            echo "::warning::GH_MODELS_TOKEN secret not set — skipping eval"
-            echo '{"results":{"results":[]}}' > /tmp/eval-results.json
-            exit 0
+            echo "::error::GH_MODELS_TOKEN secret is not configured. Set a GitHub PAT with models:read scope as a repository secret."
+            exit 1
           fi
           cd tests/eval
-          promptfoo eval -c promptfooconfig.yaml --no-cache -o /tmp/eval-results.json 2>&1 | tee /tmp/eval-output.txt
+          timeout 600 promptfoo eval -c promptfooconfig.yaml --no-cache -o /tmp/eval-results.json 2>&1 | tee /tmp/eval-output.txt
 
       - name: Check pass rate
         run: |
@@ -57,8 +56,8 @@ jobs:
           results = data.get('results', {}).get('results', [])
           total = len(results)
           if total == 0:
-              print('::notice::No eval results (GH_MODELS_TOKEN not configured)')
-              sys.exit(0)
+              print('::error::No eval results produced — check GH_MODELS_TOKEN and API access')
+              sys.exit(1)
           passed = sum(1 for r in results if r.get('success'))
           rate = 100 * passed / total
           print(f'Results: {passed}/{total} passed ({rate:.0f}%)')
