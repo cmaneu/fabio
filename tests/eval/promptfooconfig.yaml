@@ -28,16 +28,16 @@ prompts:
 
       User request: {{user_query}}
 
-# Azure OpenAI - gpt-4.1-mini (200K TPM, no daily request cap)
+# Azure OpenAI - gpt-4o-mini (Sweden Central)
 providers:
-  - id: azureopenai:chat:gpt-4.1-mini
+  - id: azureopenai:chat:gpt-4o-mini
     config:
-      apiHost: aoaipysparkedit.openai.azure.com
+      apiHost: foundry-imejiauseche-ai-demos.openai.azure.com
       temperature: 0
 
 defaultTest:
   options:
-    provider: azureopenai:chat:gpt-4.1-mini
+    provider: azureopenai:chat:gpt-4o-mini
   vars:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
