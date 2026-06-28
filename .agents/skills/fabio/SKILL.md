@@ -97,6 +97,7 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 | `--readonly` | Block ALL mutations at HTTP layer (env: `FABIO_READONLY`) |
 | `--enable-commands` | Allowlist command groups (env: `FABIO_ENABLE_COMMANDS`) |
 | `--disable-commands` | Denylist command groups (env: `FABIO_DISABLE_COMMANDS`) |
+| `--wrap-untrusted` | Wrap user-authored fields with injection markers (env: `FABIO_WRAP_UNTRUSTED`) |
 
 ## Agent Safety
 
@@ -115,6 +116,17 @@ fabio --disable-commands "workspace.delete" workspace delete --id $WS       # BL
 
 # Via env vars (operator sets, agent cannot override)
 FABIO_READONLY=true FABIO_ENABLE_COMMANDS=workspace,lakehouse,context fabio ...
+
+# Wrap user-authored text to prevent prompt injection
+# Wraps displayName, description, name, message fields with <<<UNTRUSTED>>>...<<<END_UNTRUSTED>>>
+fabio --wrap-untrusted workspace list
+# Output: {"displayName": "<<<UNTRUSTED>>>My workspace<<<END_UNTRUSTED>>>", ...}
+
+# MCP server: read-only by default, opt-in for mutations
+fabio mcp serve                                              # 366 read-only tools
+fabio mcp serve --allow-write                                # 810 tools (all)
+fabio mcp serve --allow-write --allow-tool "workspace,lakehouse"  # scoped mutations
+fabio mcp serve --list-tools                                 # inspect tool surface without starting server
 ```
 
 ## Authentication

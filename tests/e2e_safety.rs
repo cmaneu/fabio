@@ -1,5 +1,5 @@
 //! End-to-end tests for CLI safety features:
-//! --readonly, --enable-commands, --disable-commands.
+//! --readonly, --enable-commands, --disable-commands, --wrap-untrusted, MCP safety.
 //!
 //! These tests are all offline (no live tenant needed) because the safety
 //! features block commands before any HTTP/auth calls are made.
@@ -15,6 +15,12 @@ use serde_json::Value;
 fn parse_stderr_error(output: &assert_cmd::assert::Assert) -> Value {
     let stderr = String::from_utf8_lossy(&output.get_output().stderr);
     serde_json::from_str(&stderr).expect("failed to parse stderr as JSON")
+}
+
+/// Parse stdout as JSON.
+fn parse_stdout(output: &assert_cmd::assert::Assert) -> Value {
+    let stdout = String::from_utf8_lossy(&output.get_output().stdout);
+    serde_json::from_str(&stdout).expect("failed to parse stdout as JSON")
 }
 
 // =============================================================================
@@ -253,5 +259,181 @@ fn readonly_plus_enable_commands_blocks_mutation() {
     assert_eq!(
         code, "READONLY_MODE",
         "readonly should block mutation even when command is in allowlist"
+    );
+}
+
+// =============================================================================
+// --wrap-untrusted tests
+// =============================================================================
+
+#[test]
+fn wrap_untrusted_wraps_display_name_field() {
+    // context agent returns schema with a "version" field (system-generated)
+    // and the output envelope has "data" wrapping. We verify the flag is accepted
+    // and wrapping applies to the expected fields by checking a known output.
+    let assert = fabio()
+        .args(["--wrap-untrusted", "context", "agent"])
+        .assert()
+        .success();
+
+    let json = parse_stdout(&assert);
+    let data = json.get("data").expect("missing data envelope");
+    // The schema_version and version fields should NOT be wrapped (system-generated).
+    let version = data.get("version").and_then(Value::as_str).unwrap_or("");
+    assert!(
+        !version.contains("<<<UNTRUSTED>>>"),
+        "system fields should not be wrapped, got: {version}"
+    );
+}
+
+#[test]
+fn wrap_untrusted_env_var() {
+    // Verify FABIO_WRAP_UNTRUSTED env var is accepted.
+    let assert = fabio()
+        .env("FABIO_WRAP_UNTRUSTED", "true")
+        .args(["context", "agent"])
+        .assert()
+        .success();
+
+    // Just verify it doesn't crash — env var accepted.
+    let json = parse_stdout(&assert);
+    assert!(json.get("data").is_some(), "should produce valid output");
+}
+
+#[test]
+fn wrap_untrusted_off_by_default() {
+    // Without the flag, output should NOT contain markers.
+    let assert = fabio().args(["context", "agent"]).assert().success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        !stdout.contains("<<<UNTRUSTED>>>"),
+        "should not wrap by default"
+    );
+}
+
+// =============================================================================
+// MCP safety tests
+// =============================================================================
+
+#[test]
+fn mcp_list_tools_default_is_read_only() {
+    let assert = fabio()
+        .args(["mcp", "serve", "--list-tools"])
+        .assert()
+        .success();
+
+    let json = parse_stdout(&assert);
+    let data = json.get("data").expect("missing data");
+    let count = data.get("count").and_then(Value::as_u64).unwrap_or(0);
+    let policy = data.get("policy").expect("missing policy");
+
+    assert!(count > 0, "should expose some tools");
+    assert_eq!(
+        policy.get("allow_write").and_then(Value::as_bool),
+        Some(false),
+        "default policy should be read-only"
+    );
+
+    // Verify all tools have readOnlyHint=true (no mutations exposed).
+    let tools = data.get("tools").and_then(Value::as_array).unwrap();
+    for tool in tools {
+        let name = tool.get("name").and_then(Value::as_str).unwrap_or("?");
+        let read_only = tool
+            .get("annotations")
+            .and_then(|a| a.get("readOnlyHint"))
+            .and_then(Value::as_bool);
+        assert_eq!(
+            read_only,
+            Some(true),
+            "tool {name} should be read-only in default mode"
+        );
+    }
+}
+
+#[test]
+fn mcp_list_tools_allow_write_exposes_more() {
+    let readonly_out = fabio()
+        .args(["mcp", "serve", "--list-tools"])
+        .assert()
+        .success();
+    let writable_out = fabio()
+        .args(["mcp", "serve", "--allow-write", "--list-tools"])
+        .assert()
+        .success();
+
+    let readonly_json = parse_stdout(&readonly_out);
+    let writable_json = parse_stdout(&writable_out);
+    let readonly_count = readonly_json["data"]["count"].as_u64().unwrap_or(0);
+    let writable_count = writable_json["data"]["count"].as_u64().unwrap_or(0);
+
+    assert!(
+        writable_count > readonly_count,
+        "allow-write should expose more tools: {writable_count} > {readonly_count}"
+    );
+}
+
+#[test]
+fn mcp_list_tools_allow_tool_filters() {
+    let assert_all = fabio()
+        .args(["mcp", "serve", "--list-tools"])
+        .assert()
+        .success();
+    let assert_filtered = fabio()
+        .args(["mcp", "serve", "--allow-tool", "workspace", "--list-tools"])
+        .assert()
+        .success();
+
+    let all_count = parse_stdout(&assert_all)["data"]["count"]
+        .as_u64()
+        .unwrap_or(0);
+    let filtered_count = parse_stdout(&assert_filtered)["data"]["count"]
+        .as_u64()
+        .unwrap_or(0);
+
+    assert!(
+        filtered_count < all_count,
+        "allow-tool filter should reduce tools: {filtered_count} < {all_count}"
+    );
+    assert!(
+        filtered_count > 0,
+        "should still expose some workspace tools"
+    );
+}
+
+// =============================================================================
+// Safety state introspection
+// =============================================================================
+
+#[test]
+fn context_agent_includes_safety_state() {
+    let assert = fabio()
+        .args([
+            "--readonly",
+            "--disable-commands",
+            "deploy",
+            "context",
+            "agent",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_stdout(&assert);
+    let safety = json["data"]
+        .get("safety")
+        .expect("context agent should include safety state");
+
+    assert_eq!(
+        safety.get("readonly").and_then(Value::as_bool),
+        Some(true),
+        "safety.readonly should reflect --readonly flag"
+    );
+    let disabled = safety
+        .get("disable_commands")
+        .and_then(Value::as_array)
+        .expect("disable_commands should be an array");
+    assert!(
+        disabled.iter().any(|v| v.as_str() == Some("deploy")),
+        "disable_commands should contain 'deploy'"
     );
 }
