@@ -31,8 +31,14 @@ fabio auth status
 fabio has built-in introspection. Use these commands instead of reading reference files:
 
 ```bash
-# Find commands — compact index of all 74 groups + subcommands
+# Find commands — compact index of all 76 groups + subcommands
 fabio context agent
+
+# Full details for one group (all flags, types, examples)
+fabio context agent --group lakehouse
+
+# Token-budget-aware: richest subset within N tokens (for limited context windows)
+fabio context agent --budget 4000
 
 # Deep-dive on one command — all flags, types, output shape
 fabio context describe <group> <command>
