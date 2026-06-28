@@ -1,6 +1,7 @@
 //! MCP JSON-RPC 2.0 server over stdio.
 //!
 //! Handles `initialize`, `notifications/initialized`, `tools/list`, and `tools/call`.
+//! Read-only by default: mutation tools are hidden unless `allow_write` is true.
 
 use std::io::Write;
 
@@ -10,8 +11,43 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::cli::Cli;
 
+/// Safety policy for the MCP server session.
+struct McpPolicy {
+    allow_write: bool,
+    allow_tool_patterns: Option<Vec<String>>,
+}
+
+impl McpPolicy {
+    /// Check if a tool should be visible (listed in tools/list).
+    fn is_tool_visible(&self, tool_name: &str, mutates: bool) -> bool {
+        // If mutation and write not allowed, hide it.
+        if mutates && !self.allow_write {
+            return false;
+        }
+        // If allow_tool patterns set, check match.
+        if let Some(patterns) = &self.allow_tool_patterns {
+            return patterns.iter().any(|p| {
+                let normalized = p.replace('-', "_");
+                tool_name.starts_with(&format!("fabio_{normalized}_"))
+                    || tool_name == format!("fabio_{normalized}")
+                    || p == "*"
+            });
+        }
+        true
+    }
+}
+
 /// Run the MCP server, reading JSON-RPC messages from stdin and writing responses to stdout.
-pub(super) async fn run(_cli: &Cli) -> Result<()> {
+pub(super) async fn run(
+    _cli: &Cli,
+    allow_write: bool,
+    allow_tool: Option<&[String]>,
+) -> Result<()> {
+    let policy = McpPolicy {
+        allow_write,
+        allow_tool_patterns: allow_tool.map(<[String]>::to_vec),
+    };
+
     let stdin = tokio::io::stdin();
     let reader = BufReader::new(stdin);
     let mut lines = reader.lines();
@@ -42,8 +78,8 @@ pub(super) async fn run(_cli: &Cli) -> Result<()> {
         let response = match method {
             "initialize" => Some(handle_initialize(id.as_ref())),
             "notifications/initialized" | "initialized" => None,
-            "tools/list" => Some(handle_tools_list(id.as_ref())),
-            "tools/call" => Some(handle_tools_call(&request, id.as_ref()).await),
+            "tools/list" => Some(handle_tools_list(id.as_ref(), &policy)),
+            "tools/call" => Some(handle_tools_call(&request, id.as_ref(), &policy).await),
             "ping" => Some(json!({"jsonrpc": "2.0", "result": {}, "id": id})),
             _ => {
                 if is_notification {
@@ -92,16 +128,28 @@ fn handle_initialize(id: Option<&Value>) -> Value {
     })
 }
 
-fn handle_tools_list(id: Option<&Value>) -> Value {
-    let tools = build_mcp_tools();
+fn handle_tools_list(id: Option<&Value>, policy: &McpPolicy) -> Value {
+    let all_tools = build_mcp_tools();
+    let filtered: Vec<Value> = all_tools
+        .into_iter()
+        .filter(|tool| {
+            let name = tool.get("name").and_then(Value::as_str).unwrap_or("");
+            let mutates = tool
+                .get("annotations")
+                .and_then(|a| a.get("readOnlyHint"))
+                .and_then(Value::as_bool)
+                == Some(false);
+            policy.is_tool_visible(name, mutates)
+        })
+        .collect();
     json!({
         "jsonrpc": "2.0",
-        "result": {"tools": tools},
+        "result": {"tools": filtered},
         "id": id
     })
 }
 
-async fn handle_tools_call(request: &Value, id: Option<&Value>) -> Value {
+async fn handle_tools_call(request: &Value, id: Option<&Value>, policy: &McpPolicy) -> Value {
     let params = request.get("params").cloned().unwrap_or(json!({}));
     let tool_name = params.get("name").and_then(Value::as_str).unwrap_or("");
     let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
@@ -117,6 +165,24 @@ async fn handle_tools_call(request: &Value, id: Option<&Value>) -> Value {
             "id": id
         });
     };
+
+    // Check if tool is allowed by policy (catches calls to tools not in tools/list).
+    let mutates = is_tool_mutating(tool_name);
+    if !policy.is_tool_visible(tool_name, mutates) {
+        let reason = if mutates && !policy.allow_write {
+            "Tool is a mutation and --allow-write was not set"
+        } else {
+            "Tool is not in the --allow-tool filter"
+        };
+        return json!({
+            "jsonrpc": "2.0",
+            "result": {
+                "content": [{"type": "text", "text": json!({"error": {"code": "FORBIDDEN", "message": format!("Tool '{tool_name}' is blocked: {reason}")}}).to_string()}],
+                "isError": true
+            },
+            "id": id
+        });
+    }
 
     // Build CLI arguments from JSON.
     let args = build_cli_args(&group, &cmd, &arguments);
@@ -172,6 +238,27 @@ async fn handle_tools_call(request: &Value, id: Option<&Value>) -> Value {
 /// Parse an MCP tool name back to (group, subcommand).
 /// `fabio_lakehouse_sync` -> `("lakehouse", "sync")`
 /// `fabio_kql_database_query` -> `("kql-database", "query")`
+/// Check if a tool is a mutating operation by looking up its schema annotation.
+fn is_tool_mutating(tool_name: &str) -> bool {
+    let Some((group, cmd)) = parse_tool_name(tool_name) else {
+        return false;
+    };
+    let commands = crate::commands::context::agent_commands_schema();
+    let group_normalized = group.replace('-', "_");
+    commands
+        .as_object()
+        .and_then(|m| m.get(&group).or_else(|| m.get(&group_normalized)))
+        .and_then(|g| g.get("subcommands"))
+        .and_then(Value::as_object)
+        .and_then(|s| {
+            let cmd_normalized = cmd.replace('_', "-");
+            s.get(&cmd).or_else(|| s.get(&cmd_normalized))
+        })
+        .and_then(|c| c.get("mutates"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
 fn parse_tool_name(name: &str) -> Option<(String, String)> {
     let rest = name.strip_prefix("fabio_")?;
 
