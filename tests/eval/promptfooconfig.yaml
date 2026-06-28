@@ -3,11 +3,15 @@
 # Tests that an LLM given the fabio SKILL.md instructions produces correct
 # CLI commands for common Fabric tasks.
 #
-# Uses GitHub Models (included with Copilot subscription) - no separate API keys needed.
-# Auth: Set GITHUB_TOKEN env var (PAT with models:read scope, or use COPILOT_PAT).
+# Uses Azure OpenAI (gpt-4.1-mini deployment) for reliable eval without rate limits.
+# Auth: Set AZURE_OPENAI_API_KEY env var (or configure in CI secrets).
 #
-# Run locally: GITHUB_TOKEN=your_pat promptfoo eval -c tests/promptfooconfig.yaml
-# View results: promptfoo view
+# Run locally:
+#   AZURE_OPENAI_API_KEY=<key> promptfoo eval -c tests/eval/promptfooconfig.yaml
+#   promptfoo view
+#
+# Fallback: GitHub Models (slower, rate-limited):
+#   GITHUB_TOKEN=<pat> promptfoo eval -c tests/eval/promptfooconfig.yaml --env-overrides '{"providers":[{"id":"github:openai/gpt-4o-mini"}]}'
 
 description: "fabio skill instruction quality"
 
@@ -24,18 +28,16 @@ prompts:
 
       User request: {{user_query}}
 
-# Uses GitHub Models via Copilot subscription (OpenAI-compatible API)
-# Endpoint: https://models.github.ai/inference
-# Auth: GITHUB_TOKEN environment variable
+# Azure OpenAI - gpt-4.1-mini (200K TPM, no daily request cap)
 providers:
-  - id: github:openai/gpt-4o-mini
+  - id: azureopenai:chat:gpt-4.1-mini
     config:
+      apiHost: aoaipysparkedit.openai.azure.com
       temperature: 0
 
 defaultTest:
   options:
-    # Use the same model as judge for llm-rubric assertions
-    provider: github:openai/gpt-4o-mini
+    provider: azureopenai:chat:gpt-4.1-mini
   vars:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 

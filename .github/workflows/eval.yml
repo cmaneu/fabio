@@ -35,17 +35,17 @@ jobs:
 
       - name: Run eval
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
         run: |
-          if [ -z "$GITHUB_TOKEN" ]; then
-            echo "::error::GH_MODELS_TOKEN secret is not configured. Set a GitHub PAT with models:read scope as a repository secret."
+          if [ -z "$AZURE_OPENAI_API_KEY" ]; then
+            echo "::error::AZURE_OPENAI_API_KEY secret is not configured."
             exit 1
           fi
           cd tests/eval
           timeout 1200 promptfoo eval -c promptfooconfig.yaml --no-cache -o /tmp/eval-results.json 2>&1 | tee /tmp/eval-output.txt || true
           # If timeout killed promptfoo before writing results, create empty file
           if [ ! -f /tmp/eval-results.json ]; then
-            echo "::warning::Eval timed out (likely rate limited). Check /tmp/eval-output.txt"
+            echo "::warning::Eval timed out"
             echo '{"results":{"results":[]}}' > /tmp/eval-results.json
           fi
 
