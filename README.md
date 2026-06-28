@@ -210,6 +210,10 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 | `--profile` | Use a named profile for default settings |
 | `--lro-timeout` | Override default LRO polling timeout (seconds) |
 | `--hard-delete` | Permanently delete (skip recycle bin) -- on item deletes |
+| `--readonly` | Block all mutations at HTTP layer (env: `FABIO_READONLY`) |
+| `--enable-commands` | Allowlist command groups, comma-separated (env: `FABIO_ENABLE_COMMANDS`) |
+| `--disable-commands` | Denylist command groups, comma-separated (env: `FABIO_DISABLE_COMMANDS`) |
+| `--wrap-untrusted` | Wrap user-authored fields with `<<<UNTRUSTED>>>` markers (env: `FABIO_WRAP_UNTRUSTED`) |
 
 ## Commands
 
@@ -221,6 +225,9 @@ fabio context agent
 
 # Full details for a specific group (all flags, types, examples)
 fabio context agent --group lakehouse
+
+# Token-budget-aware: richest subset that fits within N tokens
+fabio context agent --budget 4000
 
 # Deep-dive on one command
 fabio context describe lakehouse sync
@@ -431,7 +438,44 @@ FABIO_ENABLE_COMMANDS=workspace,lakehouse,context fabio workspace list
 
 # Combined: agent can only read, only from allowed groups
 FABIO_READONLY=1 FABIO_ENABLE_COMMANDS=workspace,lakehouse fabio lakehouse list-tables --workspace $WS --id $LH
+
+# Wrap user-authored fields to prevent prompt injection
+FABIO_WRAP_UNTRUSTED=1 fabio item list --workspace $WS
+# Output: {"displayName": "<<<UNTRUSTED>>>My Item<<<END_UNTRUSTED>>>", ...}
 ```
+
+### MCP Server Safety
+
+The MCP server is **read-only by default** — mutation tools are hidden unless opted in:
+
+```bash
+# Default: only read-only tools exposed (366 tools)
+fabio mcp serve
+
+# Expose mutations for specific groups only
+fabio mcp serve --allow-write --allow-tool "workspace,lakehouse"
+
+# Inspect what tools would be exposed (without starting the server)
+fabio mcp serve --list-tools
+fabio mcp serve --allow-write --list-tools
+```
+
+### Stable Exit Codes
+
+Agents can branch on `$?` without parsing JSON:
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Generic error (API_ERROR, INVALID_INPUT) |
+| 2 | Usage error (bad syntax) |
+| 3 | AUTH_REQUIRED |
+| 4 | FORBIDDEN / READONLY_MODE |
+| 5 | NOT_FOUND |
+| 6 | CONFLICT |
+| 7 | RATE_LIMITED / CAPACITY_INACTIVE |
+| 8 | TIMEOUT |
+| 9 | NETWORK_ERROR |
 
 ## Updating
 
