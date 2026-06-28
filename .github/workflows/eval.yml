@@ -1,12 +1,14 @@
 name: Skill Eval
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - '.agents/skills/**'
       - 'tests/eval/**'
       - 'src/commands/context/data/**'
+      - '.github/workflows/eval.yml'
   pull_request:
     branches: [main]
     paths:
