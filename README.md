@@ -77,22 +77,17 @@ Or download pre-built binaries from the [releases page](https://github.com/iemej
 
 **Via agent skill** (for AI agents using [GitHub Copilot CLI](https://docs.github.com/en/copilot/github-copilot-in-the-cli) or compatible platforms):
 
-Install the [`iemejia/fabio-skills`](https://github.com/iemejia/fabio-skills) agent skill, which will automatically bootstrap fabio and provide Fabric-aware workflows out of the box. Using GitHub CLI:
+The fabio agent skill ships in-repo at `.agents/skills/fabio/`. Install it directly from the main repository:
 
 ```bash
-gh skill install iemejia/fabio-skills
+npx skills add https://github.com/iemejia/fabio
 ```
 
-Or for other agents, clone into your skills directory:
+Or for agents that read a local skills directory:
 
 ```bash
-git clone https://github.com/iemejia/fabio-skills ~/.agents/skills/fabio-skills
-```
-
-On Windows (PowerShell):
-
-```powershell
-git clone https://github.com/iemejia/fabio-skills "$env:USERPROFILE\.agents\skills\fabio-skills"
+git clone https://github.com/iemejia/fabio ~/.agents/skills/fabio-repo
+# Skills are at ~/.agents/skills/fabio-repo/.agents/skills/fabio/
 ```
 
 **Docker** (multi-arch: amd64 + arm64):

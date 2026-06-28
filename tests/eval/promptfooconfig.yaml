@@ -1,0 +1,943 @@
+# Promptfoo eval configuration for fabio skill quality testing
+#
+# Tests that an LLM given the fabio SKILL.md instructions produces correct
+# CLI commands for common Fabric tasks.
+#
+# Uses GitHub Models (included with Copilot subscription) - no separate API keys needed.
+# Auth: Set GITHUB_TOKEN env var (PAT with models:read scope, or use COPILOT_PAT).
+#
+# Run locally: GITHUB_TOKEN=your_pat promptfoo eval -c tests/promptfooconfig.yaml
+# View results: promptfoo view
+
+description: "fabio skill instruction quality"
+
+prompts:
+  - id: "fabio-skill"
+    raw: |
+      You are an AI agent assistant. You have been given the following skill instructions for using the fabio CLI:
+
+      ---BEGIN SKILL INSTRUCTIONS---
+      {{skill_content}}
+      ---END SKILL INSTRUCTIONS---
+
+      Using ONLY the knowledge from the skill instructions above, respond to the user's request with the appropriate fabio CLI command(s). Be precise with command names, flags, and values.
+
+      User request: {{user_query}}
+
+# Uses GitHub Models via Copilot subscription (OpenAI-compatible API)
+# Endpoint: https://models.github.ai/inference
+# Auth: GITHUB_TOKEN environment variable
+providers:
+  - id: github:openai/gpt-4o-mini
+    config:
+      temperature: 0
+
+defaultTest:
+  options:
+    # Use the same model as judge for llm-rubric assertions
+    provider: github:openai/gpt-4o-mini
+  vars:
+    skill_content: "file://../../.agents/skills/fabio/SKILL.md"
+
+tests:
+  # ============================================================
+  # BASIC CRUD OPERATIONS
+  # ============================================================
+
+  - description: "Create a lakehouse"
+    vars:
+      user_query: "Create a lakehouse called DataLake in my workspace"
+    assert:
+      - type: icontains
+        value: "fabio lakehouse create"
+      - type: icontains
+        value: "--workspace"
+      - type: icontains
+        value: "--name"
+      - type: icontains
+        value: "DataLake"
+
+  - description: "List workspaces"
+    vars:
+      user_query: "Show me all my workspaces"
+    assert:
+      - type: icontains
+        value: "fabio workspace list"
+
+  - description: "Delete a warehouse"
+    vars:
+      user_query: "Delete warehouse abc-123 from workspace ws-456"
+    assert:
+      - type: icontains
+        value: "fabio warehouse delete"
+      - type: icontains
+        value: "--workspace"
+      - type: icontains
+        value: "--id"
+
+  # ============================================================
+  # PASCALCASE COMPLIANCE (Critical API behavior)
+  # ============================================================
+
+  - description: "Load table with correct PascalCase mode"
+    vars:
+      user_query: "Load the CSV file at Files/raw/sales.csv into a delta table called 'sales' in my lakehouse, overwriting existing data"
+    assert:
+      - type: icontains
+        value: "fabio lakehouse load-table"
+      - type: contains
+        value: "Overwrite"
+        metric: pascalcase-mode
+      - type: contains
+        value: "Csv"
+        metric: pascalcase-format
+      - type: not-contains
+        value: "--mode overwrite"
+        metric: no-lowercase-mode
+      - type: not-contains
+        value: "--format csv"
+        metric: no-lowercase-format
+
+  - description: "Load Parquet with PascalCase"
+    vars:
+      user_query: "Load a parquet file into the orders table in append mode"
+    assert:
+      - type: icontains
+        value: "load-table"
+      - type: contains
+        value: "Append"
+      - type: contains
+        value: "Parquet"
+
+  # ============================================================
+  # COMPOSABILITY PATTERNS
+  # ============================================================
+
+  - description: "Pipe workspace ID into next command"
+    vars:
+      user_query: "Get the first workspace ID and use it to list lakehouses"
+    assert:
+      - type: icontains
+        value: "fabio workspace list"
+      - type: javascript
+        value: |
+          output.includes('-o plain') || output.includes('--output plain') || output.includes('-q') || output.includes('--query')
+        metric: uses-projection
+
+  - description: "Upload files with glob pattern"
+    vars:
+      user_query: "Upload all CSV files from the data/ folder to the Files/raw/ path in my lakehouse"
+    assert:
+      - type: icontains
+        value: "fabio lakehouse upload"
+      - type: icontains
+        value: "--source"
+      - type: icontains
+        value: "--dest"
+      - type: javascript
+        value: |
+          output.includes('*.csv') || output.includes('data/')
+        metric: glob-pattern
+
+  # ============================================================
+  # SQL / QUERY OPERATIONS
+  # ============================================================
+
+  - description: "Run a SQL query against a warehouse"
+    vars:
+      user_query: "Run SELECT COUNT(*) FROM dbo.orders against my warehouse"
+    assert:
+      - type: icontains
+        value: "fabio warehouse query"
+      - type: icontains
+        value: "--sql"
+      - type: icontains
+        value: "--workspace"
+
+  - description: "Run a KQL query"
+    vars:
+      user_query: "Query the SensorEvents table in my KQL database for the last hour of data"
+    assert:
+      - type: icontains
+        value: "fabio kql-database query"
+      - type: javascript
+        value: |
+          output.includes('--kql') || output.includes('--query')
+        metric: kql-flag
+
+  # ============================================================
+  # LONG-RUNNING OPERATIONS (LRO awareness)
+  # ============================================================
+
+  - description: "Run notebook with wait"
+    vars:
+      user_query: "Run notebook nb-123 in workspace ws-456 and wait for it to complete with a 10 minute timeout"
+    assert:
+      - type: icontains
+        value: "fabio notebook run"
+      - type: icontains
+        value: "--wait"
+      - type: javascript
+        value: |
+          output.includes('--timeout') || output.includes('--lro-timeout')
+        metric: timeout-awareness
+
+  # ============================================================
+  # AUTHENTICATION
+  # ============================================================
+
+  - description: "Authenticate with fabio"
+    vars:
+      user_query: "How do I log in to fabio?"
+    assert:
+      - type: icontains
+        value: "fabio auth login"
+
+  - description: "Check auth status"
+    vars:
+      user_query: "Am I authenticated? How do I check?"
+    assert:
+      - type: icontains
+        value: "fabio auth status"
+
+  # ============================================================
+  # CI/CD DEPLOY
+  # ============================================================
+
+  - description: "Deploy workflow - plan then apply"
+    vars:
+      user_query: "I want to deploy my local fabric-items/ directory to my production workspace. Show me the plan first, then apply."
+    assert:
+      - type: icontains
+        value: "fabio deploy plan"
+      - type: icontains
+        value: "fabio deploy apply"
+      - type: icontains
+        value: "--source"
+      - type: icontains
+        value: "--workspace"
+
+  - description: "Export workspace state"
+    vars:
+      user_query: "Export all items from workspace ws-123 to a local directory"
+    assert:
+      - type: icontains
+        value: "fabio deploy export"
+      - type: icontains
+        value: "--workspace"
+      - type: icontains
+        value: "--dir"
+
+  # ============================================================
+  # OUTPUT FORMAT AWARENESS
+  # ============================================================
+
+  - description: "Table output for human reading"
+    vars:
+      user_query: "List all lakehouses in a human-readable table format"
+    assert:
+      - type: icontains
+        value: "fabio lakehouse list"
+      - type: javascript
+        value: |
+          output.includes('-o table') || output.includes('--output table')
+        metric: table-output
+
+  - description: "JSON output (default)"
+    vars:
+      user_query: "Get warehouse details as JSON"
+    assert:
+      - type: icontains
+        value: "fabio warehouse"
+      - type: llm-rubric
+        value: "The response correctly indicates that JSON is the default output format or uses --output json / -o json / --json flag"
+        metric: json-awareness
+
+  # ============================================================
+  # API QUIRK AWARENESS
+  # ============================================================
+
+  - description: "Tenant-scoped vs workspace-scoped awareness"
+    vars:
+      user_query: "List all deployment pipelines"
+    assert:
+      - type: icontains
+        value: "fabio deployment-pipeline list"
+      - type: not-icontains
+        value: "--workspace"
+        metric: tenant-scope-correct
+
+  - description: "OneLake rename uses move-file (atomic for same-item)"
+    vars:
+      user_query: "Rename a file in OneLake from old.csv to new.csv"
+    assert:
+      - type: icontains
+        value: "fabio lakehouse move-file"
+      - type: icontains
+        value: "--source"
+      - type: icontains
+        value: "--dest"
+
+  # ============================================================
+  # ERROR HANDLING
+  # ============================================================
+
+  - description: "Understanding error codes"
+    vars:
+      user_query: "I got an AUTH_REQUIRED error from fabio, what should I do?"
+    assert:
+      - type: icontains
+        value: "fabio auth login"
+      - type: llm-rubric
+        value: "The response correctly identifies AUTH_REQUIRED as an authentication issue and suggests running fabio auth login"
+        metric: error-handling
+
+  # ============================================================
+  # COMPLEX WORKFLOWS
+  # ============================================================
+
+  - description: "End-to-end CSV to queryable table"
+    vars:
+      user_query: "I have a file sales.csv. I need to create a workspace, create a lakehouse, upload the file, and load it as a delta table so I can query it."
+    assert:
+      - type: icontains
+        value: "fabio workspace create"
+      - type: icontains
+        value: "fabio lakehouse create"
+      - type: javascript
+        value: |
+          output.includes('upload') || output.includes('load-table') || output.includes('upload-table')
+        metric: has-data-loading
+      - type: contains
+        value: "Overwrite"
+        metric: pascalcase-in-workflow
+      - type: llm-rubric
+        value: "The response provides a complete, sequential workflow from workspace creation through data loading with correct fabio commands and proper flag usage"
+        metric: workflow-completeness
+
+  - description: "Git integration workflow"
+    vars:
+      user_query: "Connect my workspace to a GitHub repo and sync changes"
+    assert:
+      - type: icontains
+        value: "fabio git"
+      - type: llm-rubric
+        value: "The response uses fabio git commands (connect, status, commit, update) to set up and manage Git integration for a Fabric workspace"
+        metric: git-workflow
+
+  # ============================================================
+  # DISCOVERY (can agent find the right command?)
+  # ============================================================
+
+  - description: "Discovery: find command for natural language to KQL"
+    vars:
+      user_query: "I want to convert a natural language question into a KQL query. Which fabio command does that?"
+    assert:
+      - type: icontains
+        value: "rti"
+      - type: icontains
+        value: "nl-to-kql"
+
+  - description: "Discovery: find command for self-update"
+    vars:
+      user_query: "How do I update fabio to the latest version?"
+    assert:
+      - type: icontains
+        value: "fabio upgrade"
+
+  - description: "Discovery: context introspection for command discovery"
+    vars:
+      user_query: "How can I get a machine-readable list of all fabio commands and their flags?"
+    assert:
+      - type: icontains
+        value: "fabio context agent"
+
+  - description: "Discovery: REST passthrough for unsupported endpoints"
+    vars:
+      user_query: "I need to call a Fabric API endpoint that doesn't have a dedicated fabio command"
+    assert:
+      - type: icontains
+        value: "fabio rest call"
+
+  - description: "Discovery: find Power BI API integration"
+    vars:
+      user_query: "Can I use fabio to access Power BI REST API endpoints like dataset refresh history?"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('--api powerbi') || output.includes('rest call') || output.includes('semantic-model')
+        metric: powerbi-awareness
+
+  - description: "Discovery: find lakehouse sync command"
+    vars:
+      user_query: "How do I synchronize files between two lakehouses?"
+    assert:
+      - type: icontains
+        value: "fabio lakehouse sync"
+
+  - description: "Discovery: find workflow recipes"
+    vars:
+      user_query: "I want to set up a Real-Time Intelligence pipeline with Eventhouse and EventStream. Is there a recipe for that?"
+    assert:
+      - type: icontains
+        value: "fabio context workflow"
+      - type: javascript
+        value: |
+          output.includes('rti-pipeline') || output.includes('rti')
+        metric: workflow-recipe
+
+  - description: "Discovery: find deploy validate for pre-flight checks"
+    vars:
+      user_query: "I want to check my fabric-items directory for errors before deploying, without making any API calls"
+    assert:
+      - type: icontains
+        value: "fabio deploy validate"
+      - type: icontains
+        value: "--source"
+
+  # ============================================================
+  # CORRECT INVOCATION (PascalCase, flags, required params)
+  # ============================================================
+
+  - description: "Invocation: load-table rejects JSON format"
+    vars:
+      user_query: "Load a JSON file at Files/data.json into a table called events"
+    assert:
+      - type: llm-rubric
+        value: "The response indicates that JSON format is NOT supported by load-table, only Csv and Parquet are valid. It should suggest converting to CSV or Parquet first."
+        metric: json-not-supported
+
+  - description: "Invocation: notebook run with parameters"
+    vars:
+      user_query: "Run notebook nb-001 in workspace ws-001 with parameter start_date=2024-01-01 and batch_size=100"
+    assert:
+      - type: icontains
+        value: "fabio notebook run"
+      - type: icontains
+        value: "--parameters"
+      - type: icontains
+        value: "--workspace"
+      - type: icontains
+        value: "--id"
+
+  - description: "Invocation: workspace assign-capacity requires both flags"
+    vars:
+      user_query: "Assign capacity cap-abc to workspace ws-xyz"
+    assert:
+      - type: icontains
+        value: "fabio workspace assign-capacity"
+      - type: icontains
+        value: "--id"
+      - type: icontains
+        value: "--capacity"
+
+  - description: "Invocation: deploy with parameters requires --env"
+    vars:
+      user_query: "Deploy fabric items to the production workspace using my parameters.json file for the prod environment"
+    assert:
+      - type: icontains
+        value: "fabio deploy apply"
+      - type: icontains
+        value: "--parameters"
+      - type: icontains
+        value: "--env"
+      - type: javascript
+        value: |
+          output.includes('prod')
+        metric: env-specified
+
+  - description: "Invocation: service principal auth with all required flags"
+    vars:
+      user_query: "Authenticate with a service principal using client ID abc, secret xyz, and tenant tid-123"
+    assert:
+      - type: icontains
+        value: "fabio auth login"
+      - type: icontains
+        value: "--service-principal"
+      - type: icontains
+        value: "--tenant"
+      - type: icontains
+        value: "--client-id"
+      - type: icontains
+        value: "--client-secret"
+
+  - description: "Invocation: lakehouse upload with source and dest"
+    vars:
+      user_query: "Upload the file /tmp/report.parquet to Files/reports/ in lakehouse lh-001 in workspace ws-001"
+    assert:
+      - type: icontains
+        value: "fabio lakehouse upload"
+      - type: icontains
+        value: "--workspace"
+      - type: icontains
+        value: "--id"
+      - type: icontains
+        value: "--source"
+      - type: icontains
+        value: "--dest"
+
+  - description: "Invocation: deploy export requires --dir and --workspace"
+    vars:
+      user_query: "Export my workspace items to /tmp/export directory"
+    assert:
+      - type: icontains
+        value: "fabio deploy export"
+      - type: icontains
+        value: "--dir"
+      - type: icontains
+        value: "--workspace"
+
+  - description: "Invocation: KQL database create requires eventhouse-id"
+    vars:
+      user_query: "Create a KQL database called SensorDB in workspace ws-001 linked to eventhouse eh-001"
+    assert:
+      - type: icontains
+        value: "fabio kql-database create"
+      - type: icontains
+        value: "--eventhouse-id"
+      - type: icontains
+        value: "--name"
+      - type: icontains
+        value: "--workspace"
+
+  # ============================================================
+  # OUTPUT PARSING (JMESPath, output formats)
+  # ============================================================
+
+  - description: "Output: JMESPath to extract specific field from list"
+    vars:
+      user_query: "List all workspace names only, nothing else"
+    assert:
+      - type: icontains
+        value: "fabio workspace list"
+      - type: javascript
+        value: |
+          output.includes('--query') || output.includes('-q')
+        metric: jmespath-used
+
+  - description: "Output: CSV export format"
+    vars:
+      user_query: "Export the list of items in my workspace as CSV"
+    assert:
+      - type: icontains
+        value: "fabio"
+      - type: javascript
+        value: |
+          output.includes('-o csv') || output.includes('--output csv')
+        metric: csv-format
+
+  - description: "Output: TSV export format"
+    vars:
+      user_query: "Get lakehouse list in tab-separated format for Excel import"
+    assert:
+      - type: icontains
+        value: "fabio lakehouse list"
+      - type: javascript
+        value: |
+          output.includes('-o tsv') || output.includes('--output tsv')
+        metric: tsv-format
+
+  - description: "Output: plain format for shell scripting"
+    vars:
+      user_query: "Get just the ID of the first lakehouse for use in a shell variable"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('-o plain') || output.includes('--output plain')
+        metric: plain-format
+      - type: javascript
+        value: |
+          output.includes('--query') || output.includes('-q') || output.includes('--limit')
+        metric: projection-for-single
+
+  - description: "Output: quiet flag suppresses stdout"
+    vars:
+      user_query: "Delete item abc-123 from workspace ws-001 without printing anything to stdout"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('--quiet') || output.includes('-q ')
+        metric: quiet-flag
+
+  - description: "Output: JSON envelope structure awareness"
+    vars:
+      user_query: "I got a response from fabio lakehouse list. How do I extract items from the JSON envelope?"
+    assert:
+      - type: llm-rubric
+        value: "The response explains that list responses use the envelope {\"data\": [...], \"count\": N} and suggests using --query or jq to extract the data array"
+        metric: envelope-awareness
+
+  # ============================================================
+  # MULTI-STEP WORKFLOWS (ordering, dependency resolution)
+  # ============================================================
+
+  - description: "Workflow: RTI pipeline setup order"
+    vars:
+      user_query: "Set up a real-time intelligence pipeline: create an eventhouse, then a KQL database, then an eventstream that sends data to the KQL database"
+    assert:
+      - type: icontains
+        value: "fabio eventhouse create"
+      - type: icontains
+        value: "fabio kql-database create"
+      - type: icontains
+        value: "fabio eventstream create"
+      - type: llm-rubric
+        value: "The commands are in correct dependency order: eventhouse first, then KQL database (which requires eventhouse-id), then eventstream"
+        metric: rti-ordering
+
+  - description: "Workflow: semantic model with report binding"
+    vars:
+      user_query: "Create a semantic model from my model.bim file, then create a report connected to it"
+    assert:
+      - type: icontains
+        value: "fabio semantic-model create"
+      - type: icontains
+        value: "fabio report create"
+      - type: javascript
+        value: |
+          output.includes('--dataset') || output.includes('semantic model')
+        metric: report-binding
+
+  - description: "Workflow: deploy with pre-flight validation"
+    vars:
+      user_query: "I want to safely deploy to production. First validate my source, then plan, then apply if the plan looks good."
+    assert:
+      - type: icontains
+        value: "fabio deploy validate"
+      - type: icontains
+        value: "fabio deploy plan"
+      - type: icontains
+        value: "fabio deploy apply"
+      - type: llm-rubric
+        value: "The response shows validate -> plan -> apply in correct order, with validate running local checks before plan makes API calls"
+        metric: deploy-safety-order
+
+  - description: "Workflow: data pipeline with schedule"
+    vars:
+      user_query: "Create a data pipeline in my workspace, then set up a daily schedule for it"
+    assert:
+      - type: icontains
+        value: "fabio data-pipeline create"
+      - type: javascript
+        value: |
+          output.includes('create-schedule') || output.includes('schedule')
+        metric: schedule-creation
+
+  - description: "Workflow: upload then load into Delta table"
+    vars:
+      user_query: "Upload orders.csv to my lakehouse Files folder, then load it into a Delta table called orders"
+    assert:
+      - type: icontains
+        value: "fabio lakehouse upload"
+      - type: icontains
+        value: "fabio lakehouse load-table"
+      - type: llm-rubric
+        value: "Upload must come before load-table. The load-table command references the uploaded file path in Files/ and uses PascalCase for mode (Overwrite or Append) and format (Csv)"
+        metric: upload-before-load
+
+  - description: "Workflow: workspace creation with capacity assignment"
+    vars:
+      user_query: "Create a new workspace called Analytics and assign it to capacity cap-001"
+    assert:
+      - type: icontains
+        value: "fabio workspace create"
+      - type: icontains
+        value: "fabio workspace assign-capacity"
+      - type: llm-rubric
+        value: "Create workspace first (to get workspace ID), then assign capacity as a separate step"
+        metric: create-then-assign
+
+  - description: "Workflow: deploy config file with environments"
+    vars:
+      user_query: "I have a deploy.yaml config file. Deploy to my staging environment first, then production."
+    assert:
+      - type: icontains
+        value: "fabio deploy apply"
+      - type: icontains
+        value: "--config"
+      - type: icontains
+        value: "--env"
+      - type: llm-rubric
+        value: "The response shows two separate deploy apply commands: one with --env staging and one with --env prod (or similar production environment name)"
+        metric: multi-env-deploy
+
+  - description: "Workflow: data agent setup with datasource"
+    vars:
+      user_query: "Create a data agent, add a lakehouse as a datasource, then publish it"
+    assert:
+      - type: icontains
+        value: "fabio data-agent create"
+      - type: javascript
+        value: |
+          output.includes('add-datasource') || output.includes('datasource')
+        metric: datasource-add
+      - type: javascript
+        value: |
+          output.includes('publish')
+        metric: publish-step
+
+  # ============================================================
+  # ERROR RECOVERY (error codes, retry behavior)
+  # ============================================================
+
+  - description: "Error: RATE_LIMITED recovery"
+    vars:
+      user_query: "I'm getting RATE_LIMITED errors from fabio. What should I do?"
+    assert:
+      - type: llm-rubric
+        value: "The response explains that fabio handles rate-limit retry automatically, and suggests using bulk/batch APIs, list APIs over repeated show calls, and reducing parallel operations. May mention --all for pagination instead of manual loops."
+        metric: rate-limit-guidance
+
+  - description: "Error: CAPACITY_INACTIVE recovery"
+    vars:
+      user_query: "I got a CAPACITY_INACTIVE error. How do I fix it?"
+    assert:
+      - type: llm-rubric
+        value: "The response suggests resuming the capacity using fabio capacity resume or checking that the workspace's capacity is active"
+        metric: capacity-inactive-fix
+
+  - description: "Error: NOT_FOUND with actionable hint"
+    vars:
+      user_query: "I got NOT_FOUND when trying to show a lakehouse. The error hint says to run fabio lakehouse list."
+    assert:
+      - type: icontains
+        value: "fabio lakehouse list"
+      - type: llm-rubric
+        value: "The response follows the error hint and suggests listing lakehouses to find the correct ID, acknowledging that the item ID might be wrong"
+        metric: not-found-recovery
+
+  - description: "Error: FORBIDDEN on delete suggests required role"
+    vars:
+      user_query: "I got FORBIDDEN when trying to delete a notebook. What role do I need?"
+    assert:
+      - type: llm-rubric
+        value: "The response identifies that delete operations require elevated permissions (Member or Admin role) and suggests checking workspace role assignments"
+        metric: forbidden-role-hint
+
+  - description: "Error: TIMEOUT on notebook run"
+    vars:
+      user_query: "My notebook run timed out after the default period. How can I give it more time?"
+    assert:
+      - type: icontains
+        value: "--timeout"
+      - type: llm-rubric
+        value: "The response suggests increasing the --timeout value (in seconds) for the notebook run command and mentions the default is 600s"
+        metric: timeout-increase
+
+  # ============================================================
+  # TENANT VS WORKSPACE SCOPING (critical API behavior)
+  # ============================================================
+
+  - description: "Scope: connections are tenant-scoped"
+    vars:
+      user_query: "List all connections available to me"
+    assert:
+      - type: icontains
+        value: "fabio connection list"
+      - type: not-icontains
+        value: "--workspace"
+        metric: connection-tenant-scope
+
+  - description: "Scope: capacities are tenant-scoped"
+    vars:
+      user_query: "Show all Fabric capacities in my tenant"
+    assert:
+      - type: icontains
+        value: "fabio capacity list"
+      - type: not-icontains
+        value: "--workspace"
+        metric: capacity-tenant-scope
+
+  - description: "Scope: gateways are tenant-scoped"
+    vars:
+      user_query: "List all gateways"
+    assert:
+      - type: icontains
+        value: "fabio gateway list"
+      - type: not-icontains
+        value: "--workspace"
+        metric: gateway-tenant-scope
+
+  - description: "Scope: lakehouses are workspace-scoped"
+    vars:
+      user_query: "List all lakehouses in workspace ws-abc"
+    assert:
+      - type: icontains
+        value: "fabio lakehouse list"
+      - type: icontains
+        value: "--workspace"
+        metric: lakehouse-workspace-scope
+
+  - description: "Scope: admin commands use admin prefix not workspace"
+    vars:
+      user_query: "List all workspaces in the tenant as an admin"
+    assert:
+      - type: icontains
+        value: "fabio admin"
+      - type: javascript
+        value: |
+          output.includes('admin') && output.includes('list')
+        metric: admin-scope
+
+  # ============================================================
+  # LRO/ASYNC AWARENESS (--wait, --timeout, polling)
+  # ============================================================
+
+  - description: "LRO: data pipeline run with wait"
+    vars:
+      user_query: "Trigger data pipeline pipe-001 in workspace ws-001 and wait for it to finish"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('data-pipeline') || output.includes('job-scheduler')
+        metric: pipeline-command
+      - type: icontains
+        value: "--wait"
+
+  - description: "LRO: job-scheduler run-on-demand with timeout and cancel"
+    vars:
+      user_query: "Run a job on demand for item item-001 in workspace ws-001, wait up to 5 minutes, and cancel it if it exceeds the timeout"
+    assert:
+      - type: icontains
+        value: "fabio job-scheduler run-on-demand"
+      - type: icontains
+        value: "--wait"
+      - type: icontains
+        value: "--timeout"
+      - type: icontains
+        value: "--cancel-on-timeout"
+
+  - description: "LRO: deploy apply is inherently LRO"
+    vars:
+      user_query: "Deploy my items. How does fabio handle the fact that Fabric create/update operations are async?"
+    assert:
+      - type: llm-rubric
+        value: "The response explains that fabio deploy apply automatically handles LRO polling for create and updateDefinition operations (2s polling, 120s max by default). Mentions --lro-timeout to customize."
+        metric: deploy-lro-awareness
+
+  - description: "LRO: spark job definition run with wait"
+    vars:
+      user_query: "Run spark job definition sjd-001 in workspace ws-001 and block until it completes or fails"
+    assert:
+      - type: icontains
+        value: "fabio spark-job-definition run"
+      - type: icontains
+        value: "--wait"
+      - type: icontains
+        value: "--workspace"
+
+  - description: "LRO: understanding default polling behavior"
+    vars:
+      user_query: "What is fabio's default LRO polling interval and maximum wait time?"
+    assert:
+      - type: llm-rubric
+        value: "The response mentions 2 second polling interval and 120 second maximum wait time by default. May mention --lro-timeout to override."
+        metric: lro-defaults
+
+  # ============================================================
+  # EDGE CASES (profiles, hard-delete, bulk ops, sync)
+  # ============================================================
+
+  - description: "Edge: profile save and use"
+    vars:
+      user_query: "I want to save a profile called 'dev' that defaults to workspace ws-dev, then switch to it"
+    assert:
+      - type: icontains
+        value: "fabio profile save"
+      - type: icontains
+        value: "fabio profile use"
+      - type: icontains
+        value: "--name"
+      - type: javascript
+        value: |
+          output.includes('--workspace') || output.includes('dev')
+        metric: profile-workspace
+
+  - description: "Edge: hard-delete for permanent removal"
+    vars:
+      user_query: "Permanently delete notebook nb-123 from workspace ws-456, bypassing the recycle bin"
+    assert:
+      - type: icontains
+        value: "delete"
+      - type: icontains
+        value: "--hard-delete"
+        metric: hard-delete-flag
+
+  - description: "Edge: bulk-create items"
+    vars:
+      user_query: "Create multiple notebooks at once from a list"
+    assert:
+      - type: icontains
+        value: "fabio item bulk-create"
+
+  - description: "Edge: bulk-delete items"
+    vars:
+      user_query: "Delete multiple items by their IDs in parallel"
+    assert:
+      - type: icontains
+        value: "fabio item bulk-delete"
+
+  - description: "Edge: lakehouse sync with --local for local-to-remote"
+    vars:
+      user_query: "Sync my local ./data directory to the Files/data path in my lakehouse, only uploading new or changed files"
+    assert:
+      - type: icontains
+        value: "fabio lakehouse sync"
+      - type: icontains
+        value: "--local"
+
+  - description: "Edge: lakehouse sync with --delete for cleanup"
+    vars:
+      user_query: "Sync files from source lakehouse to destination lakehouse and remove any extra files at the destination that don't exist in the source"
+    assert:
+      - type: icontains
+        value: "fabio lakehouse sync"
+      - type: icontains
+        value: "--delete"
+
+  - description: "Edge: --profile flag for one-off override"
+    vars:
+      user_query: "List lakehouses using my production profile without permanently switching to it"
+    assert:
+      - type: icontains
+        value: "fabio lakehouse list"
+      - type: icontains
+        value: "--profile"
+
+  - description: "Edge: dry-run on mutations"
+    vars:
+      user_query: "I want to see what would happen if I deleted workspace ws-001 without actually doing it"
+    assert:
+      - type: icontains
+        value: "fabio workspace delete"
+      - type: icontains
+        value: "--dry-run"
+        metric: dry-run-usage
+
+  # ============================================================
+  # ADDITIONAL: Token scoping and API routing
+  # ============================================================
+
+  - description: "Token: Power BI API uses same Fabric token"
+    vars:
+      user_query: "Can I call Power BI REST API endpoints with fabio? Do I need a separate login?"
+    assert:
+      - type: llm-rubric
+        value: "The response explains that the same Fabric token (api.fabric.microsoft.com/.default scope) works for both Fabric and Power BI APIs. No separate login or scope is needed. May mention --api powerbi flag on rest call."
+        metric: shared-token-awareness
+
+  - description: "Token: KQL database uses different auth scope"
+    vars:
+      user_query: "What authentication scope does fabio use for KQL queries?"
+    assert:
+      - type: llm-rubric
+        value: "The response explains that KQL queries use a different token scope: {kusto_uri}/.default (scoped to the specific cluster URI), not the standard Fabric scope"
+        metric: kql-scope-awareness
+
+  - description: "Deploy: workspace name vs GUID resolution"
+    vars:
+      user_query: "Can I use a workspace display name instead of GUID with fabio deploy?"
+    assert:
+      - type: llm-rubric
+        value: "The response confirms that --workspace accepts either a GUID or a display name. When a name is provided, fabio resolves it by listing workspaces and matching case-insensitively."
+        metric: workspace-name-resolution

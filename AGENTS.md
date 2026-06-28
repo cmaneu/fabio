@@ -660,10 +660,14 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `Cargo.toml`: Project config, dependencies, clippy/lints config, release profile (LTO+strip)
 - `rust-toolchain.toml`: stable channel, rustfmt+clippy components
 - `prek.toml`: Pre-commit hook configuration (prek — Rust-native pre-commit runner)
+- `.agents/skills/fabio/SKILL.md`: Agent skill bootstrapping document (330 lines, loaded by agent frameworks on activation)
+- `.agents/skills/fabio/references/API-BEHAVIORS.md`: Critical API gotchas that cause silent failures
+- `.agents/skills/fabio/scripts/install.sh`: Cross-platform binary installer for the skill
+- `tests/eval/promptfooconfig.yaml`: 77-case promptfoo eval testing skill instruction quality (run with `GITHUB_TOKEN=$(gh auth token) promptfoo eval -c tests/eval/promptfooconfig.yaml`)
 - `src/main.rs`: Entry point, `#![recursion_limit = "256"]`, tokio async main, error handling dispatch
 - `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 74 subcommand groups
-- `src/errors.rs`: ErrorCode enum + FabioError struct with thiserror
-- `src/output.rs`: render_list_with_token, render_object, render_error (respects --quiet/--query), apply_query, dry_run_guard, unit tests
+- `src/errors.rs`: ErrorCode enum (with stable exit codes) + FabioError struct with thiserror
+- `src/output.rs`: render_list_with_token, render_object, render_error (respects --quiet/--query/--wrap-untrusted), apply_query, dry_run_guard, unit tests
 - `src/parallel.rs`: Parallel execution framework for concurrent file/table operations with rate-limit retry
 - `src/verbose.rs`: Lightweight `--verbose` diagnostics module (global AtomicBool flag, HTTP/LRO/auth tracing to stderr)
 - `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, ARM API methods (arm_get/post/put/patch/delete with ARM LRO polling), Power BI API methods (get/post/put/patch/delete/bytes/multipart_powerbi), run_notebook, trigger_item_job
