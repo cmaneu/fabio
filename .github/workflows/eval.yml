@@ -1,0 +1,68 @@
+name: Skill Eval
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.agents/skills/**'
+      - 'tests/eval/**'
+      - 'src/commands/context/data/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.agents/skills/**'
+      - 'tests/eval/**'
+      - 'src/commands/context/data/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    name: skill quality (promptfoo)
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Install promptfoo
+        run: npm install -g promptfoo
+
+      - name: Run eval
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd tests/eval
+          promptfoo eval -c promptfooconfig.yaml --no-cache -o /tmp/eval-results.json 2>&1 | tee /tmp/eval-output.txt
+
+      - name: Check pass rate
+        run: |
+          python3 -c "
+          import json, sys
+          with open('/tmp/eval-results.json') as f:
+              data = json.load(f)
+          results = data.get('results', {}).get('results', [])
+          passed = sum(1 for r in results if r.get('success'))
+          total = len(results)
+          rate = 100 * passed / total if total > 0 else 0
+          print(f'Results: {passed}/{total} passed ({rate:.0f}%)')
+          # Fail if below 70% (gpt-4o-mini baseline is 81%)
+          if rate < 70:
+              print(f'::error::Skill eval pass rate {rate:.0f}% is below 70% threshold')
+              sys.exit(1)
+          print(f'::notice::Skill eval pass rate: {rate:.0f}% ({passed}/{total})')
+          "
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: eval-results
+          path: /tmp/eval-results.json
+          retention-days: 30
