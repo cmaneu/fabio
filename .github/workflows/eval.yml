@@ -36,8 +36,13 @@ jobs:
 
       - name: Run eval
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
         run: |
+          if [ -z "$GITHUB_TOKEN" ]; then
+            echo "::warning::GH_MODELS_TOKEN secret not set — skipping eval"
+            echo '{"results":{"results":[]}}' > /tmp/eval-results.json
+            exit 0
+          fi
           cd tests/eval
           promptfoo eval -c promptfooconfig.yaml --no-cache -o /tmp/eval-results.json 2>&1 | tee /tmp/eval-output.txt
 
@@ -48,11 +53,13 @@ jobs:
           with open('/tmp/eval-results.json') as f:
               data = json.load(f)
           results = data.get('results', {}).get('results', [])
-          passed = sum(1 for r in results if r.get('success'))
           total = len(results)
-          rate = 100 * passed / total if total > 0 else 0
+          if total == 0:
+              print('::notice::No eval results (GH_MODELS_TOKEN not configured)')
+              sys.exit(0)
+          passed = sum(1 for r in results if r.get('success'))
+          rate = 100 * passed / total
           print(f'Results: {passed}/{total} passed ({rate:.0f}%)')
-          # Fail if below 70% (gpt-4o-mini baseline is 81%)
           if rate < 70:
               print(f'::error::Skill eval pass rate {rate:.0f}% is below 70% threshold')
               sys.exit(1)
