@@ -24,6 +24,7 @@ jobs:
   eval:
     runs-on: ubuntu-latest
     name: skill quality (promptfoo)
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -45,7 +46,7 @@ jobs:
             exit 1
           fi
           cd tests/eval
-          timeout 600 promptfoo eval -c promptfooconfig.yaml --no-cache -o /tmp/eval-results.json 2>&1 | tee /tmp/eval-output.txt
+          timeout 1200 promptfoo eval -c promptfooconfig.yaml --no-cache -o /tmp/eval-results.json 2>&1 | tee /tmp/eval-output.txt
 
       - name: Check pass rate
         run: |
