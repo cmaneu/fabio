@@ -131,15 +131,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Notify fabio-skills to sync
-        run: |
-          gh api repos/iemejia/fabio-skills/dispatches \
-            -f event_type=fabio-released \
-            -f "client_payload[tag]=${{ github.ref_name }}" \
-            -f "client_payload[sha]=${{ github.sha }}"
-        env:
-          GH_TOKEN: ${{ secrets.SKILLS_DISPATCH_PAT }}
-
   docker:
     needs: release
     runs-on: ubuntu-latest
