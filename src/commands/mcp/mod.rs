@@ -25,6 +25,11 @@ pub enum McpCommand {
         /// Without this flag, all tools (subject to --allow-write) are exposed.
         #[arg(long, value_delimiter = ',')]
         allow_tool: Option<Vec<String>>,
+
+        /// Print the list of tools that would be exposed, then exit.
+        /// Useful for inspecting the effective tool surface before starting the server.
+        #[arg(long)]
+        list_tools: bool,
     },
 }
 
@@ -33,6 +38,14 @@ pub async fn execute(cli: &Cli, command: &McpCommand) -> Result<()> {
         McpCommand::Serve {
             allow_write,
             allow_tool,
-        } => serve::run(cli, *allow_write, allow_tool.as_deref()).await,
+            list_tools,
+        } => {
+            if *list_tools {
+                serve::list_tools(cli, *allow_write, allow_tool.as_deref());
+                Ok(())
+            } else {
+                serve::run(cli, *allow_write, allow_tool.as_deref()).await
+            }
+        }
     }
 }

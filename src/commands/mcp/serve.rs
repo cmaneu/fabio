@@ -37,6 +37,38 @@ impl McpPolicy {
     }
 }
 
+/// Print the list of tools that would be exposed with the given policy, then exit.
+pub(super) fn list_tools(cli: &Cli, allow_write: bool, allow_tool: Option<&[String]>) {
+    let policy = McpPolicy {
+        allow_write,
+        allow_tool_patterns: allow_tool.map(<[String]>::to_vec),
+    };
+
+    let all_tools = build_mcp_tools();
+    let filtered: Vec<Value> = all_tools
+        .into_iter()
+        .filter(|tool| {
+            let name = tool.get("name").and_then(Value::as_str).unwrap_or("");
+            let mutates = tool
+                .get("annotations")
+                .and_then(|a| a.get("readOnlyHint"))
+                .and_then(Value::as_bool)
+                == Some(false);
+            policy.is_tool_visible(name, mutates)
+        })
+        .collect();
+
+    let output = json!({
+        "tools": filtered,
+        "count": filtered.len(),
+        "policy": {
+            "allow_write": allow_write,
+            "allow_tool": allow_tool,
+        }
+    });
+    crate::output::render_object(cli, &output, "count");
+}
+
 /// Run the MCP server, reading JSON-RPC messages from stdin and writing responses to stdout.
 pub(super) async fn run(
     _cli: &Cli,

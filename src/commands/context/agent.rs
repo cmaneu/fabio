@@ -329,6 +329,16 @@ fn execute_full(cli: &Cli) {
     output::render_object(cli, &obj, "name");
 }
 
+/// Build the effective safety state for the current CLI invocation.
+fn build_safety_state(cli: &Cli) -> serde_json::Value {
+    serde_json::json!({
+        "readonly": cli.readonly,
+        "wrap_untrusted": cli.wrap_untrusted,
+        "enable_commands": cli.enable_commands,
+        "disable_commands": cli.disable_commands,
+    })
+}
+
 /// Compact mode: group names + descriptions + subcommand name lists only.
 fn execute_compact(cli: &Cli, group_filter: Option<&str>) {
     let commands = commands_schema();
@@ -391,6 +401,10 @@ fn execute_compact(cli: &Cli, group_filter: Option<&str>) {
         serde_json::json!(env!("CARGO_PKG_VERSION")),
     );
     result.insert("commands".to_owned(), serde_json::Value::Object(compact));
+
+    // Include effective safety state so agents know what's restricted.
+    result.insert("safety".to_owned(), build_safety_state(cli));
+
     result.insert(
         "hint".to_owned(),
         serde_json::json!(
