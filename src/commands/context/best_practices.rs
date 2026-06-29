@@ -28,26 +28,48 @@ pub(super) fn list_names() -> Vec<&'static str> {
     BEST_PRACTICES.iter().map(|(name, _)| *name).collect()
 }
 
-const BEST_PRACTICES: &[(&str, &str)] = &[
-    (
-        "throttling",
-        include_str!("data/best_practices/throttling.json"),
-    ),
-    ("lro", include_str!("data/best_practices/lro.json")),
-    (
-        "pagination",
-        include_str!("data/best_practices/pagination.json"),
-    ),
-    (
-        "admin-apis",
-        include_str!("data/best_practices/admin_apis.json"),
-    ),
-    (
-        "shortcuts",
-        include_str!("data/best_practices/shortcuts.json"),
-    ),
-    (
-        "deploy-parameters",
-        include_str!("data/best_practices/deploy_parameters.json"),
-    ),
-];
+pub(super) const fn entries() -> &'static [(&'static str, &'static str)] {
+    BEST_PRACTICES
+}
+
+include!(concat!(env!("OUT_DIR"), "/best_practices.rs"));
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_best_practice_entries_are_valid_json() {
+        for (name, content) in BEST_PRACTICES {
+            let val: Result<serde_json::Value, _> = serde_json::from_str(content);
+            assert!(
+                val.is_ok(),
+                "Best-practice '{name}' contains invalid JSON: {}",
+                val.unwrap_err()
+            );
+        }
+    }
+
+    #[test]
+    fn all_best_practice_entries_have_required_fields() {
+        for (name, content) in BEST_PRACTICES {
+            let val: serde_json::Value = serde_json::from_str(content).unwrap();
+            assert!(
+                val.get("topic").is_some() || val.get("title").is_some(),
+                "Best-practice '{name}' must have 'topic' or 'title' field"
+            );
+            assert!(
+                val.get("summary").is_some(),
+                "Best-practice '{name}' must have a 'summary' field for discoverability"
+            );
+        }
+    }
+
+    #[test]
+    fn best_practices_is_non_empty() {
+        assert!(
+            !BEST_PRACTICES.is_empty(),
+            "BEST_PRACTICES should have at least one entry"
+        );
+    }
+}

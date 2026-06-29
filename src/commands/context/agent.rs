@@ -193,6 +193,24 @@ pub(super) fn execute_find(cli: &Cli, query: &str) {
         }
     }
 
+    // Search best-practices and workflows for matching topics.
+    search_knowledge_entries(
+        super::best_practices::entries(),
+        "best-practice",
+        "fabio context best-practices",
+        &query_tokens,
+        &query_lower,
+        &mut results,
+    );
+    search_knowledge_entries(
+        super::workflows::entries(),
+        "workflow",
+        "fabio context workflow",
+        &query_tokens,
+        &query_lower,
+        &mut results,
+    );
+
     // Sort by score descending, take top 10.
     results.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     let top_results: Vec<serde_json::Value> =
@@ -212,6 +230,62 @@ pub(super) fn execute_find(cli: &Cli, query: &str) {
             "hint": "Use 'fabio context describe <GROUP> <CMD>' for full details on any result"
         });
         output::render_object(cli, &result, "query");
+    }
+}
+
+/// Search knowledge base entries (best-practices, workflows) and add matches to results.
+fn search_knowledge_entries(
+    entries: &[(&str, &str)],
+    entry_type: &str,
+    command_prefix: &str,
+    tokens: &[&str],
+    query_lower: &str,
+    results: &mut Vec<(f64, serde_json::Value)>,
+) {
+    for &(name, content) in entries {
+        let content_lower = content.to_lowercase();
+        let name_lower = name.to_lowercase();
+        let mut score = 0.0;
+
+        // Exact name match (highest).
+        if name_lower.contains(query_lower) {
+            score += 5.0;
+        }
+
+        // Token-based matching in name and content.
+        for token in tokens {
+            let token_lower = token.to_lowercase();
+            if name_lower.contains(&token_lower) {
+                score += 3.0;
+            }
+            if content_lower.contains(&token_lower) {
+                score += 1.5;
+            }
+        }
+
+        if score > 0.0 {
+            // Extract summary from JSON content if available.
+            let description = serde_json::from_str::<serde_json::Value>(content)
+                .ok()
+                .and_then(|v| {
+                    v.get("summary")
+                        .or_else(|| v.get("description"))
+                        .or_else(|| v.get("title"))
+                        .and_then(serde_json::Value::as_str)
+                        .map(String::from)
+                })
+                .unwrap_or_default();
+
+            results.push((
+                score,
+                serde_json::json!({
+                    "command": format!("{command_prefix} {name}"),
+                    "score": (score * 100.0).round() / 100.0,
+                    "description": description,
+                    "type": entry_type,
+                }),
+            ));
+        }
     }
 }
 

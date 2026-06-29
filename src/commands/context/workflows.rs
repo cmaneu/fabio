@@ -28,25 +28,52 @@ pub(super) fn list_names() -> Vec<&'static str> {
     WORKFLOWS.iter().map(|(name, _)| *name).collect()
 }
 
-const WORKFLOWS: &[(&str, &str)] = &[
-    (
-        "rti-pipeline",
-        include_str!("data/workflows/rti_pipeline.json"),
-    ),
-    (
-        "direct-lake-report",
-        include_str!("data/workflows/direct_lake_report.json"),
-    ),
-    (
-        "cicd-deploy",
-        include_str!("data/workflows/cicd_deploy.json"),
-    ),
-    (
-        "lakehouse-etl",
-        include_str!("data/workflows/lakehouse_etl.json"),
-    ),
-    (
-        "data-agent-setup",
-        include_str!("data/workflows/data_agent_setup.json"),
-    ),
-];
+pub(super) const fn entries() -> &'static [(&'static str, &'static str)] {
+    WORKFLOWS
+}
+
+include!(concat!(env!("OUT_DIR"), "/workflows.rs"));
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_workflow_entries_are_valid_json() {
+        for (name, content) in WORKFLOWS {
+            let val: Result<serde_json::Value, _> = serde_json::from_str(content);
+            assert!(
+                val.is_ok(),
+                "Workflow '{name}' contains invalid JSON: {}",
+                val.unwrap_err()
+            );
+        }
+    }
+
+    #[test]
+    fn all_workflow_entries_have_required_fields() {
+        for (name, content) in WORKFLOWS {
+            let val: serde_json::Value = serde_json::from_str(content).unwrap();
+            assert!(
+                val.get("name").is_some(),
+                "Workflow '{name}' must have a 'name' field"
+            );
+            assert!(
+                val.get("steps").is_some(),
+                "Workflow '{name}' must have a 'steps' field"
+            );
+            assert!(
+                val.get("description").is_some(),
+                "Workflow '{name}' must have a 'description' field for discoverability"
+            );
+        }
+    }
+
+    #[test]
+    fn workflows_is_non_empty() {
+        assert!(
+            !WORKFLOWS.is_empty(),
+            "WORKFLOWS should have at least one entry"
+        );
+    }
+}

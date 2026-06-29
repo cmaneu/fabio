@@ -500,3 +500,232 @@ fn find_results_have_required_fields() {
     assert!(first["score"].is_number());
     assert!(first["description"].is_string());
 }
+
+// ── Phase 4b: context find — knowledge base search ───────────────────────────
+
+#[test]
+fn find_surfaces_best_practice_for_deploy_parameters() {
+    let assert = fabio()
+        .args(["context", "find", "environment variables deploy parameters"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    let results = json["data"]["results"].as_array().unwrap();
+    assert!(!results.is_empty(), "should find deploy-parameters topic");
+
+    // Best-practice should be the top result
+    let top = &results[0];
+    assert_eq!(
+        top["command"].as_str().unwrap(),
+        "fabio context best-practices deploy-parameters",
+        "deploy-parameters should be top result"
+    );
+    assert_eq!(top["type"].as_str().unwrap(), "best-practice");
+    assert!(
+        top["description"]
+            .as_str()
+            .unwrap()
+            .contains("$ENV:VAR_NAME"),
+        "description should mention $ENV:VAR_NAME"
+    );
+}
+
+#[test]
+fn find_surfaces_workflow_for_rti_pipeline() {
+    let assert = fabio()
+        .args([
+            "context",
+            "find",
+            "real-time intelligence pipeline eventhouse",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    let results = json["data"]["results"].as_array().unwrap();
+    assert!(!results.is_empty(), "should find rti-pipeline workflow");
+
+    // The RTI pipeline workflow should appear in results
+    let has_rti = results.iter().any(|r| {
+        r["command"]
+            .as_str()
+            .is_some_and(|c| c.contains("rti-pipeline"))
+    });
+    assert!(has_rti, "rti-pipeline workflow should be in results");
+
+    let rti = results
+        .iter()
+        .find(|r| {
+            r["command"]
+                .as_str()
+                .is_some_and(|c| c.contains("rti-pipeline"))
+        })
+        .unwrap();
+    assert_eq!(rti["type"].as_str().unwrap(), "workflow");
+}
+
+#[test]
+fn find_surfaces_throttling_best_practice() {
+    let assert = fabio()
+        .args(["context", "find", "throttling rate limit retry"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    let results = json["data"]["results"].as_array().unwrap();
+    assert!(!results.is_empty(), "should find throttling topic");
+
+    let has_throttling = results.iter().any(|r| {
+        r["command"]
+            .as_str()
+            .is_some_and(|c| c.contains("throttling"))
+    });
+    assert!(
+        has_throttling,
+        "throttling best-practice should be in results: {results:?}"
+    );
+}
+
+#[test]
+fn find_surfaces_cicd_deploy_workflow() {
+    let assert = fabio()
+        .args(["context", "find", "CI CD deployment convergence"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    let results = json["data"]["results"].as_array().unwrap();
+    let has_cicd = results.iter().any(|r| {
+        r["command"]
+            .as_str()
+            .is_some_and(|c| c.contains("cicd-deploy"))
+    });
+    assert!(
+        has_cicd,
+        "cicd-deploy workflow should appear for CI/CD query: {results:?}"
+    );
+}
+
+#[test]
+fn find_knowledge_results_have_type_field() {
+    let assert = fabio()
+        .args(["context", "find", "shortcuts ADLS connection"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    let results = json["data"]["results"].as_array().unwrap();
+
+    // Filter to knowledge results (non-command)
+    let knowledge_results: Vec<_> = results.iter().filter(|r| r.get("type").is_some()).collect();
+    assert!(
+        !knowledge_results.is_empty(),
+        "should have knowledge-type results for shortcuts query"
+    );
+
+    for result in &knowledge_results {
+        let result_type = result["type"].as_str().unwrap();
+        assert!(
+            result_type == "best-practice" || result_type == "workflow",
+            "type should be 'best-practice' or 'workflow', got: {result_type}"
+        );
+        // Knowledge results should have command pointing to context subcommand
+        let cmd = result["command"].as_str().unwrap();
+        assert!(
+            cmd.starts_with("fabio context "),
+            "knowledge result command should start with 'fabio context': {cmd}"
+        );
+    }
+}
+
+#[test]
+fn find_command_results_lack_type_field() {
+    // Command results should NOT have a 'type' field (distinguishes from knowledge)
+    let assert = fabio()
+        .args(["context", "find", "workspace create"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    let results = json["data"]["results"].as_array().unwrap();
+    let command_results: Vec<_> = results
+        .iter()
+        .filter(|r| {
+            r["command"]
+                .as_str()
+                .is_some_and(|c| !c.starts_with("fabio context best-practices"))
+                && r["command"]
+                    .as_str()
+                    .is_some_and(|c| !c.starts_with("fabio context workflow"))
+        })
+        .collect();
+
+    assert!(!command_results.is_empty());
+    for result in &command_results {
+        assert!(
+            result.get("type").is_none() || result["type"].is_null(),
+            "command results should not have 'type' field: {result}"
+        );
+        // Command results have 'mutates' field instead
+        assert!(
+            result.get("mutates").is_some(),
+            "command results should have 'mutates' field: {result}"
+        );
+    }
+}
+
+#[test]
+fn find_mixed_results_commands_and_knowledge() {
+    // A query that matches both commands and knowledge
+    let assert = fabio()
+        .args(["context", "find", "deploy plan apply"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    let results = json["data"]["results"].as_array().unwrap();
+    assert!(results.len() >= 2, "should have multiple results");
+
+    // Should have at least one command result
+    let has_command = results
+        .iter()
+        .any(|r| r.get("mutates").is_some() && r.get("type").is_none());
+    assert!(has_command, "should include command results");
+
+    // Should have at least one knowledge result (cicd-deploy or deploy-parameters)
+    let has_knowledge = results.iter().any(|r| r.get("type").is_some());
+    assert!(
+        has_knowledge,
+        "should include knowledge results for deploy query"
+    );
+}
+
+#[test]
+fn find_content_search_matches_inside_json() {
+    // "$ENV:VAR_NAME" is only in the deploy-parameters content, not in its name
+    let assert = fabio()
+        .args(["context", "find", "$ENV:VAR_NAME secrets"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    let results = json["data"]["results"].as_array().unwrap();
+    let has_deploy_params = results.iter().any(|r| {
+        r["command"]
+            .as_str()
+            .is_some_and(|c| c.contains("deploy-parameters"))
+    });
+    assert!(
+        has_deploy_params,
+        "content search should find deploy-parameters via $ENV: {results:?}"
+    );
+}

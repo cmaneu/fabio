@@ -263,6 +263,12 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
 
    **Output examples format** — Each example is a JSON file in `src/commands/context/data/examples/` with the structure: `{"command": "fabio ...", "description": "...", "response": {...}, "notes": "...", "query_examples": [...]}`. After creating the file, it MUST be registered in `src/commands/context/examples.rs` in the `OUTPUT_EXAMPLES` constant using `include_str!()`. Without registration, the example won't be discoverable via `fabio context examples <group> <command>`.
 
+   **Best-practices registration** — Each best-practice is a JSON file in `src/commands/context/data/best_practices/` with required fields: `topic`, `title`, `summary` (for search discoverability), and topic-specific content. **Auto-registered**: the `build.rs` script scans this directory at compile time and generates the registration code. Just drop a `.json` file and rebuild — no manual `include_str!()` wiring needed.
+
+   **Workflow registration** — Each workflow recipe is a JSON file in `src/commands/context/data/workflows/` with required fields: `name`, `description` (for search discoverability), `steps` (array of step objects). **Auto-registered**: same as best-practices — drop a `.json` file and rebuild.
+
+   **Discoverability via `fabio context find`** — Best-practices and workflows are automatically searchable via `fabio context find "<query>"` once registered. The search indexes topic names, descriptions/summaries, and full JSON content. No additional wiring is needed beyond placing the file in the correct directory.
+
 3. **README.md** — Update the user-facing documentation:
    - Add new commands to the command listing/examples.
    - Update feature descriptions if capabilities have expanded.
