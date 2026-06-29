@@ -1,0 +1,111 @@
+---
+name: pr-checklist
+description: "Pre-commit and pre-push validation for fabio contributions. Run this skill before committing or creating a PR to ensure code quality, formatting, test coverage, and documentation are all correct. Invoke when: ready to commit, preparing a PR, reviewing changes before push."
+---
+
+# PR Checklist for Fabio
+
+Run this checklist before every commit. Each step must pass before proceeding to the next.
+
+## Step 1: Format
+
+```bash
+cargo fmt -- --check
+```
+
+If it fails, fix with `cargo fmt` and re-check.
+
+## Step 2: Lint
+
+```bash
+cargo clippy --tests -- -D warnings
+```
+
+Fix ALL warnings. Common issues:
+- Unused imports — remove them, don't leave for later
+- `case_sensitive_file_extension_comparisons` — use `Path::extension()` instead of `ends_with(".json")`
+- `too_many_lines` — split the function or add `#[allow(clippy::too_many_lines)]`
+- `doc_markdown` — wrap identifiers in backticks in doc comments
+
+## Step 3: Test
+
+```bash
+cargo test
+```
+
+All tests must pass. If you added new code, verify it has tests.
+
+## Step 4: Regenerate auto-generated files (if commands changed)
+
+Only needed if you added, modified, or removed commands/flags:
+
+```bash
+cargo test --bin fabio generate_agent_schema -- --include-ignored
+cargo test --bin fabio agent_schema_covers
+```
+
+## Step 5: Self-review
+
+Run `git diff --staged` (or `git diff` if not yet staged) and review every hunk:
+
+- Logic errors, off-by-one mistakes, incorrect assumptions
+- Missing error handling or edge cases
+- Copy-paste errors (wrong variable names, leftover placeholder text)
+- Inconsistencies with existing code patterns
+- Dead code, unused imports, debug artifacts (`println!`, `dbg!`, `eprintln!`)
+- TODO comments without corresponding implementation
+- Naming inconsistencies with the codebase style
+
+**RULE:** If you find any issue, fix it and restart from Step 1. Do NOT commit known problems.
+
+## Step 6: Check documentation updates
+
+If you added new features or commands, verify:
+
+- [ ] AGENTS.md updated (Progress > Done, Key Decisions, Relevant Files, API Behaviors)
+- [ ] `commands.json` regenerated (Step 4)
+- [ ] Best-practice or workflow added if applicable (just drop a `.json` file in `src/commands/context/data/best_practices/` or `workflows/`)
+- [ ] Output examples added for non-obvious response shapes (`src/commands/context/data/examples/`)
+- [ ] README.md updated if user-facing behavior changed
+
+## Step 7: Check irreversible operation safety
+
+If your change involves destructive operations:
+
+- [ ] `FabioError::with_hint()` used when suggesting safety-bypass flags
+- [ ] New safety-bypass flags added to `DANGEROUS_FLAGS` in `src/agent.rs`
+- [ ] `"destructive": true/false` included in batch output if applicable
+- [ ] Protected types added to `PROTECTED_DELETE_TYPES` if new data-bearing item type
+
+## Step 8: Commit
+
+```bash
+git add <files>
+git status  # verify only intended files staged
+git commit -m "<type>: <description>"
+```
+
+Commit message format: imperative mood, concise subject (50 chars), body if needed.
+Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
+Include `Assisted-by:` trailer for AI attribution.
+
+## Step 9: Pre-push validation
+
+Before pushing, run the cross-compilation check:
+
+```bash
+./scripts/cross-check.sh
+```
+
+This catches Windows/macOS/ARM64 compilation issues that local tests miss.
+Iterate faster with: `./scripts/cross-check.sh --target windows-x64`
+
+## Quick Reference
+
+| Step | Command | Fix |
+|------|---------|-----|
+| Format | `cargo fmt -- --check` | `cargo fmt` |
+| Lint | `cargo clippy --tests -- -D warnings` | Fix each warning |
+| Test | `cargo test` | Fix failing tests |
+| Regen | `cargo test --bin fabio generate_agent_schema -- --include-ignored` | Only if commands changed |
+| Cross | `./scripts/cross-check.sh` | Fix platform-specific code |
