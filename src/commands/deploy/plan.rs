@@ -231,6 +231,7 @@ pub async fn build_changeset(
     item_types: Option<&[String]>,
     delete_orphans: bool,
     force_all: bool,
+    allow_delete_types: Option<&[String]>,
 ) -> Result<Changeset> {
     let mut changeset = Changeset::new();
 
@@ -427,16 +428,24 @@ pub async fn build_changeset(
     if delete_orphans {
         for (key, deployed) in &deployed_map {
             if !matched_deployed.contains(key) {
-                changeset.changes.push(Change {
-                    name: key.1.clone(),
-                    item_type: key.0.clone(),
-                    action: ChangeAction::Delete,
-                    reason: "not in source".to_owned(),
-                    logical_id: None,
-                    deployed_id: Some(deployed.id.clone()),
-                    source_hash: None,
-                    previous_name: None,
-                });
+                if super::is_delete_allowed(&key.0, allow_delete_types) {
+                    changeset.changes.push(Change {
+                        name: key.1.clone(),
+                        item_type: key.0.clone(),
+                        action: ChangeAction::Delete,
+                        reason: "not in source".to_owned(),
+                        logical_id: None,
+                        deployed_id: Some(deployed.id.clone()),
+                        source_hash: None,
+                        previous_name: None,
+                    });
+                } else {
+                    changeset.warnings.push(format!(
+                        "Skipped deletion of {} \"{}\" (protected type). \
+                         Pass --allow-delete-types {} to allow.",
+                        key.0, key.1, key.0
+                    ));
+                }
             }
         }
     }

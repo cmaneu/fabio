@@ -468,7 +468,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
     }
 }
 
-#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::fn_params_excessive_bools,
+    clippy::too_many_lines
+)]
 async fn execute_plan(
     cli: &Cli,
     client: &FabricClient,
@@ -486,7 +490,7 @@ async fn execute_plan(
     include_items: Option<&[String]>,
     include_folders: Option<&[String]>,
     exclude_folders: Option<&[String]>,
-    _allow_delete_types: Option<&[String]>,
+    allow_delete_types: Option<&[String]>,
     _no_folders: bool,
     no_workspace_id_replace: bool,
 ) -> Result<()> {
@@ -562,6 +566,7 @@ async fn execute_plan(
         item_types,
         delete_orphans,
         force_all,
+        allow_delete_types,
     )
     .await?;
 
@@ -596,6 +601,16 @@ async fn execute_plan(
     let mut all_warnings = changeset.warnings.clone();
     all_warnings.extend(param_warnings);
 
+    // Flag as destructive when plan contains deletes or force-all overwrites
+    let destructive = summary.delete > 0 || force_all;
+    if force_all {
+        all_warnings.push(
+            "--force-all is active: ALL matched items will be overwritten \
+             regardless of content changes. This is irreversible."
+                .to_owned(),
+        );
+    }
+
     let output_data = json!({
         "workspace_id": workspace_id,
         "source_git": git_meta,
@@ -603,6 +618,7 @@ async fn execute_plan(
         "warnings": all_warnings,
         "errors": changeset.errors,
         "summary": summary,
+        "destructive": destructive,
         "parameters_applied": parameters.is_some(),
         "env": env,
     });
@@ -638,7 +654,7 @@ async fn execute_apply(
     include_items: Option<&[String]>,
     include_folders: Option<&[String]>,
     exclude_folders: Option<&[String]>,
-    _allow_delete_types: Option<&[String]>,
+    allow_delete_types: Option<&[String]>,
     _no_folders: bool,
     no_workspace_id_replace: bool,
     _shortcut_exclude_regex: Option<&str>,
@@ -760,6 +776,7 @@ async fn execute_apply(
             item_types,
             delete_orphans,
             force_all,
+            allow_delete_types,
         )
         .await?;
 
@@ -803,6 +820,15 @@ async fn execute_apply(
     // Dry-run guard
     if cli.dry_run {
         let summary = changeset.summary();
+        let destructive = summary.delete > 0 || force_all;
+        let mut warnings: Vec<String> = changeset.warnings.clone();
+        if force_all {
+            warnings.push(
+                "--force-all is active: ALL matched items will be overwritten regardless of \
+                 content changes. This is irreversible — previous definitions cannot be recovered."
+                    .to_owned(),
+            );
+        }
         let output_data = json!({
             "status": "dry_run",
             "message": format!(
@@ -813,6 +839,8 @@ async fn execute_apply(
                 .filter(|c| c.action != ChangeAction::Skip)
                 .collect::<Vec<_>>(),
             "summary": summary,
+            "destructive": destructive,
+            "warnings": warnings,
         });
         output::render_object(cli, &output_data, "status");
         return Ok(());
@@ -1223,8 +1251,7 @@ const PROTECTED_DELETE_TYPES: &[&str] = &[
 
 /// Check if a delete action is allowed for the given item type.
 /// Returns true if the type is allowed to be deleted.
-#[allow(dead_code)]
-pub fn is_delete_allowed(item_type: &str, allow_delete_types: Option<&[String]>) -> bool {
+pub(super) fn is_delete_allowed(item_type: &str, allow_delete_types: Option<&[String]>) -> bool {
     let is_protected = PROTECTED_DELETE_TYPES
         .iter()
         .any(|t| t.eq_ignore_ascii_case(item_type));
@@ -1236,4 +1263,127 @@ pub fn is_delete_allowed(item_type: &str, allow_delete_types: Option<&[String]>)
     // Protected types require explicit opt-in
     allow_delete_types
         .is_some_and(|allowed| allowed.iter().any(|t| t.eq_ignore_ascii_case(item_type)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── is_delete_allowed tests ─────────────────────────────────────────────
+
+    #[test]
+    fn non_protected_type_always_allowed() {
+        assert!(is_delete_allowed("Notebook", None));
+        assert!(is_delete_allowed("DataPipeline", None));
+        assert!(is_delete_allowed("Report", None));
+        assert!(is_delete_allowed("SemanticModel", None));
+        assert!(is_delete_allowed("SparkJobDefinition", None));
+    }
+
+    #[test]
+    fn protected_type_blocked_without_allow_flag() {
+        assert!(!is_delete_allowed("Lakehouse", None));
+        assert!(!is_delete_allowed("Warehouse", None));
+        assert!(!is_delete_allowed("SQLDatabase", None));
+        assert!(!is_delete_allowed("Eventhouse", None));
+        assert!(!is_delete_allowed("KQLDatabase", None));
+    }
+
+    #[test]
+    fn protected_type_blocked_with_empty_allow_list() {
+        let empty: Vec<String> = vec![];
+        assert!(!is_delete_allowed("Lakehouse", Some(&empty)));
+        assert!(!is_delete_allowed("Warehouse", Some(&empty)));
+    }
+
+    #[test]
+    fn protected_type_allowed_when_explicitly_listed() {
+        let allowed = vec!["Lakehouse".to_string()];
+        assert!(is_delete_allowed("Lakehouse", Some(&allowed)));
+    }
+
+    #[test]
+    fn protected_type_blocked_when_different_type_listed() {
+        let allowed = vec!["Warehouse".to_string()];
+        assert!(!is_delete_allowed("Lakehouse", Some(&allowed)));
+    }
+
+    #[test]
+    fn multiple_protected_types_in_allow_list() {
+        let allowed = vec![
+            "Lakehouse".to_string(),
+            "Warehouse".to_string(),
+            "KQLDatabase".to_string(),
+        ];
+        assert!(is_delete_allowed("Lakehouse", Some(&allowed)));
+        assert!(is_delete_allowed("Warehouse", Some(&allowed)));
+        assert!(is_delete_allowed("KQLDatabase", Some(&allowed)));
+        // Not in list
+        assert!(!is_delete_allowed("SQLDatabase", Some(&allowed)));
+        assert!(!is_delete_allowed("Eventhouse", Some(&allowed)));
+    }
+
+    #[test]
+    fn case_insensitive_type_matching() {
+        assert!(!is_delete_allowed("lakehouse", None));
+        assert!(!is_delete_allowed("LAKEHOUSE", None));
+        assert!(!is_delete_allowed("LakeHouse", None));
+        assert!(!is_delete_allowed("sqldatabase", None));
+        assert!(!is_delete_allowed("kqldatabase", None));
+    }
+
+    #[test]
+    fn case_insensitive_allow_list_matching() {
+        let allowed = vec!["lakehouse".to_string()];
+        assert!(is_delete_allowed("Lakehouse", Some(&allowed)));
+        assert!(is_delete_allowed("LAKEHOUSE", Some(&allowed)));
+        assert!(is_delete_allowed("lakehouse", Some(&allowed)));
+    }
+
+    #[test]
+    fn non_protected_type_allowed_regardless_of_allow_list() {
+        // Non-protected types are always allowed, even with an empty allow list
+        let empty: Vec<String> = vec![];
+        assert!(is_delete_allowed("Notebook", Some(&empty)));
+        assert!(is_delete_allowed("Report", Some(&empty)));
+        assert!(is_delete_allowed("DataPipeline", None));
+    }
+
+    #[test]
+    fn unknown_item_type_is_not_protected() {
+        assert!(is_delete_allowed("FutureNewItemType", None));
+        assert!(is_delete_allowed("", None));
+    }
+
+    // ─── PROTECTED_DELETE_TYPES constant tests ───────────────────────────────
+
+    #[test]
+    fn protected_types_list_is_non_empty() {
+        assert!(!PROTECTED_DELETE_TYPES.is_empty());
+    }
+
+    #[test]
+    fn protected_types_are_data_bearing() {
+        // All protected types are items that contain user data (tables, files, databases)
+        // This is a documentation test — if we add new protected types, they should
+        // be data-bearing items where deletion means data loss.
+        let expected = [
+            "Lakehouse",
+            "Warehouse",
+            "SQLDatabase",
+            "Eventhouse",
+            "KQLDatabase",
+        ];
+        for t in &expected {
+            assert!(
+                PROTECTED_DELETE_TYPES.contains(t),
+                "Expected {t} to be protected"
+            );
+        }
+        assert_eq!(
+            PROTECTED_DELETE_TYPES.len(),
+            expected.len(),
+            "Protected types count mismatch — update this test when adding new types"
+        );
+    }
 }

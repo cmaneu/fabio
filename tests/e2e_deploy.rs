@@ -2890,3 +2890,287 @@ fn deploy_plan_data_build_tool_job() {
     assert_eq!(dbt_change["action"], "create");
     assert_eq!(dbt_change["name"], dbt_name);
 }
+
+// ── Destructive operation guards ─────────────────────────────────────────────
+
+/// Helper: create a minimal source directory with a single item of given type.
+fn create_source_dir_with_item(dir: &std::path::Path, item_name: &str, item_type: &str) {
+    let folder = dir.join(format!("{item_name}.{item_type}"));
+    std::fs::create_dir_all(&folder).unwrap();
+    let platform = serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+        "metadata": { "type": item_type, "displayName": item_name },
+        "config": { "version": "2.0", "logicalId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" }
+    });
+    std::fs::write(
+        folder.join(".platform"),
+        serde_json::to_string_pretty(&platform).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_delete_orphans_blocks_protected_types() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let source_dir = dir.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+
+    // Create a source with a fake item that won't match any deployed Lakehouse
+    create_source_dir_with_item(&source_dir, "FakeItem", "Lakehouse");
+
+    // Plan with --delete-orphans but WITHOUT --allow-delete-types
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+            "--item-types",
+            "Lakehouse",
+            "--delete-orphans",
+            "--dry-run",
+        ])
+        .timeout(Duration::from_mins(1))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    // Should have warnings about protected types being skipped
+    let warnings = data["warnings"].as_array().expect("warnings array");
+    assert!(
+        !warnings.is_empty(),
+        "Expected warnings about protected type deletions"
+    );
+    let warning_text = warnings
+        .iter()
+        .map(|w| w.as_str().unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        warning_text.contains("protected type"),
+        "Warning should mention 'protected type': {warning_text}"
+    );
+    assert!(
+        warning_text.contains("--allow-delete-types"),
+        "Warning should suggest --allow-delete-types: {warning_text}"
+    );
+
+    // Should NOT have any delete actions in the changeset (they were blocked)
+    let summary = &data["summary"];
+    assert_eq!(
+        summary["delete"].as_u64().unwrap_or(0),
+        0,
+        "Protected types should not produce delete actions"
+    );
+
+    // destructive should be false (no actual deletes in plan)
+    assert_eq!(
+        data["destructive"].as_bool(),
+        Some(false),
+        "destructive should be false when deletions are blocked"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_delete_orphans_allows_when_explicit() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let source_dir = dir.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+
+    // Create a source with a fake item that won't match any deployed Lakehouse
+    create_source_dir_with_item(&source_dir, "FakeItem", "Lakehouse");
+
+    // Plan with --delete-orphans AND --allow-delete-types Lakehouse
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+            "--item-types",
+            "Lakehouse",
+            "--delete-orphans",
+            "--allow-delete-types",
+            "Lakehouse",
+            "--dry-run",
+        ])
+        .timeout(Duration::from_mins(1))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    // Should have delete actions now (protection overridden)
+    let summary = &data["summary"];
+    assert!(
+        summary["delete"].as_u64().unwrap_or(0) > 0,
+        "Expected deletes when --allow-delete-types is passed"
+    );
+
+    // destructive should be true
+    assert_eq!(
+        data["destructive"].as_bool(),
+        Some(true),
+        "destructive should be true when deletions are in plan"
+    );
+
+    // Should have no protected-type warnings
+    let empty_vec = vec![];
+    let warnings = data["warnings"].as_array().unwrap_or(&empty_vec);
+    let has_protected_warning = warnings
+        .iter()
+        .any(|w| w.as_str().unwrap_or_default().contains("protected type"));
+    assert!(
+        !has_protected_warning,
+        "Should not have protected type warnings when --allow-delete-types is set"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_non_protected_type_deleted_without_allow_flag() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let source_dir = dir.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+
+    // Create empty source (no items) — all deployed Datamarts become orphans
+    // Datamarts are NOT protected, so they should be deleted without needing --allow-delete-types
+    create_source_dir_with_item(&source_dir, "FakeDatamart", "Datamart");
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+            "--item-types",
+            "Datamart",
+            "--delete-orphans",
+            "--dry-run",
+        ])
+        .timeout(Duration::from_secs(30))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    // Non-protected types should not generate protected-type warnings
+    let empty_vec = vec![];
+    let warnings = data["warnings"].as_array().unwrap_or(&empty_vec);
+    let has_protected_warning = warnings
+        .iter()
+        .any(|w| w.as_str().unwrap_or_default().contains("protected type"));
+    assert!(
+        !has_protected_warning,
+        "Non-protected types should not trigger protected-type warnings"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_force_all_sets_destructive_and_warning() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let source_dir = dir.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+
+    // Create a source with a fake Datamart (fast type, few deployed items)
+    create_source_dir_with_item(&source_dir, "FakeDatamart", "Datamart");
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+            "--item-types",
+            "Datamart",
+            "--force-all",
+            "--dry-run",
+        ])
+        .timeout(Duration::from_secs(30))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    // --force-all should set destructive to true
+    assert_eq!(
+        data["destructive"].as_bool(),
+        Some(true),
+        "destructive should be true with --force-all"
+    );
+
+    // Should have a warning about --force-all
+    let empty_vec = vec![];
+    let warnings = data["warnings"].as_array().unwrap_or(&empty_vec);
+    let has_force_all_warning = warnings
+        .iter()
+        .any(|w| w.as_str().unwrap_or_default().contains("--force-all"));
+    assert!(
+        has_force_all_warning,
+        "Expected warning about --force-all being irreversible: {warnings:?}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_plan_no_deletes_not_destructive() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let source_dir = dir.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+
+    // Create a source with a single create-only item
+    create_source_dir_with_item(&source_dir, "FakeNewItem", "Datamart");
+
+    // Plan WITHOUT --delete-orphans and WITHOUT --force-all
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.dest_workspace,
+            "--item-types",
+            "Datamart",
+            "--dry-run",
+        ])
+        .timeout(Duration::from_secs(30))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    // Without deletes or --force-all, should not be destructive
+    assert_eq!(
+        data["destructive"].as_bool(),
+        Some(false),
+        "destructive should be false without deletes or --force-all"
+    );
+}
