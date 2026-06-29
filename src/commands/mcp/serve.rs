@@ -24,17 +24,93 @@ impl McpPolicy {
         if mutates && !self.allow_write {
             return false;
         }
-        // If allow_tool patterns set, check match.
+        // If allow_tool patterns set, check match via glob pattern system.
         if let Some(patterns) = &self.allow_tool_patterns {
-            return patterns.iter().any(|p| {
-                let normalized = p.replace('-', "_");
-                tool_name.starts_with(&format!("fabio_{normalized}_"))
-                    || tool_name == format!("fabio_{normalized}")
-                    || p == "*"
-            });
+            return patterns
+                .iter()
+                .any(|p| mcp_tool_matches_pattern(tool_name, p));
         }
         true
     }
+}
+
+/// Match an MCP tool name against a user-provided pattern.
+///
+/// Tool names are `fabio_{group}_{subcommand}` (all underscores).
+/// Patterns use dot notation with glob support: `workspace.list`, `*.delete`, `kql-*`.
+/// Hyphens in patterns are normalized to underscores for matching.
+fn mcp_tool_matches_pattern(tool_name: &str, pattern: &str) -> bool {
+    // Strip the "fabio_" prefix from the tool name.
+    let Some(rest) = tool_name.strip_prefix("fabio_") else {
+        return false;
+    };
+
+    // Normalize the pattern: hyphens → underscores (tool names use underscores).
+    let normalized_pattern = pattern.replace('-', "_");
+
+    // Convert the dot-separated pattern to underscore-separated for direct matching.
+    // Pattern "workspace.list" → "workspace_list" for prefix/exact matching.
+    // But we need glob support, so we use command_pattern_matches with dots.
+    //
+    // Strategy: convert the TOOL NAME from underscore to dot notation by finding
+    // the group boundary. We know all group names from the schema, but to keep it
+    // simple we match patterns directly against the underscore-form using the
+    // same glob logic but with '_' in the pattern treated as literal separators
+    // within group/subcommand names, and '.' as the group-subcommand boundary.
+
+    // Simple approach: if pattern has a dot separator, split there.
+    // Otherwise it's a group-only match (prefix).
+    if let Some((pat_group, pat_sub)) = normalized_pattern.split_once('.') {
+        // Pattern has group.subcommand — need to find the boundary in tool name.
+        // Match: tool must start with group pattern + "_" + subcommand pattern.
+        let pat_sub_underscore = pat_sub.replace('.', "_");
+        if pat_group == "*" {
+            // *.delete pattern: subcommand is at the end after any group prefix
+            // Match if the tool name ENDS with _<subcommand>
+            let suffix = format!("_{pat_sub_underscore}");
+            return segment_matches_str(rest, &format!("*{suffix}"));
+        }
+        // Specific group pattern: find tool names that start with group_
+        let group_prefix = format!("{pat_group}_");
+        if let Some(sub_part) = rest.strip_prefix(&group_prefix) {
+            return crate::commands::segment_matches(sub_part, &pat_sub_underscore);
+        }
+        // Also try wildcard in group: kql_* → prefix match
+        if pat_group.contains('*') {
+            // Try matching the group part
+            // Find where the group ends: try each possible split point
+            for i in 1..rest.len() {
+                if rest.as_bytes().get(i) == Some(&b'_') {
+                    let candidate_group = &rest[..i];
+                    let candidate_sub = &rest[i + 1..];
+                    if crate::commands::segment_matches(candidate_group, pat_group)
+                        && crate::commands::segment_matches(candidate_sub, &pat_sub_underscore)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    } else {
+        // No dot — group-level match (all subcommands in group).
+        // Pattern "workspace" matches "workspace_list", "workspace_create", etc.
+        if normalized_pattern == "*" {
+            return true;
+        }
+        if normalized_pattern.contains('*') {
+            // Glob in group name: "kql_*" matches "kql_database_query"
+            return crate::commands::segment_matches(rest, &format!("{normalized_pattern}_*"))
+                || crate::commands::segment_matches(rest, &normalized_pattern);
+        }
+        // Exact group prefix: "workspace" matches "workspace_*"
+        rest.starts_with(&format!("{normalized_pattern}_")) || rest == normalized_pattern
+    }
+}
+
+/// Helper for pattern matching on full string with `*` wildcard.
+fn segment_matches_str(value: &str, pattern: &str) -> bool {
+    crate::commands::segment_matches(value, pattern)
 }
 
 /// Print the list of tools that would be exposed with the given policy, then exit.

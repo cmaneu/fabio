@@ -8,7 +8,7 @@
 
 mod common;
 
-use common::fabio;
+use common::{fabio, parse_json};
 use serde_json::Value;
 
 /// Parse stderr as a JSON error envelope.
@@ -436,4 +436,228 @@ fn context_agent_includes_safety_state() {
         disabled.iter().any(|v| v.as_str() == Some("deploy")),
         "disable_commands should contain 'deploy'"
     );
+}
+
+// =============================================================================
+// Subcommand-level and glob pattern tests
+// =============================================================================
+
+#[test]
+fn disable_commands_subcommand_level_blocks_exact() {
+    let assert = fabio()
+        .args([
+            "--disable-commands",
+            "workspace.create",
+            "workspace",
+            "create",
+            "--name",
+            "test",
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+
+    let json = parse_stderr_error(&assert);
+    assert_eq!(json["error"]["code"].as_str().unwrap(), "FORBIDDEN");
+    let msg = json["error"]["message"].as_str().unwrap();
+    assert!(
+        msg.contains("workspace.create"),
+        "Error should mention blocked command path: {msg}"
+    );
+}
+
+#[test]
+fn disable_commands_subcommand_level_does_not_block_other() {
+    // Blocking workspace.create should NOT block workspace list (offline, no auth needed)
+    fabio()
+        .args(["--disable-commands", "workspace.create", "context", "agent"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn disable_commands_glob_star_dot_subcommand() {
+    // *.create blocks create across all groups
+    let assert = fabio()
+        .args([
+            "--disable-commands",
+            "*.create",
+            "workspace",
+            "create",
+            "--name",
+            "test",
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+
+    let json = parse_stderr_error(&assert);
+    assert_eq!(json["error"]["code"].as_str().unwrap(), "FORBIDDEN");
+}
+
+#[test]
+fn disable_commands_glob_star_dot_subcommand_allows_other() {
+    // *.create should NOT block context agent (different subcommand)
+    fabio()
+        .args(["--disable-commands", "*.create", "context", "agent"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn disable_commands_glob_group_prefix() {
+    // kql-* blocks all kql- groups
+    let assert = fabio()
+        .args([
+            "--disable-commands",
+            "kql-*",
+            "kql-database",
+            "list",
+            "--workspace",
+            "test",
+        ])
+        .assert()
+        .failure();
+
+    let json = parse_stderr_error(&assert);
+    assert_eq!(json["error"]["code"].as_str().unwrap(), "FORBIDDEN");
+}
+
+#[test]
+fn enable_commands_glob_allows_pattern() {
+    // --enable-commands "context,*.list" allows context and all list commands
+    fabio()
+        .args(["--enable-commands", "context,*.list", "context", "agent"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn enable_commands_glob_blocks_non_matching() {
+    // --enable-commands "*.list" blocks create commands
+    let assert = fabio()
+        .args([
+            "--enable-commands",
+            "*.list",
+            "workspace",
+            "create",
+            "--name",
+            "test",
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+
+    let json = parse_stderr_error(&assert);
+    assert_eq!(json["error"]["code"].as_str().unwrap(), "FORBIDDEN");
+}
+
+// =============================================================================
+// MCP --allow-tool glob tests
+// =============================================================================
+
+#[test]
+fn mcp_allow_tool_subcommand_level() {
+    // --allow-tool "workspace.list" should expose only fabio_workspace_list
+    let assert = fabio()
+        .args([
+            "mcp",
+            "serve",
+            "--list-tools",
+            "--allow-tool",
+            "workspace.list",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let count = json["data"]["count"].as_u64().unwrap();
+    assert_eq!(count, 1, "Should have exactly 1 tool");
+
+    let tools = json["data"]["tools"].as_array().unwrap();
+    assert_eq!(tools[0]["name"].as_str().unwrap(), "fabio_workspace_list");
+}
+
+#[test]
+fn mcp_allow_tool_glob_star_list() {
+    // --allow-tool "*.list" should expose all list commands
+    let assert = fabio()
+        .args(["mcp", "serve", "--list-tools", "--allow-tool", "*.list"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let tools = json["data"]["tools"].as_array().unwrap();
+    assert!(
+        tools.len() > 50,
+        "*.list should match many list commands, got {}",
+        tools.len()
+    );
+
+    // All should end with _list
+    for tool in tools {
+        let name = tool["name"].as_str().unwrap();
+        assert!(
+            name.ends_with("_list"),
+            "All tools should end with _list: {name}"
+        );
+    }
+}
+
+#[test]
+fn mcp_allow_tool_group_prefix_glob() {
+    // --allow-tool "kql-*" with --allow-write should expose all kql- group tools
+    let assert = fabio()
+        .args([
+            "mcp",
+            "serve",
+            "--list-tools",
+            "--allow-tool",
+            "kql-*",
+            "--allow-write",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let tools = json["data"]["tools"].as_array().unwrap();
+    assert!(
+        tools.len() > 20,
+        "kql-* should match 30+ tools, got {}",
+        tools.len()
+    );
+
+    // All should start with fabio_kql_
+    for tool in tools {
+        let name = tool["name"].as_str().unwrap();
+        assert!(
+            name.starts_with("fabio_kql_"),
+            "All tools should start with fabio_kql_: {name}"
+        );
+    }
+}
+
+#[test]
+fn mcp_allow_tool_group_level() {
+    // --allow-tool "workspace" should expose all workspace tools (read-only by default)
+    let assert = fabio()
+        .args(["mcp", "serve", "--list-tools", "--allow-tool", "workspace"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let tools = json["data"]["tools"].as_array().unwrap();
+    assert!(
+        tools.len() >= 5,
+        "workspace should have several read-only tools, got {}",
+        tools.len()
+    );
+
+    for tool in tools {
+        let name = tool["name"].as_str().unwrap();
+        assert!(
+            name.starts_with("fabio_workspace_"),
+            "All tools should start with fabio_workspace_: {name}"
+        );
+    }
 }

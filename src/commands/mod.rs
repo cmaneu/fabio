@@ -270,6 +270,8 @@ fn resolve_private_link_workspace(cli: &Cli) -> Option<String> {
 ///
 /// Command paths use dot notation: `workspace.create`, `lakehouse.list-tables`.
 /// Parent paths allow/deny all children: `workspace` matches `workspace.create`, etc.
+/// Glob patterns supported: `*.delete` matches any group's delete subcommand,
+/// `kql-*` matches all groups starting with `kql-`.
 /// Deny rules always override allow rules.
 fn check_command_policy(cli: &Cli) -> Result<()> {
     let enable = cli.enable_commands.as_ref();
@@ -286,8 +288,7 @@ fn check_command_policy(cli: &Cli) -> Result<()> {
     // Check deny list first (deny always wins).
     if let Some(deny_list) = disable {
         for rule in deny_list {
-            let rule_lower = rule.to_lowercase();
-            if cmd_path == rule_lower || cmd_path.starts_with(&format!("{rule_lower}.")) {
+            if command_pattern_matches(&cmd_path, rule) {
                 return Err(crate::errors::FabioError::with_hint(
                     crate::errors::ErrorCode::Forbidden,
                     format!("Command '{cmd_path}' is blocked by --disable-commands policy"),
@@ -303,13 +304,9 @@ fn check_command_policy(cli: &Cli) -> Result<()> {
 
     // Check allow list (if present, only listed commands are permitted).
     if let Some(allow_list) = enable {
-        let allowed = allow_list.iter().any(|rule| {
-            let rule_lower = rule.to_lowercase();
-            // Exact match or parent prefix match.
-            cmd_path == rule_lower
-                || cmd_path.starts_with(&format!("{rule_lower}."))
-                || rule_lower.starts_with(&format!("{cmd_path}."))
-        });
+        let allowed = allow_list
+            .iter()
+            .any(|rule| command_pattern_matches(&cmd_path, rule));
         if !allowed {
             return Err(crate::errors::FabioError::with_hint(
                 crate::errors::ErrorCode::Forbidden,
@@ -323,15 +320,77 @@ fn check_command_policy(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
+/// Match a command path against a pattern (case-insensitive, dot separator).
+///
+/// Patterns:
+/// - `workspace` — matches `workspace` and `workspace.*` (group-level)
+/// - `workspace.create` — matches exactly `workspace.create`
+/// - `*.delete` — matches `<any-group>.delete`
+/// - `kql-*` — matches any group starting with `kql-` (all subcommands)
+/// - `kql-*.query` — matches `kql-<anything>.query`
+/// - `*` — matches everything
+pub fn command_pattern_matches(cmd_path: &str, pattern: &str) -> bool {
+    command_pattern_matches_sep(cmd_path, pattern, '.')
+}
+
+/// Match a command path against a pattern using a custom separator.
+/// Used by both CLI (dot separator) and MCP (underscore separator) matching.
+pub fn command_pattern_matches_sep(cmd_path: &str, pattern: &str, sep: char) -> bool {
+    let cmd_lower = cmd_path.to_lowercase();
+    let pat_lower = pattern.to_lowercase();
+
+    // Wildcard-all.
+    if pat_lower == "*" {
+        return true;
+    }
+
+    // Split both into group + subcommand parts.
+    let (cmd_group, cmd_sub) = split_first(sep, &cmd_lower);
+    let (pat_group, pat_sub) = split_first(sep, &pat_lower);
+
+    // Match the group segment (supports * as wildcard).
+    if !segment_matches(cmd_group, pat_group) {
+        return false;
+    }
+
+    // If pattern has no subcommand part, it's a group-level match (all subcommands).
+    if pat_sub.is_empty() {
+        return true;
+    }
+
+    // Match the subcommand segment (which may itself contain separators).
+    segment_matches(cmd_sub, pat_sub)
+}
+
+/// Split a string at the first occurrence of `sep`. Returns `(before, after)`.
+/// If `sep` is not found, returns the full string as `before` with empty `after`.
+fn split_first(sep: char, s: &str) -> (&str, &str) {
+    s.split_once(sep).unwrap_or((s, ""))
+}
+
+/// Match a single segment against a pattern with `*` as wildcard.
+/// `*` matches any sequence of characters; only one `*` is supported per segment.
+pub(in crate::commands) fn segment_matches(value: &str, pattern: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+    if let Some((prefix, suffix)) = pattern.split_once('*') {
+        value.starts_with(prefix)
+            && value.ends_with(suffix)
+            && value.len() >= prefix.len() + suffix.len()
+    } else {
+        value == pattern
+    }
+}
+
 /// Extract the dotted command path from the Cli struct (e.g., "workspace.create").
+///
+/// Parses raw CLI arguments to find the group and subcommand names, skipping
+/// global flags (which start with `-`). Returns `"group"` if no subcommand is
+/// found, or `"group.subcommand"` for full paths.
+#[allow(clippy::too_many_lines)]
 fn extract_command_path(cli: &Cli) -> String {
-    use std::fmt::Write as _;
-
-    // Use clap to get the actual subcommand names from the parsed command.
-    // We reconstruct the path from the Command enum variant name + inner subcommand.
-    let mut path = String::new();
-
-    // Get the group name from the Command variant.
+    // Fast path: for commands that don't have subcommands, just return the group.
     let group = match &cli.command {
         Command::Admin { .. } => "admin",
         Command::Workspace { .. } => "workspace",
@@ -387,8 +446,8 @@ fn extract_command_path(cli: &Cli) -> String {
         Command::Lro { .. } => "operation",
         Command::Rest { .. } => "rest",
         Command::Rti { .. } => "rti",
-        Command::Upgrade { .. } => "upgrade",
-        Command::Completions { .. } => "completions",
+        Command::Upgrade { .. } => return "upgrade".to_owned(),
+        Command::Completions { .. } => return "completions".to_owned(),
         Command::Mcp { .. } => "mcp",
         Command::VariableLibrary { .. } => "variable-library",
         Command::EventSchemaSet { .. } => "event-schema-set",
@@ -411,6 +470,191 @@ fn extract_command_path(cli: &Cli) -> String {
         Command::OrgAppAudience { .. } => "org-app-audience",
     };
 
-    let _ = write!(path, "{group}");
-    path
+    // Extract subcommand from raw args by finding the group name (which we
+    // already know from the enum) followed by the subcommand.
+    // We skip flags and their values to avoid matching flag values like
+    // "--disable-commands workspace" as the group positional.
+    let args: Vec<String> = std::env::args().collect();
+    let mut i = 1; // skip argv[0]
+    let mut found_group = false;
+    while i < args.len() {
+        let arg = &args[i];
+        if arg.starts_with("--") {
+            // Long flag: skip it and its value (next non-flag arg)
+            i += 1;
+            if i < args.len() && !args[i].starts_with('-') {
+                i += 1;
+            }
+            continue;
+        }
+        if arg.starts_with('-') {
+            i += 1;
+            continue;
+        }
+        // Positional arg
+        if found_group {
+            return format!("{group}.{}", arg.to_lowercase());
+        }
+        if arg == group {
+            found_group = true;
+        }
+        i += 1;
+    }
+
+    group.to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── command_pattern_matches (dot separator) ─────────────────────────────
+
+    #[test]
+    fn pattern_wildcard_matches_everything() {
+        assert!(command_pattern_matches("workspace.list", "*"));
+        assert!(command_pattern_matches("kql-database.query", "*"));
+    }
+
+    #[test]
+    fn pattern_group_only_matches_all_subcommands() {
+        assert!(command_pattern_matches("workspace.list", "workspace"));
+        assert!(command_pattern_matches("workspace.create", "workspace"));
+        assert!(command_pattern_matches("workspace.delete", "workspace"));
+    }
+
+    #[test]
+    fn pattern_group_only_does_not_match_other_groups() {
+        assert!(!command_pattern_matches("lakehouse.list", "workspace"));
+    }
+
+    #[test]
+    fn pattern_exact_subcommand_matches() {
+        assert!(command_pattern_matches(
+            "workspace.delete",
+            "workspace.delete"
+        ));
+    }
+
+    #[test]
+    fn pattern_exact_subcommand_does_not_match_other() {
+        assert!(!command_pattern_matches(
+            "workspace.list",
+            "workspace.delete"
+        ));
+    }
+
+    #[test]
+    fn pattern_star_dot_subcommand_matches_any_group() {
+        assert!(command_pattern_matches("workspace.delete", "*.delete"));
+        assert!(command_pattern_matches("lakehouse.delete", "*.delete"));
+        assert!(command_pattern_matches("kql-database.delete", "*.delete"));
+    }
+
+    #[test]
+    fn pattern_star_dot_subcommand_does_not_match_other_sub() {
+        assert!(!command_pattern_matches("workspace.list", "*.delete"));
+    }
+
+    #[test]
+    fn pattern_group_prefix_glob_matches() {
+        assert!(command_pattern_matches("kql-database.query", "kql-*"));
+        assert!(command_pattern_matches("kql-queryset.list", "kql-*"));
+        assert!(command_pattern_matches("kql-dashboard.show", "kql-*"));
+    }
+
+    #[test]
+    fn pattern_group_prefix_glob_does_not_match_unrelated() {
+        assert!(!command_pattern_matches("workspace.list", "kql-*"));
+    }
+
+    #[test]
+    fn pattern_group_glob_with_subcommand() {
+        assert!(command_pattern_matches("kql-database.query", "kql-*.query"));
+        assert!(!command_pattern_matches("kql-database.list", "kql-*.query"));
+    }
+
+    #[test]
+    fn pattern_case_insensitive() {
+        assert!(command_pattern_matches("Workspace.List", "workspace.list"));
+        assert!(command_pattern_matches("workspace.list", "WORKSPACE.LIST"));
+        assert!(command_pattern_matches("KQL-Database.Query", "*.query"));
+    }
+
+    #[test]
+    fn pattern_multi_word_subcommand() {
+        assert!(command_pattern_matches(
+            "lakehouse.list-tables",
+            "lakehouse.list-tables"
+        ));
+        assert!(command_pattern_matches("lakehouse.list-tables", "*.list-*"));
+    }
+
+    #[test]
+    fn pattern_subcommand_suffix_glob() {
+        // Match all get-definition commands
+        assert!(command_pattern_matches(
+            "notebook.get-definition",
+            "*.get-definition"
+        ));
+        assert!(command_pattern_matches(
+            "lakehouse.get-definition",
+            "*.get-definition"
+        ));
+    }
+
+    // ─── segment_matches ─────────────────────────────────────────────────────
+
+    #[test]
+    fn segment_star_matches_anything() {
+        assert!(segment_matches("hello", "*"));
+        assert!(segment_matches("", "*"));
+    }
+
+    #[test]
+    fn segment_exact_match() {
+        assert!(segment_matches("workspace", "workspace"));
+        assert!(!segment_matches("workspace", "lakehouse"));
+    }
+
+    #[test]
+    fn segment_prefix_star() {
+        assert!(segment_matches("kql-database", "kql-*"));
+        assert!(segment_matches("kql-queryset", "kql-*"));
+        assert!(!segment_matches("workspace", "kql-*"));
+    }
+
+    #[test]
+    fn segment_suffix_star() {
+        assert!(segment_matches("get-definition", "*-definition"));
+        assert!(!segment_matches("get-definition", "*-tables"));
+    }
+
+    #[test]
+    fn segment_infix_star() {
+        assert!(segment_matches("list-tables", "list-*s"));
+        assert!(segment_matches("list-files", "list-*s"));
+        assert!(!segment_matches("list-file", "list-*s"));
+    }
+
+    // ─── command_pattern_matches_sep (underscore separator for MCP) ──────────
+
+    #[test]
+    fn sep_underscore_group_only() {
+        assert!(command_pattern_matches_sep(
+            "workspace_list",
+            "workspace",
+            '_'
+        ));
+        assert!(command_pattern_matches_sep(
+            "workspace_create",
+            "workspace",
+            '_'
+        ));
+    }
+
+    #[test]
+    fn sep_underscore_wildcard() {
+        assert!(command_pattern_matches_sep("anything_here", "*", '_'));
+    }
 }
