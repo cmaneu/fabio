@@ -1,11 +1,13 @@
 ---
-name: pr-checklist
+name: dev-pr-checklist
 description: "Pre-commit and pre-push validation for fabio contributions. Run this skill before committing or creating a PR to ensure code quality, formatting, test coverage, and documentation are all correct. Invoke when: ready to commit, preparing a PR, reviewing changes before push."
 ---
 
 # PR Checklist for Fabio
 
 Run this checklist before every commit. Each step must pass before proceeding to the next.
+
+**Note:** The project uses [prek](https://prek.j178.dev) pre-commit hooks (`prek.toml`). When installed (`cargo install prek && prek install`), Steps 1-2 run automatically on `git commit`. Tests (Step 3) are NOT in hooks — always run them manually. Do NOT bypass hooks with `--no-verify`.
 
 ## Step 1: Format
 

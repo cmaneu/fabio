@@ -118,6 +118,8 @@ src/commands/<command>/
 
 Before committing ANY change, you MUST run the following validation steps in order and ensure they all pass with zero errors and zero warnings:
 
+For a complete step-by-step checklist (including self-review, documentation checks, and safety verification), invoke the skill: `.agents/skills/dev-pr-checklist/SKILL.md`
+
 ```bash
 # 1. Format check (must produce no diffs)
 cargo fmt -- --check
@@ -269,6 +271,11 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
 
    **Discoverability via `fabio context find`** — Best-practices and workflows are automatically searchable via `fabio context find "<query>"` once registered. The search indexes topic names, descriptions/summaries, and full JSON content. No additional wiring is needed beyond placing the file in the correct directory.
 
+   **Agent skills naming convention** — Skills in `.agents/skills/` follow a prefix convention to signal their audience:
+   - `dev-*` — Contributor-only skills for working on fabio's source code (e.g., `dev-pr-checklist`, `dev-release`). These are only relevant when an agent has the fabio repo open.
+   - `fabio` / `fabio-*` — User-facing skills that teach agents how to USE the fabio CLI. These are distributed externally via `fabio aitools install` and installed into agent config directories.
+   - When adding a new skill, choose the prefix based on audience: does it help someone contribute a PR (`dev-`), or does it help someone use fabio as a tool (`fabio-`)?
+
 3. **README.md** — Update the user-facing documentation:
    - Add new commands to the command listing/examples.
    - Update feature descriptions if capabilities have expanded.
@@ -314,7 +321,7 @@ All new features, improvements, and bug fixes MUST have corresponding tests. Thi
 
 ## Release Workflow (MANDATORY)
 
-The release workflow is documented in a dedicated skill: `.agents/skills/release/SKILL.md`
+The release workflow is documented in a dedicated skill: `.agents/skills/dev-release/SKILL.md`
 
 Invoke the release skill when cutting a new version. It covers: version bump, dependency freshness, documentation updates, full validation, changelog generation, tagging, and post-release dev version bump.
 

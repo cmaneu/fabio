@@ -1,5 +1,5 @@
 ---
-name: release
+name: dev-release
 description: "Step-by-step release workflow for fabio. Invoke when cutting a new release version. Covers: version bump, dependency freshness, documentation updates, validation, changelog, tagging, and post-release dev version bump."
 ---
 
