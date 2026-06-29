@@ -49,6 +49,47 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
   - `const fn` for pure functions returning static data (enables compile-time evaluation)
   - `#[inline]` on small, hot-path functions called across module boundaries
 
+## Irreversible Operations & Agent Safety (MANDATORY)
+
+Fabio is agent-first. AI agents consume structured output and may automatically retry failed commands. When a command performs an irreversible or destructive operation, you MUST implement safety guardrails so agents are explicitly warned before proceeding.
+
+### Rules for new commands or features:
+
+1. **Identify irreversible operations** — Any operation that deletes data, overwrites definitions without backup, or cannot be undone. Examples: item deletion, `--hard-delete`, `--delete-orphans`, `--force-all` (overwrites all definitions), `updateDefinition` (replaces content permanently).
+
+2. **Use `FabioError::with_hint()` for safety-bypass flags** — When an error or guard blocks execution and the hint suggests a flag that bypasses the safety check (e.g., `--force`, `--hard-delete`, `--allow-delete-types`), always use `with_hint()`. The hint text triggers the agent safety notice automatically when an AI agent is detected (`src/agent.rs`).
+
+3. **Dangerous flags must be in `DANGEROUS_FLAGS`** — If you add a new safety-bypass flag, add it to the `DANGEROUS_FLAGS` array in `src/agent.rs`. This ensures the agent safety notice fires when the flag is suggested in an error hint.
+
+4. **Add `"destructive": true/false` to batch output** — For commands that produce a plan or summary of multiple actions (like `deploy plan/apply`), include a `"destructive"` boolean field in the structured output. Set to `true` when the operation includes deletions, overwrites, or other irreversible actions. Agents use this field to decide whether to ask the human for confirmation.
+
+5. **Protected types require explicit opt-in** — Data-bearing item types (Lakehouse, Warehouse, SQLDatabase, Eventhouse, KQLDatabase) require `--allow-delete-types` for deletion. If you add support for a new data-bearing item type, add it to `PROTECTED_DELETE_TYPES` in `src/commands/deploy/mod.rs`.
+
+6. **Warn on force/override modes** — When `--force-all`, `--force`, or similar override flags are active, emit a warning in the output explaining the irreversibility. This helps agents surface the risk to the human.
+
+7. **Never add interactive prompts** — Fabio is non-interactive (Principle 1). Do NOT add `y/N` prompts or `--auto-approve` flags. Instead, use structured output signals (`"destructive": true`, warnings, `agentNotice`) that agents can programmatically evaluate.
+
+### How agent safety notices work:
+
+When ALL of the following conditions are true, the error output includes an `agentNotice` field:
+1. The error has a `hint` field
+2. The hint text contains a flag from `DANGEROUS_FLAGS` (e.g., `--force`, `--hard-delete`)
+3. An AI agent is detected via environment variables (see `AGENT_ENV_VARS` in `src/agent.rs`)
+
+The notice warns the agent: *"do not retry with the safety-bypass flag suggested above unless the user has explicitly approved it."*
+
+### Example output with agent notice:
+
+```json
+{"error":{"code":"INVALID_INPUT","message":"Output directory is not empty: /tmp/export","hint":"Use --overwrite to replace existing content.","agentNotice":"Note for AI agents (Claude Code): do not retry with the safety-bypass flag suggested above unless the user has explicitly approved it. The flag bypasses a safety check and the operation may be irreversible."}}
+```
+
+### Example deploy output with destructive field:
+
+```json
+{"data":{"status":"dry_run","summary":{"create":1,"delete":3,"skip":2},"destructive":true,"warnings":["--force-all is active: ALL matched items will be overwritten regardless of content changes. This is irreversible."]}}
+```
+
 ## Command File Structure (MANDATORY)
 
 Any command module that exceeds **1500 lines of code** MUST be refactored into a directory module with one file per subcommand group. Follow the pattern established by `context/`, `deploy/`, and `lakehouse/`:
