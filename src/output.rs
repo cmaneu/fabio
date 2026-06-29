@@ -6,6 +6,7 @@ use comfy_table::{Cell, Table};
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::agent;
 use crate::cli::{Cli, OutputFormat};
 use crate::errors::{ErrorDetail, FabioError, RelatedResource};
 
@@ -62,6 +63,8 @@ struct ErrorBody {
     more_details: Option<Vec<ErrorDetail>>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "relatedResource")]
     related_resource: Option<RelatedResource>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "agentNotice")]
+    agent_notice: Option<String>,
 }
 
 /// Render a list of items respecting --quiet, --query, and --limit flags.
@@ -256,7 +259,20 @@ pub fn render_object(cli: &Cli, obj: &Value, plain_key: &str) {
 }
 
 /// Render an error to stderr as structured JSON.
+///
+/// When an AI agent is detected and the error hint suggests a dangerous
+/// (safety-bypass) flag, an `agentNotice` field is appended to warn the
+/// agent not to retry with that flag without explicit user approval.
 pub fn render_error(err: &FabioError) {
+    // Determine whether to include agent safety notice:
+    // only when (1) a hint exists, (2) the hint suggests a dangerous flag,
+    // and (3) an AI agent is detected as the caller.
+    let agent_notice = err
+        .hint
+        .as_deref()
+        .filter(|h| agent::hint_suggests_dangerous_flag(h))
+        .and_then(|_| agent::agent_notice());
+
     let envelope = ErrorEnvelope {
         error: ErrorBody {
             code: err.code.to_string(),
@@ -266,6 +282,7 @@ pub fn render_error(err: &FabioError) {
             request_id: err.request_id.clone(),
             more_details: err.more_details.clone(),
             related_resource: err.related_resource.clone(),
+            agent_notice,
         },
     };
     eprintln!(
@@ -716,6 +733,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""retriable":true"#));
@@ -731,6 +749,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(!json.contains("retriable"));
@@ -746,6 +765,7 @@ mod tests {
             request_id: Some("cfafbeb1-8037-4d0c-896e-a46fb27ff227".to_string()),
             more_details: None,
             related_resource: None,
+            agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""requestId":"cfafbeb1-8037-4d0c-896e-a46fb27ff227""#));
@@ -761,6 +781,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(!json.contains("requestId"));
@@ -785,6 +806,7 @@ mod tests {
                 },
             ]),
             related_resource: None,
+            agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""moreDetails""#));
@@ -805,6 +827,7 @@ mod tests {
                 resource_id: "abc-123".to_string(),
                 resource_type: "Notebook".to_string(),
             }),
+            agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""relatedResource""#));
@@ -822,6 +845,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         // Should only have code and message
@@ -830,6 +854,43 @@ mod tests {
         assert!(!json.contains("requestId"));
         assert!(!json.contains("moreDetails"));
         assert!(!json.contains("relatedResource"));
+        assert!(!json.contains("agentNotice"));
+    }
+
+    #[test]
+    fn error_body_serializes_agent_notice_when_set() {
+        let body = ErrorBody {
+            code: "INVALID_INPUT".to_string(),
+            message: "plan is stale".to_string(),
+            hint: Some("Use --force to apply anyway.".to_string()),
+            retriable: None,
+            request_id: None,
+            more_details: None,
+            related_resource: None,
+            agent_notice: Some(
+                "Note for AI agents (Claude Code): do not retry with the safety-bypass flag"
+                    .to_string(),
+            ),
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert!(json.contains(r#""agentNotice""#));
+        assert!(json.contains("do not retry"));
+    }
+
+    #[test]
+    fn error_body_omits_agent_notice_when_none() {
+        let body = ErrorBody {
+            code: "NOT_FOUND".to_string(),
+            message: "not found".to_string(),
+            hint: Some("Check with fabio list.".to_string()),
+            retriable: None,
+            request_id: None,
+            more_details: None,
+            related_resource: None,
+            agent_notice: None,
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert!(!json.contains("agentNotice"));
     }
 
     // ─── resolve_nested tests ────────────────────────────────────────────────

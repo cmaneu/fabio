@@ -1,5 +1,6 @@
 #![recursion_limit = "512"]
 
+mod agent;
 mod cli;
 mod client;
 mod commands;
