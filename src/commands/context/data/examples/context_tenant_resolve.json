@@ -1,0 +1,19 @@
+{
+  "command": "fabio context tenant --workspace $WS_ID --resolve Notebook:my-notebook,Lakehouse:bronze",
+  "description": "Fast name-to-ID resolution without building a full graph. Returns matching items with their IDs, types, and workspace context. Ideal for agents that know item names but need IDs for subsequent API calls.",
+  "response": {
+    "data": {
+      "resolved": [
+        {"type": "Notebook", "name": "my-notebook", "id": "abc-123-def", "workspaceId": "ws-1", "workspaceName": "MyWorkspace"},
+        {"type": "Lakehouse", "name": "bronze", "id": "ghi-456-jkl", "workspaceId": "ws-1", "workspaceName": "MyWorkspace"}
+      ],
+      "count": 2
+    }
+  },
+  "notes": "Resolve spec format: Type:Name pairs separated by commas. Case-insensitive matching on both type and name. If an item is not found, the entry includes an error field instead of id/type. This is faster than a full scan — only workspace resolution + item listing needed (no graph construction).",
+  "query_examples": [
+    {"query": "data.resolved[0].id", "description": "Get the ID of the first resolved item."},
+    {"query": "data.resolved[?error]", "description": "Find items that could not be resolved."},
+    {"query": "data.count", "description": "Total number of resolve results."}
+  ]
+}

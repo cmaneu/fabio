@@ -138,6 +138,14 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/context_tenant.json"),
     ),
     (
+        "context/tenant-summary",
+        include_str!("data/examples/context_tenant_summary.json"),
+    ),
+    (
+        "context/tenant-resolve",
+        include_str!("data/examples/context_tenant_resolve.json"),
+    ),
+    (
         "kql-database/list-entities",
         include_str!("data/examples/kql_database_list_entities.json"),
     ),

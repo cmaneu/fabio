@@ -5,12 +5,14 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::{Result, bail};
 use base64::prelude::{BASE64_STANDARD, Engine as _};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -46,6 +48,14 @@ struct GraphEdge {
     relationship: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata: Option<Value>,
+    /// Reliability of this edge: `high` (structured property), `medium` (classified definition),
+    /// `low` (generic GUID scan).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    confidence: Option<String>,
+    /// How this edge was discovered (e.g. `structured_property`, `definition_classified`,
+    /// `guid_scan_property`, `guid_scan_definition`, `connection_api`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    discovery_method: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +78,37 @@ struct GraphSummary {
     relationship_types: Option<BTreeMap<String, usize>>,
 }
 
+/// Scan metadata providing freshness/trust signals for agents.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ScanMetadata {
+    /// ISO 8601 timestamp when the scan started.
+    scanned_at: String,
+    /// Wall-clock time for the scan in milliseconds.
+    scan_duration_ms: u64,
+    /// Content fingerprint (SHA-256 of sorted node IDs + names). Allows agents to detect drift.
+    etag: String,
+    /// Whether the result is partial (e.g. `--focus`, `--item-types` filter, `--summary-only`).
+    partial: bool,
+    /// Scope description: what was actually scanned.
+    scope: ScanScope,
+}
+
+/// Describes what the scan covered (for partial result interpretation).
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ScanScope {
+    workspaces: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    item_types_filter: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    focus_item: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    focus_depth: Option<usize>,
+    deep: bool,
+    include_connections: bool,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ContextGraph {
@@ -75,10 +116,14 @@ struct ContextGraph {
     edges: Vec<GraphEdge>,
     workspaces: Vec<WorkspaceInfo>,
     summary: GraphSummary,
+    /// Scan metadata (freshness, content hash, scope). Always present for `graph` format.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    meta: Option<ScanMetadata>,
 }
 
 // ── Main extraction logic ───────────────────────────────────────────────────
 
+#[allow(clippy::struct_excessive_bools)]
 pub(super) struct ExtractParams<'a> {
     pub(super) workspaces: &'a [String],
     pub(super) deep: bool,
@@ -89,8 +134,13 @@ pub(super) struct ExtractParams<'a> {
     pub(super) merge: Option<&'a std::path::Path>,
     pub(super) output_file: Option<&'a std::path::Path>,
     pub(super) concurrency: usize,
+    pub(super) summary_only: bool,
+    pub(super) resolve: Option<&'a str>,
+    pub(super) focus: Option<&'a str>,
+    pub(super) depth: usize,
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) async fn execute(
     cli: &Cli,
     client: &FabricClient,
@@ -99,6 +149,8 @@ pub(super) async fn execute(
     if params.workspaces.is_empty() {
         bail!("At least one --workspace is required");
     }
+
+    let start = Instant::now();
 
     // Parse item type filter
     let type_filter: Option<HashSet<String>> = params
@@ -118,6 +170,10 @@ pub(super) async fn execute(
             "merge": params.merge.map(|p| p.display().to_string()),
             "outputFile": params.output_file.map(|p| p.display().to_string()),
             "concurrency": params.concurrency,
+            "summaryOnly": params.summary_only,
+            "resolve": params.resolve,
+            "focus": params.focus,
+            "depth": params.depth,
         }),
     ) {
         return Ok(());
@@ -130,6 +186,20 @@ pub(super) async fn execute(
 
     // Phase 2: List and filter items
     let all_items = list_workspace_items(client, &workspace_infos, type_filter.as_ref()).await?;
+
+    // ─── Fast-path: --resolve (name-to-ID lookup) ───────────────────────────
+    if let Some(resolve_spec) = params.resolve {
+        let resolved = execute_resolve(&all_items, resolve_spec);
+        output::render_object(cli, &resolved, "resolved");
+        return Ok(());
+    }
+
+    // ─── Fast-path: --summary-only (inventory probe) ────────────────────────
+    if params.summary_only {
+        let summary = execute_summary_only(&workspace_infos, &all_items, start);
+        output::render_object(cli, &summary, "summary");
+        return Ok(());
+    }
 
     // Phase 3-7: Build graph (nodes + edges)
     let graph = build_graph(
@@ -144,12 +214,26 @@ pub(super) async fn execute(
     .await?;
 
     // Phase 8: Merge with existing graph if --merge specified
-    let final_graph = if let Some(merge_path) = params.merge {
+    let mut final_graph = if let Some(merge_path) = params.merge {
         let existing = load_graph(merge_path)?;
         merge_graphs(existing, graph)
     } else {
         graph
     };
+
+    // ─── Focus mode: prune graph to ego-centric subgraph ────────────────────
+    if let Some(focus_id) = params.focus {
+        final_graph = focus_subgraph(&final_graph, focus_id, params.depth);
+    }
+
+    // Compute metadata
+    let is_partial = params.summary_only
+        || params.resolve.is_some()
+        || params.focus.is_some()
+        || params.item_types_filter.is_some();
+
+    let meta = build_scan_metadata(start, &final_graph, is_partial, params);
+    final_graph.meta = Some(meta);
 
     // Phase 9: Output — format selection
     let (json_value, raw_content) = match params.format {
@@ -423,6 +507,7 @@ fn assemble_graph(
         nodes,
         edges: edges_vec,
         workspaces: workspace_infos.to_vec(),
+        meta: None,
     }
 }
 
@@ -585,6 +670,8 @@ fn extract_property_edges(
             target: parent_id.to_string(),
             relationship: "child_of".to_string(),
             metadata: Some(serde_json::json!({"parentType": "Eventhouse"})),
+            confidence: Some("high".to_string()),
+            discovery_method: Some("structured_property".to_string()),
         });
     }
 
@@ -599,6 +686,8 @@ fn extract_property_edges(
             target: ep_id.to_string(),
             relationship: "has_endpoint".to_string(),
             metadata: Some(serde_json::json!({"endpointType": "SQLEndpoint"})),
+            confidence: Some("high".to_string()),
+            discovery_method: Some("structured_property".to_string()),
         });
     }
 
@@ -625,6 +714,8 @@ fn scan_value_for_ids(
                     target: s.clone(),
                     relationship: relationship.to_string(),
                     metadata: None,
+                    confidence: Some("low".to_string()),
+                    discovery_method: Some("guid_scan_property".to_string()),
                 });
             }
         }
@@ -806,13 +897,19 @@ fn scan_content_for_refs(
             continue;
         }
 
-        let rel = if known_items
+        let (rel, confidence) = if known_items
             .iter()
             .any(|k| k.eq_ignore_ascii_case(&found_id))
         {
-            classify_definition_reference(path, content, &found_id)
+            let r = classify_definition_reference(path, content, &found_id);
+            let conf = if r == "definition_ref" {
+                "low" // Generic fallback — could be spurious
+            } else {
+                "medium" // Classified by path/content context
+            };
+            (r, conf)
         } else {
-            "workspace_ref".to_string()
+            ("workspace_ref".to_string(), "medium")
         };
 
         let target = known_items
@@ -826,6 +923,8 @@ fn scan_content_for_refs(
             target,
             relationship: rel,
             metadata: Some(serde_json::json!({"discoveredIn": path})),
+            confidence: Some(confidence.to_string()),
+            discovery_method: Some("guid_scan_definition".to_string()),
         });
     }
 }
@@ -941,6 +1040,8 @@ async fn fetch_connections(
                                 "connectionName": conn_name,
                                 "connectivityType": conn_type,
                             })),
+                            confidence: Some("high".to_string()),
+                            discovery_method: Some("connection_api".to_string()),
                         });
                     }
                 }
@@ -1440,6 +1541,223 @@ fn merge_graphs(mut existing: ContextGraph, new: ContextGraph) -> ContextGraph {
     assemble_graph(nodes, edge_set, &workspaces)
 }
 
+// ── Fast-path: --resolve (name → ID lookup) ─────────────────────────────────
+
+/// Resolve `Type:Name` pairs to item IDs from the already-listed items.
+fn execute_resolve(all_items: &[(Value, String, String)], resolve_spec: &str) -> Value {
+    let mut results: Vec<Value> = Vec::new();
+
+    for pair in resolve_spec.split(',') {
+        let pair = pair.trim();
+        let Some((type_filter, name_filter)) = pair.split_once(':') else {
+            results.push(serde_json::json!({
+                "query": pair,
+                "error": "Expected format Type:Name"
+            }));
+            continue;
+        };
+        let (type_filter, name_filter) = (type_filter.trim(), name_filter.trim());
+
+        let mut found = false;
+        for (item, ws_id, ws_name) in all_items {
+            let item_type = item.get("type").and_then(Value::as_str).unwrap_or_default();
+            let item_name = item
+                .get("displayName")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let item_id = item.get("id").and_then(Value::as_str).unwrap_or_default();
+
+            if item_type.eq_ignore_ascii_case(type_filter)
+                && item_name.eq_ignore_ascii_case(name_filter)
+            {
+                results.push(serde_json::json!({
+                    "type": item_type,
+                    "name": item_name,
+                    "id": item_id,
+                    "workspaceId": ws_id,
+                    "workspaceName": ws_name,
+                }));
+                found = true;
+                break;
+            }
+        }
+
+        if !found {
+            results.push(serde_json::json!({
+                "query": pair,
+                "error": "Not found"
+            }));
+        }
+    }
+
+    serde_json::json!({ "resolved": results, "count": results.len() })
+}
+
+// ── Fast-path: --summary-only (inventory probe) ─────────────────────────────
+
+/// Return a lightweight inventory without building the full graph.
+fn execute_summary_only(
+    workspace_infos: &[WorkspaceInfo],
+    all_items: &[(Value, String, String)],
+    start: Instant,
+) -> Value {
+    let mut item_types: BTreeMap<String, usize> = BTreeMap::new();
+    for (item, _, _) in all_items {
+        let t = item
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or("Unknown")
+            .to_string();
+        *item_types.entry(t).or_insert(0) += 1;
+    }
+
+    let ws_list: Vec<Value> = workspace_infos
+        .iter()
+        .map(|ws| {
+            serde_json::json!({
+                "id": ws.id,
+                "name": ws.name,
+                "capacityId": ws.capacity_id,
+            })
+        })
+        .collect();
+
+    let elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+
+    serde_json::json!({
+        "workspaces": ws_list,
+        "totalItems": all_items.len(),
+        "itemTypes": item_types,
+        "scanDurationMs": elapsed_ms,
+        "hint": "Use --deep and --include-connections for relationship discovery. Use --focus <id> to get a targeted subgraph."
+    })
+}
+
+// ── Focus mode: ego-centric subgraph extraction ─────────────────────────────
+
+/// Extract the subgraph within `max_depth` hops of `focus_id`.
+fn focus_subgraph(graph: &ContextGraph, focus_id: &str, max_depth: usize) -> ContextGraph {
+    // BFS from focus_id over edges (treated as undirected for reachability)
+    let mut visited: HashSet<&str> = HashSet::new();
+    let mut frontier: Vec<&str> = Vec::new();
+
+    // Check if focus_id exists in graph
+    if !graph.nodes.iter().any(|n| n.id == focus_id) {
+        // Return empty graph with a note — the focus item was not found
+        return ContextGraph {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            workspaces: graph.workspaces.clone(),
+            summary: GraphSummary {
+                total_nodes: 0,
+                total_edges: 0,
+                workspaces_scanned: graph.workspaces.len(),
+                item_types: BTreeMap::new(),
+                relationship_types: None,
+            },
+            meta: None,
+        };
+    }
+
+    visited.insert(focus_id);
+    frontier.push(focus_id);
+
+    for _depth in 0..max_depth {
+        let mut next_frontier: Vec<&str> = Vec::new();
+        for &node_id in &frontier {
+            // Outgoing edges
+            for edge in &graph.edges {
+                if edge.source == node_id && !visited.contains(edge.target.as_str()) {
+                    visited.insert(&edge.target);
+                    next_frontier.push(&edge.target);
+                }
+                if edge.target == node_id && !visited.contains(edge.source.as_str()) {
+                    visited.insert(&edge.source);
+                    next_frontier.push(&edge.source);
+                }
+            }
+        }
+        if next_frontier.is_empty() {
+            break;
+        }
+        frontier = next_frontier;
+    }
+
+    // Filter nodes to only visited set
+    let nodes: Vec<GraphNode> = graph
+        .nodes
+        .iter()
+        .filter(|n| visited.contains(n.id.as_str()))
+        .cloned()
+        .collect();
+
+    // Filter edges to only those between visited nodes
+    let edges: HashSet<GraphEdge> = graph
+        .edges
+        .iter()
+        .filter(|e| visited.contains(e.source.as_str()) && visited.contains(e.target.as_str()))
+        .cloned()
+        .collect();
+
+    assemble_graph(nodes, edges, &graph.workspaces)
+}
+
+// ── Metadata builder ────────────────────────────────────────────────────────
+
+/// Compute scan metadata (timestamp, duration, content hash, scope).
+fn build_scan_metadata(
+    start: Instant,
+    graph: &ContextGraph,
+    partial: bool,
+    params: &ExtractParams<'_>,
+) -> ScanMetadata {
+    let elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+
+    // Content fingerprint: SHA-256 of sorted (id, name) pairs
+    let mut id_name_pairs: Vec<(&str, &str)> = graph
+        .nodes
+        .iter()
+        .map(|n| (n.id.as_str(), n.name.as_str()))
+        .collect();
+    id_name_pairs.sort_unstable();
+
+    let mut hasher = Sha256::new();
+    for (id, name) in &id_name_pairs {
+        hasher.update(id.as_bytes());
+        hasher.update(b":");
+        hasher.update(name.as_bytes());
+        hasher.update(b"\n");
+    }
+    let hash = hasher.finalize();
+    let mut hex_str = String::with_capacity(64);
+    for byte in hash {
+        use std::fmt::Write;
+        let _ = write!(hex_str, "{byte:02x}");
+    }
+    let etag = format!("sha256:{hex_str}");
+
+    let scanned_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+
+    ScanMetadata {
+        scanned_at,
+        scan_duration_ms: elapsed_ms,
+        etag,
+        partial,
+        scope: ScanScope {
+            workspaces: params.workspaces.to_vec(),
+            item_types_filter: params.item_types_filter.map(|s| {
+                s.split(',')
+                    .map(|t| t.trim().to_string())
+                    .collect::<Vec<_>>()
+            }),
+            focus_item: params.focus.map(String::from),
+            focus_depth: params.focus.map(|_| params.depth),
+            deep: params.deep,
+            include_connections: params.include_connections,
+        },
+    }
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1556,6 +1874,8 @@ mod tests {
                 target: "bbb".to_string(),
                 relationship: "default_lakehouse".to_string(),
                 metadata: None,
+                confidence: None,
+                discovery_method: None,
             }],
             workspaces: vec![WorkspaceInfo {
                 id: "ws1".to_string(),
@@ -1569,6 +1889,7 @@ mod tests {
                 item_types: BTreeMap::from([("Notebook".to_string(), 1)]),
                 relationship_types: Some(BTreeMap::from([("default_lakehouse".to_string(), 1)])),
             },
+            meta: None,
         };
 
         let json = serde_json::to_value(&graph).unwrap();
@@ -1596,6 +1917,8 @@ mod tests {
                 target: "ddd-eee-fff".to_string(),
                 relationship: "default_lakehouse".to_string(),
                 metadata: None,
+                confidence: None,
+                discovery_method: None,
             }],
             workspaces: vec![WorkspaceInfo {
                 id: "ws1".to_string(),
@@ -1609,6 +1932,7 @@ mod tests {
                 item_types: BTreeMap::from([("Notebook".to_string(), 1)]),
                 relationship_types: Some(BTreeMap::from([("default_lakehouse".to_string(), 1)])),
             },
+            meta: None,
         };
 
         let jsonld = format_as_jsonld(&graph);
@@ -1692,6 +2016,7 @@ mod tests {
                 item_types: BTreeMap::new(),
                 relationship_types: None,
             },
+            meta: None,
         };
 
         let new = ContextGraph {
@@ -1728,6 +2053,7 @@ mod tests {
                 item_types: BTreeMap::new(),
                 relationship_types: None,
             },
+            meta: None,
         };
 
         let merged = merge_graphs(existing, new);
@@ -1754,12 +2080,16 @@ mod tests {
                     target: "b".to_string(),
                     relationship: "ref".to_string(),
                     metadata: None,
+                    confidence: None,
+                    discovery_method: None,
                 },
                 GraphEdge {
                     source: "a".to_string(),
                     target: "c".to_string(),
                     relationship: "ref".to_string(),
                     metadata: None,
+                    confidence: None,
+                    discovery_method: None,
                 },
             ],
             workspaces: vec![],
@@ -1770,6 +2100,7 @@ mod tests {
                 item_types: BTreeMap::new(),
                 relationship_types: None,
             },
+            meta: None,
         };
 
         let new = ContextGraph {
@@ -1780,12 +2111,16 @@ mod tests {
                     target: "b".to_string(),
                     relationship: "ref".to_string(),
                     metadata: None,
+                    confidence: None,
+                    discovery_method: None,
                 }, // duplicate
                 GraphEdge {
                     source: "x".to_string(),
                     target: "y".to_string(),
                     relationship: "new_rel".to_string(),
                     metadata: None,
+                    confidence: None,
+                    discovery_method: None,
                 },
             ],
             workspaces: vec![],
@@ -1796,6 +2131,7 @@ mod tests {
                 item_types: BTreeMap::new(),
                 relationship_types: None,
             },
+            meta: None,
         };
 
         let merged = merge_graphs(existing, new);
@@ -1820,6 +2156,8 @@ mod tests {
                 target: "bbb".to_string(),
                 relationship: "ref".to_string(),
                 metadata: None,
+                confidence: None,
+                discovery_method: None,
             }],
             workspaces: vec![WorkspaceInfo {
                 id: "ws1".to_string(),
@@ -1833,6 +2171,7 @@ mod tests {
                 item_types: BTreeMap::from([("Notebook".to_string(), 1)]),
                 relationship_types: Some(BTreeMap::from([("ref".to_string(), 1)])),
             },
+            meta: None,
         };
 
         let clone = ContextGraph {
@@ -1846,6 +2185,7 @@ mod tests {
                 item_types: BTreeMap::from([("Notebook".to_string(), 1)]),
                 relationship_types: Some(BTreeMap::from([("ref".to_string(), 1)])),
             },
+            meta: None,
         };
 
         let merged = merge_graphs(graph, clone);
@@ -1873,12 +2213,16 @@ mod tests {
                     target: "lh1".to_string(),
                     relationship: "references".to_string(),
                     metadata: None,
+                    confidence: None,
+                    discovery_method: None,
                 },
                 GraphEdge {
                     source: "nb1".to_string(),
                     target: "lh2".to_string(),
                     relationship: "references".to_string(),
                     metadata: None,
+                    confidence: None,
+                    discovery_method: None,
                 },
             ],
             workspaces: vec![WorkspaceInfo {
@@ -1893,6 +2237,7 @@ mod tests {
                 item_types: BTreeMap::from([("Notebook".to_string(), 1)]),
                 relationship_types: Some(BTreeMap::from([("references".to_string(), 2)])),
             },
+            meta: None,
         };
 
         let jsonld = format_as_jsonld(&graph);
@@ -1906,5 +2251,191 @@ mod tests {
         let refs = &nb["fabric:references"];
         assert!(refs.is_array(), "expected array for multiple edges");
         assert_eq!(refs.as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_execute_resolve_found() {
+        let items: Vec<(Value, String, String)> = vec![
+            (
+                serde_json::json!({"id": "id-1", "type": "Notebook", "displayName": "my-nb"}),
+                "ws-1".to_string(),
+                "TestWS".to_string(),
+            ),
+            (
+                serde_json::json!({"id": "id-2", "type": "Lakehouse", "displayName": "bronze"}),
+                "ws-1".to_string(),
+                "TestWS".to_string(),
+            ),
+        ];
+
+        let result = execute_resolve(&items, "Notebook:my-nb,Lakehouse:bronze");
+        let resolved = result["resolved"].as_array().unwrap();
+        assert_eq!(resolved.len(), 2);
+        assert_eq!(resolved[0]["id"], "id-1");
+        assert_eq!(resolved[0]["type"], "Notebook");
+        assert_eq!(resolved[1]["id"], "id-2");
+        assert_eq!(resolved[1]["name"], "bronze");
+    }
+
+    #[test]
+    fn test_execute_resolve_not_found() {
+        let items: Vec<(Value, String, String)> = vec![(
+            serde_json::json!({"id": "id-1", "type": "Notebook", "displayName": "my-nb"}),
+            "ws-1".to_string(),
+            "TestWS".to_string(),
+        )];
+
+        let result = execute_resolve(&items, "Lakehouse:missing");
+        let resolved = result["resolved"].as_array().unwrap();
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0]["error"], "Not found");
+    }
+
+    #[test]
+    fn test_execute_resolve_invalid_format() {
+        let items: Vec<(Value, String, String)> = vec![];
+        let result = execute_resolve(&items, "no-colon-here");
+        let resolved = result["resolved"].as_array().unwrap();
+        assert_eq!(resolved[0]["error"], "Expected format Type:Name");
+    }
+
+    #[test]
+    fn test_focus_subgraph_basic() {
+        let graph = ContextGraph {
+            nodes: vec![
+                GraphNode {
+                    id: "a".to_string(),
+                    item_type: "Notebook".to_string(),
+                    name: "NB-A".to_string(),
+                    workspace_id: "ws1".to_string(),
+                    workspace_name: "WS".to_string(),
+                    description: None,
+                    properties: None,
+                },
+                GraphNode {
+                    id: "b".to_string(),
+                    item_type: "Lakehouse".to_string(),
+                    name: "LH-B".to_string(),
+                    workspace_id: "ws1".to_string(),
+                    workspace_name: "WS".to_string(),
+                    description: None,
+                    properties: None,
+                },
+                GraphNode {
+                    id: "c".to_string(),
+                    item_type: "Report".to_string(),
+                    name: "Report-C".to_string(),
+                    workspace_id: "ws1".to_string(),
+                    workspace_name: "WS".to_string(),
+                    description: None,
+                    properties: None,
+                },
+                GraphNode {
+                    id: "d".to_string(),
+                    item_type: "SemanticModel".to_string(),
+                    name: "SM-D".to_string(),
+                    workspace_id: "ws1".to_string(),
+                    workspace_name: "WS".to_string(),
+                    description: None,
+                    properties: None,
+                },
+            ],
+            edges: vec![
+                GraphEdge {
+                    source: "a".to_string(),
+                    target: "b".to_string(),
+                    relationship: "default_lakehouse".to_string(),
+                    metadata: None,
+                    confidence: None,
+                    discovery_method: None,
+                },
+                GraphEdge {
+                    source: "c".to_string(),
+                    target: "d".to_string(),
+                    relationship: "bound_to_model".to_string(),
+                    metadata: None,
+                    confidence: None,
+                    discovery_method: None,
+                },
+            ],
+            workspaces: vec![WorkspaceInfo {
+                id: "ws1".to_string(),
+                name: "WS".to_string(),
+                capacity_id: None,
+            }],
+            summary: GraphSummary {
+                total_nodes: 4,
+                total_edges: 2,
+                workspaces_scanned: 1,
+                item_types: BTreeMap::new(),
+                relationship_types: None,
+            },
+            meta: None,
+        };
+
+        // Focus on "a" with depth 1 — should include a and b (connected), not c or d
+        let focused = focus_subgraph(&graph, "a", 1);
+        assert_eq!(focused.summary.total_nodes, 2);
+        assert!(focused.nodes.iter().any(|n| n.id == "a"));
+        assert!(focused.nodes.iter().any(|n| n.id == "b"));
+        assert!(!focused.nodes.iter().any(|n| n.id == "c"));
+        assert_eq!(focused.summary.total_edges, 1);
+    }
+
+    #[test]
+    fn test_focus_subgraph_not_found() {
+        let graph = ContextGraph {
+            nodes: vec![GraphNode {
+                id: "a".to_string(),
+                item_type: "Notebook".to_string(),
+                name: "NB".to_string(),
+                workspace_id: "ws1".to_string(),
+                workspace_name: "WS".to_string(),
+                description: None,
+                properties: None,
+            }],
+            edges: vec![],
+            workspaces: vec![],
+            summary: GraphSummary {
+                total_nodes: 1,
+                total_edges: 0,
+                workspaces_scanned: 0,
+                item_types: BTreeMap::new(),
+                relationship_types: None,
+            },
+            meta: None,
+        };
+
+        let focused = focus_subgraph(&graph, "nonexistent", 1);
+        assert_eq!(focused.summary.total_nodes, 0);
+    }
+
+    #[test]
+    fn test_confidence_on_edges() {
+        // Verify that confidence serializes correctly in JSON output
+        let edge = GraphEdge {
+            source: "a".to_string(),
+            target: "b".to_string(),
+            relationship: "child_of".to_string(),
+            metadata: None,
+            confidence: Some("high".to_string()),
+            discovery_method: Some("structured_property".to_string()),
+        };
+        let json = serde_json::to_value(&edge).unwrap();
+        assert_eq!(json["confidence"], "high");
+        assert_eq!(json["discoveryMethod"], "structured_property");
+
+        // Without confidence (None) — fields should be absent
+        let edge_no_conf = GraphEdge {
+            source: "a".to_string(),
+            target: "b".to_string(),
+            relationship: "ref".to_string(),
+            metadata: None,
+            confidence: None,
+            discovery_method: None,
+        };
+        let json2 = serde_json::to_value(&edge_no_conf).unwrap();
+        assert!(json2.get("confidence").is_none());
+        assert!(json2.get("discoveryMethod").is_none());
     }
 }

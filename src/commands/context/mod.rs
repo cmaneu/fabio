@@ -173,6 +173,24 @@ pub enum ContextCommand {
         /// Max concurrency for API calls (default: auto-scaled to CPU count)
         #[arg(long)]
         concurrency: Option<usize>,
+
+        /// Return only a lightweight inventory summary (item counts by type, workspace info)
+        /// without building the full graph. Useful for agents to probe before a full scan.
+        #[arg(long)]
+        summary_only: bool,
+
+        /// Fast name-to-ID resolution. Comma-separated `Type:Name` pairs
+        /// (e.g. `Notebook:my-nb,Lakehouse:bronze`). Returns matching items without full graph.
+        #[arg(long)]
+        resolve: Option<String>,
+
+        /// Focus on a single item: return only the subgraph within `--depth` hops of this item ID
+        #[arg(long)]
+        focus: Option<String>,
+
+        /// Maximum hop distance from the focused item (default: 1). Requires `--focus`.
+        #[arg(long, default_value = "1")]
+        depth: usize,
     },
 }
 
@@ -227,6 +245,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
             merge,
             output_file,
             concurrency,
+            summary_only,
+            resolve,
+            focus,
+            depth,
         } => {
             let params = tenant::ExtractParams {
                 workspaces: workspace,
@@ -238,6 +260,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
                 merge: merge.as_deref(),
                 output_file: output_file.as_deref(),
                 concurrency: concurrency.unwrap_or_else(crate::parallel::default_concurrency),
+                summary_only: *summary_only,
+                resolve: resolve.as_deref(),
+                focus: focus.as_deref(),
+                depth: *depth,
             };
             tenant::execute(cli, client, &params).await
         }

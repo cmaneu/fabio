@@ -220,7 +220,6 @@ cargo test --bin fabio generate_agent_schema -- --include-ignored
 When adding new features, commands, or discovering API behaviors, you MUST update the following documentation before committing:
 
 1. **AGENTS.md** — Update these sections as applicable:
-   - **Progress > Done**: Add bullet points for new commands/features implemented.
    - **Key Decisions**: Document significant architectural or design choices.
    - **Relevant Files**: Add new source files, test files, or config files.
    - **API Behaviors Discovered**: Append to `.agents/API-BEHAVIORS-DISCOVERED.md` under the appropriate section heading. Do NOT add API behavior documentation to AGENTS.md directly — it was extracted to reduce context size.
@@ -375,6 +374,7 @@ Automated: `./scripts/release.sh <version>` handles all steps end-to-end.
 - **Deploy protected type deletion**: Lakehouse, Warehouse, SQLDatabase, Eventhouse, KQLDatabase require `--allow-delete-types` to be deleted by `--delete-orphans`
 - **Deploy fabric-cicd full compatibility**: Source directory format, .platform file schema, definition parts, logical ID resolution, workspace ID replacement, creationPayload, .children/ discovery, .pbi/ exclusion, notebook ordering, Report byPath transform — all aligned with Microsoft's fabric-cicd Python library
 - **Upgrade**: `fabio upgrade` downloads latest release from GitHub, verifies SHA256 checksum, extracts platform-appropriate archive (tar.gz on Unix, zip on Windows), atomically replaces running binary; supports `--check` (version query only), `--target-version` (pin specific version), `--force` (reinstall even if current), `--dry-run`
+- **Context tenant LSP-inspired agent features**: Inspired by Language Server Protocol design, `context tenant` provides progressive disclosure for AI agents: `--summary-only` (cheap inventory probe, 2 API calls), `--resolve Type:Name` (fast name-to-ID lookup without graph), `--focus <id> --depth N` (ego-centric subgraph via BFS). All graph responses include a `meta` envelope (`scannedAt`, `scanDurationMs`, `etag` SHA-256 fingerprint, `partial`, `scope`) for freshness/drift detection. Edges carry `confidence` (high/medium/low) and `discoveryMethod` fields so agents can filter noise.
 
 ## Critical Context
 - User's tenant: set locally via secure environment configuration (redacted)

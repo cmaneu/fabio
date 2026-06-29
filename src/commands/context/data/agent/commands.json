@@ -3920,13 +3920,31 @@
           "--concurrency": {
             "type": "integer",
             "description": "Max concurrency for API calls (default: auto-scaled to CPU count)"
+          },
+          "--summary-only": {
+            "type": "bool",
+            "description": "Return only a lightweight inventory summary (item counts by type, workspace info) without building the full graph. Useful for agents to probe before a full scan."
+          },
+          "--resolve": {
+            "type": "string",
+            "description": "Fast name-to-ID resolution. Comma-separated Type:Name pairs (e.g. Notebook:my-nb,Lakehouse:bronze). Returns matching items without full graph."
+          },
+          "--focus": {
+            "type": "string",
+            "description": "Focus on a single item: return only the subgraph within --depth hops of this item ID"
+          },
+          "--depth": {
+            "type": "integer",
+            "description": "Maximum hop distance from the focused item (default: 1). Requires --focus."
           }
         },
         "mutates": false,
         "returns": "object",
-        "notes": "Output is a graph with nodes (items), edges (relationships), workspaces metadata, and a summary. Use --deep for full relationship discovery via definition scanning. Use --no-properties for fast inventory-only extraction. Use --output-file + --merge for incremental context building across sessions.",
+        "notes": "Output is a graph with nodes (items), edges (relationships), workspaces metadata, summary, and a meta envelope (scannedAt, etag, scanDurationMs, partial, scope) for agent freshness tracking. Edges include confidence (high/medium/low) and discoveryMethod fields. Use --summary-only to probe workspace contents cheaply before a full scan. Use --resolve for fast name-to-ID lookups. Use --focus <id> --depth N for ego-centric subgraphs. Use --deep for full relationship discovery via definition scanning. Use --no-properties for fast inventory-only extraction. Use --output-file + --merge for incremental context building across sessions.",
         "examples": [
-          "fabio context tenant --workspace $WS",
+          "fabio context tenant --workspace $WS --summary-only",
+          "fabio context tenant --workspace $WS --resolve Notebook:my-nb,Lakehouse:bronze",
+          "fabio context tenant --workspace $WS --focus $ITEM_ID --depth 2",
           "fabio context tenant --workspace $WS --deep --include-connections",
           "fabio context tenant --workspace $WS --deep --output-file context.json",
           "fabio context tenant --workspace $NEW_WS --deep --merge context.json --output-file context.json"

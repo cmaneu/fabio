@@ -582,3 +582,380 @@ fn context_tenant_format_jsonld_to_file() {
 
     let _ = std::fs::remove_file(output_path);
 }
+
+// ── Dry-run tests for new LSP-inspired features ─────────────────────────────
+
+#[test]
+fn context_tenant_dry_run_summary_only() {
+    let assert = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--summary-only",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("missing data");
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["summaryOnly"], true);
+}
+
+#[test]
+fn context_tenant_dry_run_resolve() {
+    let assert = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--resolve",
+            "Notebook:my-nb,Lakehouse:bronze",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("missing data");
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(
+        data["details"]["resolve"],
+        "Notebook:my-nb,Lakehouse:bronze"
+    );
+}
+
+#[test]
+fn context_tenant_dry_run_focus() {
+    let assert = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--focus",
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            "--depth",
+            "3",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("missing data");
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(
+        data["details"]["focus"],
+        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    );
+    assert_eq!(data["details"]["depth"], 3);
+}
+
+// ── Live tenant tests for new features ──────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn context_tenant_summary_only_returns_inventory() {
+    let config = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            &config.source_workspace,
+            "--summary-only",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("missing data");
+
+    // Must have workspace list, item counts, and timing
+    assert!(data.get("workspaces").is_some(), "missing workspaces");
+    assert!(
+        data["totalItems"].as_u64().unwrap() > 0,
+        "should have items"
+    );
+    assert!(data.get("itemTypes").is_some(), "missing itemTypes");
+    assert!(
+        data["scanDurationMs"].as_u64().is_some(),
+        "missing scanDurationMs"
+    );
+    assert!(data.get("hint").is_some(), "missing hint for agents");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn context_tenant_resolve_finds_known_item() {
+    let config = TestConfig::from_env();
+
+    // First get the name of the source lakehouse
+    let list_assert = fabio()
+        .args([
+            "item",
+            "show",
+            "--workspace",
+            &config.source_workspace,
+            "--id",
+            &config.source_lakehouse,
+        ])
+        .assert()
+        .success();
+    let list_json = parse_json(&list_assert);
+    let lakehouse_name = list_json["data"]["displayName"]
+        .as_str()
+        .expect("lakehouse should have displayName");
+
+    // Now resolve it
+    let resolve_spec = format!("Lakehouse:{lakehouse_name}");
+    let assert = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            &config.source_workspace,
+            "--resolve",
+            &resolve_spec,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("missing data");
+    let resolved = data["resolved"].as_array().expect("resolved is not array");
+
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(resolved[0]["id"], config.source_lakehouse);
+    assert_eq!(resolved[0]["type"], "Lakehouse");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn context_tenant_resolve_not_found() {
+    let config = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            &config.source_workspace,
+            "--resolve",
+            "Notebook:nonexistent-item-xyz-12345",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("missing data");
+    let resolved = data["resolved"].as_array().expect("resolved is not array");
+
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(resolved[0]["error"], "Not found");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn context_tenant_metadata_envelope_present() {
+    let config = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            &config.source_workspace,
+            "--no-properties",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("missing data");
+
+    // Verify meta envelope
+    let meta = data.get("meta").expect("missing meta envelope");
+    assert!(
+        meta.get("scannedAt").and_then(|v| v.as_str()).is_some(),
+        "missing scannedAt"
+    );
+    assert!(
+        meta.get("scanDurationMs")
+            .and_then(serde_json::Value::as_u64)
+            .is_some(),
+        "missing scanDurationMs"
+    );
+    assert!(
+        meta.get("etag").and_then(|v| v.as_str()).is_some(),
+        "missing etag"
+    );
+    assert!(meta.get("partial").is_some(), "missing partial");
+    assert!(meta.get("scope").is_some(), "missing scope");
+
+    // Etag should be sha256:... format
+    let etag = meta["etag"].as_str().unwrap();
+    assert!(
+        etag.starts_with("sha256:"),
+        "etag should start with sha256:"
+    );
+    assert_eq!(etag.len(), 7 + 64, "etag should be sha256: + 64 hex chars");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn context_tenant_metadata_etag_stable() {
+    let config = TestConfig::from_env();
+
+    // Run twice — same workspace, same items — etag should be identical
+    let assert1 = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            &config.source_workspace,
+            "--no-properties",
+        ])
+        .assert()
+        .success();
+    let json1 = parse_json(&assert1);
+    let etag1 = json1["data"]["meta"]["etag"]
+        .as_str()
+        .expect("missing etag");
+
+    let assert2 = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            &config.source_workspace,
+            "--no-properties",
+        ])
+        .assert()
+        .success();
+    let json2 = parse_json(&assert2);
+    let etag2 = json2["data"]["meta"]["etag"]
+        .as_str()
+        .expect("missing etag");
+
+    assert_eq!(etag1, etag2, "etag should be stable across identical scans");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn context_tenant_focus_returns_subgraph() {
+    let config = TestConfig::from_env();
+
+    // First get an item ID to focus on
+    let full_assert = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            &config.source_workspace,
+            "--no-properties",
+        ])
+        .assert()
+        .success();
+    let full_json = parse_json(&full_assert);
+    let all_nodes = full_json["data"]["nodes"]
+        .as_array()
+        .expect("nodes is array");
+    let total_nodes = all_nodes.len();
+    assert!(total_nodes > 1, "need at least 2 items for focus test");
+
+    let focus_id = all_nodes[0]["id"].as_str().unwrap();
+
+    // Now focus on that item with depth 1
+    let focus_assert = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            &config.source_workspace,
+            "--no-properties",
+            "--focus",
+            focus_id,
+            "--depth",
+            "1",
+        ])
+        .assert()
+        .success();
+    let focus_json = parse_json(&focus_assert);
+    let focus_data = focus_json.get("data").expect("missing data");
+    let focus_nodes = focus_data["nodes"].as_array().expect("nodes array");
+
+    // Focused graph should have the focal item
+    assert!(
+        focus_nodes.iter().any(|n| n["id"] == focus_id),
+        "focused graph should contain the focal item"
+    );
+    // Focused graph should be <= total (likely smaller unless everything is connected)
+    assert!(
+        focus_nodes.len() <= total_nodes,
+        "focused graph should be <= full graph"
+    );
+    // Meta should indicate partial
+    let meta = focus_data.get("meta").expect("missing meta");
+    assert_eq!(meta["partial"], true, "focus mode should mark partial=true");
+    assert_eq!(
+        meta["scope"]["focusItem"], focus_id,
+        "scope should record focus item"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn context_tenant_edges_have_confidence() {
+    let config = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "context",
+            "tenant",
+            "--workspace",
+            &config.source_workspace,
+            "--deep",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("missing data");
+    let edges = data["edges"].as_array().expect("edges is array");
+
+    if edges.is_empty() {
+        // No edges discovered — can't validate confidence fields
+        return;
+    }
+
+    // At least some edges should have confidence and discoveryMethod
+    let edges_with_confidence = edges
+        .iter()
+        .filter(|e| e.get("confidence").and_then(|v| v.as_str()).is_some())
+        .count();
+    assert!(
+        edges_with_confidence > 0,
+        "at least some edges should have confidence field"
+    );
+
+    // Validate confidence values are valid
+    for edge in edges {
+        if let Some(conf) = edge.get("confidence").and_then(|v| v.as_str()) {
+            assert!(
+                conf == "high" || conf == "medium" || conf == "low",
+                "invalid confidence value: {conf}"
+            );
+        }
+        if let Some(method) = edge.get("discoveryMethod").and_then(|v| v.as_str()) {
+            assert!(
+                method == "structured_property"
+                    || method == "guid_scan_property"
+                    || method == "guid_scan_definition"
+                    || method == "connection_api",
+                "invalid discoveryMethod value: {method}"
+            );
+        }
+    }
+}

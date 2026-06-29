@@ -1,0 +1,20 @@
+{
+  "command": "fabio context tenant --workspace $WS_ID --summary-only",
+  "description": "Lightweight inventory probe: returns workspace info, item counts by type, and scan timing without building the full relationship graph. Ideal for agents to assess workspace size before committing to a full scan.",
+  "response": {
+    "data": {
+      "workspaces": [{"id": "abc-123", "name": "MyWorkspace", "capacityId": "cap-456"}],
+      "totalItems": 42,
+      "itemTypes": {"Notebook": 5, "Lakehouse": 3, "SemanticModel": 8, "Report": 12, "DataPipeline": 4, "Warehouse": 2, "SQLEndpoint": 3, "Environment": 2, "KQLDatabase": 1, "Eventhouse": 1, "Eventstream": 1},
+      "scanDurationMs": 850,
+      "hint": "Use --deep and --include-connections for relationship discovery. Use --focus <id> to get a targeted subgraph."
+    }
+  },
+  "notes": "This is the cheapest context tenant operation — only calls workspace resolution + item listing (2 API calls per workspace). No type-specific detail fetching, no definition scanning, no connection fetching. Agents should use this first to decide whether to do a full scan or a focused query.",
+  "query_examples": [
+    {"query": "data.totalItems", "description": "Total number of items in workspace."},
+    {"query": "data.itemTypes", "description": "Item counts grouped by type."},
+    {"query": "data.workspaces[0].name", "description": "Workspace display name."},
+    {"query": "data.scanDurationMs", "description": "How long the probe took (ms)."}
+  ]
+}
