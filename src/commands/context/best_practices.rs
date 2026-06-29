@@ -46,4 +46,8 @@ const BEST_PRACTICES: &[(&str, &str)] = &[
         "shortcuts",
         include_str!("data/best_practices/shortcuts.json"),
     ),
+    (
+        "deploy-parameters",
+        include_str!("data/best_practices/deploy_parameters.json"),
+    ),
 ];

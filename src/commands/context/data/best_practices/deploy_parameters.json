@@ -1,0 +1,71 @@
+{
+  "topic": "deploy-parameters",
+  "title": "Deploy Parameter Substitution and Environment Variables",
+  "summary": "Deploy parameters enable environment-specific value injection (dev/staging/prod) via find-replace, JSONPath key-value, Spark pool, and semantic model binding rules. Values support dynamic variables including $ENV:VAR_NAME for CI/CD secrets injection.",
+  "parameter_file_format": {
+    "location": "Any JSON file passed via --parameters <file> --env <name>",
+    "rule_types": [
+      "find_replace: string replacement in definition payloads (supports regex)",
+      "key_value_replace: JSONPath-targeted replacement in JSON definition files",
+      "spark_pool: Spark pool instance mapping by environment",
+      "semantic_model_binding: semantic model connection ID promotion"
+    ]
+  },
+  "dynamic_variables": {
+    "$workspace.id": "Target workspace GUID (always available)",
+    "$workspace.name": "Target workspace display name (only when --workspace is passed by name, not ID)",
+    "$items.Type.Name.id": "Deployed GUID of another item in the workspace (e.g., $items.Lakehouse.SalesLH.id)",
+    "$ENV:VAR_NAME": "Value of an OS environment variable (errors if not set)"
+  },
+  "env_var_injection_example": {
+    "parameters_json": {
+      "find_replace": [
+        {
+          "find_value": "00000000-0000-0000-0000-000000000000",
+          "replace_value": {
+            "dev": "$ENV:DEV_LAKEHOUSE_ID",
+            "prod": "$ENV:PROD_LAKEHOUSE_ID"
+          }
+        },
+        {
+          "find_value": "placeholder-connection-secret",
+          "replace_value": {
+            "_ALL_": "$ENV:CONNECTION_SECRET"
+          }
+        }
+      ]
+    },
+    "ci_cd_usage": "export DEV_LAKEHOUSE_ID=abc-123 && export PROD_LAKEHOUSE_ID=def-456 && fabio deploy apply --source ./deploy --workspace prod --parameters params.json --env prod"
+  },
+  "resolution_priority": [
+    "1. Exact environment name match (case-insensitive): e.g., 'prod' key",
+    "2. '_ALL_' universal fallback key",
+    "3. Error if no matching environment key found"
+  ],
+  "scoping_rules": {
+    "item_type": "Restrict rule to specific item type(s) — case-insensitive",
+    "item_name": "Restrict rule to specific item name(s) — case-insensitive",
+    "file_path": "Restrict rule to specific definition file path(s)",
+    "all_optional": "If no scoping fields are set, the rule applies globally to all items"
+  },
+  "init_params_command": {
+    "scan_mode": "fabio deploy init-params --source ./export --out params.json — Scans definitions for GUIDs and generates find_replace template rules",
+    "diff_mode": "fabio deploy init-params --source ./dev-export --compare ./prod-export --source-env dev --compare-env prod --out params.json — Compares two environments and generates rules with both values pre-filled"
+  },
+  "key_behaviors": {
+    "regex_mode": "With is_regex: true, only capture group 1 is replaced (surrounding match text preserved). Useful for replacing GUIDs inside larger strings.",
+    "all_fallback": "_ALL_ (case-insensitive) acts as universal default when the specific environment name is not found",
+    "creation_payload": "Parameter substitution also applies to creationPayload.json (creation-time config), not just definition parts",
+    "hash_recomputation": "After substitution, content hashes are recomputed. This ensures idempotent skip detection uses the substituted values.",
+    "error_on_missing_env": "If $ENV:VAR_NAME references an unset variable, the deploy fails immediately with INVALID_INPUT error and a hint showing which variable to set"
+  },
+  "what_agents_should_do": [
+    "Use fabio deploy init-params to scaffold the parameters file — never write it from scratch",
+    "Use $ENV:VAR_NAME for secrets and environment-specific IDs in CI/CD pipelines",
+    "Use $workspace.id for self-referential workspace GUIDs (auto-resolved at deploy time)",
+    "Use $items.Type.Name.id when one item's definition references another item's deployed GUID",
+    "Use _ALL_ as fallback when a value is the same across all environments",
+    "Scope rules with item_type/item_name/file_path to avoid unintended replacements in large deployments",
+    "Run --dry-run first to verify substitutions produce the expected changeset"
+  ]
+}
