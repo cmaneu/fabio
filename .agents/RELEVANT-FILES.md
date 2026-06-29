@@ -1,0 +1,200 @@
+## Relevant Files
+- `Cargo.toml`: Project config, dependencies, clippy/lints config, release profile (LTO+strip)
+- `rust-toolchain.toml`: stable channel, rustfmt+clippy components
+- `prek.toml`: Pre-commit hook configuration (prek — Rust-native pre-commit runner)
+- `.agents/skills/fabio/SKILL.md`: Agent skill bootstrapping document (330 lines, loaded by agent frameworks on activation)
+- `.agents/skills/fabio/references/API-BEHAVIORS.md`: Critical API gotchas that cause silent failures
+- `.agents/skills/fabio/scripts/install.sh`: Cross-platform binary installer for the skill
+- `tests/eval/promptfooconfig.yaml`: 77-case promptfoo eval testing skill instruction quality (run with `GITHUB_TOKEN=$(gh auth token) promptfoo eval -c tests/eval/promptfooconfig.yaml`)
+- `src/main.rs`: Entry point, `#![recursion_limit = "256"]`, tokio async main, error handling dispatch
+- `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 74 subcommand groups
+- `src/errors.rs`: ErrorCode enum (with stable exit codes) + FabioError struct with thiserror
+- `src/output.rs`: render_list_with_token, render_object, render_error (respects --quiet/--query/--wrap-untrusted), apply_query, dry_run_guard, unit tests
+- `src/parallel.rs`: Parallel execution framework for concurrent file/table operations with rate-limit retry
+- `src/verbose.rs`: Lightweight `--verbose` diagnostics module (global AtomicBool flag, HTTP/LRO/auth tracing to stderr)
+- `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, ARM API methods (arm_get/post/put/patch/delete with ARM LRO polling), Power BI API methods (get/post/put/patch/delete/bytes/multipart_powerbi), run_notebook, trigger_item_job
+- `src/commands/mod.rs`: Command dispatch
+- `src/commands/auth.rs`: login (device code + browser PKCE + service principal: secret/certificate/federated token), logout, status
+- `src/commands/workspace.rs`: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
+- `src/commands/item.rs`: 18 subcommands (CRUD + copy/move + definitions + list-connections + exists/url/inspect + bulk-create/bulk-delete + move-to-folder + create-external-data-share)
+- `src/commands/lakehouse.rs`: 34 subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, create-directory, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut, optimize-table, vacuum-table, table-schema, iceberg-config, iceberg-namespaces, iceberg-namespace, iceberg-tables, iceberg-table, iceberg-table-exists, iceberg-namespace-exists, iceberg-credentials, iceberg-stats, iceberg-snapshots, query)
+- `src/commands/notebook.rs`: create/get-definition (with --strip-output)/run (with --wait/--timeout/--parameters/--compute-type/--execution-data)/status/stop/delete
+- `src/commands/warehouse.rs`: list/show/create/update/delete/query/connection-string (endpoint resolved, stdin/file/flag SQL input)
+- `src/commands/sql_database.rs`: list/show/create/update/delete/query/connection-string/import (TDS + type inference)
+- `src/commands/tds_utils.rs`: Shared TDS utilities (resolve_sql_input, parse_connection_string, execute_and_render_sql, column_value_to_json)
+- `src/commands/dataagent.rs`: list/show/create/update/delete/query/get-definition/update-definition/publish + get-config/update-config, add/remove/list/show-datasource, select-tables, list-elements/describe-element, add/remove/list-fewshots/upload-fewshots
+- `src/commands/git.rs`: status/commit/pull/connect/disconnect/initialize/switch/connection/credentials/show-tracked
+- `src/commands/ontology.rs`: list/show/create/update/delete/get-definition/update-definition/import/export
+- `src/commands/ontology_import.rs`: OWL RDF/XML + JSON-LD parser, Fabric format generator, RDF serializer (import + export)
+- `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings/upload-staging-library
+- `src/commands/data_pipeline.rs`: list/show/create/update/delete/run, create-schedule, list-schedules/get-schedule/update-schedule/delete-schedule, list-instances/get-instance
+- `src/commands/report.rs`: list/show/create/update/delete/get-definition/update-definition
+- `src/commands/semantic_model.rs`: list/show/create/update/delete/get-definition/update-definition + query/refresh/bind-connection/unbind-connection/takeover + list-parameters/update-parameters/list-datasources/update-datasources/list-users/add-user/delete-user/refresh-status/list-upstream/clone/export-pbix/import-pbix
+- `src/commands/eventhouse.rs`: list/show/create/update/delete
+- `src/commands/eventstream/mod.rs`: list/show/create/update/delete/get-definition/update-definition/get-topology/pause/resume/sources/destinations
+- `src/commands/eventstream/builder.rs`: add-source/add-destination/add-sample-source/add-derived-stream/validate/list-components
+- `src/commands/kql_database/mod.rs`: list/show/create/update/delete/get-definition/update-definition/shortcuts
+- `src/commands/kql_database/intelligence.rs`: query/list-entities/describe/describe-entity/sample/ingest/show-queryplan/diagnostics/deeplink
+- `src/commands/kql_utils.rs`: Shared KQL utilities (resolve_kql_input, resolve_query_uri, execute_kql, parse v1/v2 responses, render results)
+- `src/commands/kql_queryset.rs`: CRUD + get-definition/update-definition + run (fetch definition, select tab, execute against Kusto REST API)
+- `src/commands/kql_dashboard.rs`: list/show/create/update/delete/get-definition/update-definition (RealTimeDashboard.json)
+- `src/commands/mirrored_database.rs`: list/show/create/update/delete/get-definition/update-definition/start/stop/status/table-status
+- `src/commands/reflex.rs`: list/show/create/update/delete/get-definition/update-definition/create-trigger (Data Activator)
+- `src/commands/ml_model.rs`: list/show/create/update/delete (CRUD only)
+- `src/commands/ml_experiment.rs`: list/show/create/update/delete (CRUD only)
+- `src/commands/copy_job.rs`: list/show/create/update/delete/get-definition/update-definition/reset
+- `src/commands/dataflow.rs`: list/show/create/update/delete/get-definition/update-definition/discover-parameters/run/execute-query
+- `src/commands/graphql_api.rs`: list/show/create/update/delete/get-definition/update-definition (schema.graphql)
+- `src/commands/spark.rs`: get-settings/update-settings/list-pools/get-pool/create-pool/update-pool/delete-pool
+- `src/commands/spark_job_definition.rs`: list/show/create/update/delete/get-definition/update-definition/run
+- `src/commands/map.rs`: list/show/create/update/delete/get-definition/update-definition (geospatial Azure Maps)
+- `src/commands/capacity.rs`: list/show (Fabric API) + suspend/resume/create/update/delete/list-skus/check-name (ARM API)
+- `src/commands/connection.rs`: list/show/create/update/delete/list-supported-types
+- `src/commands/deployment_pipeline.rs`: list/show/create/update/delete/list-stages/list-stage-items/assign-workspace/unassign-workspace/deploy
+- `src/commands/domain.rs`: list/show/create/update/delete/list-workspaces/assign-workspaces/unassign-workspaces/assign-by-capacity/assign-by-principal
+- `src/commands/job_scheduler.rs`: list-instances/get-instance/run-on-demand (with `--wait`/`--timeout`/`--cancel-on-timeout`), cancel-instance/list-schedules/get-schedule/create-schedule/update-schedule/delete-schedule
+- `src/commands/onelake_security.rs`: list/show/upsert/delete/create (data access roles)
+- `src/commands/managed_private_endpoint.rs`: list/show/create/delete
+- `src/commands/variable_library.rs`: list/show/create/update/delete/get-definition/update-definition (variables.json + settings.json)
+- `src/commands/event_schema_set.rs`: list/show/create/update/delete/get-definition/update-definition (EventSchemaSetDefinition.json)
+- `src/commands/user_data_function.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json, Python runtime)
+- `src/commands/operations_agent.rs`: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
+- `src/commands/digital_twin_builder.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json, links to lakehouse)
+- `src/commands/digital_twin_builder_flow.rs`: list/show/create/update/delete/get-definition/update-definition (requires parent DTB)
+- `src/commands/cosmos_db_database.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json)
+- `src/commands/snowflake_database.rs`: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
+- `src/commands/sql_endpoint.rs`: list/show/connection-string/query/refresh-metadata/get-audit-settings/update-audit-settings/set-audit-actions
+- `src/commands/anomaly_detector.rs`: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
+- `src/commands/deploy/mod.rs`: DeployCommand enum (plan/apply/export/init-params/validate); execute dispatch; workspace name resolution
+- `src/commands/deploy/apply.rs`: execute_changeset, execute_post_hooks, Rename handling (PATCH + updateDefinition), build_resolution_map, resolve_logical_ids_in_payload
+- `src/commands/deploy/plan.rs`: build_changeset (two-pass with rename), validate_references, fetch_deployed_logical_id, compute_workspace_fingerprint
+- `src/commands/deploy/params.rs`: Parameter substitution: find_replace, key_value_replace, spark_pool, semantic_model_binding
+- `src/commands/deploy/init_params.rs`: scan_for_candidates, diff_for_parameters (GUID discovery, cross-environment diffing)
+- `src/commands/deploy/changeset.rs`: Change, ChangeAction (Create/Update/Rename/Delete/Skip), Changeset (with warnings/errors), DeployResult
+- `src/commands/deploy/ordering.rs`: DEPLOY_ORDER (45 types), deploy_priority, delete_priority, topological_sort
+- `src/commands/deploy/platform.rs`: parse_source_directory (creationPayload.json parsing), SourceItem, SourceWorkspace, PlatformMetadata
+- `src/commands/deploy/export.rs`: export_workspace (getDefinition LRO per item, write .platform + parts)
+- `src/commands/deploy/config.rs`: DeployConfig struct (JSON+YAML parsing via serde_yaml), per-environment workspace/source/parameters resolution, FilterConfig, OptionsConfig
+- `src/commands/deploy/folders.rs`: Workspace folder management (discover from source directory, create/move/delete folders), SourceFolder, DeployedFolder, FolderPlan
+- `src/commands/deploy/git_diff.rs`: Git diff-based selective deployment (get_changed_items via `git diff --name-status`, GitDiffResult with changed/deleted sets)
+- `src/commands/gateway.rs`: list/show/create/update/delete, members, role assignments, check-status/check-member-status/restart/shutdown (VNet gateways)
+- `src/commands/admin.rs`: 49 subcommands for tenant administration
+- `src/commands/apache_airflow_job.rs`: CRUD + environment lifecycle + file ops + compute settings
+- `src/commands/azure_databricks_storage.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json, AzureDatabricksStorageV1 format)
+- `src/commands/mirrored_catalog.rs`: CRUD + definition + mirroring operations
+- `src/commands/mirrored_databricks_catalog.rs`: CRUD + definition + discover/refresh/status
+- `src/commands/mirrored_warehouse.rs`: list only (tenant feature flag blocks mutations)
+- `src/commands/warehouse_snapshot.rs`: list/show/create/update/delete
+- `src/commands/graph_model.rs`: CRUD + definition + refresh-graph/execute-query/get-queryable-graph-type
+- `src/commands/graph_query_set.rs`: CRUD + get-definition/update-definition (read-only export)
+- `src/commands/catalog.rs`: search (tenant-level)
+- `src/commands/context.rs`: extract (workspace graph extraction — nodes/edges/summary, three-layer relationship discovery, parallel execution, incremental building)
+- `src/commands/dashboard.rs`: list (read-only)
+- `src/commands/datamart.rs`: list (read-only)
+- `src/commands/paginated_report.rs`: list/show/create/update/delete/get-definition/update-definition
+- `src/commands/profile.rs`: save/use/list/show/delete (named profiles with defaults)
+- `src/commands/jobs.rs`: list/get/prune (local async job ledger)
+- `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
+- `src/commands/context/agent.rs`: Machine-readable command schema for AI agents (hierarchical access, MCP/OpenAI format emission, drift detection, auto-generation)
+- `src/commands/context/schemas.rs`: Item definition schemas (22 types)
+- `src/commands/context/workflows.rs`: Multi-step workflow recipes (5 recipes)
+- `src/commands/context/best_practices.rs`: Best-practices guidance (5 topics)
+- `src/commands/context/examples.rs`: Output shape examples (34 commands)
+- `src/commands/context/tenant.rs`: Live workspace graph extraction
+- `src/commands/mcp/mod.rs`: MCP command group (serve subcommand)
+- `src/commands/mcp/serve.rs`: MCP JSON-RPC 2.0 server (initialize, tools/list, tools/call over stdio)
+- `src/commands/rest.rs`: Raw REST passthrough (method/path/body/query-params/poll); `resolve_body()` for @file/@- support; `--api powerbi` targets Power BI REST API
+- `src/commands/rti.rs`: nl-to-kql (natural language to KQL translation)
+- `src/commands/data_build_tool_job.rs`: list/show/create/update/delete/get-definition/update-definition/run (with --wait/--timeout/--cancel-on-timeout) [preview]
+- `src/commands/org_app.rs`: list/show/create/update/delete/get-definition/update-definition (Organizational App)
+- `src/commands/org_app_audience.rs`: list/show/create/update/delete/get-definition/update-definition (Org App Audience)
+- `src/commands/upgrade.rs`: upgrade (check/download/verify/replace binary from GitHub Releases)
+- `tests/common/mod.rs`: Shared E2E test harness (TestConfig, helpers)
+- `tests/e2e_auth.rs`: Auth integration tests (device code, service principal secret/certificate/federated, WAM, input validation)
+- `tests/e2e_workspace.rs`: Workspace CRUD + assign-capacity + networking + OneLake settings + folders + storage format + roles filter + CMK encryption tests
+- `tests/e2e_global_options.rs`: --query, --quiet, --output format tests
+- `tests/e2e_item.rs`: Item list/show/create/delete/copy/move/bulk-create/bulk-delete tests
+- `tests/e2e_lakehouse.rs`: Tables/files/upload/download/query tests
+- `tests/e2e_lakehouse_files.rs`: File copy/move/delete tests
+- `tests/e2e_lakehouse_tables.rs`: Table load/copy/move/delete tests
+- `tests/e2e_lakehouse_shortcuts.rs`: Shortcut create/get/delete tests
+- `tests/e2e_lakehouse_iceberg.rs`: Iceberg REST Catalog tests (config, namespaces, tables, schema)
+- `tests/e2e_notebook.rs`: Notebook create/get-definition/run/run --wait/status/stop/delete/strip-output tests
+- `tests/e2e_warehouse.rs`: Warehouse list/show/query/query-stdin tests
+- `tests/e2e_sql_database.rs`: SQL Database CRUD + query + import + revalidate-cmk dry-run tests
+- `tests/e2e_dataagent.rs`: Data agent tests (34 tests: CRUD, query, definition, publish, datasource lifecycle, fewshot lifecycle, elements lifecycle, config, CSV upload, dry-run validations)
+- `tests/e2e_git.rs`: Git command group tests
+- `tests/e2e_ontology.rs`: Ontology CRUD + definition tests
+- `tests/e2e_agent_native.rs`: Agent-native compliance tests (principles 1-10)
+- `tests/e2e_verbose.rs`: Verbose flag tests (16 tests: offline flag acceptance, HTTP/auth/LRO tracing, --quiet suppression, --dry-run interaction)
+- `tests/e2e_sync.rs`: Lakehouse sync tests (24 tests: basic copy, skip unchanged, delete, checksum, parallel, rename detection, dedup, include/exclude, size-only, no-overwrite, force, max-delete, existing, remove-source-files, local-to-remote sync)
+- `tests/e2e_connection.rs`: Connection CRUD + list-supported-types tests
+- `tests/e2e_environment.rs`: Environment CRUD tests
+- `tests/e2e_data_pipeline.rs`: Data pipeline CRUD + run + schedule/instance tests
+- `tests/e2e_eventhouse.rs`: Eventhouse CRUD tests
+- `tests/e2e_eventstream.rs`: Eventstream CRUD tests
+- `tests/e2e_kql_database.rs`: KQL database tests
+- `tests/e2e_kql_queryset.rs`: KQL queryset tests
+- `tests/e2e_kql_dashboard.rs`: KQL dashboard tests
+- `tests/e2e_mirrored_database.rs`: Mirrored database tests
+- `tests/e2e_reflex.rs`: Reflex CRUD + definition (get/update with simulator pipeline) tests
+- `tests/e2e_graphql_api.rs`: GraphQL API CRUD tests
+- `tests/e2e_ml_model.rs`: ML model CRUD tests
+- `tests/e2e_ml_experiment.rs`: ML experiment CRUD tests
+- `tests/e2e_copy_job.rs`: Copy job CRUD + reset tests
+- `tests/e2e_dataflow.rs`: Dataflow CRUD + run + execute-query tests
+- `tests/e2e_report.rs`: Report CRUD tests
+- `tests/e2e_semantic_model.rs`: Semantic model CRUD tests
+- `tests/e2e_map.rs`: Map CRUD + definition tests
+- `tests/e2e_spark_job_definition.rs`: Spark job definition tests
+- `tests/e2e_deployment_pipeline.rs`: Deployment pipeline tests
+- `tests/e2e_domain.rs`: Domain management tests
+- `tests/e2e_job_scheduler.rs`: Job scheduler tests (11 tests: list, dry-run, fire-and-forget, --wait with polling)
+- `tests/e2e_spark.rs`: Spark settings and pool tests
+- `tests/e2e_capacity.rs`: Capacity list/show tests + ARM dry-run tests (suspend/resume/create/update/delete)
+- `tests/e2e_onelake_security.rs`: OneLake security tests
+- `tests/e2e_managed_private_endpoint.rs`: Managed private endpoint tests
+- `tests/e2e_admin.rs`: Admin API tests (63 tests: listing, tag lifecycle, domain lifecycle, dry-run validations, sharing links, labels, external data shares)
+- `tests/e2e_deploy.rs`: Deploy plan/apply/export/validate tests (42 tests: create, update, rename, creationPayload, parameters, staleness, logical ID resolution, post-hooks, init-params, validate)
+- `tests/e2e_fabric_cicd_compat.rs`: fabric-cicd compatibility tests (11 tests: validate source directory, nested folders, workspace ID replacement, parameter substitution, selective filtering, config file YAML, init-params scan)
+- `tests/e2e_gateway.rs`: Gateway CRUD + role assignment + lifecycle tests
+- `tests/e2e_apache_airflow_job.rs`: Apache Airflow job CRUD + environment + file ops tests
+- `tests/e2e_azure_databricks_storage.rs`: Azure Databricks storage CRUD + definition + lifecycle tests
+- `tests/e2e_mirrored_catalog.rs`: Mirrored catalog tests
+- `tests/e2e_mirrored_databricks_catalog.rs`: Mirrored Databricks catalog tests
+- `tests/e2e_mirrored_warehouse.rs`: Mirrored warehouse tests
+- `tests/e2e_warehouse_snapshot.rs`: Warehouse snapshot tests
+- `tests/e2e_graph_model.rs`: Graph model CRUD + refresh + query tests
+- `tests/e2e_graph_query_set.rs`: Graph query set tests
+- `tests/e2e_catalog.rs`: Catalog search tests
+- `tests/e2e_context.rs`: Context tenant tests (10 offline dry-run + 10 live graph extraction)
+- `tests/e2e_dashboard.rs`: Dashboard list tests
+- `tests/e2e_datamart.rs`: Datamart list tests
+- `tests/e2e_paginated_report.rs`: Paginated report tests
+- `tests/e2e_anomaly_detector.rs`: Anomaly detector CRUD + definition tests
+- `tests/e2e_cosmos_db_database.rs`: Cosmos DB database CRUD tests
+- `tests/e2e_snowflake_database.rs`: Snowflake database tests
+- `tests/e2e_digital_twin_builder.rs`: Digital Twin Builder CRUD tests
+- `tests/e2e_digital_twin_builder_flow.rs`: Digital Twin Builder Flow tests
+- `tests/e2e_event_schema_set.rs`: Event Schema Set CRUD tests
+- `tests/e2e_operations_agent.rs`: Operations Agent CRUD + definition tests
+- `tests/e2e_mounted_data_factory.rs`: Mounted Data Factory tests
+- `tests/e2e_user_data_function.rs`: User Data Function CRUD tests
+- `tests/e2e_variable_library.rs`: Variable Library CRUD + definition tests
+- `tests/e2e_sql_endpoint.rs`: SQL Endpoint tests
+- `tests/e2e_profile.rs`: Profile save/use/list/show/delete tests
+- `tests/e2e_jobs.rs`: Jobs ledger tests
+- `tests/e2e_feedback.rs`: Feedback send/list tests
+- `tests/e2e_context_agent.rs`: Agent context schema tests
+- `tests/e2e_rest.rs`: REST passthrough tests (dry-run, body resolution, live calls)
+- `tests/e2e_rti.rs`: RTI nl-to-kql tests (dry-run + live failure)
+- `tests/e2e_data_build_tool_job.rs`: DataBuildToolJob CRUD + definition + run tests
+- `tests/e2e_org_app.rs`: OrgApp CRUD + definition tests
+- `tests/e2e_org_app_audience.rs`: OrgAppAudience CRUD + definition tests
+- `tests/e2e_upgrade.rs`: Upgrade tests (dry-run, check, version targeting, JSON output)
+- `.github/workflows/ci.yml`: Rust CI (fmt, clippy, test, build) on 6 targets (x64+arm64 x linux/macos/windows)
+- `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
+- `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
+- `.github/dependabot.yml`: Cargo + GitHub Actions dependency updates
+- `cliff.toml`: git-cliff configuration (commit parsers, grouping, template)
+- `.github/RELEASE_TEMPLATE.md`: Release notes narrative structure template
