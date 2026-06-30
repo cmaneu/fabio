@@ -12,18 +12,79 @@ ${SPEC_CHANGES_SUMMARY}
 
 The full diff is available at /tmp/spec-changes.diff and the full spec repo is at ./fabric-rest-api-specs/.
 
-Your task:
-1. Analyze the spec changes to identify new endpoints, modified request/response schemas, new API versions, or deprecated fields.
-2. Compare against the current fabio implementation in src/commands/ and src/client.rs.
-3. Make targeted improvements to fabio: add new subcommands, update existing request/response handling, fix field names, or add support for new parameters.
-4. Update relevant tests in tests/ if you add or modify commands.
-5. Enrich the runtime agent knowledge (see "Agent Knowledge Enrichment" below).
-6. Before committing, run the mandatory pre-commit validation defined in AGENTS.md (section "Pre-Commit Validation (MANDATORY)"). All steps must pass with zero errors and zero warnings.
-7. After all code changes, regenerate `commands.json`:
-   ```bash
-   cargo test --bin fabio generate_agent_schema -- --include-ignored
-   ```
-8. Write a file called /tmp/pr-body.md describing what was changed and why, referencing the spec commits.
+## Goal: Complete Parity
+
+Your goal is **complete implementation of every API change**. Every modification in the spec diff must be reflected in fabio. Do not skip minor changes, optional fields, or cosmetic updates. Obviously prioritize high-impact changes first (new endpoints, breaking schema changes, new required fields), but then continue through every remaining modification until fabio covers 100% of what the spec diff introduced.
+
+## Systematic Analysis
+
+Before making changes, perform a complete inventory:
+
+1. **Read the full diff** at /tmp/spec-changes.diff. Do NOT rely solely on the summary — read the actual diff to catch every field addition, removal, enum change, description update, and schema modification.
+
+2. **Build a change manifest** — For each modified spec file, enumerate:
+   - New endpoints (HTTP method + path)
+   - New request body fields (required and optional)
+   - New response body fields
+   - New query parameters
+   - New/changed enum values
+   - Changed field types or constraints
+   - Deprecated or removed fields
+   - New error codes or status codes
+   - Changed descriptions that reveal behavioral semantics
+   - New API versions or preview flags
+
+3. **Map each change to fabio** — For every item in your manifest, identify the corresponding fabio source file in `src/commands/` or `src/client.rs`. If no corresponding code exists yet, it means a new subcommand or handler is needed.
+
+4. **Implement ALL changes** — Do not prioritize. Work through your manifest item by item until every change is implemented.
+
+## Implementation Checklist (apply to EVERY change)
+
+For each spec change, complete ALL applicable steps:
+
+### New endpoint
+- [ ] Add subcommand in the appropriate `src/commands/<group>/` module
+- [ ] Add clap derive struct with all flags (required and optional)
+- [ ] Implement request builder with correct HTTP method, path, query params, headers
+- [ ] Handle response deserialization
+- [ ] Add examples to `commands.json` (1-3 practical examples)
+- [ ] Add output example in `data/examples/` if response shape is non-standard
+- [ ] Add unit test for request serialization
+- [ ] Add E2E test with `--dry-run`
+
+### New/changed request field
+- [ ] Add the field to the request struct (with correct `serde` attributes)
+- [ ] Add corresponding clap flag (with help text from spec description)
+- [ ] Mark required fields as non-optional in clap; optional fields use `Option<T>`
+- [ ] Update any existing tests that serialize this request
+- [ ] If it's a PascalCase enum value, use `clap::ValueEnum` with explicit string mappings
+
+### New/changed response field
+- [ ] Add the field to the response struct
+- [ ] Update output formatting (table display, JSON serialization)
+- [ ] Update output examples if the shape changed materially
+- [ ] Update JMESPath documentation if the field is commonly queried
+
+### New enum value
+- [ ] Add variant to the Rust enum
+- [ ] Update `clap::ValueEnum` or `possible_values`
+- [ ] Update `commands.json` flag description to list valid values
+- [ ] Add test case exercising the new variant
+
+### Removed/deprecated field
+- [ ] Remove from request struct (or mark `#[deprecated]` if still accepted)
+- [ ] Remove from clap flags
+- [ ] Document in `.agents/API-BEHAVIORS-DISCOVERED.md` under appropriate section
+- [ ] Update tests
+
+### Changed description/semantics
+- [ ] Update clap help text
+- [ ] Update `commands.json` description/notes
+- [ ] If behavior changed, document in `.agents/API-BEHAVIORS-DISCOVERED.md`
+
+### New query parameter requirement (beta/preview flags)
+- [ ] Add to URL construction in the handler
+- [ ] Document in AGENTS.md API behaviors section
 
 ## Agent Knowledge Enrichment
 
@@ -96,7 +157,7 @@ Add or update integration tests in `tests/e2e_*.rs` that exercise new or changed
 
 ## AGENTS.md API Behaviors
 
-Document non-obvious API behaviors discovered from the spec in the appropriate "API Behaviors Discovered" section in AGENTS.md:
+Document ALL non-obvious API behaviors discovered from the spec in `.agents/API-BEHAVIORS-DISCOVERED.md`:
 - Required vs optional fields that differ from intuition
 - Non-standard response keys (not `"value"`)
 - PascalCase vs camelCase requirements
@@ -104,23 +165,34 @@ Document non-obvious API behaviors discovered from the spec in the appropriate "
 - Discriminated union patterns in request bodies
 - Fields the server auto-adds or strips
 - Error codes and their meaning
+- New constraints or validation rules
+- Rate limiting or throttling changes
+- Breaking changes in existing endpoints
 
 ## README.md
 
 Update only if the spec reveals major new capabilities that change the project's feature description (new item type categories, new authentication methods, new deployment capabilities).
 
-## Decision Criteria
+## Completeness Verification
 
-| Spec change type | Action required |
-|-----------------|----------------|
-| New endpoint for existing item type | Add subcommand + examples in commands.json |
-| New item type | Add full command module + schema + examples + update AGENTS.md |
-| Modified request schema (new required field) | Update command handler + tests + AGENTS.md behavior |
-| Modified response schema | Update output handling + add/update output example |
-| New enum values | Update clap `possible_values` + commands.json |
-| New LRO/async pattern | Update handler + best-practices if novel |
-| New beta/preview flag requirement | Add query param + document in AGENTS.md |
-| Deprecated field | Remove from request body + add note to AGENTS.md |
+Before finishing, verify completeness:
+
+1. **Re-read the diff** — Go through /tmp/spec-changes.diff one more time and check each hunk against your changes. Every addition/removal in the spec must have a corresponding fabio change.
+2. **Count changes** — Your PR body must include a count: "X new endpoints, Y new fields, Z enum changes, W deprecations implemented."
+3. **No TODOs** — Do not leave `// TODO: implement this from spec` comments. Implement it now or explain in the PR body why it's blocked.
+
+## Final Steps
+
+1. Run the mandatory pre-commit validation defined in AGENTS.md (section "Pre-Commit Validation (MANDATORY)"). All steps must pass with zero errors and zero warnings.
+2. Regenerate `commands.json`:
+   ```bash
+   cargo test --bin fabio generate_agent_schema -- --include-ignored
+   ```
+3. Write /tmp/pr-body.md describing:
+   - Complete list of spec changes processed (grouped by category)
+   - What was added/modified in fabio for each
+   - Count summary (endpoints, fields, enums, deprecations)
+   - Any spec changes that could NOT be implemented and why
 
 ## Tool Usage Rules
 
@@ -129,6 +201,6 @@ Update only if the spec reveals major new capabilities that change the project's
 - You may run `cargo fmt`, `cargo check`, `cargo clippy`, `cargo build`, and `cargo test` to validate your changes.
 - Use `read`, `write`, and `edit` tools for file modifications.
 
-Focus on high-impact changes: new endpoints that map to fabio command groups, breaking schema changes, and new required fields.
+**Aim for 100% coverage of the spec diff.** Do not skip changes because they seem minor. A missing optional field today becomes a user-reported bug tomorrow.
 
 Follow all constraints and preferences defined in AGENTS.md, in particular the pre-commit validation rules and Windows-first compatibility requirements.
