@@ -1,11 +1,12 @@
 name: Dependabot Auto Merge
 
-on: pull_request_target
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
   pull-requests: write
-  workflows: write
 
 jobs:
   enable-automerge:
@@ -14,7 +15,7 @@ jobs:
 
     steps:
       - name: Enable auto-merge for Dependabot PRs
-        run: gh pr merge --auto --rebase "$PR_URL" || echo "::warning::Auto-merge could not be enabled (PR may already be merged or in unstable state)"
+        run: gh pr merge --auto --rebase "$PR_URL" || echo "::warning::Auto-merge could not be enabled (PR may already be merged or may modify workflow files)"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
