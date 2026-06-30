@@ -70,7 +70,7 @@ pub(super) async fn move_item(
         .map_err(|e| enrich_forbidden(e, "item move (delete source)", "Member"))?;
 
     let mut obj = result;
-    obj["status"] = Value::String("moved".to_string());
+    obj["status"] = Value::from("moved");
     output::render_object(cli, &obj, "id");
     Ok(())
 }

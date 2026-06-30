@@ -225,7 +225,7 @@ pub(super) async fn iceberg_stats(
     });
 
     if !source_format.is_empty() {
-        stats["source_format"] = Value::String(source_format);
+        stats["source_format"] = Value::from(source_format);
     }
     if let Some(ts) = last_updated {
         stats["last_updated_ms"] = Value::Number(ts.into());

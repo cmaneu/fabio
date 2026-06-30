@@ -466,7 +466,7 @@ mod tests {
     #[test]
     fn apply_query_extracts_object_field() {
         let obj = serde_json::json!({"name": "test", "id": "123"});
-        assert_eq!(apply_query(&obj, "name"), Value::String("test".to_string()));
+        assert_eq!(apply_query(&obj, "name"), Value::from("test"));
     }
 
     #[test]

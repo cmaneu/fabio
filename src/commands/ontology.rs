@@ -456,7 +456,7 @@ fn decode_definition_parts(mut data: Value) -> Value {
                 if let Ok(json_val) = serde_json::from_str::<Value>(&decoded_str) {
                     part["decodedPayload"] = json_val;
                 } else {
-                    part["decodedPayload"] = Value::String(decoded_str);
+                    part["decodedPayload"] = Value::from(decoded_str);
                 }
             }
         }

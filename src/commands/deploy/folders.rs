@@ -247,10 +247,9 @@ pub async fn create_folder(
     let mut body = json!({ "displayName": display_name });
 
     if let Some(pid) = parent_folder_id {
-        body.as_object_mut().unwrap().insert(
-            "parentFolderId".to_owned(),
-            serde_json::Value::String(pid.to_owned()),
-        );
+        body.as_object_mut()
+            .unwrap()
+            .insert("parentFolderId".to_owned(), serde_json::Value::from(pid));
     }
 
     let resp = client.post(&url, &body, false).await?;

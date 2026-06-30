@@ -899,7 +899,7 @@ fn strip_notebook_outputs(data: &mut Value) {
         // Re-encode to base64 and update the part
         let cleaned_json = serde_json::to_string(&notebook).unwrap_or_default();
         let encoded = base64::Engine::encode(&base64_engine, cleaned_json.as_bytes());
-        part["payload"] = Value::String(encoded);
+        part["payload"] = Value::from(encoded);
     }
 }
 

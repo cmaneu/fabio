@@ -510,7 +510,7 @@ async fn graphql_query(
 
     // Check for GraphQL-level errors (status 200 but errors in response)
     if let Some(errors) = data.get("errors") {
-        if data.get("data").is_none() || data["data"].is_null() {
+        if data.get("data").is_none_or(Value::is_null) {
             // Pure error response — render as error with the first error message
             let message = errors
                 .as_array()
@@ -521,7 +521,10 @@ async fn graphql_query(
             // Truncate full error details to avoid leaking server-side internals
             let errors_str = errors.to_string();
             let hint = if errors_str.len() > 500 {
-                format!("Errors (truncated): {}...", &errors_str[..500])
+                format!(
+                    "Errors (truncated): {}...",
+                    &errors_str[..errors_str.floor_char_boundary(500)]
+                )
             } else {
                 format!("Full errors: {errors_str}")
             };
@@ -561,7 +564,7 @@ mod tests {
         });
         let vars: Value = serde_json::from_str(r#"{"id": "123"}"#).unwrap();
         body["variables"] = vars;
-        body["operationName"] = Value::String("GetUser".to_string());
+        body["operationName"] = Value::from("GetUser");
 
         assert_eq!(
             body["query"],

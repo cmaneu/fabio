@@ -131,18 +131,12 @@ fn build_search_body(
 
     // itemTypes and excludeItemTypes are top-level arrays (NOT nested under "filter")
     if let Some(types) = item_type {
-        let type_array: Vec<Value> = types
-            .split(',')
-            .map(|s| Value::String(s.trim().to_string()))
-            .collect();
+        let type_array: Vec<Value> = types.split(',').map(|s| Value::from(s.trim())).collect();
         body.insert("itemTypes".to_string(), Value::Array(type_array));
     }
 
     if let Some(types) = exclude_type {
-        let type_array: Vec<Value> = types
-            .split(',')
-            .map(|s| Value::String(s.trim().to_string()))
-            .collect();
+        let type_array: Vec<Value> = types.split(',').map(|s| Value::from(s.trim())).collect();
         body.insert("excludeItemTypes".to_string(), Value::Array(type_array));
     }
 

@@ -730,7 +730,7 @@ fn apply_key_value_replace(
         // Resolve dynamic variables if the value is a string
         let resolved_replacement = if let serde_json::Value::String(s) = replacement {
             match resolve_value(s, ctx) {
-                Ok(resolved) => serde_json::Value::String(resolved),
+                Ok(resolved) => serde_json::Value::from(resolved),
                 Err(e) => {
                     warnings.push(format!(
                         "key_value_replace: cannot resolve '{}': {e}",
@@ -918,10 +918,10 @@ fn replace_spark_pool_in_json(
             if has_match {
                 // Replace the pool type and name
                 if let Some(t) = map.get_mut("type") {
-                    *t = serde_json::Value::String(config.pool_type.clone());
+                    *t = serde_json::Value::from(config.pool_type.clone());
                 }
                 if let Some(n) = map.get_mut("name") {
-                    *n = serde_json::Value::String(config.name.clone());
+                    *n = serde_json::Value::from(config.name.clone());
                 }
                 return true;
             }
@@ -1040,7 +1040,7 @@ fn replace_connection_id_in_json(value: &mut serde_json::Value, new_connection_i
                     let old = v.as_str().unwrap_or_default();
                     // Only replace if it looks like a GUID
                     if old.len() == 36 && old.contains('-') {
-                        *v = serde_json::Value::String(new_connection_id.to_owned());
+                        *v = serde_json::Value::from(new_connection_id);
                         modified = true;
                     }
                 }
@@ -1055,7 +1055,7 @@ fn replace_connection_id_in_json(value: &mut serde_json::Value, new_connection_i
                 let replacement = format!("semanticmodelid={new_connection_id}");
                 let new_cs = re.replace(cs, replacement.as_str());
                 if new_cs != cs {
-                    *v = serde_json::Value::String(new_cs.into_owned());
+                    *v = serde_json::Value::from(new_cs.into_owned());
                     modified = true;
                 }
             }
@@ -1561,7 +1561,7 @@ mod tests {
                 find_key: "$.server".to_owned(),
                 replace_value: HashMap::from([(
                     "prod".to_owned(),
-                    serde_json::Value::String("prod-server.database.windows.net".to_owned()),
+                    serde_json::Value::from("prod-server.database.windows.net"),
                 )]),
                 item_type: None,
                 item_name: None,
@@ -1584,7 +1584,7 @@ mod tests {
         let result: serde_json::Value = serde_json::from_slice(&payload).unwrap();
         assert_eq!(
             result["server"],
-            serde_json::Value::String("prod-server.database.windows.net".to_owned())
+            serde_json::Value::from("prod-server.database.windows.net")
         );
         // port should be unchanged
         assert_eq!(result["port"], serde_json::json!(1433));
@@ -1628,7 +1628,7 @@ mod tests {
                 find_key: "$.config.database.host".to_owned(),
                 replace_value: HashMap::from([(
                     "prod".to_owned(),
-                    serde_json::Value::String("prod.example.com".to_owned()),
+                    serde_json::Value::from("prod.example.com"),
                 )]),
                 item_type: None,
                 item_name: None,
@@ -1650,7 +1650,7 @@ mod tests {
         let result: serde_json::Value = serde_json::from_slice(&payload).unwrap();
         assert_eq!(
             result["config"]["database"]["host"],
-            serde_json::Value::String("prod.example.com".to_owned())
+            serde_json::Value::from("prod.example.com")
         );
     }
 
@@ -1769,7 +1769,7 @@ mod tests {
                 find_key: "$.server".to_owned(),
                 replace_value: HashMap::from([(
                     "prod".to_owned(),
-                    serde_json::Value::String("prod.example.com".to_owned()),
+                    serde_json::Value::from("prod.example.com"),
                 )]),
                 item_type: Some(StringOrVec::Single("DataPipeline".to_owned())),
                 item_name: None,

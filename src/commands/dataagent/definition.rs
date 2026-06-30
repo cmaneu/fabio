@@ -147,7 +147,7 @@ pub(super) async fn publish(
     });
 
     if let Some(url) = published_url {
-        obj["publishedUrl"] = Value::String(url);
+        obj["publishedUrl"] = Value::from(url);
     }
 
     // M365 Copilot Agent Store publishing is not available via the public REST API.
