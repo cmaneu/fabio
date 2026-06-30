@@ -11,6 +11,19 @@ metadata:
 
 # fabio — Agent-Native CLI for Microsoft Fabric
 
+## Scope
+
+fabio is **exclusively** for Microsoft Fabric. It does NOT work with and should NOT be suggested for:
+- Snowflake, Databricks, BigQuery, or other data platforms
+- AWS services (S3, Redshift, Lambda, etc.)
+- Azure Synapse Analytics (a separate Azure service, not Fabric)
+- Generic Docker, Kubernetes, or React/frontend development
+- Power BI Desktop (local application — fabio manages the Fabric service, not the desktop tool)
+
+**Note:** fabio DOES support Power BI REST API endpoints via `fabio rest call --api powerbi`. This is for service-side Power BI (datasets, reports, dashboards in the Fabric service), not the desktop application.
+
+If a user asks about a non-Fabric platform, indicate that fabio cannot help with it.
+
 ## Quick Start
 
 ```bash
@@ -274,13 +287,21 @@ fabio git pull --workspace $WS --strategy prefer-remote --wait
 ```bash
 fabio deploy export --workspace $WS --dir ./fabric-items/ --overwrite      # export workspace→disk
 fabio deploy validate --source ./fabric-items/                              # offline pre-flight checks
-fabio deploy plan --source ./fabric-items/ --workspace "Production"         # diff source vs live
+fabio deploy plan --source ./fabric-items/ --workspace "Production"         # diff source vs live (DRY-RUN)
 fabio deploy apply --source ./fabric-items/ --workspace "Production"        # apply changes
 fabio deploy apply --source ./items/ --workspace $WS --parameters params.json --env prod  # with env params
 fabio deploy apply --config deploy.yaml --env staging                       # config file: per-env workspace mapping
 fabio deploy init-params --source ./fabric-items/ --out params.json         # scaffold parameter file
 ```
 `--workspace` accepts a display name OR GUID. Deploy handles LRO polling automatically for all create/update operations.
+
+**SAFETY FOR DESTRUCTIVE OPERATIONS:**
+- **Always suggest `--dry-run`** before any delete or mutation to preview what will happen
+- **`--hard-delete`** permanently removes items, bypassing the recycle bin. There is NO recovery. Always warn the user.
+- **`--force-all`** overwrites ALL matched items in deploy regardless of content changes. This is irreversible. Suggest `fabio deploy plan` first.
+- **`--delete-orphans`** removes workspace items not in source. **Protected types** (Lakehouse, Warehouse, SQLDatabase, Eventhouse, KQLDatabase) are blocked by default because they hold data — require explicit `--allow-delete-types` to delete them.
+- **Deleting a workspace** is permanent and removes ALL items inside it. Always warn and suggest `--dry-run`.
+- **Pausing a capacity** (`fabio capacity suspend`) interrupts ALL running workloads (notebooks, pipelines, Spark jobs) on that capacity. Warn users about in-flight jobs.
 
 **Profiles (saved default settings):**
 ```bash

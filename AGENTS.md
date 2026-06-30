@@ -318,6 +318,103 @@ All new features, improvements, and bug fixes MUST have corresponding tests. Thi
 - Follow existing test patterns in `tests/common/mod.rs` and existing `tests/e2e_*.rs` files.
 - Tests must pass locally (`cargo test`) before committing.
 
+## Skill Quality Evaluation (Promptfoo)
+
+The fabio user-facing skill (`.agents/skills/fabio/SKILL.md`) is quality-tested via [promptfoo](https://promptfoo.dev) — an LLM eval framework that validates whether an agent given the skill instructions produces correct CLI commands.
+
+**Config:** `tests/eval/promptfooconfig.yaml` (106 test cases across 15 categories)
+
+**Run locally:**
+```bash
+AZURE_OPENAI_API_KEY=$(az cognitiveservices account keys list \
+  --name foundry-imejiauseche-ai-demos --resource-group rg-imejiauseche-ai-demos \
+  --query "key1" -o tsv) \
+  promptfoo eval -c tests/eval/promptfooconfig.yaml
+promptfoo view   # interactive results browser
+```
+
+### When to Add New Eval Cases
+
+Add promptfoo test cases whenever you:
+
+1. **Add a new command or subcommand** — Add at least one test verifying the agent produces the correct invocation with required flags.
+2. **Add a new critical API behavior** — If a new quirk could cause silent failures (e.g., PascalCase values, specific flag requirements, format limitations), add a test proving the skill teaches it correctly.
+3. **Add a new workflow pattern** — Multi-step operations (e.g., "create eventhouse, then create KQL DB inside it") need sequencing tests that verify correct dependency order.
+4. **Discover a routing ambiguity** — If a prompt could be confused with another platform (e.g., "create a warehouse" could mean Snowflake or Fabric), add a routing discrimination test.
+5. **Add or change safety flags** — New destructive flags (`--hard-delete`, `--force`, `--allow-delete-types`) need tests verifying the agent uses them correctly and ideally warns about consequences.
+6. **Fix a skill gap** — If you discover the skill caused an agent to produce wrong output, add a regression test BEFORE fixing the skill, then verify it passes after.
+
+### Test Categories and Assertion Patterns
+
+| Category | When to use | Key assertion types |
+|----------|-------------|---------------------|
+| **Basic CRUD** | New command groups | `icontains` for command + required flags |
+| **PascalCase compliance** | New enum-valued flags | `contains` (case-sensitive) for exact values |
+| **Routing discrimination** | Ambiguous terms | `llm-rubric` checking skill does NOT suggest fabio |
+| **Multi-turn sequencing** | Multi-step workflows | `javascript` with `indexOf()` comparisons for ordering |
+| **Error recovery** | New error codes/hints | `llm-rubric` + `icontains` for suggested fix |
+| **Agent safety** | Destructive operations | `icontains` for flag presence + optional `llm-rubric` for warnings |
+| **Scope validation** | Tenant vs workspace | `not-icontains: "--workspace"` for tenant-scoped commands |
+| **LRO awareness** | Async operations | `icontains: "--wait"` + `icontains: "--timeout"` |
+| **Output format** | Projection/format flags | `javascript` checking `-o table` or `--query` patterns |
+
+### Writing Good Test Cases
+
+```yaml
+# Template for a new command test:
+- description: "Category: short description of what's being tested"
+  vars:
+    user_query: "Natural language request that an agent would receive"
+  assert:
+    # Hard gate: command must be present
+    - type: icontains
+      value: "fabio <group> <subcommand>"
+    # Hard gate: required flags
+    - type: icontains
+      value: "--required-flag"
+    # Semantic check for nuanced behavior
+    - type: llm-rubric
+      value: "Description of what constitutes a correct response"
+      metric: descriptive-metric-name
+```
+
+**Best practices:**
+- Use `icontains` for command names and flags (case-insensitive, simple)
+- Use `javascript` for ordering checks (`indexOf` comparisons) and multi-condition logic
+- Use `llm-rubric` only when string matching cannot capture correctness (semantic judgment)
+- Use `not-icontains` sparingly — only for routing discrimination (negative tests)
+- Keep rubric descriptions objective and measurable (avoid "should ideally" — either it must or it shouldn't)
+- The prompt template tells the model to omit `--wrap-untrusted` for test clarity; don't assert its presence
+- Accept that `fabio item list --type X` is equivalent to `fabio <type> list` — both are correct
+- Accept both `upload` + `load-table` (two-step) and `upload-table` (one-step) for data loading
+
+### Known Pitfall: `--wrap-untrusted` Breaking String Assertions
+
+The SKILL.md instructs agents to **always** include `--wrap-untrusted` in every fabio command. This means models may emit `fabio --wrap-untrusted workspace list` instead of `fabio workspace list`. An `icontains: "fabio workspace list"` assertion will FAIL because the flag is inserted between `fabio` and the subcommand.
+
+**The fix:** The prompt template in `promptfooconfig.yaml` explicitly tells the model to omit `--wrap-untrusted` for test clarity. This avoids the mismatch. If you still encounter this issue (e.g., a model ignores the prompt instruction), use `javascript` assertions that check for the subcommand portion only:
+
+```yaml
+# BAD — breaks when model inserts --wrap-untrusted:
+- type: icontains
+  value: "fabio workspace list"
+
+# GOOD — matches regardless of flags between 'fabio' and subcommand:
+- type: javascript
+  value: |
+    output.includes('workspace list')
+```
+
+This pattern is required for any assertion where the model might insert global flags (`--wrap-untrusted`, `--profile`, `--output`) before the subcommand.
+
+### Maintaining Pass Rate
+
+The eval should maintain **>95% pass rate** on gpt-4o-mini. If a new test consistently fails:
+1. First verify the SKILL.md actually teaches the behavior being tested
+2. If the skill is correct but the model doesn't emit it (e.g., safety warnings), relax the assertion to test capability rather than style
+3. If the skill is missing the information, update SKILL.md first, then verify the test passes
+4. Never commit a test that you know fails — either fix the skill or relax the assertion
+
 ## Release Workflow (MANDATORY)
 
 The release workflow is documented in a dedicated skill: `.agents/skills/dev-release/SKILL.md`
