@@ -251,9 +251,23 @@ fabio kql-database create --workspace $WS --name "SensorDB" --eventhouse-id $EH 
 fabio kql-database query --workspace $WS --id $KDB --kql "SensorEvents | take 10"
 fabio kql-database list-entities --workspace $WS --id $KDB                         # schema discovery
 fabio kql-database ingest --workspace $WS --id $KDB --table Events --data "col1,col2\nval1,val2"
+# KQL management commands (create tables, mappings via .create-or-alter)
+fabio kql-database manage --workspace $WS --id $KDB --command ".create table T (col1:string, col2:real)"
+fabio kql-database manage --workspace $WS --id $KDB --command ".create-or-alter table T ingestion json mapping 'M' '[{\"column\":\"col1\",\"path\":\"$.field\"}]'"
+# EventStream: create, add source, add destination, get connection string
 fabio eventstream create --workspace $WS --name "Ingestion"
 fabio eventstream add-source --workspace $WS --id $ES --name "src" --source-type CustomEndpoint
+fabio eventstream add-destination --workspace $WS --id $ES --name "dest" --destination-type Eventhouse \
+  --eventhouse-id $EH --database $DB --table Events --input-stream "src-stream"
+fabio eventstream get-source-connection --workspace $WS --id $ES --source-name "src"  # Event Hub connection string
+# Natural language to KQL
 fabio rti nl-to-kql --workspace $WS --item-id $KDB --cluster-url $URI --database $DB --question "how many events?"
+```
+
+**Shortcuts (ADLS Gen2, S3, Dataverse, OneLake):**
+```bash
+fabio shortcut create --workspace $WS --id $LH --path Files/external --name "data" \
+  --target adlsgen2 --location "https://account.dfs.core.windows.net/container" --key $KEY
 ```
 
 **Notebooks:**
@@ -269,6 +283,17 @@ fabio semantic-model create --workspace $WS --name "Sales" --file model.tmdl --c
 fabio semantic-model query --workspace $WS --id $SM --dax "EVALUATE Sales"
 fabio semantic-model refresh --workspace $WS --id $SM
 fabio report create --workspace $WS --name "Dashboard" --dataset $SM
+```
+
+**Data Agent (AI-powered Q&A over lakehouse data):**
+```bash
+fabio data-agent create --workspace $WS --name "SalesAgent"
+fabio data-agent add-datasource --workspace $WS --id $AGENT --lakehouse-id $LH   # add lakehouse as data source
+fabio data-agent select-tables --workspace $WS --id $AGENT --datasource-id $DS --tables "orders,customers"
+fabio data-agent update-config --workspace $WS --id $AGENT --instructions "Use total revenue, not quantity"
+fabio data-agent add-fewshot --workspace $WS --id $AGENT --question "Top products?" --sql "SELECT ..."
+fabio data-agent publish --workspace $WS --id $AGENT                              # make agent available
+fabio data-agent query --workspace $WS --id $AGENT --question "What is the most sold product?"
 ```
 
 **Data Pipeline & Job Scheduling:**
@@ -300,7 +325,7 @@ fabio deploy apply --source ./items/ --workspace $WS --parameters params.json --
 fabio deploy apply --config deploy.yaml --env staging                       # config file: per-env workspace mapping
 fabio deploy init-params --source ./fabric-items/ --out params.json         # scaffold parameter file
 ```
-`--workspace` accepts a display name OR GUID. Deploy handles LRO polling automatically for all create/update operations.
+`--workspace` accepts a display name OR GUID. Deploy handles LRO polling automatically for all create/update operations. **Rename detection**: deploy plan detects item renames via `logicalId` matching in `.platform` files — a renamed item shows as RENAME (not delete+create), preserving its ID, permissions, and sharing links.
 
 **SAFETY FOR DESTRUCTIVE OPERATIONS:**
 - **Always suggest `--dry-run`** before any delete or mutation to preview what will happen

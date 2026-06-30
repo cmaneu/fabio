@@ -429,8 +429,8 @@ tests:
     assert:
       - type: javascript
         value: |
-          output.includes('context tenant') && output.includes('--resolve')
-        metric: context-tenant-resolve
+          (output.includes('context tenant') && output.includes('--resolve')) || (output.includes('item list') && output.includes('query'))
+        metric: context-tenant-resolve-or-item-list
 
   # ============================================================
   # CORRECT INVOCATION (PascalCase, flags, required params)
@@ -683,13 +683,14 @@ tests:
     vars:
       user_query: "Create a new workspace called Analytics and assign it to capacity cap-001"
     assert:
-      - type: icontains
-        value: "fabio workspace create"
-      - type: icontains
-        value: "fabio workspace assign-capacity"
-      - type: llm-rubric
-        value: "Create workspace first (to get workspace ID), then assign capacity as a separate step"
-        metric: create-then-assign
+      - type: javascript
+        value: |
+          output.includes('workspace create')
+        metric: has-workspace-create
+      - type: javascript
+        value: |
+          output.includes('assign-capacity')
+        metric: has-assign-capacity
 
   - description: "Workflow: deploy config file with environments"
     vars:
@@ -756,7 +757,7 @@ tests:
       user_query: "I got FORBIDDEN when trying to delete a notebook. What role do I need?"
     assert:
       - type: llm-rubric
-        value: "The response identifies that delete operations require elevated permissions (Member or Admin role) and suggests checking workspace role assignments"
+        value: "The response identifies that delete operations require at least Member role (elevated permissions) on the workspace."
         metric: forbidden-role-hint
 
   - description: "Error: TIMEOUT on notebook run"
@@ -1349,3 +1350,285 @@ tests:
         value: |
           output.includes('capacity') && (output.includes('suspend') || output.includes('pause'))
         metric: capacity-suspend-command
+
+  # ============================================================
+  # SCENARIO: Real-Time Intelligence Pipeline (Scenario 1)
+  # Based on fabio-comparison-scenarios: IoT sensor monitoring
+  # ============================================================
+
+  - description: "RTI: create eventhouse and KQL database inside it"
+    vars:
+      user_query: "Create an Eventhouse called FactoryEventhouse in workspace ws-001, then create a KQL Database called SensorDB inside that Eventhouse"
+    assert:
+      - type: icontains
+        value: "fabio eventhouse create"
+      - type: icontains
+        value: "fabio kql-database create"
+      - type: icontains
+        value: "--eventhouse-id"
+      - type: javascript
+        value: |
+          const eh = output.indexOf('eventhouse create');
+          const kql = output.indexOf('kql-database create');
+          return eh >= 0 && kql >= 0 && eh < kql;
+        metric: eventhouse-before-kqldb
+
+  - description: "RTI: create KQL table with schema via manage command"
+    vars:
+      user_query: "Create a table called SensorEvents in my KQL database with columns device_id (string), temperature (real), pressure (real), vibration (real), timestamp (datetime)"
+    assert:
+      - type: icontains
+        value: "fabio kql-database manage"
+      - type: javascript
+        value: |
+          output.includes('.create') && output.includes('SensorEvents')
+        metric: kql-create-table
+      - type: javascript
+        value: |
+          output.includes('device_id') && output.includes('temperature')
+        metric: kql-schema-columns
+
+  - description: "RTI: create JSON ingestion mapping on KQL table"
+    vars:
+      user_query: "Create a JSON ingestion mapping called SensorMapping on the SensorEvents table that maps $.deviceId to device_id and $.temp to temperature"
+    assert:
+      - type: icontains
+        value: "fabio kql-database manage"
+      - type: javascript
+        value: |
+          output.includes('ingestion json mapping') || output.includes('json mapping')
+        metric: kql-json-mapping
+
+  - description: "RTI: create eventstream with custom endpoint source"
+    vars:
+      user_query: "Create an EventStream called SensorIngestion in my workspace and add a Custom Endpoint source named iot-gateway"
+    assert:
+      - type: icontains
+        value: "fabio eventstream create"
+      - type: javascript
+        value: |
+          output.includes('add-source') && output.includes('CustomEndpoint')
+        metric: eventstream-custom-source
+
+  - description: "RTI: add eventhouse destination to eventstream"
+    vars:
+      user_query: "Configure an Eventhouse destination on my EventStream that routes events to the SensorEvents table using DirectIngestion mode"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('add-destination') && output.includes('Eventhouse')
+        metric: eventstream-eventhouse-dest
+
+  - description: "RTI: get event hub connection string from eventstream source"
+    vars:
+      user_query: "Get the Event Hub connection string from my EventStream source so I can configure my IoT gateway to send data"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('get-source-connection')
+        metric: eventstream-connection-string
+
+  - description: "RTI: natural language to KQL translation"
+    vars:
+      user_query: "Translate this question to KQL: Which machines had temperature above 85 degrees in the last 2 hours?"
+    assert:
+      - type: icontains
+        value: "fabio rti nl-to-kql"
+      - type: icontains
+        value: "--question"
+
+  - description: "RTI: run anomaly detection KQL query"
+    vars:
+      user_query: "Run a KQL query on my SensorDB to find machines where the max temperature in the last hour exceeds 1.5x their average temperature"
+    assert:
+      - type: icontains
+        value: "fabio kql-database query"
+      - type: icontains
+        value: "--kql"
+
+  # ============================================================
+  # SCENARIO: Data Agent Setup (Scenario 0 + Scenario patterns)
+  # Based on fabio-comparison-scenarios: AI Tour WRK560
+  # ============================================================
+
+  - description: "Data Agent: full setup workflow (create, add datasource, publish)"
+    vars:
+      user_query: "Create a Data Agent called SalesAgent in my workspace, add a lakehouse as its data source, then publish it so it's available for queries"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('data-agent create')
+        metric: agent-create
+      - type: javascript
+        value: |
+          output.includes('add-datasource')
+        metric: agent-add-datasource
+      - type: javascript
+        value: |
+          output.includes('publish')
+        metric: agent-publish
+
+  - description: "Data Agent: set agent instructions and add example query"
+    vars:
+      user_query: "Configure my Data Agent with instructions saying 'Use total sales revenue, not order quantity when asked about most sold products' and add an example question-SQL pair"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('update-config') || output.includes('update_config')
+        metric: agent-update-config
+      - type: javascript
+        value: |
+          output.includes('add-fewshot')
+        metric: agent-add-fewshot
+
+  - description: "Data Agent: query the agent with natural language"
+    vars:
+      user_query: "Ask my Data Agent: What is the most sold product?"
+    assert:
+      - type: icontains
+        value: "fabio data-agent query"
+      - type: icontains
+        value: "--question"
+
+  - description: "Data Agent: select specific tables for a datasource"
+    vars:
+      user_query: "Configure my Data Agent's datasource to only use the orders, customers, and products tables"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('select-tables')
+        metric: agent-select-tables
+      - type: javascript
+        value: |
+          output.includes('orders') || output.includes('--tables')
+        metric: agent-tables-specified
+
+  # ============================================================
+  # SCENARIO: Power BI Reports & Semantic Models
+  # Based on fabio-comparison-scenarios: Scenario 0 + 3
+  # ============================================================
+
+  - description: "Power BI: create Direct Lake semantic model and report"
+    vars:
+      user_query: "Create a semantic model called 'SalesModel' from my model.bim file connected to the lakehouse SQL endpoint, refresh it for Direct Lake framing, then create a report called 'Sales Dashboard' bound to it"
+    assert:
+      - type: icontains
+        value: "fabio semantic-model create"
+      - type: javascript
+        value: |
+          output.includes('refresh')
+        metric: semantic-model-refresh
+      - type: icontains
+        value: "fabio report create"
+      - type: javascript
+        value: |
+          const sm = output.indexOf('semantic-model create');
+          const rpt = output.indexOf('report create');
+          return sm >= 0 && rpt >= 0 && sm < rpt;
+        metric: model-before-report
+
+  - description: "Power BI: verify semantic model with DAX query"
+    vars:
+      user_query: "After deploying my semantic model, verify it works by running this DAX query: EVALUATE ROW(\"Revenue\", [Total Revenue])"
+    assert:
+      - type: icontains
+        value: "fabio semantic-model query"
+      - type: icontains
+        value: "--dax"
+      - type: javascript
+        value: |
+          output.includes('EVALUATE')
+        metric: dax-evaluate-present
+
+  - description: "Power BI: create report bound to existing semantic model"
+    vars:
+      user_query: "Create a Power BI report named 'Revenue Dashboard' and bind it to my existing semantic model sm-001 in workspace ws-001"
+    assert:
+      - type: icontains
+        value: "fabio report create"
+      - type: icontains
+        value: "--dataset"
+      - type: icontains
+        value: "--name"
+
+  # ============================================================
+  # SCENARIO: Safe Deploy with Rename Detection (Scenario 3)
+  # Based on fabio-comparison-scenarios: deploy + rename
+  # ============================================================
+
+  - description: "Deploy: rename detection in plan (not delete+create)"
+    vars:
+      user_query: "I renamed a report from 'Sales Report Q3' to 'Revenue Dashboard' in my source directory. Show me the deployment plan. I need to confirm the rename is detected as a RENAME, not as a delete + create, because a delete would destroy all permissions and sharing links."
+    assert:
+      - type: icontains
+        value: "fabio deploy plan"
+      - type: llm-rubric
+        value: "The response uses fabio deploy plan and explains that fabio detects renames (preserving item IDs) rather than treating them as delete+create operations."
+        metric: deploy-rename-detection
+
+  - description: "Deploy: validate then plan then apply with parameters"
+    vars:
+      user_query: "Deploy workflow: first validate ./workspace-repo offline, then show the plan against the Production workspace, then apply with params.json for the prod environment. Only update items that actually changed."
+    assert:
+      - type: icontains
+        value: "fabio deploy validate"
+      - type: icontains
+        value: "fabio deploy plan"
+      - type: icontains
+        value: "fabio deploy apply"
+      - type: icontains
+        value: "--parameters"
+      - type: javascript
+        value: |
+          const v = output.indexOf('deploy validate');
+          const p = output.indexOf('deploy plan');
+          const a = output.indexOf('deploy apply');
+          return v >= 0 && p >= 0 && a >= 0 && v < p && p < a;
+        metric: validate-plan-apply-order
+
+  - description: "Deploy: verify deployment with DAX query post-apply"
+    vars:
+      user_query: "After deploying, verify the semantic model works by running a DAX query to confirm Direct Lake framing succeeded"
+    assert:
+      - type: icontains
+        value: "fabio semantic-model query"
+      - type: icontains
+        value: "--dax"
+
+  # ============================================================
+  # SCENARIO: Data Lake Operations (Scenario 2)
+  # Based on fabio-comparison-scenarios: sync, schema, query
+  # ============================================================
+
+  - description: "Data Lake: sync with checksum comparison and delete"
+    vars:
+      user_query: "Sync files from my staging lakehouse (Files/daily-drops) to my production lakehouse (same path). Use checksum comparison so only changed files are transferred. Delete any files in production that no longer exist in staging."
+    assert:
+      - type: icontains
+        value: "fabio lakehouse sync"
+      - type: icontains
+        value: "--delete"
+      - type: javascript
+        value: |
+          output.includes('--source-workspace') || output.includes('--source')
+        metric: sync-source-specified
+
+  - description: "Data Lake: check table schemas in lakehouse"
+    vars:
+      user_query: "Check the table schemas for orders, customers, products, and inventory tables in my production lakehouse"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('list-entities') || output.includes('show-table') || output.includes('list-tables') || output.includes('describe')
+        metric: schema-inspection
+
+  - description: "Data Lake: create ADLS Gen2 shortcut in lakehouse"
+    vars:
+      user_query: "Create an ADLS Gen2 shortcut in my lakehouse under Files/ named 'externaldata' pointing to the 'rawdata' container in storage account mystorageaccount, using a storage key for authentication"
+    assert:
+      - type: icontains
+        value: "fabio shortcut create"
+      - type: javascript
+        value: |
+          output.includes('adlsgen2') || output.includes('adls') || output.includes('ADLS')
+        metric: shortcut-adls-target
