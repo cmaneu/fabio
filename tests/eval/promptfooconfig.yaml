@@ -401,6 +401,37 @@ tests:
       - type: icontains
         value: "--source"
 
+  - description: "Discovery: workspace graph scan for dependencies"
+    vars:
+      user_query: "I want to understand the relationships between items in my workspace — which notebooks depend on which lakehouses, what references what."
+    assert:
+      - type: icontains
+        value: "fabio context tenant"
+      - type: icontains
+        value: "--workspace"
+      - type: javascript
+        value: |
+          output.includes('--deep') || output.includes('--include-connections') || output.includes('graph')
+        metric: context-tenant-deep
+
+  - description: "Discovery: quick workspace inventory with context tenant"
+    vars:
+      user_query: "Give me a quick summary of what's in workspace ws-001 — how many items, what types — without a full scan"
+    assert:
+      - type: icontains
+        value: "fabio context tenant"
+      - type: icontains
+        value: "--summary-only"
+
+  - description: "Discovery: resolve item name to ID"
+    vars:
+      user_query: "I know there's a notebook called 'ETL-Pipeline' in my workspace but I don't know its ID. How can I quickly look it up?"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('context tenant') && output.includes('--resolve')
+        metric: context-tenant-resolve
+
   # ============================================================
   # CORRECT INVOCATION (PascalCase, flags, required params)
   # ============================================================

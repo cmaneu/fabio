@@ -75,6 +75,13 @@ fabio context examples <group> <command>
 
 # List all discoverable topics
 fabio context list
+
+# Workspace graph — scan workspace(s) to discover item relationships, dependencies, and metadata
+fabio context tenant --workspace $WS --summary-only              # cheap inventory probe (2 API calls)
+fabio context tenant --workspace $WS --resolve Notebook:my-nb    # fast name-to-ID lookup
+fabio context tenant --workspace $WS --focus $ITEM_ID --depth 2  # ego-centric subgraph (BFS)
+fabio context tenant --workspace $WS --deep --include-connections --output-file context.json  # full graph
+fabio context tenant --workspace $NEW_WS --deep --merge context.json --output-file context.json  # incremental
 ```
 
 ## Output & Errors
