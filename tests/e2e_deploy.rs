@@ -551,6 +551,195 @@ fn deploy_apply_create_notebook_and_cleanup() {
         .success();
 }
 
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_apply_same_tier_items_created_concurrently() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let source_dir = dir.path().join("source");
+    let prefix = unique_name("tier");
+
+    // Create a fresh workspace (avoids plan overhead on large workspaces)
+    let ws_name = format!("deploy-tier-test-{prefix}");
+    let assert = fabio()
+        .args(["workspace", "create", "--name", &ws_name])
+        .timeout(Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let ws_id = extract_data(&json)["id"].as_str().unwrap().to_owned();
+
+    fabio()
+        .args([
+            "workspace",
+            "assign-capacity",
+            "--id",
+            &ws_id,
+            "--capacity",
+            &cfg.capacity_id,
+        ])
+        .timeout(Duration::from_mins(1))
+        .assert()
+        .success();
+
+    // Create 3 Notebooks (all same type → same tier, will run concurrently)
+    for i in 1..=3 {
+        let name = format!("{prefix}_nb{i}");
+        let nb_dir = source_dir.join(format!("{name}.Notebook"));
+        std::fs::create_dir_all(&nb_dir).unwrap();
+
+        let platform = serde_json::json!({
+            "metadata": { "type": "Notebook", "displayName": name },
+            "config": { "version": "2.0", "logicalId": format!("tier-test-{i}"), "definitionFormat": "ipynb" }
+        });
+        std::fs::write(
+            nb_dir.join(".platform"),
+            serde_json::to_string_pretty(&platform).unwrap(),
+        )
+        .unwrap();
+
+        let ipynb = serde_json::json!({
+            "nbformat": 4, "nbformat_minor": 5,
+            "metadata": { "language_info": { "name": "python" } },
+            "cells": [{ "cell_type": "code", "source": [format!("# test {i}\n")], "metadata": {}, "outputs": [] }]
+        });
+        std::fs::write(
+            nb_dir.join("notebook-content.py"),
+            serde_json::to_string(&ipynb).unwrap(),
+        )
+        .unwrap();
+    }
+
+    // Deploy all 3 items (should use tier-based concurrency)
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &ws_id,
+        ])
+        .timeout(Duration::from_mins(5))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "succeeded");
+    assert_eq!(data["succeeded"].as_u64().unwrap(), 3);
+    assert_eq!(data["failed"].as_u64().unwrap(), 0);
+
+    // Cleanup: delete the workspace
+    fabio()
+        .args(["workspace", "delete", "--id", &ws_id])
+        .timeout(Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_apply_cross_tier_types_respects_ordering() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let source_dir = dir.path().join("source");
+    let prefix = unique_name("xtier");
+
+    // Create a fresh workspace (avoids plan overhead from existing items)
+    let ws_name = format!("deploy-xtier-test-{prefix}");
+    let assert = fabio()
+        .args(["workspace", "create", "--name", &ws_name])
+        .timeout(Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let ws_id = extract_data(&json)["id"].as_str().unwrap().to_owned();
+
+    fabio()
+        .args([
+            "workspace",
+            "assign-capacity",
+            "--id",
+            &ws_id,
+            "--capacity",
+            &cfg.capacity_id,
+        ])
+        .timeout(Duration::from_mins(1))
+        .assert()
+        .success();
+
+    // Create a Lakehouse (tier 0) and a Notebook (tier 3) — Notebook depends on Lakehouse tier
+    let lh_name = format!("{prefix}_lh");
+    let nb_name = format!("{prefix}_nb");
+
+    // Lakehouse (shell-only, tier 0)
+    let lh_dir = source_dir.join(format!("{lh_name}.Lakehouse"));
+    std::fs::create_dir_all(&lh_dir).unwrap();
+    let platform = serde_json::json!({
+        "metadata": { "type": "Lakehouse", "displayName": lh_name },
+        "config": { "version": "2.0", "logicalId": "xtier-lh-001" }
+    });
+    std::fs::write(
+        lh_dir.join(".platform"),
+        serde_json::to_string_pretty(&platform).unwrap(),
+    )
+    .unwrap();
+
+    // Notebook (tier 3)
+    let nb_dir = source_dir.join(format!("{nb_name}.Notebook"));
+    std::fs::create_dir_all(&nb_dir).unwrap();
+    let platform = serde_json::json!({
+        "metadata": { "type": "Notebook", "displayName": nb_name },
+        "config": { "version": "2.0", "logicalId": "xtier-nb-001", "definitionFormat": "ipynb" }
+    });
+    std::fs::write(
+        nb_dir.join(".platform"),
+        serde_json::to_string_pretty(&platform).unwrap(),
+    )
+    .unwrap();
+
+    let ipynb = serde_json::json!({
+        "nbformat": 4, "nbformat_minor": 5,
+        "metadata": { "language_info": { "name": "python" } },
+        "cells": [{ "cell_type": "code", "source": ["# cross-tier test\n"], "metadata": {}, "outputs": [] }]
+    });
+    std::fs::write(
+        nb_dir.join("notebook-content.py"),
+        serde_json::to_string(&ipynb).unwrap(),
+    )
+    .unwrap();
+
+    // Deploy — Lakehouse (tier 0) created before Notebook (tier 3)
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--workspace",
+            &ws_id,
+        ])
+        .timeout(Duration::from_mins(5))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "succeeded");
+    assert_eq!(data["succeeded"].as_u64().unwrap(), 2);
+    assert_eq!(data["failed"].as_u64().unwrap(), 0);
+
+    // Cleanup: delete the workspace
+    fabio()
+        .args(["workspace", "delete", "--id", &ws_id])
+        .timeout(Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
 // ── Error Cases ──────────────────────────────────────────────────────────────
 
 #[test]
