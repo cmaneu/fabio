@@ -332,3 +332,195 @@ async fn export_lakehouse_shortcuts(
         let _ = std::fs::write(item_dir.join("shortcuts.metadata.json"), content);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    use serde_json::json;
+
+    // ── is_shell_only_type ──────────────────────────────────────────────────
+
+    #[test]
+    fn shell_only_types_recognized() {
+        assert!(is_shell_only_type("Warehouse"));
+        assert!(is_shell_only_type("SQLDatabase"));
+        assert!(is_shell_only_type("MLExperiment"));
+        assert!(is_shell_only_type("MLModel"));
+    }
+
+    #[test]
+    fn shell_only_type_case_insensitive() {
+        assert!(is_shell_only_type("warehouse"));
+        assert!(is_shell_only_type("WAREHOUSE"));
+        assert!(is_shell_only_type("sqldatabase"));
+        assert!(is_shell_only_type("mlmodel"));
+    }
+
+    #[test]
+    fn non_shell_only_types_rejected() {
+        assert!(!is_shell_only_type("Notebook"));
+        assert!(!is_shell_only_type("Lakehouse"));
+        assert!(!is_shell_only_type("SemanticModel"));
+        assert!(!is_shell_only_type("SQLEndpoint"));
+        assert!(!is_shell_only_type("Report"));
+        assert!(!is_shell_only_type("DataPipeline"));
+    }
+
+    #[test]
+    fn sql_endpoint_is_not_shell_only() {
+        // SQLEndpoint is auto-provisioned by Fabric and should remain fully skipped
+        assert!(!is_shell_only_type("SQLEndpoint"));
+        assert!(!is_shell_only_type("sqlendpoint"));
+    }
+
+    // ── SHELL_ONLY_TYPES constant ───────────────────────────────────────────
+
+    #[test]
+    fn shell_only_types_has_expected_count() {
+        assert_eq!(
+            SHELL_ONLY_TYPES.len(),
+            4,
+            "SHELL_ONLY_TYPES should have 4 entries; update this test if intentionally changed"
+        );
+    }
+
+    #[test]
+    fn shell_only_types_no_duplicates() {
+        let mut seen = std::collections::HashSet::new();
+        for entry in SHELL_ONLY_TYPES {
+            assert!(
+                seen.insert(entry.to_lowercase()),
+                "Duplicate entry in SHELL_ONLY_TYPES: {entry}"
+            );
+        }
+    }
+
+    // ── extract_definition_parts ────────────────────────────────────────────
+
+    #[test]
+    fn extract_parts_from_valid_response() {
+        let data = json!({
+            "definition": {
+                "parts": [
+                    {"path": "notebook.ipynb", "payload": "abc123", "payloadType": "InlineBase64"},
+                    {"path": "settings.json", "payload": "def456", "payloadType": "InlineBase64"}
+                ]
+            }
+        });
+        let parts = extract_definition_parts(&data);
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].path, "notebook.ipynb");
+        assert_eq!(parts[0].payload, "abc123");
+        assert_eq!(parts[1].path, "settings.json");
+    }
+
+    #[test]
+    fn extract_parts_filters_out_platform_file() {
+        let data = json!({
+            "definition": {
+                "parts": [
+                    {"path": ".platform", "payload": "metadata", "payloadType": "InlineBase64"},
+                    {"path": "content.json", "payload": "real_content", "payloadType": "InlineBase64"}
+                ]
+            }
+        });
+        let parts = extract_definition_parts(&data);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].path, "content.json");
+    }
+
+    #[test]
+    fn extract_parts_returns_empty_for_missing_definition() {
+        let data = json!({"something": "else"});
+        let parts = extract_definition_parts(&data);
+        assert!(parts.is_empty());
+    }
+
+    #[test]
+    fn extract_parts_returns_empty_for_null_parts() {
+        let data = json!({"definition": {"parts": null}});
+        let parts = extract_definition_parts(&data);
+        assert!(parts.is_empty());
+    }
+
+    #[test]
+    fn extract_parts_defaults_payload_type_to_inline_base64() {
+        let data = json!({
+            "definition": {
+                "parts": [
+                    {"path": "file.json", "payload": "data"}
+                ]
+            }
+        });
+        let parts = extract_definition_parts(&data);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].payload_type, "InlineBase64");
+    }
+
+    // ── extract_logical_id ──────────────────────────────────────────────────
+
+    #[test]
+    fn extract_logical_id_from_platform_part() {
+        let platform_json = json!({
+            "config": {"logicalId": "abc-123-def", "version": "2.0"},
+            "metadata": {"type": "Notebook", "displayName": "Test"}
+        });
+        let encoded = BASE64.encode(serde_json::to_string(&platform_json).unwrap());
+        let data = json!({
+            "definition": {
+                "parts": [
+                    {"path": ".platform", "payload": encoded, "payloadType": "InlineBase64"},
+                    {"path": "notebook.ipynb", "payload": "content", "payloadType": "InlineBase64"}
+                ]
+            }
+        });
+        let logical_id = extract_logical_id(&data);
+        assert_eq!(logical_id.as_deref(), Some("abc-123-def"));
+    }
+
+    #[test]
+    fn extract_logical_id_returns_none_when_no_platform() {
+        let data = json!({
+            "definition": {
+                "parts": [
+                    {"path": "notebook.ipynb", "payload": "content", "payloadType": "InlineBase64"}
+                ]
+            }
+        });
+        let logical_id = extract_logical_id(&data);
+        assert!(logical_id.is_none());
+    }
+
+    #[test]
+    fn extract_logical_id_returns_none_for_invalid_base64() {
+        let data = json!({
+            "definition": {
+                "parts": [
+                    {"path": ".platform", "payload": "not_valid_base64!!!", "payloadType": "InlineBase64"}
+                ]
+            }
+        });
+        let logical_id = extract_logical_id(&data);
+        assert!(logical_id.is_none());
+    }
+
+    #[test]
+    fn extract_logical_id_returns_none_when_no_logical_id_field() {
+        let platform_json = json!({
+            "config": {"version": "2.0"},
+            "metadata": {"type": "Notebook"}
+        });
+        let encoded = BASE64.encode(serde_json::to_string(&platform_json).unwrap());
+        let data = json!({
+            "definition": {
+                "parts": [
+                    {"path": ".platform", "payload": encoded, "payloadType": "InlineBase64"}
+                ]
+            }
+        });
+        let logical_id = extract_logical_id(&data);
+        assert!(logical_id.is_none());
+    }
+}

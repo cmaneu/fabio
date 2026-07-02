@@ -699,6 +699,204 @@ fn deploy_export_overwrite_flag_works() {
         .success();
 }
 
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_export_with_concurrency_flag() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let output_dir = dir.path().join("export_concurrent");
+
+    // Export with explicit concurrency=4 (limit to Lakehouse to keep test fast)
+    let assert = fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            output_dir.to_str().unwrap(),
+            "--concurrency",
+            "4",
+            "--item-types",
+            "Lakehouse",
+        ])
+        .timeout(Duration::from_mins(3))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "exported");
+    assert!(data["total_items"].as_u64().unwrap() > 0);
+    assert!(data["exported"].as_u64().unwrap() > 0);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_export_concurrency_one_sequential() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let output_dir = dir.path().join("export_seq");
+
+    // Export with concurrency=1 (sequential, like the old behavior)
+    let assert = fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            output_dir.to_str().unwrap(),
+            "--concurrency",
+            "1",
+            "--item-types",
+            "Lakehouse",
+        ])
+        .timeout(Duration::from_mins(3))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "exported");
+    // Lakehouse items should export (they have definition parts)
+    assert!(data["exported"].as_u64().unwrap() > 0);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_export_shell_only_warehouse() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let output_dir = dir.path().join("export_warehouse");
+
+    // Export only Warehouse type items
+    let assert = fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            output_dir.to_str().unwrap(),
+            "--item-types",
+            "Warehouse",
+        ])
+        .timeout(Duration::from_mins(2))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "exported");
+
+    // If workspace has Warehouses, they should be exported (not skipped)
+    let total = data["total_items"].as_u64().unwrap();
+    if total > 0 {
+        // Exported count should equal total (shell-only items don't get skipped)
+        let exported = data["exported"].as_u64().unwrap();
+        assert_eq!(
+            exported, total,
+            "All Warehouse items should be exported as shell-only"
+        );
+
+        // Skipped should be empty for Warehouse
+        let skipped = data["skipped"].as_array().unwrap();
+        assert!(
+            skipped.is_empty(),
+            "Warehouse items should not be skipped: {skipped:?}"
+        );
+
+        // Verify each exported directory has .platform but no other definition files
+        for entry in std::fs::read_dir(&output_dir).unwrap().flatten() {
+            if entry.path().is_dir() {
+                let platform_path = entry.path().join(".platform");
+                assert!(
+                    platform_path.exists(),
+                    "Expected .platform file in {}",
+                    entry.path().display()
+                );
+
+                // Check .platform metadata type is Warehouse
+                let content = std::fs::read_to_string(&platform_path).unwrap();
+                let meta: serde_json::Value = serde_json::from_str(&content).unwrap();
+                assert_eq!(meta["metadata"]["type"], "Warehouse");
+
+                // Should have NO other files besides .platform (shell-only = no definition parts)
+                let file_count = std::fs::read_dir(entry.path()).unwrap().flatten().count();
+                assert_eq!(
+                    file_count,
+                    1,
+                    "Shell-only Warehouse should only have .platform, found {} files in {}",
+                    file_count,
+                    entry.path().display()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_export_sql_endpoint_fully_skipped() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let output_dir = dir.path().join("export_sqlep");
+
+    // Export only SQLEndpoint type items
+    let assert = fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            output_dir.to_str().unwrap(),
+            "--item-types",
+            "SQLEndpoint",
+        ])
+        .timeout(Duration::from_mins(2))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "exported");
+
+    // SQLEndpoints should be fully skipped (not shell-only)
+    let total = data["total_items"].as_u64().unwrap();
+    if total > 0 {
+        let exported = data["exported"].as_u64().unwrap();
+        assert_eq!(
+            exported, 0,
+            "SQLEndpoint items should NOT be exported (they are auto-provisioned)"
+        );
+
+        // All should appear in skipped list
+        let skipped = data["skipped"].as_array().unwrap();
+        assert_eq!(
+            skipped.len() as u64,
+            total,
+            "All SQLEndpoint items should be in skipped list"
+        );
+
+        // No directories should be created
+        let dirs: Vec<_> = std::fs::read_dir(&output_dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.path().is_dir())
+            .collect();
+        assert!(
+            dirs.is_empty(),
+            "No directories should be created for SQLEndpoint items"
+        );
+    }
+}
+
 // ── Workspace name resolution ────────────────────────────────────────────────
 
 #[test]
