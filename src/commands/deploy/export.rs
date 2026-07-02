@@ -99,6 +99,11 @@ async fn collect_exportable_items(
             continue;
         }
 
+        // Exclude auto-provisioned types unless explicitly requested via --item-types
+        if item_types.is_none() && is_auto_provisioned_type(item_type) {
+            continue;
+        }
+
         items.push((
             id.to_owned(),
             item_type.to_owned(),
@@ -223,9 +228,22 @@ pub struct ExportResult {
 /// Matches fabric-cicd's `SHELL_ONLY_PUBLISH` concept.
 const SHELL_ONLY_TYPES: &[&str] = &["Warehouse", "SQLDatabase", "MLExperiment", "MLModel"];
 
+/// Item types that are auto-provisioned by Fabric and not independently deployable.
+///
+/// These are excluded from export by default (not counted in `total_items`).
+/// They can still be explicitly requested via `--item-types`.
+const AUTO_PROVISIONED_TYPES: &[&str] = &["SQLEndpoint"];
+
 /// Returns true if the item type should be exported as shell-only (just `.platform`).
 fn is_shell_only_type(item_type: &str) -> bool {
     SHELL_ONLY_TYPES
+        .iter()
+        .any(|t| t.eq_ignore_ascii_case(item_type))
+}
+
+/// Returns true if the item type is auto-provisioned by Fabric and not independently deployable.
+fn is_auto_provisioned_type(item_type: &str) -> bool {
+    AUTO_PROVISIONED_TYPES
         .iter()
         .any(|t| t.eq_ignore_ascii_case(item_type))
 }
@@ -393,6 +411,40 @@ mod tests {
             assert!(
                 seen.insert(entry.to_lowercase()),
                 "Duplicate entry in SHELL_ONLY_TYPES: {entry}"
+            );
+        }
+    }
+
+    // ── is_auto_provisioned_type ────────────────────────────────────────────
+
+    #[test]
+    fn auto_provisioned_types_recognized() {
+        assert!(is_auto_provisioned_type("SQLEndpoint"));
+        assert!(is_auto_provisioned_type("sqlendpoint"));
+        assert!(is_auto_provisioned_type("SQLENDPOINT"));
+    }
+
+    #[test]
+    fn non_auto_provisioned_types_rejected() {
+        assert!(!is_auto_provisioned_type("Warehouse"));
+        assert!(!is_auto_provisioned_type("Lakehouse"));
+        assert!(!is_auto_provisioned_type("Notebook"));
+        assert!(!is_auto_provisioned_type("SQLDatabase"));
+    }
+
+    #[test]
+    fn auto_provisioned_and_shell_only_are_disjoint() {
+        // No type should be in both lists
+        for t in AUTO_PROVISIONED_TYPES {
+            assert!(
+                !is_shell_only_type(t),
+                "{t} should not be in both AUTO_PROVISIONED_TYPES and SHELL_ONLY_TYPES"
+            );
+        }
+        for t in SHELL_ONLY_TYPES {
+            assert!(
+                !is_auto_provisioned_type(t),
+                "{t} should not be in both SHELL_ONLY_TYPES and AUTO_PROVISIONED_TYPES"
             );
         }
     }

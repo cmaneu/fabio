@@ -847,7 +847,7 @@ fn deploy_export_sql_endpoint_fully_skipped() {
     let dir = tempfile::TempDir::new().unwrap();
     let output_dir = dir.path().join("export_sqlep");
 
-    // Export only SQLEndpoint type items
+    // Export only SQLEndpoint type items (explicitly requested)
     let assert = fabio()
         .args([
             "deploy",
@@ -895,6 +895,54 @@ fn deploy_export_sql_endpoint_fully_skipped() {
             "No directories should be created for SQLEndpoint items"
         );
     }
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_export_default_excludes_auto_provisioned() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let output_dir = dir.path().join("export_default");
+
+    // Export without --item-types (default behavior)
+    let assert = fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            output_dir.to_str().unwrap(),
+        ])
+        .timeout(Duration::from_mins(5))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "exported");
+
+    // The total_items count should NOT include SQLEndpoints
+    let total = data["total_items"].as_u64().unwrap();
+    let exported = data["exported"].as_u64().unwrap();
+    let skipped = data["skipped"].as_array().unwrap();
+
+    // Verify: no skipped item mentions SQLEndpoint
+    for item in skipped {
+        let msg = item.as_str().unwrap_or_default();
+        assert!(
+            !msg.contains("SQLEndpoint"),
+            "SQLEndpoint should not appear in skipped list by default, found: {msg}"
+        );
+    }
+
+    // exported + skipped = total (no unaccounted items)
+    assert_eq!(
+        exported + skipped.len() as u64,
+        total,
+        "exported + skipped should equal total_items"
+    );
 }
 
 // ── Workspace name resolution ────────────────────────────────────────────────
