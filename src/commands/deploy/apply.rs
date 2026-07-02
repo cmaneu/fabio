@@ -71,6 +71,22 @@ pub async fn execute_changeset(
     let mut sorted_types: Vec<&str> = type_groups.keys().copied().collect();
     sorted_types.sort_by_key(|t| deploy_priority(t));
 
+    // Group types into tiers for cross-type parallelism.
+    // Types in the same tier have no mutual dependencies and can run concurrently.
+    let mut tier_groups: Vec<Vec<&str>> = Vec::new();
+    {
+        use super::ordering::deploy_tier;
+        let mut current_tier = usize::MAX;
+        for &item_type in &sorted_types {
+            let tier = deploy_tier(item_type);
+            if tier != current_tier {
+                tier_groups.push(Vec::new());
+                current_tier = tier;
+            }
+            tier_groups.last_mut().unwrap().push(item_type);
+        }
+    }
+
     // Build lookup for source items by (type, name) for definition access
     let source_map: HashMap<(&str, &str), usize> = source
         .items
@@ -98,39 +114,221 @@ pub async fn execute_changeset(
         }
     }
 
-    // Execute creates/updates in type order
+    // Execute creates/updates in tier order.
+    // Types within the same tier are independent and can run concurrently.
+    // DataPipeline and Dataflow need topological ordering and run sequentially.
     let total_changes = creates_updates.len();
     let completed = AtomicUsize::new(0);
 
-    for item_type in &sorted_types {
-        let group = &type_groups[item_type];
+    for tier_types in &tier_groups {
+        // Split tier items into parallel (most types) and sequential (pipeline/dataflow)
+        let mut parallel_changes: Vec<&Change> = Vec::new();
+        let mut sequential_changes: Vec<Vec<&Change>> = Vec::new();
 
-        emit_progress(
-            cli.quiet,
-            &format!(
-                "deploying {} {} item(s) [{}/{}]",
-                group.len(),
-                item_type,
-                completed.load(Ordering::Relaxed),
-                total_changes
-            ),
-        );
+        for &item_type in tier_types {
+            let group = &type_groups[item_type];
 
-        // For DataPipeline and Dataflow, do topological sort within the group
-        let ordered_changes = if *item_type == "DataPipeline" {
-            order_pipelines(group, source, &source_map)?
-        } else if item_type.eq_ignore_ascii_case("Dataflow") {
-            order_dataflows(group, source, &source_map)?
-        } else {
-            group.clone()
-        };
+            if item_type == "DataPipeline" {
+                sequential_changes.push(order_pipelines(group, source, &source_map)?);
+            } else if item_type.eq_ignore_ascii_case("Dataflow") {
+                sequential_changes.push(order_dataflows(group, source, &source_map)?);
+            } else {
+                parallel_changes.extend(group.iter());
+            }
+        }
 
-        // Execute items in this type batch with bounded concurrency
+        let tier_label = tier_types.join(", ");
+        if !parallel_changes.is_empty() {
+            emit_progress(
+                cli.quiet,
+                &format!(
+                    "deploying {} item(s) [{tier_label}] [{}/{}]",
+                    parallel_changes.len(),
+                    completed.load(Ordering::Relaxed),
+                    total_changes
+                ),
+            );
+        }
+
+        // Execute parallel items with bounded concurrency
         let batch_concurrency = concurrency.max(1);
 
-        if batch_concurrency == 1 || ordered_changes.len() <= 1 {
-            // Sequential execution (preserves ordering for pipelines or single items)
-            for change in &ordered_changes {
+        if !parallel_changes.is_empty() {
+            if batch_concurrency == 1 || parallel_changes.len() <= 1 {
+                for change in &parallel_changes {
+                    if fail_fast && !failed.is_empty() {
+                        break;
+                    }
+
+                    let result = execute_single_change(
+                        cli,
+                        client,
+                        workspace_id,
+                        change,
+                        source,
+                        &source_map,
+                        &created_ids,
+                    )
+                    .await;
+
+                    match result {
+                        Ok(deployed_id) => {
+                            let mut change_result = (*change).clone();
+                            if let Some(ref id) = deployed_id {
+                                created_ids.insert(
+                                    (change.item_type.clone(), change.name.clone()),
+                                    id.clone(),
+                                );
+                                change_result.deployed_id = Some(id.clone());
+                            }
+                            succeeded.push(change_result);
+                            let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                            emit_progress(
+                                cli.quiet,
+                                &format!(
+                                    "  {} {} \"{}\" [{}/{}]",
+                                    match change.action {
+                                        ChangeAction::Create => "created",
+                                        ChangeAction::Rename => "renamed",
+                                        _ => "updated",
+                                    },
+                                    change.item_type,
+                                    change.name,
+                                    done,
+                                    total_changes
+                                ),
+                            );
+                        }
+                        Err(e) => {
+                            completed.fetch_add(1, Ordering::Relaxed);
+                            emit_progress(
+                                cli.quiet,
+                                &format!(
+                                    "  FAILED {} \"{}\" : {}",
+                                    change.item_type,
+                                    change.name,
+                                    e.root_cause()
+                                ),
+                            );
+                            failed.push(DeployFailure {
+                                change: (*change).clone(),
+                                error: e.to_string(),
+                                code: extract_error_code(&e),
+                            });
+                        }
+                    }
+                }
+            } else {
+                // Parallel execution across all types in this tier
+                let semaphore = Arc::new(Semaphore::new(batch_concurrency));
+                let mut handles = Vec::with_capacity(parallel_changes.len());
+                let dry_run = cli.dry_run;
+
+                for change in &parallel_changes {
+                    let sem = Arc::clone(&semaphore);
+                    let change_owned = (*change).clone();
+                    let ws_id = workspace_id.to_owned();
+                    let client_clone = client.clone();
+
+                    let src_idx = source_map
+                        .get(&(change.item_type.as_str(), change.name.as_str()))
+                        .copied();
+
+                    let source_item = src_idx.map(|idx| source.items[idx].clone());
+                    let res_map = build_resolution_map(source, &created_ids);
+
+                    handles.push(tokio::spawn(async move {
+                        let _permit = sem.acquire().await.unwrap();
+                        let result = execute_single_change_owned(
+                            dry_run,
+                            &client_clone,
+                            &ws_id,
+                            &change_owned,
+                            source_item.as_ref(),
+                            &res_map,
+                        )
+                        .await;
+                        (change_owned, result)
+                    }));
+                }
+
+                // Collect results
+                for handle in handles {
+                    let (mut change_owned, result) = handle.await?;
+                    match result {
+                        Ok(deployed_id) => {
+                            if let Some(ref id) = deployed_id {
+                                created_ids.insert(
+                                    (change_owned.item_type.clone(), change_owned.name.clone()),
+                                    id.clone(),
+                                );
+                                change_owned.deployed_id = Some(id.clone());
+                            }
+                            let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                            emit_progress(
+                                cli.quiet,
+                                &format!(
+                                    "  {} {} \"{}\" [{}/{}]",
+                                    if change_owned.action == ChangeAction::Create {
+                                        "created"
+                                    } else {
+                                        "updated"
+                                    },
+                                    change_owned.item_type,
+                                    change_owned.name,
+                                    done,
+                                    total_changes
+                                ),
+                            );
+                            succeeded.push(change_owned);
+                        }
+                        Err(e) => {
+                            completed.fetch_add(1, Ordering::Relaxed);
+                            emit_progress(
+                                cli.quiet,
+                                &format!(
+                                    "  FAILED {} \"{}\" : {}",
+                                    change_owned.item_type,
+                                    change_owned.name,
+                                    e.root_cause()
+                                ),
+                            );
+                            if fail_fast {
+                                failed.push(DeployFailure {
+                                    change: change_owned,
+                                    error: e.to_string(),
+                                    code: extract_error_code(&e),
+                                });
+                                break;
+                            }
+                            failed.push(DeployFailure {
+                                change: change_owned,
+                                error: e.to_string(),
+                                code: extract_error_code(&e),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Execute sequential items (DataPipeline/Dataflow) in topological order
+        for ordered_group in &sequential_changes {
+            let group_type = ordered_group
+                .first()
+                .map_or("unknown", |c| c.item_type.as_str());
+            emit_progress(
+                cli.quiet,
+                &format!(
+                    "deploying {} {} item(s) (ordered) [{}/{}]",
+                    ordered_group.len(),
+                    group_type,
+                    completed.load(Ordering::Relaxed),
+                    total_changes
+                ),
+            );
+
+            for change in ordered_group {
                 if fail_fast && !failed.is_empty() {
                     break;
                 }
@@ -187,100 +385,6 @@ pub async fn execute_changeset(
                         );
                         failed.push(DeployFailure {
                             change: (*change).clone(),
-                            error: e.to_string(),
-                            code: extract_error_code(&e),
-                        });
-                    }
-                }
-            }
-        } else {
-            // Parallel execution within type batch (non-pipeline types)
-            let semaphore = Arc::new(Semaphore::new(batch_concurrency));
-            let mut handles = Vec::with_capacity(ordered_changes.len());
-            let dry_run = cli.dry_run;
-
-            for change in &ordered_changes {
-                let sem = Arc::clone(&semaphore);
-                let change_owned = (*change).clone();
-                let ws_id = workspace_id.to_owned();
-                let client_clone = client.clone();
-
-                // Find source item index for this change
-                let src_idx = source_map
-                    .get(&(change.item_type.as_str(), change.name.as_str()))
-                    .copied();
-
-                let source_item = src_idx.map(|idx| source.items[idx].clone());
-
-                // Build resolution map snapshot for this batch
-                let res_map = build_resolution_map(source, &created_ids);
-
-                handles.push(tokio::spawn(async move {
-                    let _permit = sem.acquire().await.unwrap();
-                    let result = execute_single_change_owned(
-                        dry_run,
-                        &client_clone,
-                        &ws_id,
-                        &change_owned,
-                        source_item.as_ref(),
-                        &res_map,
-                    )
-                    .await;
-                    (change_owned, result)
-                }));
-            }
-
-            // Collect results
-            for handle in handles {
-                let (mut change_owned, result) = handle.await?;
-                match result {
-                    Ok(deployed_id) => {
-                        if let Some(ref id) = deployed_id {
-                            created_ids.insert(
-                                (change_owned.item_type.clone(), change_owned.name.clone()),
-                                id.clone(),
-                            );
-                            change_owned.deployed_id = Some(id.clone());
-                        }
-                        let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
-                        emit_progress(
-                            cli.quiet,
-                            &format!(
-                                "  {} {} \"{}\" [{}/{}]",
-                                if change_owned.action == ChangeAction::Create {
-                                    "created"
-                                } else {
-                                    "updated"
-                                },
-                                change_owned.item_type,
-                                change_owned.name,
-                                done,
-                                total_changes
-                            ),
-                        );
-                        succeeded.push(change_owned);
-                    }
-                    Err(e) => {
-                        completed.fetch_add(1, Ordering::Relaxed);
-                        emit_progress(
-                            cli.quiet,
-                            &format!(
-                                "  FAILED {} \"{}\" : {}",
-                                change_owned.item_type,
-                                change_owned.name,
-                                e.root_cause()
-                            ),
-                        );
-                        if fail_fast {
-                            failed.push(DeployFailure {
-                                change: change_owned,
-                                error: e.to_string(),
-                                code: extract_error_code(&e),
-                            });
-                            break;
-                        }
-                        failed.push(DeployFailure {
-                            change: change_owned,
                             error: e.to_string(),
                             code: extract_error_code(&e),
                         });

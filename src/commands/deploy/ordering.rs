@@ -80,6 +80,39 @@ pub fn deploy_priority(item_type: &str) -> usize {
         .unwrap_or(DEPLOY_ORDER.len())
 }
 
+/// Returns the dependency tier for a given item type.
+///
+/// Types in the same tier have no dependencies on each other and can be deployed
+/// concurrently. Types in tier N depend on types in tiers 0..N-1.
+///
+/// Tiers correspond to dependency layers:
+/// - Tier 0: Data storage layer (foundation)
+/// - Tier 1: Compute & runtime (`Environment`, `UserDataFunction`, `Eventhouse`)
+/// - Tier 2: Compute children (`KQLDatabase` depends on `Eventhouse`)
+/// - Tier 3: Code & logic (`Notebook`, `SparkJobDefinition`)
+/// - Tier 4: Models & analytics (`SemanticModel`, `Report`, `KQLQueryset`, etc.)
+/// - Tier 5: Reactive & streaming (`Reflex`, `Eventstream`, `DataPipeline`, etc.)
+/// - Tier 6: APIs & integration
+/// - Tier 7: ML & experimentation
+/// - Tier 8: Graph & ontology
+/// - Tier 9: Visualization & cross-cutting
+#[inline]
+pub fn deploy_tier(item_type: &str) -> usize {
+    let priority = deploy_priority(item_type);
+    match priority {
+        0..=9 => 0,   // Storage: VariableLibrary..SnowflakeDatabase
+        10..=12 => 1, // Compute: Environment, UserDataFunction, Eventhouse
+        13 => 2,      // Compute children: KQLDatabase (depends on Eventhouse)
+        14..=15 => 3, // Code: SparkJobDefinition, Notebook
+        16..=23 => 4, // Models: SemanticModel..KQLDashboard
+        24..=28 => 5, // Reactive: Reflex..DataPipeline
+        29..=33 => 6, // APIs: GraphQLApi..AnomalyDetector
+        34..=35 => 7, // ML: MLExperiment, MLModel
+        36..=40 => 8, // Graph: Ontology..DigitalTwinBuilderFlow
+        _ => 9,       // Visualization & cross-cutting + unknown
+    }
+}
+
 /// Reverse deployment order for deletes.
 /// Items that depend on others should be deleted first.
 #[inline]
@@ -184,6 +217,45 @@ mod tests {
     fn test_deploy_priority_unknown_type() {
         let unknown = deploy_priority("UnknownType");
         assert_eq!(unknown, DEPLOY_ORDER.len());
+    }
+
+    // ── deploy_tier ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_deploy_tier_storage_types_same_tier() {
+        assert_eq!(deploy_tier("Warehouse"), deploy_tier("Lakehouse"));
+        assert_eq!(deploy_tier("Lakehouse"), deploy_tier("SQLDatabase"));
+        assert_eq!(deploy_tier("SQLDatabase"), deploy_tier("VariableLibrary"));
+        assert_eq!(deploy_tier("Lakehouse"), 0);
+    }
+
+    #[test]
+    fn test_deploy_tier_compute_types_same_tier() {
+        assert_eq!(deploy_tier("Environment"), deploy_tier("Eventhouse"));
+        assert_eq!(deploy_tier("Eventhouse"), deploy_tier("UserDataFunction"));
+        assert_eq!(deploy_tier("Eventhouse"), 1);
+    }
+
+    #[test]
+    fn test_deploy_tier_kql_database_after_eventhouse() {
+        // KQLDatabase depends on Eventhouse (parent container), must be in a later tier
+        assert!(deploy_tier("Eventhouse") < deploy_tier("KQLDatabase"));
+        assert_eq!(deploy_tier("KQLDatabase"), 2);
+    }
+
+    #[test]
+    fn test_deploy_tier_ordering() {
+        // Storage (0) < Compute (1) < Compute-children (2) < Code (3) < Models (4)
+        assert!(deploy_tier("Lakehouse") < deploy_tier("Eventhouse"));
+        assert!(deploy_tier("Eventhouse") < deploy_tier("KQLDatabase"));
+        assert!(deploy_tier("KQLDatabase") < deploy_tier("Notebook"));
+        assert!(deploy_tier("Notebook") < deploy_tier("SemanticModel"));
+        assert!(deploy_tier("SemanticModel") < deploy_tier("DataPipeline"));
+    }
+
+    #[test]
+    fn test_deploy_tier_unknown_type_in_last_tier() {
+        assert_eq!(deploy_tier("UnknownType"), 9);
     }
 
     #[test]
