@@ -87,8 +87,8 @@ pub enum DeploymentPipelineCommand {
         #[arg(long)]
         stage_id: String,
 
-        /// Workspace ID to assign
-        #[arg(long, env = "FABIO_WORKSPACE")]
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Unassign the workspace from a deployment pipeline stage
