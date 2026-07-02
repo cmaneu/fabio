@@ -125,10 +125,17 @@ pub fn trace_request(method: &str, url: &str, body: Option<&str>) {
 }
 
 /// Trace an incoming HTTP response (status + key headers).
+/// Always records metrics (even when verbose is disabled).
 pub fn trace_response(status: u16, url: &str, duration_ms: u128) {
+    // Always record API metrics regardless of verbose mode
+    crate::metrics::record_api_call(std::time::Duration::from_millis(
+        u64::try_from(duration_ms).unwrap_or(u64::MAX),
+    ));
+
     if !is_enabled() {
         return;
     }
+    let _ = status;
     eprintln!("[verbose][http] <-- {status} {url} ({duration_ms}ms)");
 }
 

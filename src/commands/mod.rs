@@ -92,6 +92,7 @@ use crate::client::FabricClient;
     clippy::large_futures
 )]
 pub async fn execute(cli: Cli) -> Result<()> {
+    crate::metrics::init();
     let mut client = FabricClient::new();
 
     // Enable verbose tracing if --verbose flag is set (and not --quiet)

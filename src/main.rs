@@ -5,6 +5,7 @@ mod cli;
 mod client;
 mod commands;
 mod errors;
+mod metrics;
 mod output;
 mod parallel;
 mod token_cache;
@@ -66,7 +67,13 @@ fn run() -> std::result::Result<(), i32> {
         .build()
         .expect("failed to build tokio runtime");
 
+    let quiet = cli.quiet;
     let result: Result<()> = runtime.block_on(Box::pin(commands::execute(cli)));
+
+    // Emit timing summary to stderr (diagnostics channel, not stdout data)
+    if !quiet {
+        metrics::emit_timing_summary();
+    }
 
     match result {
         Ok(()) => Ok(()),
