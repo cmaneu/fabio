@@ -451,7 +451,7 @@ Automated: `./scripts/release.sh <version>` handles all steps end-to-end.
 - **KQL Queryset definition format**: Uses `RealTimeQueryset.json` (NOT `RawQueryset.kql`). JSON structure: `{"queryset":{"version":"1.0.0","dataSources":[{"id","clusterUri","type","databaseName"}],"tabs":[{"id","content","title","dataSourceId"}]}}`. The `content` field holds the KQL query text with `\n` for newlines.
 - **KQL Queryset run**: Fetches definition via LRO, decodes `RealTimeQueryset.json`, selects tab by name or index, resolves data source (clusterUri + databaseName), executes via Kusto REST API. Tab selection is case-insensitive by title.
 - **Deploy diff strategy**: Content hash vs live workspace (not git diff) — detects portal edits, works without git, idempotent convergence
-- **Deploy parallelism**: Semaphore-bounded `tokio::spawn` per-item within type batch (default 8); sequential for DataPipeline; deletes always sequential
+- **Deploy parallelism**: Semaphore-bounded `tokio::spawn` per-item within type batch (default 8); sequential for DataPipeline; deletes always sequential. Export also uses bounded parallelism (default 8) for `getDefinition` LRO calls.
 - **Deploy parameter format**: JSON (not YAML) — no extra crate dependency, agent-native consistency
 - **Deploy plan staleness**: Workspace fingerprint = SHA256 of sorted `(id, type, name)` tuples; mismatch → error unless `--force`
 - **Deploy logical ID resolution**: String replacement in base64 payloads; resolves items created earlier in same session
@@ -459,6 +459,7 @@ Automated: `./scripts/release.sh <version>` handles all steps end-to-end.
 - **Deploy creationPayload**: Separate `creationPayload.json` file in item directory; merged into creation body as `creationPayload` field; parameter substitution applied
 - **Deploy post-hooks**: Opt-out via `--no-post-hooks`; hooks never fire during `--dry-run`; failures are non-fatal (reported in output, don't fail the deploy). SemanticModel → `POST /refreshes`, Environment → `POST /staging/publish`
 - **Deploy empty definitions**: Items with no parts (Lakehouse, MLModel) omit `definition` field on create; skip `updateDefinition` on update
+- **Deploy shell-only export**: Warehouse, SQLDatabase, MLExperiment, MLModel don't support `getDefinition` but are exported as `.platform`-only directories (metadata without definition parts). Aligns with fabric-cicd's `SHELL_ONLY_PUBLISH`. SQLEndpoint is always skipped (auto-provisioned by Fabric, not independently deployable).
 - **Deploy ordering**: 45 item types in `DEPLOY_ORDER`; deployed in dependency order (storage → compute → code → models → reactive → APIs → ML → graph → viz)
 - **Deploy no state file**: Stateless — always queries live workspace. No `.tfstate` equivalent.
 - **Deploy .platform in parts but excluded from hash**: `.platform` IS sent as a definition part (enables `?updateMetadata=true` for metadata propagation), but EXCLUDED from content hash (API rewrites `logicalId` in `.platform`, which would break idempotent skip detection)

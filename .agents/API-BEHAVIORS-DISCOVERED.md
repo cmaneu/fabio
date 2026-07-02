@@ -1700,12 +1700,15 @@ At plan time, `validate_references()` cross-checks logical ID references:
 
 `fabio deploy export` fetches all item definitions from a workspace and writes them to disk:
 - Uses generic items endpoint (`GET /workspaces/{ws}/items`) with full pagination
-- For each item: calls `getDefinition` (LRO POST with empty body `{}`)
-- **Items that fail `getDefinition`**: Added to `skipped` list with reason (not fatal)
-- **Items without definition parts**: Skipped with reason "no definition parts"
+- For each item: calls `getDefinition` (LRO POST with empty body `{}`) **in parallel** (bounded by `--concurrency`, default 8)
+- **Items that fail `getDefinition`**: Added to `skipped` list with reason (not fatal), UNLESS the item type is a "shell-only" type (see below)
+- **Shell-only types** (Warehouse, SQLDatabase, MLExperiment, MLModel): These types don't support `getDefinition` but ARE valid deployment targets. When `getDefinition` fails, they are exported with just a `.platform` metadata file (no definition parts). `deploy apply` creates them with just `displayName` + `type` and skips `updateDefinition`. This aligns with fabric-cicd's `SHELL_ONLY_PUBLISH` concept.
+- **SQLEndpoint is always skipped**: SQLEndpoints are auto-provisioned by Fabric when a Lakehouse, Warehouse, or SQL Database is created. They are NOT independently deployable — fabric-cicd doesn't even include them as a supported item type. Skipping them during export is correct behavior.
+- **Items without definition parts**: Skipped with reason "no definition parts" (unless shell-only type)
 - **`.platform` part from API is discarded**: Export generates its own `.platform` from item metadata
 - **Logical ID extracted from API's `.platform`** BEFORE filtering (read then discard)
 - **`definition_format`**: Captured from `data.definition.format` if present in API response
+- **`--concurrency`**: Max parallel `getDefinition` LRO requests (default 8). Higher values speed up large workspaces but risk throttling.
 - **`--overwrite`**: Required if output directory is non-empty (checked via iterator peek)
 - **`--dry-run`**: Counts items without writing to disk
 - **`--item-types`**: Case-insensitive filter on item types
