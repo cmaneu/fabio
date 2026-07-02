@@ -1701,9 +1701,11 @@ At plan time, `validate_references()` cross-checks logical ID references:
 `fabio deploy export` fetches all item definitions from a workspace and writes them to disk:
 - Uses generic items endpoint (`GET /workspaces/{ws}/items`) with full pagination
 - For each item: calls `getDefinition` (LRO POST with empty body `{}`) **in parallel** (bounded by `--concurrency`, default 8)
+- **Auto-provisioned types excluded by default**: SQLEndpoints are filtered out of the item list before processing — they don't appear in `total_items`, `exported`, or `skipped`. This avoids confusing count gaps for agents. They can still be explicitly inspected via `--item-types SQLEndpoint`.
 - **Items that fail `getDefinition`**: Added to `skipped` list with reason (not fatal), UNLESS the item type is a "shell-only" type (see below)
 - **Shell-only types** (Warehouse, SQLDatabase, MLExperiment, MLModel): These types don't support `getDefinition` but ARE valid deployment targets. When `getDefinition` fails, they are exported with just a `.platform` metadata file (no definition parts). `deploy apply` creates them with just `displayName` + `type` and skips `updateDefinition`. This aligns with fabric-cicd's `SHELL_ONLY_PUBLISH` concept.
 - **SQLEndpoint is always skipped**: SQLEndpoints are auto-provisioned by Fabric when a Lakehouse, Warehouse, or SQL Database is created. They are NOT independently deployable — fabric-cicd doesn't even include them as a supported item type. Skipping them during export is correct behavior.
+- **Legacy-format items fail `getDefinition`**: Some SemanticModel and Report items created through the portal UI or from Microsoft-provided templates use the older PBIX format internally. These do NOT support `getDefinition` — only items using newer definition formats (TMDL for SemanticModel, PBIR/PBIR-Legacy for Report) expose definitions through the API. Known examples: pre-installed "Microsoft Fabric Capacity Metrics" workspace items, Direct Lake semantic models created via the portal in legacy format. These appear in the `skipped` list with reason "getDefinition not supported" — this is a Fabric platform constraint, not a fabio bug.
 - **Items without definition parts**: Skipped with reason "no definition parts" (unless shell-only type)
 - **`.platform` part from API is discarded**: Export generates its own `.platform` from item metadata
 - **Logical ID extracted from API's `.platform`** BEFORE filtering (read then discard)
@@ -1711,7 +1713,7 @@ At plan time, `validate_references()` cross-checks logical ID references:
 - **`--concurrency`**: Max parallel `getDefinition` LRO requests (default 8). Higher values speed up large workspaces but risk throttling.
 - **`--overwrite`**: Required if output directory is non-empty (checked via iterator peek)
 - **`--dry-run`**: Counts items without writing to disk
-- **`--item-types`**: Case-insensitive filter on item types
+- **`--item-types`**: Case-insensitive filter on item types. When specified, auto-provisioned types are NOT excluded (user explicitly asked for them).
 - Items with empty `id`, `type`, or `displayName` are silently skipped
 
 ### Deploy Order (42 Types)
