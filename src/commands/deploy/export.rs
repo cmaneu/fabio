@@ -158,7 +158,7 @@ async fn fetch_definitions_parallel(
         match result {
             Ok(data) => {
                 let parts = extract_definition_parts(&data);
-                if parts.is_empty() {
+                if parts.is_empty() && !is_shell_only_type(&item_type) {
                     skipped.push(format!("{item_type} \"{name}\" (no definition parts)"));
                     continue;
                 }
@@ -181,9 +181,24 @@ async fn fetch_definitions_parallel(
                 exported.push((metadata, parts));
             }
             Err(_) => {
-                skipped.push(format!(
-                    "{item_type} \"{name}\" (getDefinition not supported)"
-                ));
+                // Shell-only items (Warehouse, SQLDatabase, etc.) don't support
+                // getDefinition but should still be exported with just a .platform
+                // file so deploy apply can recreate the container.
+                if is_shell_only_type(&item_type) {
+                    let metadata = PlatformMetadata {
+                        item_type,
+                        display_name: name,
+                        logical_id: None,
+                        description,
+                        definition_format: None,
+                        platform_creation_payload: None,
+                    };
+                    exported.push((metadata, Vec::new()));
+                } else {
+                    skipped.push(format!(
+                        "{item_type} \"{name}\" (getDefinition not supported)"
+                    ));
+                }
             }
         }
     }
@@ -197,6 +212,22 @@ pub struct ExportResult {
     pub total_items: usize,
     pub exported: usize,
     pub skipped: Vec<String>,
+}
+
+/// Item types that are exported as metadata-only (`.platform` file, no definition parts).
+///
+/// These types don't support `getDefinition` but are still valid deployment targets:
+/// - `deploy apply` creates them with just `displayName` + `type` (no definition body)
+/// - `deploy apply` skips `updateDefinition` when parts are empty
+///
+/// Matches fabric-cicd's `SHELL_ONLY_PUBLISH` concept.
+const SHELL_ONLY_TYPES: &[&str] = &["Warehouse", "SQLDatabase", "MLExperiment", "MLModel"];
+
+/// Returns true if the item type should be exported as shell-only (just `.platform`).
+fn is_shell_only_type(item_type: &str) -> bool {
+    SHELL_ONLY_TYPES
+        .iter()
+        .any(|t| t.eq_ignore_ascii_case(item_type))
 }
 
 /// Extract definition parts from a `getDefinition` API response.
