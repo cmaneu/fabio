@@ -1,5 +1,8 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use serde_json::Value;
+use tokio::sync::Semaphore;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
@@ -10,7 +13,7 @@ use super::platform::{DefinitionPart, PlatformMetadata, write_source_directory};
 ///
 /// For each item in the workspace:
 /// 1. Fetches the item metadata (type, name)
-/// 2. Fetches the definition via `getDefinition` LRO
+/// 2. Fetches the definition via `getDefinition` LRO (in parallel)
 /// 3. Writes the directory structure with `.platform` + definition files
 pub async fn export_workspace(
     cli: &Cli,
@@ -19,8 +22,46 @@ pub async fn export_workspace(
     output_dir: &std::path::Path,
     item_types: Option<&[String]>,
     overwrite: bool,
+    concurrency: usize,
 ) -> Result<ExportResult> {
-    // List all items in workspace
+    let items_to_export = collect_exportable_items(client, workspace_id, item_types).await?;
+    let total = items_to_export.len();
+
+    // Fetch definitions in parallel with bounded concurrency
+    let (exported, skipped) = fetch_definitions_parallel(
+        client,
+        workspace_id,
+        &items_to_export,
+        concurrency,
+        cli.quiet,
+    )
+    .await?;
+
+    // Write to disk
+    let count = if cli.dry_run {
+        exported.len()
+    } else {
+        write_source_directory(output_dir, &exported, overwrite)?
+    };
+
+    // Export shortcuts for Lakehouse items
+    if !cli.dry_run {
+        export_lakehouse_shortcuts(client, workspace_id, output_dir, &items_to_export).await;
+    }
+
+    Ok(ExportResult {
+        total_items: total,
+        exported: count,
+        skipped,
+    })
+}
+
+/// Collect all exportable items from the workspace, optionally filtering by type.
+async fn collect_exportable_items(
+    client: &FabricClient,
+    workspace_id: &str,
+    item_types: Option<&[String]>,
+) -> Result<Vec<(String, String, String, Option<String>)>> {
     let resp = client
         .get_list(
             &format!("/workspaces/{workspace_id}/items"),
@@ -30,7 +71,7 @@ pub async fn export_workspace(
         )
         .await?;
 
-    let mut items_to_export: Vec<(String, String, String, Option<String>)> = Vec::new(); // (id, type, name, description)
+    let mut items: Vec<(String, String, String, Option<String>)> = Vec::new();
 
     for item in &resp.items {
         let id = item.get("id").and_then(|v| v.as_str()).unwrap_or_default();
@@ -58,7 +99,7 @@ pub async fn export_workspace(
             continue;
         }
 
-        items_to_export.push((
+        items.push((
             id.to_owned(),
             item_type.to_owned(),
             name.to_owned(),
@@ -66,14 +107,53 @@ pub async fn export_workspace(
         ));
     }
 
-    let total = items_to_export.len();
+    Ok(items)
+}
+
+/// Fetch item definitions in parallel using bounded concurrency.
+///
+/// Returns `(exported_items, skipped_messages)`.
+async fn fetch_definitions_parallel(
+    client: &FabricClient,
+    workspace_id: &str,
+    items: &[(String, String, String, Option<String>)],
+    concurrency: usize,
+    quiet: bool,
+) -> Result<(Vec<(PlatformMetadata, Vec<DefinitionPart>)>, Vec<String>)> {
+    let batch_concurrency = concurrency.max(1);
+    let semaphore = Arc::new(Semaphore::new(batch_concurrency));
+    let mut handles = Vec::with_capacity(items.len());
+
+    for (id, item_type, name, description) in items {
+        let sem = Arc::clone(&semaphore);
+        let client_clone = client.clone();
+        let ws_id = workspace_id.to_owned();
+        let item_id = id.clone();
+        let item_type_owned = item_type.clone();
+        let name_owned = name.clone();
+        let description_owned = description.clone();
+
+        handles.push(tokio::spawn(async move {
+            let _permit = sem.acquire().await.unwrap();
+
+            let path = format!("/workspaces/{ws_id}/items/{item_id}/getDefinition");
+            let result = client_clone.post(&path, &serde_json::json!({}), true).await;
+
+            if !quiet {
+                eprintln!(
+                    "[deploy export] fetched definition for {item_type_owned} \"{name_owned}\""
+                );
+            }
+
+            (item_type_owned, name_owned, description_owned, result)
+        }));
+    }
+
     let mut exported = Vec::new();
     let mut skipped = Vec::new();
 
-    for (id, item_type, name, description) in &items_to_export {
-        // Fetch definition via LRO
-        let path = format!("/workspaces/{workspace_id}/items/{id}/getDefinition");
-        let result = client.post(&path, &serde_json::json!({}), true).await;
+    for handle in handles {
+        let (item_type, name, description, result) = handle.await?;
 
         match result {
             Ok(data) => {
@@ -90,10 +170,10 @@ pub async fn export_workspace(
                     .map(str::to_owned);
 
                 let metadata = PlatformMetadata {
-                    item_type: item_type.clone(),
-                    display_name: name.clone(),
+                    item_type,
+                    display_name: name,
                     logical_id: extract_logical_id(&data),
-                    description: description.clone(),
+                    description,
                     definition_format,
                     platform_creation_payload: None,
                 };
@@ -108,23 +188,7 @@ pub async fn export_workspace(
         }
     }
 
-    // Write to disk
-    let count = if cli.dry_run {
-        exported.len()
-    } else {
-        write_source_directory(output_dir, &exported, overwrite)?
-    };
-
-    // Export shortcuts for Lakehouse items
-    if !cli.dry_run {
-        export_lakehouse_shortcuts(client, workspace_id, output_dir, &items_to_export).await;
-    }
-
-    Ok(ExportResult {
-        total_items: total,
-        exported: count,
-        skipped,
-    })
+    Ok((exported, skipped))
 }
 
 /// Result of an export operation.

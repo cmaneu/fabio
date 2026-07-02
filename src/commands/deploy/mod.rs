@@ -258,6 +258,10 @@ pub enum DeployCommand {
         /// Overwrite existing files in output directory
         #[arg(long)]
         overwrite: bool,
+
+        /// Max parallel getDefinition requests
+        #[arg(long, default_value = "8")]
+        concurrency: usize,
     },
 
     /// Generate a parameters.json scaffold by scanning or diffing exported definitions
@@ -435,6 +439,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
             dir,
             item_types,
             overwrite,
+            concurrency,
         } => {
             execute_export(
                 cli,
@@ -443,6 +448,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
                 dir,
                 item_types.as_deref(),
                 *overwrite,
+                *concurrency,
             )
             .await
         }
@@ -911,11 +917,20 @@ async fn execute_export(
     output: &std::path::Path,
     item_types: Option<&[String]>,
     overwrite: bool,
+    concurrency: usize,
 ) -> Result<()> {
     let workspace_id = resolve_workspace(client, workspace).await?;
 
-    let result =
-        export::export_workspace(cli, client, &workspace_id, output, item_types, overwrite).await?;
+    let result = export::export_workspace(
+        cli,
+        client,
+        &workspace_id,
+        output,
+        item_types,
+        overwrite,
+        concurrency,
+    )
+    .await?;
 
     let output_data = json!({
         "status": if cli.dry_run { "dry_run" } else { "exported" },
