@@ -236,6 +236,7 @@ pub async fn execute_changeset(
 
                     let source_item = src_idx.map(|idx| source.items[idx].clone());
                     let res_map = build_resolution_map(source, &created_ids);
+                    let sm_ids = build_semantic_model_name_map(&created_ids);
 
                     handles.push(tokio::spawn(async move {
                         let _permit = sem.acquire().await.unwrap();
@@ -246,6 +247,7 @@ pub async fn execute_changeset(
                             &change_owned,
                             source_item.as_ref(),
                             &res_map,
+                            &sm_ids,
                         )
                         .await;
                         (change_owned, result)
@@ -956,6 +958,9 @@ async fn execute_single_change(
     // Build logical ID resolution map from created_ids + source workspace info
     let resolution_map = build_resolution_map(source, created_ids);
 
+    // Build semantic model name → deployed_id map for report byConnection resolution
+    let semantic_model_ids = build_semantic_model_name_map(created_ids);
+
     deploy_change(
         cli.dry_run,
         client,
@@ -963,6 +968,7 @@ async fn execute_single_change(
         change,
         source_item,
         &resolution_map,
+        &semantic_model_ids,
     )
     .await
 }
@@ -975,6 +981,7 @@ async fn execute_single_change_owned(
     change: &Change,
     source_item: Option<&super::platform::SourceItem>,
     resolution_map: &HashMap<String, String>,
+    semantic_model_ids: &HashMap<String, String>,
 ) -> Result<Option<String>> {
     let source_item = source_item.ok_or_else(|| {
         anyhow::anyhow!(
@@ -990,6 +997,7 @@ async fn execute_single_change_owned(
         change,
         source_item,
         resolution_map,
+        semantic_model_ids,
     )
     .await
 }
@@ -1003,10 +1011,12 @@ async fn deploy_change(
     change: &Change,
     source_item: &super::platform::SourceItem,
     resolution_map: &HashMap<String, String>,
+    semantic_model_ids: &HashMap<String, String>,
 ) -> Result<Option<String>> {
     // Build definition parts for API, applying transformations:
     // 1. Report byPath → byConnection conversion
-    // 2. Logical ID resolution (replace logical IDs with deployed GUIDs)
+    // 2. Report byConnection semanticmodelid GUID resolution
+    // 3. Logical ID resolution (replace logical IDs with deployed GUIDs)
     let parts: Vec<Value> = source_item
         .parts
         .iter()
@@ -1017,6 +1027,8 @@ async fn deploy_change(
             if change.item_type.eq_ignore_ascii_case("Report") && p.path == "definition.pbir" {
                 payload =
                     transform_report_bypath_to_byconnection(&payload, source_item, resolution_map);
+                // Resolve byConnection semanticmodelid GUIDs by semantic model name
+                payload = resolve_report_byconnection_model_id(&payload, semantic_model_ids);
             }
 
             // Apply logical ID resolution to all payloads
@@ -1741,6 +1753,125 @@ fn transform_report_bypath_to_byconnection(
 
     let new_content = serde_json::to_string(&pbir).unwrap_or(content);
     BASE64.encode(new_content.as_bytes())
+}
+
+/// Resolve `semanticmodelid` GUIDs in a Report's `definition.pbir` `byConnection` reference.
+///
+/// When a report already has `byConnection` format (not `byPath`), the connection string
+/// may contain `semanticmodelid=<source-workspace-GUID>`. This function:
+/// 1. Extracts the semantic model name from `initial catalog=<name>` in the connection string
+/// 2. Looks up that name in the deployed semantic model map
+/// 3. Replaces the `semanticmodelid` GUID with the target workspace's model ID
+/// 4. Also rewrites to v1 `byConnection` format which the Fabric API reliably accepts
+///
+/// If the payload doesn't contain `byConnection` or resolution fails, returns unchanged.
+fn resolve_report_byconnection_model_id(
+    payload: &str,
+    semantic_model_ids: &HashMap<String, String>,
+) -> String {
+    if semantic_model_ids.is_empty() {
+        return payload.to_owned();
+    }
+
+    let Ok(decoded_bytes) = BASE64.decode(payload) else {
+        return payload.to_owned();
+    };
+    let Ok(content) = String::from_utf8(decoded_bytes) else {
+        return payload.to_owned();
+    };
+
+    let Ok(mut pbir) = serde_json::from_str::<Value>(&content) else {
+        return payload.to_owned();
+    };
+
+    // Check for byConnection with connectionString containing semanticmodelid
+    let conn_str = pbir
+        .get("datasetReference")
+        .and_then(|dr| dr.get("byConnection"))
+        .and_then(|bc| bc.get("connectionString"))
+        .and_then(|cs| cs.as_str())
+        .map(str::to_owned);
+
+    // Also handle v1 format with pbiModelDatabaseName
+    let pbi_db_name = pbir
+        .get("datasetReference")
+        .and_then(|dr| dr.get("byConnection"))
+        .and_then(|bc| bc.get("pbiModelDatabaseName"))
+        .and_then(|n| n.as_str())
+        .map(str::to_owned);
+
+    if conn_str.is_none() && pbi_db_name.is_none() {
+        return payload.to_owned();
+    }
+
+    // Try to extract semantic model name from connection string
+    let model_name = conn_str.as_deref().and_then(|cs| {
+        // Parse "initial catalog=ModelName;" pattern (case-insensitive)
+        let lower = cs.to_lowercase();
+        let start = lower.find("initial catalog=")?;
+        let value_start = start + "initial catalog=".len();
+        let remaining = &cs[value_start..];
+        let end = remaining.find(';').unwrap_or(remaining.len());
+        Some(remaining[..end].to_owned())
+    });
+
+    // Look up the deployed ID by semantic model name
+    let Some(ref name) = model_name else {
+        return payload.to_owned();
+    };
+    let Some(deployed_id) = semantic_model_ids.get(name.as_str()) else {
+        return payload.to_owned();
+    };
+
+    // Determine the output format based on the input schema version.
+    // v2 PBIR (schema 2.0.0+) uses connectionString only.
+    // v1 PBIR uses pbiModelDatabaseName + pbiModelVirtualServerName.
+    let is_v2 = pbir
+        .get("$schema")
+        .and_then(|s| s.as_str())
+        .is_some_and(|s| s.contains("/2.") || s.contains("/3.") || s.contains("/4."));
+
+    if is_v2 || conn_str.is_some() {
+        // v2 format: rewrite the connectionString with the resolved semanticmodelid
+        let new_conn_str = format!(
+            "Data Source=pbiazure://api.powerbi.com;initial catalog={name};\
+             integrated security=ClaimsToken;semanticmodelid={deployed_id}"
+        );
+        pbir["datasetReference"] = json!({
+            "byConnection": {
+                "connectionString": new_conn_str
+            }
+        });
+    } else {
+        // v1 format: use the classic pbiModelDatabaseName approach
+        pbir["datasetReference"] = json!({
+            "byConnection": {
+                "connectionString": null,
+                "pbiServiceModelId": null,
+                "pbiModelVirtualServerName": "sobe_wowvirtualserver",
+                "pbiModelDatabaseName": deployed_id,
+                "name": "EntityDataSource",
+                "connectionType": "pbiServiceXmlaStyleLive"
+            }
+        });
+    }
+
+    let new_content = serde_json::to_string(&pbir).unwrap_or(content);
+    BASE64.encode(new_content.as_bytes())
+}
+
+/// Build a map of semantic model display name → deployed ID from `created_ids`.
+///
+/// Used by `resolve_report_byconnection_model_id` to resolve `semanticmodelid`
+/// GUIDs in report connection strings by matching the `initial catalog` name.
+fn build_semantic_model_name_map(
+    created_ids: &HashMap<(String, String), String>,
+) -> HashMap<String, String> {
+    created_ids
+        .iter()
+        .filter(|((item_type, _), _)| item_type.eq_ignore_ascii_case("SemanticModel"))
+        .map(|((_, name), id)| (name.clone(), id.clone()))
+        .collect()
 }
 
 /// Apply logical ID resolution to a JSON value (for creationPayload).
