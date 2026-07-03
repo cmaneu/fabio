@@ -1236,16 +1236,43 @@ fn order_pipelines<'a>(
         return Ok(changes.to_vec());
     }
 
+    // Build a set of pipeline names in this batch for reference matching
+    let pipeline_names: std::collections::HashSet<&str> =
+        changes.iter().map(|c| c.name.as_str()).collect();
+
     // Extract pipeline references from definitions
     let mut items_with_refs: Vec<(String, Vec<String>)> = Vec::new();
 
     for change in changes {
-        let refs = source_map
+        let raw_refs = source_map
             .get(&("DataPipeline", change.name.as_str()))
             .map_or_else(Vec::new, |idx| {
                 extract_pipeline_references(&source.items[*idx])
             });
-        items_with_refs.push((change.name.clone(), refs));
+
+        // Resolve references: if a ref is a name in our batch, use it directly.
+        // If it's a GUID, try to match it to a pipeline name via activity name heuristic.
+        let resolved_refs: Vec<String> = raw_refs
+            .into_iter()
+            .filter_map(|r| {
+                if pipeline_names.contains(r.as_str()) {
+                    Some(r)
+                } else if is_guid_like(&r) {
+                    // GUID reference: try to find matching pipeline by activity name
+                    // (already extracted as ref, try fuzzy match against batch names)
+                    None // Can't resolve here — topological sort will still work
+                // because the GUID won't match any name (treated as external ref)
+                } else {
+                    // Might be a partial name match
+                    pipeline_names
+                        .iter()
+                        .find(|&&name| name.eq_ignore_ascii_case(&r))
+                        .map(|&name| name.to_owned())
+                }
+            })
+            .collect();
+
+        items_with_refs.push((change.name.clone(), resolved_refs));
     }
 
     let sorted_names = topological_sort(&items_with_refs)?;
@@ -1442,14 +1469,118 @@ fn build_resolution_map(
         }
     }
 
-    // Also map logical_id → deployed_id from ALL source items that have a deployed_id
-    // in the changeset (pre-existing items being updated/skipped). This enables
-    // cross-item references to resolve even when the target was deployed in a prior run.
-    // We check created_ids to see if an item already has a deployed ID.
-    // For items not in created_ids but present in source with a logical_id,
-    // we cannot resolve them here — they'll be resolved by the changeset's deployed_id.
+    // Pipeline GUID resolution: scan pipeline definitions for ExecutePipeline
+    // activities whose referenceName is a GUID. Map those GUIDs to the deployed
+    // ID of the pipeline they reference (matched by activity name ≈ pipeline name).
+    for item in &source.items {
+        if !item.metadata.item_type.eq_ignore_ascii_case("DataPipeline") {
+            continue;
+        }
+        let activity_refs = extract_pipeline_activity_guid_map(item);
+        for (guid, activity_name) in &activity_refs {
+            // Try to find the deployed ID for a pipeline matching the activity name
+            if let Some(deployed_id) = find_pipeline_deployed_id(activity_name, created_ids) {
+                map.insert(guid.clone(), deployed_id);
+            }
+        }
+    }
 
     map
+}
+
+/// Extract (`referenceName` GUID, activity name) pairs from `ExecutePipeline` activities.
+///
+/// Used to build a mapping from old pipeline GUIDs to pipeline names so we can
+/// resolve them to newly-deployed IDs.
+fn extract_pipeline_activity_guid_map(
+    source_item: &super::platform::SourceItem,
+) -> Vec<(String, String)> {
+    let mut pairs = Vec::new();
+
+    for part in &source_item.parts {
+        if !part.path.contains("pipeline")
+            && !std::path::Path::new(&part.path)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        {
+            continue;
+        }
+
+        let Ok(decoded) = BASE64.decode(&part.payload) else {
+            continue;
+        };
+        let Ok(content) = String::from_utf8(decoded) else {
+            continue;
+        };
+        let Ok(json) = serde_json::from_str::<Value>(&content) else {
+            continue;
+        };
+
+        if let Some(activities) = json
+            .get("properties")
+            .and_then(|p| p.get("activities"))
+            .and_then(|a| a.as_array())
+        {
+            for activity in activities {
+                let is_execute_pipeline = activity
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .is_some_and(|t| t == "ExecutePipeline");
+
+                if is_execute_pipeline {
+                    let ref_name = activity
+                        .get("typeProperties")
+                        .and_then(|tp| tp.get("pipeline"))
+                        .and_then(|p| p.get("referenceName"))
+                        .and_then(|n| n.as_str())
+                        .unwrap_or_default();
+                    let act_name = activity
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or_default();
+
+                    if is_guid_like(ref_name) && !act_name.is_empty() {
+                        pairs.push((ref_name.to_owned(), act_name.to_owned()));
+                    }
+                }
+            }
+        }
+    }
+
+    pairs
+}
+
+/// Find the deployed ID for a pipeline matching the given activity name.
+///
+/// Tries exact match first, then case-insensitive, then contains (for plural/prefix variants).
+fn find_pipeline_deployed_id(
+    activity_name: &str,
+    created_ids: &HashMap<(String, String), String>,
+) -> Option<String> {
+    // Exact match
+    if let Some(id) = created_ids.get(&("DataPipeline".to_owned(), activity_name.to_owned())) {
+        return Some(id.clone());
+    }
+
+    // Case-insensitive match
+    for ((item_type, name), id) in created_ids {
+        if item_type.eq_ignore_ascii_case("DataPipeline")
+            && name.eq_ignore_ascii_case(activity_name)
+        {
+            return Some(id.clone());
+        }
+    }
+
+    // Fuzzy: activity name contains pipeline name or vice versa
+    for ((item_type, name), id) in created_ids {
+        if item_type.eq_ignore_ascii_case("DataPipeline")
+            && (activity_name.contains(name.as_str()) || name.contains(activity_name))
+        {
+            return Some(id.clone());
+        }
+    }
+
+    None
 }
 
 /// Replace logical IDs found in a base64-encoded definition payload with deployed IDs.
@@ -1610,6 +1741,13 @@ fn resolve_logical_ids_in_json(value: &Value, resolution_map: &HashMap<String, S
     } else {
         value.clone()
     }
+}
+
+/// Check if a string looks like a GUID (36 chars, hex + dashes).
+fn is_guid_like(s: &str) -> bool {
+    s.len() == 36
+        && s.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+        && s.chars().filter(|&c| c == '-').count() == 4
 }
 
 fn extract_error_code(err: &anyhow::Error) -> String {
