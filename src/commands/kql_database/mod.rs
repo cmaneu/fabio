@@ -289,6 +289,10 @@ pub enum KqlDatabaseCommand {
         /// KQL database ID
         #[arg(long)]
         id: String,
+
+        /// Decode base64 payloads inline (adds decodedPayload field)
+        #[arg(long)]
+        decode: bool,
     },
     /// Update the definition of a KQL database
     #[command(name = "update-definition", display_order = 11)]
@@ -568,9 +572,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseComm
             intelligence::deeplink(cli, client, workspace, id, kql, style, query_uri.as_deref())
                 .await
         }
-        KqlDatabaseCommand::GetDefinition { workspace, id } => {
-            get_definition(cli, client, workspace, id).await
-        }
+        KqlDatabaseCommand::GetDefinition {
+            workspace,
+            id,
+            decode,
+        } => get_definition(cli, client, workspace, id, *decode).await,
         KqlDatabaseCommand::UpdateDefinition {
             workspace,
             id,
@@ -779,7 +785,13 @@ mod intelligence;
 
 // ─── Definitions ─────────────────────────────────────────────────────────────
 
-async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn get_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    decode: bool,
+) -> Result<()> {
     let data = client
         .post(
             &format!("/workspaces/{workspace}/kqlDatabases/{id}/getDefinition"),
@@ -788,7 +800,12 @@ async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &
         )
         .await
         .map_err(|e| enrich_forbidden(e, "kql-database get-definition", "Contributor"))?;
-    output::render_object(cli, &data, "definition");
+    if decode {
+        let decoded = output::decode_definition_parts(data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
+    }
     Ok(())
 }
 

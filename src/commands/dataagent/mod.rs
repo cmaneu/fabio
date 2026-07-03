@@ -503,6 +503,10 @@ pub enum DataAgentCommand {
         /// Data agent ID
         #[arg(long)]
         id: String,
+
+        /// Decode base64 payloads inline (adds decodedPayload field)
+        #[arg(long)]
+        decode: bool,
     },
     /// Update the definition of a data agent (configure data sources, instructions, etc.)
     #[command(display_order = 11)]
@@ -818,11 +822,13 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
         } => elements::delete_element(cli, client, workspace, id, datasource, element_id)
             .await
             .map_err(|e| enrich_forbidden(e, "data-agent delete-element", "Contributor")),
-        DataAgentCommand::GetDefinition { workspace, id } => {
-            definition::get_definition(cli, client, workspace, id)
-                .await
-                .map_err(|e| enrich_forbidden(e, "data-agent get-definition", "Contributor"))
-        }
+        DataAgentCommand::GetDefinition {
+            workspace,
+            id,
+            decode,
+        } => definition::get_definition(cli, client, workspace, id, *decode)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent get-definition", "Contributor")),
         DataAgentCommand::UpdateDefinition {
             workspace,
             id,

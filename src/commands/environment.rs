@@ -140,6 +140,10 @@ pub enum EnvironmentCommand {
         /// Environment ID
         #[arg(long)]
         id: String,
+
+        /// Decode base64 payloads inline (adds decodedPayload field)
+        #[arg(long)]
+        decode: bool,
     },
     /// Update the definition of an environment
     #[command(display_order = 21)]
@@ -340,9 +344,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
         EnvironmentCommand::GetStagingSparkSettings { workspace, id } => {
             get_staging_spark_settings(cli, client, workspace, id).await
         }
-        EnvironmentCommand::GetDefinition { workspace, id } => {
-            get_definition(cli, client, workspace, id).await
-        }
+        EnvironmentCommand::GetDefinition {
+            workspace,
+            id,
+            decode,
+        } => get_definition(cli, client, workspace, id, *decode).await,
         EnvironmentCommand::UpdateDefinition {
             workspace,
             id,
@@ -645,7 +651,13 @@ async fn get_staging_spark_settings(
 
 // ─── Definitions ─────────────────────────────────────────────────────────────
 
-async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn get_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    decode: bool,
+) -> Result<()> {
     let data = client
         .post(
             &format!("/workspaces/{workspace}/environments/{id}/getDefinition"),
@@ -654,7 +666,12 @@ async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &
         )
         .await
         .map_err(|e| enrich_forbidden(e, "environment get-definition", "Contributor"))?;
-    output::render_object(cli, &data, "definition");
+    if decode {
+        let decoded = output::decode_definition_parts(data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
+    }
     Ok(())
 }
 

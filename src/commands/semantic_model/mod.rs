@@ -101,6 +101,10 @@ pub enum SemanticModelCommand {
         /// Semantic model ID
         #[arg(long)]
         id: String,
+
+        /// Decode base64 payloads inline (adds decodedPayload field)
+        #[arg(long)]
+        decode: bool,
     },
     /// Update the definition of a semantic model from a file
     #[command(name = "update-definition", display_order = 7)]
@@ -420,9 +424,11 @@ pub async fn execute(
             id,
             hard_delete,
         } => crud::delete(cli, client, workspace, id, *hard_delete).await,
-        SemanticModelCommand::GetDefinition { workspace, id } => {
-            definitions::get_definition(cli, client, workspace, id).await
-        }
+        SemanticModelCommand::GetDefinition {
+            workspace,
+            id,
+            decode,
+        } => definitions::get_definition(cli, client, workspace, id, *decode).await,
         SemanticModelCommand::UpdateDefinition {
             workspace,
             id,

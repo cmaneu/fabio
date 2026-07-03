@@ -93,6 +93,10 @@ pub enum EventstreamCommand {
         /// Eventstream ID
         #[arg(long)]
         id: String,
+
+        /// Decode base64 payloads inline (adds decodedPayload field)
+        #[arg(long)]
+        decode: bool,
     },
     /// Update the definition of an eventstream
     #[command(display_order = 7)]
@@ -424,9 +428,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventstreamComm
             id,
             hard_delete,
         } => delete(cli, client, workspace, id, *hard_delete).await,
-        EventstreamCommand::GetDefinition { workspace, id } => {
-            get_definition(cli, client, workspace, id).await
-        }
+        EventstreamCommand::GetDefinition {
+            workspace,
+            id,
+            decode,
+        } => get_definition(cli, client, workspace, id, *decode).await,
         EventstreamCommand::UpdateDefinition {
             workspace,
             id,
@@ -717,7 +723,13 @@ async fn delete(
 
 // ─── Definitions ─────────────────────────────────────────────────────────────
 
-async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn get_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    decode: bool,
+) -> Result<()> {
     let data = client
         .post(
             &format!("/workspaces/{workspace}/eventstreams/{id}/getDefinition"),
@@ -726,7 +738,12 @@ async fn get_definition(cli: &Cli, client: &FabricClient, workspace: &str, id: &
         )
         .await
         .map_err(|e| enrich_forbidden(e, "eventstream get-definition", "Contributor"))?;
-    output::render_object(cli, &data, "definition");
+    if decode {
+        let decoded = output::decode_definition_parts(data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
+    }
     Ok(())
 }
 

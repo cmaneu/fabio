@@ -124,6 +124,10 @@ pub enum SqlDatabaseCommand {
         /// Definition format: dacpac or sqlproj (default: dacpac)
         #[arg(long)]
         format: Option<String>,
+
+        /// Decode base64 payloads inline (adds decodedPayload field)
+        #[arg(long)]
+        decode: bool,
     },
     /// Update the definition of a SQL database
     #[command(display_order = 11)]
@@ -350,7 +354,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlDatabaseComm
             workspace,
             id,
             format,
-        } => definitions::get_definition(cli, client, workspace, id, format.as_deref()).await,
+            decode,
+        } => {
+            definitions::get_definition(cli, client, workspace, id, format.as_deref(), *decode)
+                .await
+        }
         SqlDatabaseCommand::UpdateDefinition {
             workspace,
             id,

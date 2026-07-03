@@ -13,6 +13,7 @@ pub(super) async fn get_definition(
     workspace: &str,
     id: &str,
     format: Option<&str>,
+    decode: bool,
 ) -> Result<()> {
     let url = format.map_or_else(
         || format!("/workspaces/{workspace}/sqlDatabases/{id}/getDefinition"),
@@ -23,7 +24,12 @@ pub(super) async fn get_definition(
         .post(&url, &serde_json::json!({}), true)
         .await
         .map_err(|e| enrich_forbidden(e, "sql-database get-definition", "Contributor"))?;
-    output::render_object(cli, &data, "definition");
+    if decode {
+        let decoded = output::decode_definition_parts(data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
+    }
     Ok(())
 }
 

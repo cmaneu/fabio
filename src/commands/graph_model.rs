@@ -133,7 +133,7 @@ pub enum GraphModelCommand {
         id: String,
 
         /// Wait for the refresh to complete
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         wait: bool,
 
         /// Timeout in seconds when using --wait (default: 600)

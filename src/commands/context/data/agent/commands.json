@@ -4254,6 +4254,10 @@
           "--strip-output": {
             "type": "bool",
             "description": "Strip cell outputs and execution counts (useful for version control)"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline (adds decodedPayload field)"
           }
         },
         "mutates": false,
@@ -4346,6 +4350,10 @@
             "type": "integer",
             "description": "Maximum time to wait in seconds (default: 600)",
             "default": "600"
+          },
+          "--cancel-on-timeout": {
+            "type": "bool",
+            "description": "Cancel the notebook run if timeout is reached"
           }
         },
         "mutates": true,
@@ -5030,6 +5038,10 @@
           "--format": {
             "type": "string",
             "description": "Definition format: dacpac or sqlproj (default: dacpac)"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline (adds decodedPayload field)"
           }
         },
         "mutates": false,
@@ -6189,6 +6201,10 @@
             "type": "string",
             "required": true,
             "description": "Data agent ID"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline (adds decodedPayload field)"
           }
         },
         "mutates": false,
@@ -6717,6 +6733,10 @@
             "type": "string",
             "required": true,
             "description": "Environment ID"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline (adds decodedPayload field)"
           }
         },
         "mutates": false,
@@ -8064,6 +8084,10 @@
             "type": "string",
             "required": true,
             "description": "Semantic model ID"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline (adds decodedPayload field)"
           }
         },
         "mutates": false,
@@ -8764,6 +8788,10 @@
             "type": "string",
             "required": true,
             "description": "Eventstream ID"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline (adds decodedPayload field)"
           }
         },
         "mutates": false,
@@ -9597,6 +9625,10 @@
             "type": "string",
             "required": true,
             "description": "KQL database ID"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline (adds decodedPayload field)"
           }
         },
         "mutates": false,
@@ -9866,6 +9898,10 @@
             "type": "string",
             "required": true,
             "description": "KQL queryset ID"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline (adds decodedPayload field)"
           }
         },
         "mutates": false,
@@ -13204,6 +13240,10 @@
             "type": "string",
             "required": true,
             "description": "Map ID"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline (adds decodedPayload field)"
           }
         },
         "mutates": false,

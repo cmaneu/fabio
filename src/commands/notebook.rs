@@ -88,6 +88,10 @@ pub enum NotebookCommand {
         /// Strip cell outputs and execution counts (useful for version control)
         #[arg(long)]
         strip_output: bool,
+
+        /// Decode base64 payloads inline (adds decodedPayload field)
+        #[arg(long)]
+        decode: bool,
     },
     /// Update the definition (source code) of a notebook
     #[command(display_order = 4)]
@@ -155,6 +159,10 @@ pub enum NotebookCommand {
         /// Maximum time to wait in seconds (default: 600)
         #[arg(long, default_value = "600")]
         timeout: u64,
+
+        /// Cancel the notebook run if timeout is reached
+        #[arg(long)]
+        cancel_on_timeout: bool,
     },
     /// Check the status of a notebook run
     #[command(display_order = 11)]
@@ -272,7 +280,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
             workspace,
             id,
             strip_output,
-        } => get_definition(cli, client, workspace, id, *strip_output).await,
+            decode,
+        } => get_definition(cli, client, workspace, id, *strip_output, *decode).await,
         NotebookCommand::UpdateDefinition {
             workspace,
             id,
@@ -297,6 +306,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
             execution_data,
             wait,
             timeout,
+            cancel_on_timeout,
         } => {
             run(
                 cli,
@@ -308,6 +318,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
                 execution_data.as_deref(),
                 *wait,
                 *timeout,
+                *cancel_on_timeout,
             )
             .await
         }
@@ -568,6 +579,7 @@ async fn get_definition(
     workspace: &str,
     id: &str,
     strip_output: bool,
+    decode: bool,
 ) -> Result<()> {
     let mut data = client
         .post(
@@ -581,7 +593,12 @@ async fn get_definition(
         strip_notebook_outputs(&mut data);
     }
 
-    output::render_object(cli, &data, "definition");
+    if decode {
+        let decoded = output::decode_definition_parts(data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
+    }
     Ok(())
 }
 
@@ -596,6 +613,7 @@ async fn run(
     execution_data: Option<&str>,
     wait: bool,
     timeout_secs: u64,
+    cancel_on_timeout: bool,
 ) -> Result<()> {
     // Build request body from parameters/compute-type/execution-data
     let body = build_run_body(parameters, compute_type, execution_data)?;
@@ -644,13 +662,20 @@ async fn run(
 
     loop {
         if start.elapsed() > max_wait {
+            if cancel_on_timeout {
+                let cancel_path =
+                    format!("/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}/cancel");
+                let _ = client
+                    .post(&cancel_path, &serde_json::json!({}), false)
+                    .await;
+            }
             let _ = JobLedger::update(&job_id, "timeout", None);
             return Err(FabioError::with_hint(
                 ErrorCode::Timeout,
                 format!(
                     "Notebook run timed out after {timeout_secs}s. Job ID: {job_id}. Use 'notebook status' to check progress."
                 ),
-                format!("Increase --timeout (current: {timeout_secs}s) or check status with: fabio notebook status --workspace <WS> --id {id} --job-id {job_id}"),
+                format!("Increase --timeout (current: {timeout_secs}s) or use --cancel-on-timeout"),
             )
             .into());
         }

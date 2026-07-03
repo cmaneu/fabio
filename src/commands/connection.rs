@@ -54,7 +54,7 @@ pub enum ConnectionCommand {
         privacy_level: String,
 
         /// Skip connection test during creation
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         skip_test_connection: bool,
     },
     /// Update a connection's name, credentials, or privacy level

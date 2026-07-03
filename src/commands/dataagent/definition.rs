@@ -12,6 +12,7 @@ pub(super) async fn get_definition(
     client: &FabricClient,
     workspace: &str,
     id: &str,
+    decode: bool,
 ) -> Result<()> {
     let data = client
         .post(
@@ -20,7 +21,12 @@ pub(super) async fn get_definition(
             true,
         )
         .await?;
-    output::render_object(cli, &data, "definition");
+    if decode {
+        let decoded = output::decode_definition_parts(data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
+    }
     Ok(())
 }
 
