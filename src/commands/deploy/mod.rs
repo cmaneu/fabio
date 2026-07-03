@@ -71,7 +71,7 @@ pub enum DeployCommand {
     /// Preview what would be deployed (create/update/delete/skip)
     #[command(display_order = 1)]
     Plan {
-        /// Source directory containing Fabric item definitions with .platform files
+        /// Source directory with .platform item definitions (local path or cloned git repo)
         #[arg(long)]
         source: Option<PathBuf>,
 
@@ -147,7 +147,7 @@ pub enum DeployCommand {
     /// Execute deployment (create/update/delete items)
     #[command(display_order = 2)]
     Apply {
-        /// Source directory containing Fabric item definitions with .platform files
+        /// Source directory with .platform item definitions (local path or cloned git repo)
         #[arg(long, required_unless_present = "plan")]
         source: Option<PathBuf>,
 
@@ -1005,7 +1005,7 @@ fn execute_validate(
 
     // --- 1. Parse source directory ---
     if !source.exists() {
-        return Err(FabioError::with_hint(ErrorCode::InvalidInput, format!("Source directory does not exist: {}", source.display()), "Check the path. Create a source directory: fabio deploy export --workspace <WS> --dir <DIR>").into());
+        return Err(FabioError::with_hint(ErrorCode::InvalidInput, format!("Source directory does not exist: {}", source.display()), "Check the path. Create one with: fabio deploy export --workspace <WS> --dir <DIR>, or clone a git repo: git clone <URL> && fabio deploy apply --source <cloned-dir>").into());
     }
 
     let source_ws = match parse_source_directory(source) {

@@ -1,9 +1,9 @@
 {
   "name": "CI/CD Deployment Workflow",
-  "description": "Export definitions, parameterize for environments, plan and apply with content-hash convergence.",
-  "prerequisites": ["Authenticated via fabio auth login", "Source workspace with items", "Target workspace with capacity", "parameters.json (optional)"],
+  "description": "Export definitions, parameterize for environments, plan and apply with content-hash convergence. Also supports deploying from a cloned git repository.",
+  "prerequisites": ["Authenticated via fabio auth login", "Source workspace with items OR a git repo with .platform item definitions", "Target workspace with capacity", "parameters.json (optional)"],
   "steps": [
-    {"step_number": 1, "command": "fabio deploy export --workspace \"Development\" --dir ./export --overwrite", "description": "Export item definitions to local directory."},
+    {"step_number": 1, "command": "fabio deploy export --workspace \"Development\" --dir ./export --overwrite", "description": "Export item definitions to local directory.", "notes": "Alternative: clone a git repo containing .platform items (e.g., git clone https://github.com/org/fabric-items)."},
     {"step_number": 2, "command": "fabio deploy init-params --source ./export --out ./parameters.json", "description": "Scan for GUIDs and generate parameter template.", "notes": "Edit to fill environment-specific values. Use $ENV:VAR_NAME for CI/CD secrets."},
     {"step_number": 3, "command": "fabio deploy plan --source ./export --workspace \"Production\" --parameters ./parameters.json --env prod", "description": "Generate changeset (create/update/delete/skip)."},
     {"step_number": 4, "command": "fabio deploy plan ... --query 'data.summary'", "description": "Review summary counts."},
@@ -11,6 +11,8 @@
     {"step_number": 6, "command": "fabio deploy plan ... --query 'data.summary'", "description": "Re-plan to verify convergence (all skip)."}
   ],
   "tips": [
+    "Deploy from a git repo: git clone <URL> && fabio deploy apply --source <cloned-dir>/path/to/items --workspace $WS",
+    "The --source directory must contain subdirectories with .platform files (Fabric Git Integration format).",
     "Use --dry-run on apply to preview without changes.",
     "Use --delete-orphans to remove workspace items not in source (protected types require --allow-delete-types).",
     "Use --query 'data.changes[?action==`Create`].name' to list items being created.",

@@ -341,6 +341,13 @@ fabio deploy apply --source ./items/ --workspace $WS --parameters params.json --
 fabio deploy apply --config deploy.yaml --env staging                       # config file: per-env workspace mapping
 fabio deploy init-params --source ./fabric-items/ --out params.json         # scaffold parameter file
 ```
+**Deploy from a git repo** (any repo with Fabric Git Integration `.platform` format):
+```bash
+git clone https://github.com/org/fabric-items && fabio deploy apply --source ./fabric-items --workspace $WS
+# Or a specific subdirectory:
+git clone https://github.com/microsoft/fabric-toolbox
+fabio deploy apply --source ./fabric-toolbox/accelerators/CICD/Git-based-deployments/workspace --workspace $WS
+```
 `--workspace` accepts a display name OR GUID. Deploy handles LRO polling automatically for all create/update operations. **Rename detection**: deploy plan detects item renames via `logicalId` matching in `.platform` files — a renamed item shows as RENAME (not delete+create), preserving its ID, permissions, and sharing links.
 
 **SAFETY FOR DESTRUCTIVE OPERATIONS:**
