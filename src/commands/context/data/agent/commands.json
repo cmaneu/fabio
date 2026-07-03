@@ -17267,7 +17267,7 @@
         "flags": {
           "--source": {
             "type": "string",
-            "description": "Source directory containing Fabric item definitions with .platform files"
+            "description": "Source directory with .platform item definitions (local path or cloned git repo)"
           },
           "--workspace": {
             "type": "string",
@@ -17357,7 +17357,7 @@
         "flags": {
           "--source": {
             "type": "string",
-            "description": "Source directory containing Fabric item definitions with .platform files"
+            "description": "Source directory with .platform item definitions (local path or cloned git repo)"
           },
           "--workspace": {
             "type": "string",
@@ -17530,6 +17530,10 @@
           "--out": {
             "type": "string",
             "description": "Output file path for generated parameters.json"
+          },
+          "--resolve-connections": {
+            "type": "bool",
+            "description": "Auto-resolve connection GUIDs by looking up connections in the tenant"
           }
         },
         "mutates": false,

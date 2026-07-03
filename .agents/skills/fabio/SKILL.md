@@ -346,7 +346,15 @@ fabio deploy init-params --source ./fabric-items/ --out params.json         # sc
 git clone https://github.com/org/fabric-items && fabio deploy apply --source ./fabric-items --workspace $WS
 # Or a specific subdirectory:
 git clone https://github.com/microsoft/fabric-toolbox
-fabio deploy apply --source ./fabric-toolbox/accelerators/CICD/Git-based-deployments/workspace --workspace $WS
+fabio deploy apply --source ./fabric-toolbox/monitoring/fabric-platform-monitoring/src --workspace $WS
+```
+**Deploy with connection resolution** (for repos with pipeline connection dependencies):
+```bash
+# 1. Scan for connection GUIDs and get available connections
+fabio deploy init-params --source ./src --resolve-connections --out params.json
+# 2. Edit params.json — fill in the correct connection ID from the listed options
+# 3. Deploy with parameters
+fabio deploy apply --source ./src --workspace $WS --parameters params.json
 ```
 `--workspace` accepts a display name OR GUID. Deploy handles LRO polling automatically for all create/update operations. **Rename detection**: deploy plan detects item renames via `logicalId` matching in `.platform` files — a renamed item shows as RENAME (not delete+create), preserving its ID, permissions, and sharing links.
 

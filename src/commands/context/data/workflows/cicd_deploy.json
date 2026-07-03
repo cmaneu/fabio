@@ -13,6 +13,7 @@
   "tips": [
     "Deploy from a git repo: git clone <URL> && fabio deploy apply --source <cloned-dir>/path/to/items --workspace $WS",
     "The --source directory must contain subdirectories with .platform files (Fabric Git Integration format).",
+    "If pipelines fail with 'invalid reference' errors, run: fabio deploy init-params --source <DIR> --resolve-connections --out params.json to auto-map connection GUIDs.",
     "Use --dry-run on apply to preview without changes.",
     "Use --delete-orphans to remove workspace items not in source (protected types require --allow-delete-types).",
     "Use --query 'data.changes[?action==`Create`].name' to list items being created.",
