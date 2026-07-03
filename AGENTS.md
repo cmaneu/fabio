@@ -444,6 +444,7 @@ Automated: `./scripts/release.sh <version>` handles all steps end-to-end.
 - **Recursive delete**: DFS `DELETE /{ws}/{lh}/Tables/{name}?recursive=true` works for directories.
 - All destructive actions use consistent verb `delete` (not `remove`)
 - Cross-workspace ops use `--source-workspace`/`--dest-workspace` with `visible_alias` short forms
+- **CLI flag conventions**: `--workspace` always has `-w` shorthand and `env = "FABIO_WORKSPACE"`; `--capacity-id` always has `env = "FABIO_CAPACITY"`; cross-workspace flags (`--dest-workspace`, `--source-workspace`) are `long`-only (no env, no short). `semantic-model clone` uses `--target-workspace` with `visible_alias = "dest-workspace"` for backward compat. All `run` commands support `--wait`/`--timeout`/`--cancel-on-timeout` for LRO polling.
 - Auth relies on a multi-source credential chain: fabio cache (device code, browser PKCE, or service principal), environment variables, managed identity, Azure CLI, Azure Developer CLI
 - `azure_identity`/`azure_core` with `default-features = false` (no OpenSSL dependency on Linux/macOS; OpenSSL for certificate auth via `client_certificate` feature)
 - **Windows-first compatibility** — Token cache encrypted with DPAPI (`CryptProtectData`, user scope); WAM broker SSO via `--wam` flag
