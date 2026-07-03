@@ -186,6 +186,14 @@ jobs:
           BRANCH="sync/fabric-api-specs-$(date +%Y%m%d)"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Check if an open PR already exists for this sync
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists for branch $BRANCH — skipping"
+            exit 0
+          fi
+
           git checkout -b "$BRANCH"
 
           # Include cursor advance in the PR (not pushed directly to main)
@@ -194,7 +202,7 @@ jobs:
           git add -A
           git reset -- fabric-rest-api-specs
           git commit -m "feat: sync with latest Fabric REST API spec changes"
-          git push origin "$BRANCH"
+          git push --force origin "$BRANCH"
 
           PR_BODY="/tmp/pr-body.md"
           if [ ! -f "$PR_BODY" ]; then
@@ -219,11 +227,19 @@ jobs:
           BRANCH="sync/fabric-api-specs-cursor-$(date +%Y%m%d)"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Check if an open PR already exists
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists — skipping"
+            exit 0
+          fi
+
           git checkout -b "$BRANCH"
           echo "$HEAD_SHA" > .github/fabric-api-specs-cursor
           git add .github/fabric-api-specs-cursor
           git commit -m "chore: advance fabric-api-specs cursor to ${HEAD_SHA:0:8} (no code changes needed)"
-          git push origin "$BRANCH"
+          git push --force origin "$BRANCH"
           gh pr create \
             --title "chore: advance fabric-api-specs cursor $(date +%Y-%m-%d)" \
             --body "No code changes needed for the latest spec updates. Cursor advanced to \`${HEAD_SHA:0:8}\`." \
