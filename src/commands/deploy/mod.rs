@@ -907,6 +907,18 @@ async fn execute_apply(
         "failures": result.failed,
     });
 
+    // Add contextual hints for common failure patterns
+    let has_pipeline_reference_error = result.failed.iter().any(|f| {
+        f.change.item_type.eq_ignore_ascii_case("DataPipeline")
+            && (f.error.contains("invalid reference") || f.error.contains("UnknownError"))
+    });
+    if has_pipeline_reference_error {
+        output_data.as_object_mut().unwrap().insert(
+            "hint".to_owned(),
+            json!("Pipeline failures may be caused by unresolved connection or item GUIDs. Run: fabio deploy init-params --source <DIR> --resolve-connections --out params.json"),
+        );
+    }
+
     if !hook_results.is_empty() {
         output_data
             .as_object_mut()
