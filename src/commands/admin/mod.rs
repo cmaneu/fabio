@@ -45,14 +45,14 @@ pub enum AdminCommand {
     #[command(display_order = 4)]
     ListCapacityTenantOverrides {
         /// Capacity ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_CAPACITY")]
         capacity_id: String,
     },
     /// Delete a capacity delegated tenant setting override
     #[command(display_order = 5)]
     DeleteCapacityTenantOverride {
         /// Capacity ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_CAPACITY")]
         capacity_id: String,
 
         /// Tenant setting name
@@ -63,7 +63,7 @@ pub enum AdminCommand {
     #[command(display_order = 6)]
     UpdateCapacityTenantOverride {
         /// Capacity ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_CAPACITY")]
         capacity_id: String,
 
         /// Tenant setting name
@@ -205,7 +205,7 @@ pub enum AdminCommand {
         name: String,
 
         /// Capacity ID to assign the restored workspace
-        #[arg(long)]
+        #[arg(long, env = "FABIO_CAPACITY")]
         capacity_id: String,
     },
     /// List network communication policies

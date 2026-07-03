@@ -54,7 +54,7 @@ pub enum SemanticModelCommand {
         file: String,
 
         /// SQL endpoint or lakehouse ID for live connection (generates definition.pbism)
-        #[arg(long)]
+        #[arg(long, visible_alias = "connection-id")]
         connection: Option<String>,
     },
     /// Update semantic model properties (name and/or description)
@@ -330,8 +330,8 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         name: String,
 
-        /// Target workspace ID (defaults to same workspace)
-        #[arg(long)]
+        /// Destination workspace ID (defaults to same workspace)
+        #[arg(long, visible_alias = "dest-workspace")]
         target_workspace: Option<String>,
     },
     /// Export a semantic model as a .pbix file

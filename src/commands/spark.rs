@@ -126,14 +126,14 @@ pub enum SparkCommand {
     #[command(display_order = 20)]
     GetCapacitySettings {
         /// Capacity ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_CAPACITY")]
         capacity_id: String,
     },
     /// Update capacity-level Spark settings
     #[command(display_order = 21)]
     UpdateCapacitySettings {
         /// Capacity ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_CAPACITY")]
         capacity_id: String,
 
         /// JSON file path with settings
@@ -150,14 +150,14 @@ pub enum SparkCommand {
     #[command(display_order = 30)]
     ListCapacityPools {
         /// Capacity ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_CAPACITY")]
         capacity_id: String,
     },
     /// Create a custom Spark pool in a capacity
     #[command(display_order = 31)]
     CreateCapacityPool {
         /// Capacity ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_CAPACITY")]
         capacity_id: String,
 
         /// Pool name
@@ -176,7 +176,7 @@ pub enum SparkCommand {
     #[command(display_order = 32)]
     GetCapacityPool {
         /// Capacity ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_CAPACITY")]
         capacity_id: String,
 
         /// Pool ID
@@ -187,7 +187,7 @@ pub enum SparkCommand {
     #[command(display_order = 33)]
     UpdateCapacityPool {
         /// Capacity ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_CAPACITY")]
         capacity_id: String,
 
         /// Pool ID
@@ -206,7 +206,7 @@ pub enum SparkCommand {
     #[command(display_order = 34)]
     DeleteCapacityPool {
         /// Capacity ID
-        #[arg(long)]
+        #[arg(long, env = "FABIO_CAPACITY")]
         capacity_id: String,
 
         /// Pool ID

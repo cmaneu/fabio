@@ -29,7 +29,7 @@ pub enum WarehouseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Warehouse item ID
+        /// Warehouse ID
         #[arg(long)]
         id: String,
     },
@@ -55,7 +55,7 @@ pub enum WarehouseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Warehouse item ID
+        /// Warehouse ID
         #[arg(long)]
         id: String,
 
@@ -74,7 +74,7 @@ pub enum WarehouseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Warehouse item ID
+        /// Warehouse ID
         #[arg(long)]
         id: String,
 
@@ -89,7 +89,7 @@ pub enum WarehouseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Warehouse or Lakehouse item ID
+        /// Warehouse or Lakehouse ID
         #[arg(long)]
         id: String,
 
@@ -104,7 +104,7 @@ pub enum WarehouseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Warehouse item ID
+        /// Warehouse ID
         #[arg(long)]
         id: String,
 
@@ -145,7 +145,7 @@ pub enum WarehouseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Warehouse item ID
+        /// Warehouse ID
         #[arg(long)]
         id: String,
     },
@@ -156,7 +156,7 @@ pub enum WarehouseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Warehouse item ID
+        /// Warehouse ID
         #[arg(long)]
         id: String,
 
@@ -179,7 +179,7 @@ pub enum WarehouseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Warehouse item ID
+        /// Warehouse ID
         #[arg(long)]
         id: String,
 
@@ -194,7 +194,7 @@ pub enum WarehouseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Warehouse item ID
+        /// Warehouse ID
         #[arg(long)]
         id: String,
     },
@@ -205,7 +205,7 @@ pub enum WarehouseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Warehouse item ID
+        /// Warehouse ID
         #[arg(long)]
         id: String,
 
@@ -220,7 +220,7 @@ pub enum WarehouseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Warehouse item ID
+        /// Warehouse ID
         #[arg(long)]
         id: String,
 
@@ -235,7 +235,7 @@ pub enum WarehouseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Warehouse item ID
+        /// Warehouse ID
         #[arg(long)]
         id: String,
 
@@ -254,7 +254,7 @@ pub enum WarehouseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Warehouse item ID
+        /// Warehouse ID
         #[arg(long)]
         id: String,
 
@@ -269,7 +269,7 @@ pub enum WarehouseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Warehouse item ID
+        /// Warehouse ID
         #[arg(long)]
         id: String,
 

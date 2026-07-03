@@ -247,7 +247,7 @@ pub enum SqlDatabaseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// SQL database item ID
+        /// SQL database ID
         #[arg(long)]
         id: String,
 
@@ -262,7 +262,7 @@ pub enum SqlDatabaseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// SQL database item ID
+        /// SQL database ID
         #[arg(long)]
         id: String,
     },
@@ -277,7 +277,7 @@ pub enum SqlDatabaseCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// SQL database item ID
+        /// SQL database ID
         #[arg(long)]
         id: String,
 

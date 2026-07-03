@@ -32,7 +32,7 @@ pub enum NotebookCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Notebook item ID
+        /// Notebook ID
         #[arg(long)]
         id: String,
     },
@@ -62,7 +62,7 @@ pub enum NotebookCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Notebook item ID
+        /// Notebook ID
         #[arg(long)]
         id: String,
 
@@ -81,7 +81,7 @@ pub enum NotebookCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Notebook item ID
+        /// Notebook ID
         #[arg(long)]
         id: String,
 
@@ -96,7 +96,7 @@ pub enum NotebookCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Notebook item ID
+        /// Notebook ID
         #[arg(long)]
         id: String,
 
@@ -115,7 +115,7 @@ pub enum NotebookCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Notebook item ID
+        /// Notebook ID
         #[arg(long)]
         id: String,
 
@@ -132,7 +132,7 @@ pub enum NotebookCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Notebook item ID
+        /// Notebook ID
         #[arg(long)]
         id: String,
 
@@ -163,7 +163,7 @@ pub enum NotebookCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Notebook item ID
+        /// Notebook ID
         #[arg(long)]
         id: String,
 
@@ -178,7 +178,7 @@ pub enum NotebookCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Notebook item ID
+        /// Notebook ID
         #[arg(long)]
         id: String,
 
@@ -193,7 +193,7 @@ pub enum NotebookCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Notebook item ID
+        /// Notebook ID
         #[arg(long)]
         id: String,
 
@@ -210,7 +210,7 @@ pub enum NotebookCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Notebook item ID
+        /// Notebook ID
         #[arg(long)]
         id: String,
     },
@@ -221,7 +221,7 @@ pub enum NotebookCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Notebook item ID
+        /// Notebook ID
         #[arg(long)]
         id: String,
 

@@ -821,7 +821,7 @@ pub enum LakehouseCommand {
         id: String,
 
         /// Table name to optimize
-        #[arg(long)]
+        #[arg(short = 't', long)]
         table: String,
 
         /// Schema name (for multi-schema lakehouses)
@@ -849,7 +849,7 @@ pub enum LakehouseCommand {
         id: String,
 
         /// Table name to vacuum
-        #[arg(long)]
+        #[arg(short = 't', long)]
         table: String,
 
         /// Schema name (for multi-schema lakehouses)
