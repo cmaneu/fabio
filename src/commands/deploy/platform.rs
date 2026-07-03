@@ -297,7 +297,17 @@ fn discover_items_recursive(
 /// Parse a single item directory into a `SourceItem`.
 fn parse_item_directory(root: &Path, path: &Path) -> Result<SourceItem> {
     let platform_path = path.join(".platform");
-    let metadata = parse_platform_file(&platform_path)?;
+    let mut metadata = parse_platform_file(&platform_path)?;
+
+    // Post-process: for Notebooks without explicit definitionFormat,
+    // detect format from the actual content file name
+    if metadata.item_type.eq_ignore_ascii_case("Notebook")
+        && metadata.definition_format.is_none()
+        && path.join("notebook-content.ipynb").exists()
+    {
+        metadata.definition_format = Some("ipynb".to_owned());
+        // .py files don't need a format specifier (server auto-detects)
+    }
 
     // Read all definition parts (includes .platform for the API)
     let parts = read_definition_parts(path)?;
