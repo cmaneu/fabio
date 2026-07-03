@@ -19,19 +19,26 @@ sed -i 's/^version = ".*"/version = "0.25.0"/' Cargo.toml
 
 Run `cargo check` or `cargo build` to regenerate `Cargo.lock`.
 
-## Step 2: Validate Dependency Freshness
+## Step 2: Validate Dependency Freshness and Security
 
 ```bash
+# Check for outdated dependencies
 cargo outdated --root-deps-only
-# or: cargo update --dry-run
+
+# Update to latest compatible versions
+cargo update
+
+# Security audit — MUST pass with zero vulnerabilities
+cargo audit
 ```
 
 **Rules:**
 - Update any dependency with a newer compatible version (within semver range).
+- `cargo audit` MUST report zero vulnerabilities. If a CVE exists, upgrade the affected crate. If no patched version is available, evaluate the risk and add to `audit.toml` ignore list ONLY if the vulnerability is unexploitable in fabio's usage.
 - For major bumps, check changelog for breaking changes.
 - Reject copyleft licenses (GPL, LGPL, AGPL, SSPL). Only permissive (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0).
 - Run full pre-commit validation after updating dependencies.
-- Check GitHub Actions versions in `.github/workflows/*.yml`.
+- Check GitHub Actions versions in `.github/workflows/*.yml` — update to latest SHA-pinned versions.
 
 ## Step 3: Update Version References in Documentation
 
@@ -44,10 +51,11 @@ cargo outdated --root-deps-only
 cargo fmt -- --check
 cargo clippy --tests -- -D warnings
 cargo test
+cargo audit
 ./scripts/cross-check.sh
 ```
 
-ALL must pass with zero errors and zero warnings.
+ALL must pass with zero errors, zero warnings, and zero vulnerabilities.
 
 ## Step 5: Commit Cargo.toml AND Cargo.lock Together
 
