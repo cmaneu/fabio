@@ -59,6 +59,20 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Parallel execution** — bounded-concurrency async deployment (default 8 parallel ops per type)
 - **Profile management** — named profiles store default workspace, capacity, output format, and private link settings; switch contexts with `fabio profile use`
 
+## Design Principles
+
+- **JSON by default** -- All commands output structured JSON for machine consumption
+- **Composable** -- Pipe output between commands via stdout/stdin
+- **Structured errors** -- Machine-readable error codes with hints and valid enum values
+- **Non-interactive** -- No prompts; all parameters via flags/env/files
+- **Safe mutations** -- `--dry-run` for destructive operations; idempotent where possible
+- **Bounded responses** -- `--limit` for list commands; concise default output
+- **Async-aware** -- `--wait` for long-running operations; local job ledger
+- **Discoverable** -- `fabio context agent` provides machine-readable command schema; `fabio context` provides item schemas, workflows, and best practices
+- **Context-aware** -- `fabio context tenant` builds a workspace relationship graph for agent memory; exports as OWL RDF/XML or JSON-LD for Fabric Ontology import
+- **Ontology round-trip** -- `fabio ontology import/export` converts between OWL (RDF/XML, JSON-LD) and Fabric format; compatible with [Ontology Playground](https://github.com/microsoft/Ontology-Playground)
+- **Throttling-aware** -- Bulk/batch APIs preferred; parallel execution with rate-limit retry
+
 ## Installation
 
 **Linux / macOS** (installs to `~/.local/bin`):
@@ -124,20 +138,6 @@ base (~20MB) with no shell or package manager. Authentication options inside the
 
 > **Note:** Azure CLI (`az login`) credentials do not work inside the container because
 > `az` is not installed. Use service principal or managed identity for containerized workloads.
-
-## Design Principles
-
-- **JSON by default** -- All commands output structured JSON for machine consumption
-- **Composable** -- Pipe output between commands via stdout/stdin
-- **Structured errors** -- Machine-readable error codes with hints and valid enum values
-- **Non-interactive** -- No prompts; all parameters via flags/env/files
-- **Safe mutations** -- `--dry-run` for destructive operations; idempotent where possible
-- **Bounded responses** -- `--limit` for list commands; concise default output
-- **Async-aware** -- `--wait` for long-running operations; local job ledger
-- **Discoverable** -- `fabio context agent` provides machine-readable command schema; `fabio context` provides item schemas, workflows, and best practices
-- **Context-aware** -- `fabio context tenant` builds a workspace relationship graph for agent memory; exports as OWL RDF/XML or JSON-LD for Fabric Ontology import
-- **Ontology round-trip** -- `fabio ontology import/export` converts between OWL (RDF/XML, JSON-LD) and Fabric format; compatible with [Ontology Playground](https://github.com/microsoft/Ontology-Playground)
-- **Throttling-aware** -- Bulk/batch APIs preferred; parallel execution with rate-limit retry
 
 ## Quick Start
 
