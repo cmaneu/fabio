@@ -1479,7 +1479,9 @@ fn build_resolution_map(
         let activity_refs = extract_pipeline_activity_guid_map(item);
         for (guid, activity_name) in &activity_refs {
             // Try to find the deployed ID for a pipeline matching the activity name
-            if let Some(deployed_id) = find_pipeline_deployed_id(activity_name, created_ids) {
+            if let Some(deployed_id) =
+                find_item_deployed_id_by_activity_name(activity_name, created_ids)
+            {
                 map.insert(guid.clone(), deployed_id);
             }
         }
@@ -1490,8 +1492,9 @@ fn build_resolution_map(
 
 /// Extract (`referenceName` GUID, activity name) pairs from `ExecutePipeline` activities.
 ///
-/// Used to build a mapping from old pipeline GUIDs to pipeline names so we can
-/// resolve them to newly-deployed IDs.
+/// Also extracts `notebookId` references from `TridentNotebook` activities
+/// and `artifactId` references from other activities — these are used to resolve
+/// cross-item references in a full first-time deployment.
 fn extract_pipeline_activity_guid_map(
     source_item: &super::platform::SourceItem,
 ) -> Vec<(String, String)> {
@@ -1522,26 +1525,38 @@ fn extract_pipeline_activity_guid_map(
             .and_then(|a| a.as_array())
         {
             for activity in activities {
-                let is_execute_pipeline = activity
+                let act_type = activity
                     .get("type")
                     .and_then(|t| t.as_str())
-                    .is_some_and(|t| t == "ExecutePipeline");
+                    .unwrap_or_default();
+                let act_name = activity
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or_default();
+                let type_props = activity.get("typeProperties");
 
-                if is_execute_pipeline {
-                    let ref_name = activity
-                        .get("typeProperties")
-                        .and_then(|tp| tp.get("pipeline"))
-                        .and_then(|p| p.get("referenceName"))
-                        .and_then(|n| n.as_str())
-                        .unwrap_or_default();
-                    let act_name = activity
-                        .get("name")
-                        .and_then(|n| n.as_str())
-                        .unwrap_or_default();
-
-                    if is_guid_like(ref_name) && !act_name.is_empty() {
-                        pairs.push((ref_name.to_owned(), act_name.to_owned()));
+                match act_type {
+                    "ExecutePipeline" => {
+                        let ref_name = type_props
+                            .and_then(|tp| tp.get("pipeline"))
+                            .and_then(|p| p.get("referenceName"))
+                            .and_then(|n| n.as_str())
+                            .unwrap_or_default();
+                        if is_guid_like(ref_name) && !act_name.is_empty() {
+                            pairs.push((ref_name.to_owned(), act_name.to_owned()));
+                        }
                     }
+                    "TridentNotebook" => {
+                        // Notebook activity: notebookId references a notebook
+                        let notebook_id = type_props
+                            .and_then(|tp| tp.get("notebookId"))
+                            .and_then(|n| n.as_str())
+                            .unwrap_or_default();
+                        if is_guid_like(notebook_id) && !act_name.is_empty() {
+                            pairs.push((notebook_id.to_owned(), act_name.to_owned()));
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -1549,31 +1564,40 @@ fn extract_pipeline_activity_guid_map(
 
     pairs
 }
-
-/// Find the deployed ID for a pipeline matching the given activity name.
+/// Find the deployed ID for an item matching the given activity name.
 ///
-/// Tries exact match first, then case-insensitive, then contains (for plural/prefix variants).
-fn find_pipeline_deployed_id(
+/// Searches across `DataPipeline` and `Notebook` types. Tries exact match first,
+/// then case-insensitive, then contains (for plural/prefix variants).
+fn find_item_deployed_id_by_activity_name(
     activity_name: &str,
     created_ids: &HashMap<(String, String), String>,
 ) -> Option<String> {
-    // Exact match
-    if let Some(id) = created_ids.get(&("DataPipeline".to_owned(), activity_name.to_owned())) {
-        return Some(id.clone());
+    // Item types that pipeline activities commonly reference
+    let search_types = ["DataPipeline", "Notebook"];
+
+    for item_type in &search_types {
+        // Exact match
+        if let Some(id) = created_ids.get(&((*item_type).to_owned(), activity_name.to_owned())) {
+            return Some(id.clone());
+        }
     }
 
-    // Case-insensitive match
+    // Case-insensitive match across all relevant types
     for ((item_type, name), id) in created_ids {
-        if item_type.eq_ignore_ascii_case("DataPipeline")
+        if search_types
+            .iter()
+            .any(|t| item_type.eq_ignore_ascii_case(t))
             && name.eq_ignore_ascii_case(activity_name)
         {
             return Some(id.clone());
         }
     }
 
-    // Fuzzy: activity name contains pipeline name or vice versa
+    // Fuzzy: activity name contains item name or vice versa
     for ((item_type, name), id) in created_ids {
-        if item_type.eq_ignore_ascii_case("DataPipeline")
+        if search_types
+            .iter()
+            .any(|t| item_type.eq_ignore_ascii_case(t))
             && (activity_name.contains(name.as_str()) || name.contains(activity_name))
         {
             return Some(id.clone());

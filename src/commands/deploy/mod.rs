@@ -515,9 +515,10 @@ async fn execute_plan(
         return Err(FabioError::with_hint(ErrorCode::InvalidInput, format!("No items found in source directory: {}", source.display()), "Ensure the directory contains item folders with .platform files. Export from a workspace: fabio deploy export --workspace <WS> --dir <DIR>").into());
     }
 
-    // Apply workspace ID auto-replacement (00000000-... → target workspace)
+    // Apply workspace ID auto-replacement (any workspace GUID → target workspace)
     if !no_workspace_id_replace {
         params::replace_default_workspace_id(&mut source_workspace, &workspace_id);
+        params::replace_all_workspace_ids(&mut source_workspace, &workspace_id);
     }
 
     // Apply git diff filter if specified
@@ -734,6 +735,7 @@ async fn execute_apply(
         // Apply workspace ID auto-replacement
         if !no_workspace_id_replace {
             params::replace_default_workspace_id(&mut source_ws, &workspace_id);
+            params::replace_all_workspace_ids(&mut source_ws, &workspace_id);
         }
 
         // Apply git diff filter

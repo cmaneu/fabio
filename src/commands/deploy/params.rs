@@ -500,6 +500,46 @@ pub fn replace_default_workspace_id(source: &mut SourceWorkspace, workspace_id: 
     }
 }
 
+/// Replace ALL non-target workspace IDs found in definition payloads with the target workspace.
+///
+/// This extends `replace_default_workspace_id` to also handle cases where the source
+/// definitions contain the ORIGINAL workspace's real GUID (not just `00000000-...`).
+/// This is common in repos like microsoft/fabric-toolbox that were exported without
+/// Fabric Git Integration's workspace ID normalization.
+///
+/// Only replaces values in known workspace-reference fields (`workspaceId`,
+/// `default_lakehouse_workspace_id`, `workspace`). Safe for first-time deployments.
+pub fn replace_all_workspace_ids(source: &mut SourceWorkspace, target_workspace_id: &str) {
+    // Regex matches: "key": "<any-guid>" where key is a known workspace-reference field
+    let pattern = regex::Regex::new(
+        r#"(?i)"?(default_lakehouse_workspace_id|workspaceId|workspace)"?\s*[:=]\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})""#,
+    )
+    .expect("valid workspace ID regex");
+
+    for item in &mut source.items {
+        for part in &mut item.parts {
+            if let Ok(decoded) = decode_part_payload(&part.payload) {
+                let replaced = pattern.replace_all(&decoded, |caps: &regex::Captures<'_>| {
+                    let existing_guid = &caps[2];
+                    if existing_guid == target_workspace_id {
+                        // Already correct, don't replace
+                        caps[0].to_string()
+                    } else {
+                        // Replace the old workspace GUID with target
+                        caps[0].replace(existing_guid, target_workspace_id)
+                    }
+                });
+                if replaced != decoded {
+                    part.payload = BASE64.encode(replaced.as_bytes());
+                }
+            }
+        }
+
+        // Recompute content hash
+        item.content_hash = recompute_content_hash(&item.parts);
+    }
+}
+
 /// Decode a base64 part payload to a string (best effort).
 fn decode_part_payload(payload: &str) -> Result<String> {
     let bytes = BASE64.decode(payload)?;
