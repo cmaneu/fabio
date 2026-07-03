@@ -392,6 +392,31 @@ pub async fn execute_changeset(
                 }
             }
         }
+
+        // Inter-tier hook: refresh SemanticModels after their tier completes.
+        // Reports in the next tier need the model refreshed to bind successfully.
+        if !cli.dry_run {
+            for change in &succeeded {
+                if change.item_type.eq_ignore_ascii_case("SemanticModel")
+                    && matches!(change.action, ChangeAction::Create | ChangeAction::Update)
+                    && tier_types
+                        .iter()
+                        .any(|&t| t.eq_ignore_ascii_case("SemanticModel"))
+                    && let Some(ref item_id) = change.deployed_id
+                {
+                    emit_progress(
+                        cli.quiet,
+                        &format!(
+                            "  refreshing semantic model \"{}\" (required for Report binding)",
+                            change.name
+                        ),
+                    );
+                    let path =
+                        format!("/workspaces/{workspace_id}/semanticModels/{item_id}/refreshes");
+                    let _ = client.post(&path, &json!({"type": "Full"}), false).await;
+                }
+            }
+        }
     }
 
     // Execute deletes in reverse dependency order (always sequential for safety)

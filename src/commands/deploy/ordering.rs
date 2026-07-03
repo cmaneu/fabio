@@ -104,12 +104,13 @@ pub fn deploy_tier(item_type: &str) -> usize {
         10..=12 => 1, // Compute: Environment, UserDataFunction, Eventhouse
         13 => 2,      // Compute children: KQLDatabase (depends on Eventhouse)
         14..=15 => 3, // Code: SparkJobDefinition, Notebook
-        16..=23 => 4, // Models: SemanticModel..KQLDashboard
-        24..=28 => 5, // Reactive: Reflex..DataPipeline
-        29..=33 => 6, // APIs: GraphQLApi..AnomalyDetector
-        34..=35 => 7, // ML: MLExperiment, MLModel
-        36..=40 => 8, // Graph: Ontology..DigitalTwinBuilderFlow
-        _ => 9,       // Visualization & cross-cutting + unknown
+        16 => 4,      // SemanticModel (needs refresh before Reports can use it)
+        17..=23 => 5, // Visuals: Report..KQLDashboard (depend on refreshed SemanticModel)
+        24..=28 => 6, // Reactive: Reflex..DataPipeline
+        29..=33 => 7, // APIs: GraphQLApi..AnomalyDetector
+        34..=35 => 8, // ML: MLExperiment, MLModel
+        36..=40 => 9, // Graph: Ontology..DigitalTwinBuilderFlow
+        _ => 10,      // Visualization & cross-cutting + unknown
     }
 }
 
@@ -255,7 +256,7 @@ mod tests {
 
     #[test]
     fn test_deploy_tier_unknown_type_in_last_tier() {
-        assert_eq!(deploy_tier("UnknownType"), 9);
+        assert_eq!(deploy_tier("UnknownType"), 10);
     }
 
     #[test]
