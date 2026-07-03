@@ -1223,4 +1223,85 @@ mod tests {
         let body = build_run_body(None, None, Some(r#"{"compute":"Spark"}"#)).unwrap();
         assert_eq!(body["executionData"], json!({"compute":"Spark"}));
     }
+
+    // ─── encode_notebook_code / encode_notebook_file tests ───────────────────
+
+    #[test]
+    fn encode_notebook_code_produces_valid_ipynb() {
+        let encoded = encode_notebook_code("print('hello')\nx = 42", "ws-1", None);
+        let decoded = String::from_utf8(BASE64.decode(&encoded).unwrap()).unwrap();
+        let nb: Value = serde_json::from_str(&decoded).unwrap();
+
+        assert_eq!(nb["nbformat"], 4);
+        assert_eq!(nb["nbformat_minor"], 5);
+        assert_eq!(nb["metadata"]["language_info"]["name"], "python");
+        // Source must be array of strings (Fabric requirement)
+        let source = nb["cells"][0]["source"].as_array().unwrap();
+        assert_eq!(source[0], "print('hello')\n");
+        assert_eq!(source[1], "x = 42\n");
+    }
+
+    #[test]
+    fn encode_notebook_code_with_lakehouse_includes_trident() {
+        let encoded = encode_notebook_code("x = 1", "ws-1", Some("lh-123"));
+        let decoded = String::from_utf8(BASE64.decode(&encoded).unwrap()).unwrap();
+        let nb: Value = serde_json::from_str(&decoded).unwrap();
+
+        let trident = &nb["metadata"]["trident"]["lakehouse"];
+        assert_eq!(trident["default_lakehouse"], "lh-123");
+        assert_eq!(trident["default_lakehouse_workspace_id"], "ws-1");
+    }
+
+    #[test]
+    fn encode_notebook_file_detects_ipynb() {
+        use std::io::Write;
+        let ipynb = json!({
+            "nbformat": 4,
+            "nbformat_minor": 5,
+            "metadata": {"language_info": {"name": "python"}},
+            "cells": [{"cell_type": "code", "source": ["x = 1\n"], "outputs": [], "metadata": {}}]
+        });
+        let tmp = std::env::temp_dir().join("test_notebook.ipynb");
+        let mut f = std::fs::File::create(&tmp).unwrap();
+        f.write_all(serde_json::to_string(&ipynb).unwrap().as_bytes())
+            .unwrap();
+
+        let encoded = encode_notebook_file(tmp.to_str().unwrap(), "ws-1", None).unwrap();
+        let decoded = String::from_utf8(BASE64.decode(&encoded).unwrap()).unwrap();
+        let parsed: Value = serde_json::from_str(&decoded).unwrap();
+
+        // Should be passed through as-is (valid ipynb detected)
+        assert_eq!(parsed["nbformat"], 4);
+        assert_eq!(parsed["cells"][0]["source"][0], "x = 1\n");
+
+        std::fs::remove_file(&tmp).ok();
+    }
+
+    #[test]
+    fn encode_notebook_file_wraps_py_into_ipynb() {
+        use std::io::Write;
+        let py_code = "# ETL script\nprint('hello')\ndf = spark.read.csv('data.csv')";
+        let tmp = std::env::temp_dir().join("test_etl.py");
+        let mut f = std::fs::File::create(&tmp).unwrap();
+        f.write_all(py_code.as_bytes()).unwrap();
+
+        let encoded = encode_notebook_file(tmp.to_str().unwrap(), "ws-1", None).unwrap();
+        let decoded = String::from_utf8(BASE64.decode(&encoded).unwrap()).unwrap();
+        let parsed: Value = serde_json::from_str(&decoded).unwrap();
+
+        // Should be wrapped into ipynb structure
+        assert_eq!(parsed["nbformat"], 4);
+        let source = parsed["cells"][0]["source"].as_array().unwrap();
+        assert_eq!(source[0], "# ETL script\n");
+        assert_eq!(source[1], "print('hello')\n");
+        assert_eq!(source[2], "df = spark.read.csv('data.csv')\n");
+
+        std::fs::remove_file(&tmp).ok();
+    }
+
+    #[test]
+    fn encode_notebook_file_nonexistent_returns_error() {
+        let result = encode_notebook_file("/nonexistent/path.py", "ws-1", None);
+        assert!(result.is_err());
+    }
 }

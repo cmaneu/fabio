@@ -974,3 +974,145 @@ fn notebook_run_execution_data_file_invalid_json() {
     let msg = json["error"]["message"].as_str().unwrap();
     assert!(msg.contains("Invalid --execution-data JSON"));
 }
+
+// ─── notebook create --file tests ────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn notebook_create_from_py_file() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("nb_file_py");
+
+    // Write a .py file
+    let tmp_dir = std::env::temp_dir().join("fabio_e2e_notebook");
+    std::fs::create_dir_all(&tmp_dir).unwrap();
+    let py_path = tmp_dir.join("test_script.py");
+    std::fs::write(&py_path, "# E2E test\nprint('from .py file')\nx = 42").unwrap();
+
+    // Create notebook from .py file
+    let assert = fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            py_path.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let nb_id = data["id"].as_str().unwrap();
+    assert!(!nb_id.is_empty());
+
+    // Get definition and verify it's a valid notebook
+    let assert = fabio()
+        .args([
+            "notebook",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            nb_id,
+            "--decode",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    let def_json = parse_json(&assert);
+    let def_data = extract_data(&def_json);
+    let parts = def_data["definition"]["parts"].as_array().unwrap();
+    assert!(!parts.is_empty());
+    // The decoded payload should contain our code
+    let decoded = parts[0]["decodedPayload"].as_str().unwrap_or("");
+    assert!(decoded.contains("from .py file"));
+
+    // Cleanup
+    fabio()
+        .args([
+            "notebook",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            nb_id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    std::fs::remove_file(&py_path).ok();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn notebook_create_from_ipynb_file() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("nb_file_ipynb");
+
+    // Write a .ipynb file
+    let tmp_dir = std::env::temp_dir().join("fabio_e2e_notebook");
+    std::fs::create_dir_all(&tmp_dir).unwrap();
+    let ipynb_path = tmp_dir.join("test_notebook.ipynb");
+    let ipynb_content = serde_json::json!({
+        "nbformat": 4,
+        "nbformat_minor": 5,
+        "metadata": {"language_info": {"name": "python"}},
+        "cells": [{
+            "cell_type": "code",
+            "metadata": {},
+            "source": ["# ipynb E2E test\n", "result = 'from .ipynb'\n"],
+            "outputs": []
+        }]
+    });
+    std::fs::write(
+        &ipynb_path,
+        serde_json::to_string_pretty(&ipynb_content).unwrap(),
+    )
+    .unwrap();
+
+    // Create notebook from .ipynb file
+    let assert = fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            ipynb_path.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let nb_id = data["id"].as_str().unwrap();
+    assert!(!nb_id.is_empty());
+
+    // Cleanup
+    fabio()
+        .args([
+            "notebook",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            nb_id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    std::fs::remove_file(&ipynb_path).ok();
+}

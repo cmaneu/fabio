@@ -2454,4 +2454,178 @@ mod tests {
         let code = extract_error_code(&err);
         assert_eq!(code, "UNKNOWN");
     }
+
+    // ─── report byConnection semanticmodelid resolution tests ────────────────
+
+    #[test]
+    fn test_build_semantic_model_name_map_extracts_only_semantic_models() {
+        let created_ids = HashMap::from([
+            (
+                ("SemanticModel".to_owned(), "Sales_SM".to_owned()),
+                "deployed-sm-1".to_owned(),
+            ),
+            (
+                ("SemanticModel".to_owned(), "HR_SM".to_owned()),
+                "deployed-sm-2".to_owned(),
+            ),
+            (
+                ("Notebook".to_owned(), "ETL".to_owned()),
+                "deployed-nb-1".to_owned(),
+            ),
+            (
+                ("Report".to_owned(), "Sales_Report".to_owned()),
+                "deployed-rpt-1".to_owned(),
+            ),
+        ]);
+
+        let map = build_semantic_model_name_map(&created_ids);
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get("Sales_SM"), Some(&"deployed-sm-1".to_owned()));
+        assert_eq!(map.get("HR_SM"), Some(&"deployed-sm-2".to_owned()));
+        assert!(!map.contains_key("ETL"));
+        assert!(!map.contains_key("Sales_Report"));
+    }
+
+    #[test]
+    fn test_build_semantic_model_name_map_empty() {
+        let created_ids = HashMap::new();
+        let map = build_semantic_model_name_map(&created_ids);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_report_byconnection_resolves_v2_connection_string() {
+        use base64::Engine as _;
+
+        let pbir = serde_json::json!({
+            "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/2.0.0/schema.json",
+            "version": "4.0",
+            "datasetReference": {
+                "byConnection": {
+                    "connectionString": "Data Source=powerbi://api.powerbi.com/v1.0/myorg/OldWorkspace;initial catalog=FUAM_Core_SM;integrated security=ClaimsToken;semanticmodelid=old-guid-1234"
+                }
+            }
+        });
+        let payload = BASE64.encode(serde_json::to_string(&pbir).unwrap().as_bytes());
+
+        let sm_ids = HashMap::from([(
+            "FUAM_Core_SM".to_owned(),
+            "new-deployed-guid-5678".to_owned(),
+        )]);
+
+        let result = resolve_report_byconnection_model_id(&payload, &sm_ids);
+        let decoded = String::from_utf8(BASE64.decode(&result).unwrap()).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&decoded).unwrap();
+
+        let conn_str = parsed["datasetReference"]["byConnection"]["connectionString"]
+            .as_str()
+            .unwrap();
+        assert!(conn_str.contains("semanticmodelid=new-deployed-guid-5678"));
+        assert!(conn_str.contains("initial catalog=FUAM_Core_SM"));
+        assert!(!conn_str.contains("old-guid-1234"));
+    }
+
+    #[test]
+    fn test_resolve_report_byconnection_no_match_returns_unchanged() {
+        use base64::Engine as _;
+
+        let pbir = serde_json::json!({
+            "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/2.0.0/schema.json",
+            "datasetReference": {
+                "byConnection": {
+                    "connectionString": "Data Source=x;initial catalog=Unknown_SM;semanticmodelid=abc"
+                }
+            }
+        });
+        let payload = BASE64.encode(serde_json::to_string(&pbir).unwrap().as_bytes());
+
+        // Map doesn't contain "Unknown_SM"
+        let sm_ids = HashMap::from([("Other_SM".to_owned(), "other-id".to_owned())]);
+
+        let result = resolve_report_byconnection_model_id(&payload, &sm_ids);
+        // Should return unchanged since model name not found
+        assert_eq!(result, payload);
+    }
+
+    #[test]
+    fn test_resolve_report_byconnection_empty_map_returns_unchanged() {
+        use base64::Engine as _;
+
+        let pbir = serde_json::json!({
+            "datasetReference": {
+                "byConnection": {
+                    "connectionString": "initial catalog=X;semanticmodelid=abc"
+                }
+            }
+        });
+        let payload = BASE64.encode(serde_json::to_string(&pbir).unwrap().as_bytes());
+
+        let result = resolve_report_byconnection_model_id(&payload, &HashMap::new());
+        assert_eq!(result, payload);
+    }
+
+    #[test]
+    fn test_resolve_report_byconnection_no_byconnection_returns_unchanged() {
+        use base64::Engine as _;
+
+        let pbir = serde_json::json!({
+            "datasetReference": {
+                "byPath": { "path": "../Sales.SemanticModel" }
+            }
+        });
+        let payload = BASE64.encode(serde_json::to_string(&pbir).unwrap().as_bytes());
+
+        let sm_ids = HashMap::from([("Sales".to_owned(), "sm-id".to_owned())]);
+        let result = resolve_report_byconnection_model_id(&payload, &sm_ids);
+        assert_eq!(result, payload);
+    }
+
+    // ─── extract_pipeline_activity_guid_map tests ────────────────────────────
+
+    #[test]
+    fn test_extract_pipeline_activity_guid_map_notebook_ref() {
+        use super::super::platform::{DefinitionPart, PlatformMetadata, SourceItem};
+
+        let pipeline_json = serde_json::json!({
+            "properties": {
+                "activities": [
+                    {
+                        "name": "Run_ETL_Notebook",
+                        "type": "TridentNotebook",
+                        "typeProperties": {
+                            "notebookId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                            "workspaceId": "11111111-2222-3333-4444-555555555555"
+                        }
+                    }
+                ]
+            }
+        });
+        let encoded = BASE64.encode(serde_json::to_string(&pipeline_json).unwrap().as_bytes());
+
+        let item = SourceItem {
+            metadata: PlatformMetadata {
+                item_type: "DataPipeline".to_owned(),
+                display_name: "TestPipeline".to_owned(),
+                logical_id: None,
+                description: None,
+                definition_format: None,
+                platform_creation_payload: None,
+            },
+            parts: vec![DefinitionPart {
+                path: "pipeline-content.json".to_owned(),
+                payload: encoded,
+                payload_type: "InlineBase64".to_owned(),
+            }],
+            content_hash: String::new(),
+            folder_path: String::new(),
+            source_path: std::path::PathBuf::new(),
+            creation_payload: None,
+            shortcuts: None,
+        };
+
+        let pairs = extract_pipeline_activity_guid_map(&item);
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(pairs[0].0, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        assert_eq!(pairs[0].1, "Run_ETL_Notebook");
+    }
 }

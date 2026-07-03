@@ -886,4 +886,63 @@ mod tests {
             "Lakehouse"
         );
     }
+
+    // ─── with_typed_hint and set_verify_after tests ──────────────────────────
+
+    #[test]
+    fn with_typed_hint_sets_all_fields() {
+        let err = FabioError::with_typed_hint(
+            ErrorCode::InvalidInput,
+            "bad input",
+            "Use --force to proceed",
+            HintType::SafetyBypass,
+        );
+        assert_eq!(err.code, ErrorCode::InvalidInput);
+        assert_eq!(err.message, "bad input");
+        assert_eq!(err.hint.as_deref(), Some("Use --force to proceed"));
+        assert_eq!(err.hint_type, Some(HintType::SafetyBypass));
+        assert!(err.verify_after.is_none());
+    }
+
+    #[test]
+    fn set_verify_after_chains_correctly() {
+        let err = FabioError::with_typed_hint(
+            ErrorCode::InvalidInput,
+            "stale plan",
+            "Use --force to apply",
+            HintType::SafetyBypass,
+        )
+        .set_verify_after("fabio deploy plan --dry-run");
+
+        assert_eq!(
+            err.verify_after.as_deref(),
+            Some("fabio deploy plan --dry-run")
+        );
+        assert_eq!(err.hint_type, Some(HintType::SafetyBypass));
+    }
+
+    #[test]
+    fn with_hint_leaves_hint_type_none() {
+        let err = FabioError::with_hint(ErrorCode::InvalidInput, "test", "some hint");
+        assert!(err.hint_type.is_none());
+        assert!(err.verify_after.is_none());
+    }
+
+    #[test]
+    fn from_status_401_sets_auth_fix_hint_type() {
+        let err = FabioError::from_status_with_body(401, "unauthorized", "");
+        assert_eq!(err.hint_type, Some(HintType::AuthFix));
+    }
+
+    #[test]
+    fn from_status_429_sets_retry_safe_hint_type() {
+        let err = FabioError::from_status_with_body(429, "too many requests", "");
+        assert_eq!(err.hint_type, Some(HintType::RetrySafe));
+    }
+
+    #[test]
+    fn from_status_403_sets_semantic_correction_hint_type() {
+        let err = FabioError::from_status_with_body(403, "forbidden", "");
+        assert_eq!(err.hint_type, Some(HintType::SemanticCorrection));
+    }
 }
