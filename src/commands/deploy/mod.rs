@@ -18,7 +18,7 @@ use serde_json::json;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{ErrorCode, FabioError};
+use crate::errors::{ErrorCode, FabioError, HintType};
 use crate::output;
 
 use self::changeset::ChangeAction;
@@ -714,12 +714,18 @@ async fn execute_apply(
             let current_fingerprint = plan::compute_workspace_fingerprint(&current_items);
 
             if current_fingerprint != saved_fingerprint && !force {
-                bail!(
-                    "Workspace state has changed since plan was created.\n\
-                     Plan fingerprint: {saved_fingerprint}\n\
-                     Current fingerprint: {current_fingerprint}\n\
-                     Use --force to apply anyway, or re-run `fabio deploy plan` to get a fresh plan."
-                );
+                return Err(FabioError::with_typed_hint(
+                    ErrorCode::InvalidInput,
+                    format!(
+                        "Workspace state has changed since plan was created.\n\
+                         Plan fingerprint: {saved_fingerprint}\n\
+                         Current fingerprint: {current_fingerprint}"
+                    ),
+                    "Use --force to apply anyway, or re-run `fabio deploy plan` to get a fresh plan.",
+                    HintType::SafetyBypass,
+                )
+                .set_verify_after("fabio deploy plan --source <DIR> --workspace <WS> --dry-run")
+                .into());
             }
         }
 

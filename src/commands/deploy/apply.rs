@@ -2305,6 +2305,8 @@ mod tests {
             code: ErrorCode::NotFound,
             message: "Not found".to_owned(),
             hint: None,
+            hint_type: None,
+            verify_after: None,
             retriable: None,
             request_id: None,
             more_details: None,

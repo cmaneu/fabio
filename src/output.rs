@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::agent;
 use crate::cli::{Cli, OutputFormat};
-use crate::errors::{ErrorDetail, FabioError, RelatedResource};
+use crate::errors::{ErrorCode, ErrorDetail, FabioError, HintType, RelatedResource};
 
 /// Fields that contain user-authored content and should be wrapped with untrusted markers.
 const UNTRUSTED_FIELDS: &[&str] = &["displayName", "description", "name", "message"];
@@ -55,6 +55,10 @@ struct ErrorBody {
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     hint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "hintType")]
+    hint_type: Option<HintType>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "verifyAfter")]
+    verify_after: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     retriable: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "requestId")]
@@ -264,20 +268,28 @@ pub fn render_object(cli: &Cli, obj: &Value, plain_key: &str) {
 /// (safety-bypass) flag, an `agentNotice` field is appended to warn the
 /// agent not to retry with that flag without explicit user approval.
 pub fn render_error(err: &FabioError) {
+    // Resolve the effective hint type: use explicit if set, otherwise infer.
+    let effective_hint_type = err.hint.as_ref().map(|hint| {
+        err.hint_type
+            .unwrap_or_else(|| infer_hint_type(err.code, hint))
+    });
+
     // Determine whether to include agent safety notice:
-    // only when (1) a hint exists, (2) the hint suggests a dangerous flag,
-    // and (3) an AI agent is detected as the caller.
-    let agent_notice = err
-        .hint
-        .as_deref()
-        .filter(|h| agent::hint_suggests_dangerous_flag(h))
-        .and_then(|_| agent::agent_notice());
+    // Fires when hint_type is SafetyBypass (either explicit or inferred) AND
+    // an AI agent is detected as the caller.
+    let agent_notice = if effective_hint_type == Some(HintType::SafetyBypass) {
+        agent::agent_notice()
+    } else {
+        None
+    };
 
     let envelope = ErrorEnvelope {
         error: ErrorBody {
             code: err.code.to_string(),
             message: err.message.clone(),
             hint: err.hint.clone(),
+            hint_type: effective_hint_type,
+            verify_after: err.verify_after.clone(),
             retriable: err.retriable,
             request_id: err.request_id.clone(),
             more_details: err.more_details.clone(),
@@ -294,6 +306,51 @@ pub fn render_error(err: &FabioError) {
             )
         })
     );
+}
+
+/// Infer the hint type from the error code and hint text content.
+///
+/// This provides a conservative classification for existing `with_hint()` call sites
+/// that don't specify an explicit `HintType`. The logic uses a priority chain:
+///
+/// 1. Contains a dangerous flag → `SafetyBypass`
+/// 2. Error code is `AuthRequired` → `AuthFix`
+/// 3. Error code is `RateLimited` / `NetworkError` → `RetrySafe`
+/// 4. Hint contains "must be one of" / "Valid " / "(got: " → `SyntaxFix`
+///    (enum/casing corrections that preserve intent)
+/// 5. Everything else → `SemanticCorrection` (conservative default — the hint
+///    may change the operation's meaning; agent should verify)
+fn infer_hint_type(code: ErrorCode, hint: &str) -> HintType {
+    // 1. Dangerous flag suggestion always takes priority
+    if agent::hint_suggests_dangerous_flag(hint) {
+        return HintType::SafetyBypass;
+    }
+
+    // 2. Auth/login fixes are always safe to auto-apply
+    if code == ErrorCode::AuthRequired {
+        return HintType::AuthFix;
+    }
+
+    // 3. Transient failures — retry is safe
+    if code == ErrorCode::RateLimited || code == ErrorCode::NetworkError {
+        return HintType::RetrySafe;
+    }
+
+    // 4. Enum/casing corrections that preserve the user's original intent.
+    // These patterns indicate the hint is fixing syntax (wrong case, invalid enum value)
+    // not changing what the operation does.
+    if hint.contains("must be one of")
+        || hint.contains("Valid values:")
+        || hint.contains("Valid roles:")
+        || hint.contains("Valid SKUs:")
+        || hint.contains("(got: ")
+    {
+        return HintType::SyntaxFix;
+    }
+
+    // 5. Conservative default: if we can't classify, assume the hint may change
+    // the operation's semantics. Agents should verify or ask the user.
+    HintType::SemanticCorrection
 }
 
 /// Check if dry-run is active and render a preview response.
@@ -729,6 +786,8 @@ mod tests {
             code: "API_ERROR".to_string(),
             message: "server error".to_string(),
             hint: None,
+            hint_type: None,
+            verify_after: None,
             retriable: Some(true),
             request_id: None,
             more_details: None,
@@ -745,6 +804,8 @@ mod tests {
             code: "NOT_FOUND".to_string(),
             message: "item not found".to_string(),
             hint: None,
+            hint_type: None,
+            verify_after: None,
             retriable: None,
             request_id: None,
             more_details: None,
@@ -761,6 +822,8 @@ mod tests {
             code: "API_ERROR".to_string(),
             message: "server error".to_string(),
             hint: None,
+            hint_type: None,
+            verify_after: None,
             retriable: None,
             request_id: Some("cfafbeb1-8037-4d0c-896e-a46fb27ff227".to_string()),
             more_details: None,
@@ -777,6 +840,8 @@ mod tests {
             code: "NOT_FOUND".to_string(),
             message: "not found".to_string(),
             hint: None,
+            hint_type: None,
+            verify_after: None,
             retriable: None,
             request_id: None,
             more_details: None,
@@ -793,6 +858,8 @@ mod tests {
             code: "API_ERROR".to_string(),
             message: "validation failed".to_string(),
             hint: None,
+            hint_type: None,
+            verify_after: None,
             retriable: None,
             request_id: None,
             more_details: Some(vec![
@@ -820,6 +887,8 @@ mod tests {
             code: "NOT_FOUND".to_string(),
             message: "item not found".to_string(),
             hint: None,
+            hint_type: None,
+            verify_after: None,
             retriable: None,
             request_id: None,
             more_details: None,
@@ -841,6 +910,8 @@ mod tests {
             code: "UNKNOWN".to_string(),
             message: "something".to_string(),
             hint: None,
+            hint_type: None,
+            verify_after: None,
             retriable: None,
             request_id: None,
             more_details: None,
@@ -850,6 +921,8 @@ mod tests {
         let json = serde_json::to_string(&body).unwrap();
         // Should only have code and message
         assert!(!json.contains("hint"));
+        assert!(!json.contains("hintType"));
+        assert!(!json.contains("verifyAfter"));
         assert!(!json.contains("retriable"));
         assert!(!json.contains("requestId"));
         assert!(!json.contains("moreDetails"));
@@ -863,6 +936,8 @@ mod tests {
             code: "INVALID_INPUT".to_string(),
             message: "plan is stale".to_string(),
             hint: Some("Use --force to apply anyway.".to_string()),
+            hint_type: Some(HintType::SafetyBypass),
+            verify_after: None,
             retriable: None,
             request_id: None,
             more_details: None,
@@ -875,6 +950,7 @@ mod tests {
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""agentNotice""#));
         assert!(json.contains("do not retry"));
+        assert!(json.contains(r#""hintType":"safety_bypass""#));
     }
 
     #[test]
@@ -883,6 +959,8 @@ mod tests {
             code: "NOT_FOUND".to_string(),
             message: "not found".to_string(),
             hint: Some("Check with fabio list.".to_string()),
+            hint_type: Some(HintType::SemanticCorrection),
+            verify_after: None,
             retriable: None,
             request_id: None,
             more_details: None,
@@ -891,6 +969,131 @@ mod tests {
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(!json.contains("agentNotice"));
+        assert!(json.contains(r#""hintType":"semantic_correction""#));
+    }
+
+    #[test]
+    fn error_body_serializes_hint_type_and_verify_after() {
+        let body = ErrorBody {
+            code: "INVALID_INPUT".to_string(),
+            message: "Invalid load mode".to_string(),
+            hint: Some("--mode must be one of: Overwrite, Append".to_string()),
+            hint_type: Some(HintType::SyntaxFix),
+            verify_after: Some(
+                "fabio lakehouse show-table --workspace $WS --id $LH --name $TABLE".to_string(),
+            ),
+            retriable: None,
+            request_id: None,
+            more_details: None,
+            related_resource: None,
+            agent_notice: None,
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert!(json.contains(r#""hintType":"syntax_fix""#));
+        assert!(json.contains(r#""verifyAfter""#));
+        assert!(json.contains("show-table"));
+    }
+
+    // ─── infer_hint_type tests ───────────────────────────────────────────────
+
+    #[test]
+    fn infer_hint_type_dangerous_flag_is_safety_bypass() {
+        assert_eq!(
+            infer_hint_type(ErrorCode::InvalidInput, "Use --force to apply anyway."),
+            HintType::SafetyBypass
+        );
+        assert_eq!(
+            infer_hint_type(
+                ErrorCode::InvalidInput,
+                "Use --overwrite to replace existing content."
+            ),
+            HintType::SafetyBypass
+        );
+        assert_eq!(
+            infer_hint_type(
+                ErrorCode::InvalidInput,
+                "Use --hard-delete to permanently remove."
+            ),
+            HintType::SafetyBypass
+        );
+    }
+
+    #[test]
+    fn infer_hint_type_auth_required_is_auth_fix() {
+        assert_eq!(
+            infer_hint_type(
+                ErrorCode::AuthRequired,
+                "Run 'fabio auth login' to authenticate."
+            ),
+            HintType::AuthFix
+        );
+    }
+
+    #[test]
+    fn infer_hint_type_rate_limited_is_retry_safe() {
+        assert_eq!(
+            infer_hint_type(
+                ErrorCode::RateLimited,
+                "Too many requests. Retry after a short backoff."
+            ),
+            HintType::RetrySafe
+        );
+    }
+
+    #[test]
+    fn infer_hint_type_network_error_is_retry_safe() {
+        assert_eq!(
+            infer_hint_type(
+                ErrorCode::NetworkError,
+                "Connection timed out. Retry in a few seconds."
+            ),
+            HintType::RetrySafe
+        );
+    }
+
+    #[test]
+    fn infer_hint_type_enum_correction_is_syntax_fix() {
+        assert_eq!(
+            infer_hint_type(
+                ErrorCode::InvalidInput,
+                "--mode must be one of: Overwrite, Append (got: 'overwrite')"
+            ),
+            HintType::SyntaxFix
+        );
+        assert_eq!(
+            infer_hint_type(
+                ErrorCode::InvalidInput,
+                "Valid roles: Admin, Member, Contributor, Viewer."
+            ),
+            HintType::SyntaxFix
+        );
+    }
+
+    #[test]
+    fn infer_hint_type_default_is_semantic_correction() {
+        assert_eq!(
+            infer_hint_type(
+                ErrorCode::InvalidInput,
+                "Remove --readonly flag or set FABIO_READONLY=0 to allow mutations."
+            ),
+            HintType::SemanticCorrection
+        );
+        assert_eq!(
+            infer_hint_type(
+                ErrorCode::NotFound,
+                "Run 'fabio lakehouse list' to see available items."
+            ),
+            HintType::SemanticCorrection
+        );
+    }
+
+    #[test]
+    fn infer_hint_type_dangerous_flag_overrides_auth_code() {
+        // If hint contains a dangerous flag, it's SafetyBypass even if error code is AuthRequired
+        assert_eq!(
+            infer_hint_type(ErrorCode::AuthRequired, "Use --force to bypass."),
+            HintType::SafetyBypass
+        );
     }
 
     // ─── resolve_nested tests ────────────────────────────────────────────────

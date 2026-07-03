@@ -53,18 +53,25 @@ pub(super) async fn load_table(
         .into());
     }
     if !VALID_FORMATS.contains(&format) {
-        let hint = if format.eq_ignore_ascii_case("json") {
-            "JSON format is not supported by the Fabric load-table API. Convert to CSV or Parquet first.".to_string()
+        let (hint, hint_type) = if format.eq_ignore_ascii_case("json") {
+            (
+                "JSON format is not supported by the Fabric load-table API. Convert to CSV or Parquet first.".to_string(),
+                crate::errors::HintType::SemanticCorrection,
+            )
         } else {
-            format!(
-                "--format must be one of: {} (got: '{format}')",
-                VALID_FORMATS.join(", ")
+            (
+                format!(
+                    "--format must be one of: {} (got: '{format}')",
+                    VALID_FORMATS.join(", ")
+                ),
+                crate::errors::HintType::SyntaxFix,
             )
         };
-        return Err(crate::errors::FabioError::with_hint(
+        return Err(crate::errors::FabioError::with_typed_hint(
             crate::errors::ErrorCode::InvalidInput,
             format!("Invalid format: '{format}'"),
             hint,
+            hint_type,
         )
         .into());
     }

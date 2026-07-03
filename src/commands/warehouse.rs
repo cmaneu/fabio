@@ -626,6 +626,8 @@ async fn get_connection_string(
              List items: fabio item list --workspace <WS> --type Warehouse"
                 .into(),
         ),
+        hint_type: None,
+        verify_after: None,
         retriable: None,
         request_id: None,
         more_details: None,

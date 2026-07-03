@@ -94,6 +94,32 @@ pub struct RelatedResource {
     pub resource_type: String,
 }
 
+/// Classification of a hint's semantic impact on the operation.
+///
+/// AI agents use this to decide whether a hint-driven retry is safe to execute
+/// automatically or requires user confirmation/post-action verification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HintType {
+    /// Auth/connectivity/infra fix — no semantic change to the operation.
+    /// Safe to auto-retry after applying the fix.
+    AuthFix,
+    /// The hint suggests retrying the same command as-is (transient failure).
+    /// Idempotent and safe.
+    RetrySafe,
+    /// The hint corrects syntax or casing but preserves the user's original intent.
+    /// E.g., `"Overwrite"` instead of `"overwrite"` — same meaning, just `PascalCase`.
+    SyntaxFix,
+    /// The hint corrects the command in a way that CHANGES the operation's meaning.
+    /// E.g., different mode, different scope, different target. Agent should verify
+    /// with the user that the semantic change is intentional, or run the `verify_after`
+    /// command to confirm the result matches expectations.
+    SemanticCorrection,
+    /// The hint suggests a safety-bypass flag (e.g., `--force`, `--hard-delete`).
+    /// Already triggers `agentNotice`. Agent must NOT retry without explicit user approval.
+    SafetyBypass,
+}
+
 /// Structured error type for the fabio CLI.
 #[derive(Debug, Error)]
 #[error("{code}: {message}")]
@@ -102,6 +128,14 @@ pub struct FabioError {
     pub message: String,
     /// Optional hint with valid values or corrected command for agent self-correction.
     pub hint: Option<String>,
+    /// Classification of the hint's semantic impact. When `None`, the output layer
+    /// infers the type from error code and hint content (conservative default:
+    /// `SemanticCorrection`). Explicit classification is preferred for new code.
+    pub hint_type: Option<HintType>,
+    /// Optional verification command the agent should run after a successful retry
+    /// to confirm the result matches the user's intent. Most valuable when
+    /// `hint_type == SemanticCorrection`.
+    pub verify_after: Option<String>,
     /// Whether the API indicated this error is retriable (from `error.isRetriable` in response).
     pub retriable: Option<bool>,
     /// Server-assigned request ID for support correlation (from `error.requestId`).
@@ -118,6 +152,8 @@ impl FabioError {
             code,
             message: message.into(),
             hint: None,
+            hint_type: None,
+            verify_after: None,
             retriable: None,
             request_id: None,
             more_details: None,
@@ -126,16 +162,54 @@ impl FabioError {
     }
 
     /// Create an error with a hint for agent self-correction.
+    ///
+    /// The `hint_type` is left as `None` and will be inferred at render time
+    /// from the error code and hint content. Prefer `with_typed_hint()` for
+    /// new code where the classification is known.
     pub fn with_hint(code: ErrorCode, message: impl Into<String>, hint: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
             hint: Some(hint.into()),
+            hint_type: None,
+            verify_after: None,
             retriable: None,
             request_id: None,
             more_details: None,
             related_resource: None,
         }
+    }
+
+    /// Create an error with an explicitly classified hint.
+    ///
+    /// Use this for new code where the hint's semantic impact is known at the call site.
+    pub fn with_typed_hint(
+        code: ErrorCode,
+        message: impl Into<String>,
+        hint: impl Into<String>,
+        hint_type: HintType,
+    ) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            hint: Some(hint.into()),
+            hint_type: Some(hint_type),
+            verify_after: None,
+            retriable: None,
+            request_id: None,
+            more_details: None,
+            related_resource: None,
+        }
+    }
+
+    /// Set a verification command the agent should run after a successful retry (builder).
+    ///
+    /// Most valuable when `hint_type == SemanticCorrection`. The command should
+    /// be a read-only fabio invocation that confirms the result matches intent.
+    #[must_use]
+    pub fn set_verify_after(mut self, cmd: impl Into<String>) -> Self {
+        self.verify_after = Some(cmd.into());
+        self
     }
 
     #[inline]
@@ -214,10 +288,20 @@ impl FabioError {
             }
             _ => None,
         };
+        // Infer hint_type for HTTP-status-derived hints (known at construction time).
+        let hint_type = hint.as_ref().map(|_| match code {
+            ErrorCode::AuthRequired => HintType::AuthFix,
+            ErrorCode::RateLimited => HintType::RetrySafe,
+            // Forbidden and Conflict hints suggest investigating/fixing permissions
+            // or resolving naming conflicts — semantic corrections by nature.
+            _ => HintType::SemanticCorrection,
+        });
         Self {
             code,
             message: msg,
             hint,
+            hint_type,
+            verify_after: None,
             retriable: None,
             request_id: None,
             more_details: None,

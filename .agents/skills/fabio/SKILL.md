@@ -105,6 +105,38 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 - `RATE_LIMITED` (exit 7): Retry automatically handled; reduce concurrency if persistent
 - `TIMEOUT` (exit 8): Increase with `--timeout <seconds>` (e.g., `--timeout 1800` for 30min)
 
+**Post-correction verification (preventing semantic drift):**
+
+When you follow an error `hint` to correct a failed command, check the `hintType` field in the error JSON to determine whether to auto-retry or verify:
+
+| `hintType` | Action after retry |
+|---|---|
+| `auth_fix` | Proceed normally — no semantic change to the operation |
+| `retry_safe` | Proceed normally — transient failure, same command is safe |
+| `syntax_fix` | Proceed normally — same intent, only fixed casing/syntax |
+| `semantic_correction` | **VERIFY**: the correction changed the operation's meaning. Run the `verifyAfter` command if present, or use `show`/`list`/`--dry-run` to confirm the result matches the user's original intent. If uncertain, ask the user before retrying. |
+| `safety_bypass` | **STOP**: do NOT retry without explicit user approval (the `agentNotice` field reinforces this) |
+
+If `hintType` is absent (older fabio version), use these heuristics:
+- Hint only fixes auth/login/token, or error is `RATE_LIMITED`/`NETWORK_ERROR` -> safe to retry
+- Hint corrects casing (e.g., "must be one of: Overwrite, Append") -> safe (syntax)
+- Hint suggests a different flag value, mode, scope, or adds a new flag -> **verify with user**
+- Hint suggests `--force`/`--overwrite`/`--delete-*`/`--hard-delete` -> **ask user first**
+
+Verification commands after semantic corrections:
+```bash
+# After deploy with --force or --force-all:
+fabio deploy plan --source ./items --workspace $WS --dry-run  # should show 0 changes if converged
+
+# After load-table with corrected mode/format:
+fabio lakehouse show-table --workspace $WS --id $LH --name $TABLE  # verify row count/schema
+
+# After item create/update with changed parameters:
+fabio item show --workspace $WS --id $ID  # verify state matches intent
+```
+
+Key principle: if a hint changed WHAT the command does (not just HOW it authenticates or retries), treat the correction as a new decision that requires user awareness.
+
 ## Global Flags
 
 | Flag | Purpose |

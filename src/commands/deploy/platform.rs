@@ -8,7 +8,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::errors::{ErrorCode, FabioError};
+use crate::errors::{ErrorCode, FabioError, HintType};
 
 /// Metadata from a `.platform` file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -477,10 +477,11 @@ pub fn write_source_directory(
         // Check if it's non-empty
         let has_entries = std::fs::read_dir(output_dir).is_ok_and(|mut rd| rd.next().is_some());
         if has_entries {
-            return Err(FabioError::with_hint(
+            return Err(FabioError::with_typed_hint(
                 ErrorCode::InvalidInput,
                 format!("Output directory is not empty: {}", output_dir.display()),
                 "Use --overwrite to replace existing content.",
+                HintType::SafetyBypass,
             )
             .into());
         }
