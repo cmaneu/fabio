@@ -286,6 +286,10 @@ pub enum DeployCommand {
         /// Output file path for generated parameters.json
         #[arg(long, value_name = "FILE")]
         out: Option<PathBuf>,
+
+        /// Auto-resolve connection GUIDs by looking up connections in the tenant
+        #[arg(long)]
+        resolve_connections: bool,
     },
 
     /// Validate source directory locally (no API calls). Checks .platform files,
@@ -458,14 +462,21 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
             source_env,
             compare_env,
             out,
-        } => execute_init_params(
-            cli,
-            source,
-            compare.as_deref(),
-            source_env,
-            compare_env,
-            out.as_deref(),
-        ),
+            resolve_connections,
+        } => {
+            if *resolve_connections {
+                execute_init_params_with_connections(cli, client, source, out.as_deref()).await
+            } else {
+                execute_init_params(
+                    cli,
+                    source,
+                    compare.as_deref(),
+                    source_env,
+                    compare_env,
+                    out.as_deref(),
+                )
+            }
+        }
         DeployCommand::Validate {
             source,
             parameters,
@@ -977,6 +988,126 @@ fn execute_init_params(
         "rules_generated": result.summary.rules_generated,
         "guids_found": result.summary.guids_found,
         "parameters": result.parameters_json,
+        "output_file": out.map(|p| p.display().to_string()),
+    });
+
+    output::render_object(cli, &output_data, "status");
+
+    Ok(())
+}
+
+/// Execute `deploy init-params --resolve-connections`.
+///
+/// Scans pipeline definitions for connection GUIDs, looks up connections in the
+/// tenant by name/ID, and generates a `parameters.json` with pre-resolved mappings.
+async fn execute_init_params_with_connections(
+    cli: &Cli,
+    client: &FabricClient,
+    source: &Path,
+    out: Option<&Path>,
+) -> Result<()> {
+    let workspace = platform::parse_source_directory(source)?;
+
+    // Step 1: Extract all connection GUIDs from pipeline definitions
+    let mut connection_guids: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    let guid_re = regex::Regex::new(
+        r#""connection"\s*:\s*"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})""#,
+    ).expect("valid regex");
+
+    for item in &workspace.items {
+        if !item.metadata.item_type.eq_ignore_ascii_case("DataPipeline") {
+            continue;
+        }
+        for part in &item.parts {
+            let Ok(decoded) =
+                base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &part.payload)
+            else {
+                continue;
+            };
+            let Ok(content) = String::from_utf8(decoded) else {
+                continue;
+            };
+            for cap in guid_re.captures_iter(&content) {
+                connection_guids.insert(cap[1].to_lowercase());
+            }
+        }
+    }
+
+    if connection_guids.is_empty() {
+        let output_data = json!({
+            "status": "no_connections",
+            "message": "No connection GUIDs found in pipeline definitions"
+        });
+        output::render_object(cli, &output_data, "status");
+        return Ok(());
+    }
+
+    // Step 2: Fetch available connections from the tenant
+    let connections_resp = client.get_list("/connections", "value", true, None).await?;
+
+    let available_connections: Vec<(String, String)> = connections_resp
+        .items
+        .iter()
+        .filter_map(|c| {
+            let id = c.get("id")?.as_str()?.to_owned();
+            let name = c
+                .get("displayName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("(unnamed)")
+                .to_owned();
+            Some((id, name))
+        })
+        .collect();
+
+    // Step 3: Build find_replace rules
+    let mut rules: Vec<serde_json::Value> = Vec::new();
+    let mut resolved = 0_usize;
+    let mut unresolved = Vec::new();
+
+    for guid in &connection_guids {
+        // Check if this GUID matches an existing connection directly
+        let matched = available_connections
+            .iter()
+            .find(|(id, _)| id.eq_ignore_ascii_case(guid));
+
+        if let Some((id, name)) = matched {
+            // Already matches a connection in the tenant — no replacement needed
+            rules.push(json!({
+                "find_value": guid,
+                "replace_value": { "_ALL_": id },
+                "item_type": "DataPipeline",
+                "_comment": format!("Connection already exists: \"{name}\"")
+            }));
+            resolved += 1;
+        } else {
+            // GUID doesn't match any existing connection — ask user to fill in
+            rules.push(json!({
+                "find_value": guid,
+                "replace_value": { "_ALL_": format!("TODO: replace with connection ID (original not found in tenant)") },
+                "item_type": "DataPipeline",
+                "_available_connections": available_connections.iter().map(|(id, name)| format!("{name}: {id}")).collect::<Vec<_>>()
+            }));
+            unresolved.push(guid.clone());
+        }
+    }
+
+    let parameters_json = json!({ "find_replace": rules });
+
+    // Write to file if --out specified
+    if let Some(out_path) = out {
+        let content = serde_json::to_string_pretty(&parameters_json)?;
+        std::fs::write(out_path, &content)?;
+    }
+
+    let output_data = json!({
+        "status": if unresolved.is_empty() { "fully_resolved" } else { "partially_resolved" },
+        "connection_guids_found": connection_guids.len(),
+        "resolved": resolved,
+        "unresolved": unresolved.len(),
+        "unresolved_guids": unresolved,
+        "available_connections": available_connections.iter().map(|(id, name)| json!({"id": id, "name": name})).collect::<Vec<_>>(),
+        "parameters": parameters_json,
         "output_file": out.map(|p| p.display().to_string()),
     });
 
