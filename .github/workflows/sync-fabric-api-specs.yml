@@ -187,6 +187,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
+
+          # Include cursor advance in the PR (not pushed directly to main)
+          echo "$HEAD_SHA" > .github/fabric-api-specs-cursor
+
           git add -A
           git reset -- fabric-rest-api-specs
           git commit -m "feat: sync with latest Fabric REST API spec changes"
@@ -205,30 +209,22 @@ jobs:
             --body-file "$PR_BODY" \
             --label "automated,api-sync"
 
-      - name: Advance cursor on PR
-        if: steps.code-changes.outputs.has_code_changes == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.COPILOT_PAT }}
-          HEAD_SHA: ${{ steps.check-changes.outputs.head_sha }}
-        run: |
-          echo "Advancing cursor to $HEAD_SHA after PR creation"
-          git checkout main
-          git pull origin main
-          echo "$HEAD_SHA" > .github/fabric-api-specs-cursor
-          git add .github/fabric-api-specs-cursor
-          git commit -m "chore: advance fabric-api-specs cursor to ${HEAD_SHA:0:8}"
-          git push origin main
-
-      - name: Advance cursor (no code changes)
+      - name: Create cursor-only PR (no code changes)
         if: steps.check-changes.outputs.has_changes == 'true' && steps.code-changes.outputs.has_code_changes == 'false'
         env:
           GH_TOKEN: ${{ secrets.COPILOT_PAT }}
           HEAD_SHA: ${{ steps.check-changes.outputs.head_sha }}
         run: |
-          echo "No code changes needed — advancing cursor to $HEAD_SHA"
-          echo "$HEAD_SHA" > .github/fabric-api-specs-cursor
+          echo "No code changes needed — advancing cursor via PR"
+          BRANCH="sync/fabric-api-specs-cursor-$(date +%Y%m%d)"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          echo "$HEAD_SHA" > .github/fabric-api-specs-cursor
           git add .github/fabric-api-specs-cursor
           git commit -m "chore: advance fabric-api-specs cursor to ${HEAD_SHA:0:8} (no code changes needed)"
-          git push origin main
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore: advance fabric-api-specs cursor $(date +%Y-%m-%d)" \
+            --body "No code changes needed for the latest spec updates. Cursor advanced to \`${HEAD_SHA:0:8}\`." \
+            --label "automated,api-sync"
