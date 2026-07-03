@@ -13,11 +13,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /src
 
-# Copy manifests first to cache dependency builds
-COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+# Copy manifests and build script first to cache dependency builds
+COPY Cargo.toml Cargo.lock rust-toolchain.toml build.rs ./
+
+# Copy data files needed by build.rs at compile time
+COPY src/commands/context/data/best_practices/ src/commands/context/data/best_practices/
+COPY src/commands/context/data/workflows/ src/commands/context/data/workflows/
 
 # Create a dummy main to pre-build dependencies
-RUN mkdir src && echo 'fn main() {}' > src/main.rs && \
+RUN mkdir -p src && echo 'fn main() {}' > src/main.rs && \
     cargo build --release --features vendored-openssl 2>/dev/null || true && \
     rm -rf src
 
