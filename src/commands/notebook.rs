@@ -47,9 +47,13 @@ pub enum NotebookCommand {
         #[arg(long)]
         name: String,
 
-        /// Notebook content (Python/PySpark code)
-        #[arg(long, visible_alias = "source")]
+        /// Notebook content (Python/PySpark code inline)
+        #[arg(long, visible_alias = "source", conflicts_with = "file")]
         content: Option<String>,
+
+        /// Path to .py or .ipynb file (auto-detected: .py is wrapped into ipynb; .ipynb is sent directly)
+        #[arg(long, conflicts_with = "content")]
+        file: Option<String>,
 
         /// Default lakehouse ID (binds the notebook so relative paths like Files/ and Tables/ work)
         #[arg(long)]
@@ -248,6 +252,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
             workspace,
             name,
             content,
+            file,
             lakehouse,
         } => {
             create(
@@ -256,6 +261,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
                 workspace,
                 name,
                 content.as_deref(),
+                file.as_deref(),
                 lakehouse.as_deref(),
             )
             .await
@@ -440,33 +446,11 @@ async fn update_definition(
         .into());
     }
 
-    // Build the definition payload
+    // Build the definition payload using shared format detection
     let encoded = if let Some(file_path) = file {
-        let file_content = std::fs::read(file_path).map_err(|e| {
-            FabioError::with_hint(
-                ErrorCode::InvalidInput,
-                format!("Failed to read file '{file_path}': {e}"),
-                "Provide a valid .py or .ipynb file path.".to_string(),
-            )
-        })?;
-        base64::Engine::encode(&BASE64, &file_content)
+        encode_notebook_file(file_path, workspace, None)?
     } else {
-        // Build ipynb from content
-        let code = content.unwrap();
-        let notebook_json = serde_json::json!({
-            "nbformat": 4,
-            "nbformat_minor": 5,
-            "metadata": {
-                "language_info": { "name": "python" }
-            },
-            "cells": [{
-                "cell_type": "code",
-                "metadata": {},
-                "source": code.lines().map(|l| format!("{l}\n")).collect::<Vec<_>>(),
-                "outputs": []
-            }]
-        });
-        base64::Engine::encode(&BASE64, serde_json::to_string(&notebook_json)?)
+        encode_notebook_code(content.unwrap(), workspace, None)
     };
 
     let body = serde_json::json!({
@@ -502,20 +486,11 @@ async fn update_definition(
     Ok(())
 }
 
-// ─── Create ──────────────────────────────────────────────────────────────────
+// ─── Notebook Format Helpers ─────────────────────────────────────────────────
 
-async fn create(
-    cli: &Cli,
-    client: &FabricClient,
-    workspace: &str,
-    name: &str,
-    content: Option<&str>,
-    lakehouse: Option<&str>,
-) -> Result<()> {
-    let code = content.unwrap_or("# New notebook\nprint('Hello from Fabric!')");
-
-    // Build ipynb structure (source must be list of strings per spec)
-    let metadata = lakehouse.map_or_else(
+/// Build ipynb metadata with optional lakehouse binding.
+fn build_notebook_metadata(workspace: &str, lakehouse: Option<&str>) -> Value {
+    lakehouse.map_or_else(
         || {
             serde_json::json!({
                 "language_info": { "name": "python" }
@@ -536,8 +511,15 @@ async fn create(
                 }
             })
         },
-    );
+    )
+}
 
+/// Encode inline Python/PySpark code into a base64 ipynb payload.
+///
+/// Wraps the code into a minimal Jupyter notebook JSON structure with a single
+/// code cell. The `source` field is an array of line strings (Fabric requirement).
+fn encode_notebook_code(code: &str, workspace: &str, lakehouse: Option<&str>) -> String {
+    let metadata = build_notebook_metadata(workspace, lakehouse);
     let notebook_json = serde_json::json!({
         "nbformat": 4,
         "nbformat_minor": 5,
@@ -549,8 +531,71 @@ async fn create(
             "outputs": []
         }]
     });
+    base64::Engine::encode(
+        &BASE64,
+        serde_json::to_string(&notebook_json).expect("notebook JSON serialization cannot fail"),
+    )
+}
 
-    let encoded = base64::Engine::encode(&BASE64, serde_json::to_string(&notebook_json)?);
+/// Read a .py or .ipynb file and encode it as a base64 ipynb payload.
+///
+/// Format detection logic:
+/// - If the file content is valid JSON with `"nbformat"` key → treated as .ipynb (sent as-is)
+/// - Otherwise → treated as Python code, wrapped into ipynb JSON structure
+///
+/// This means agents can pass EITHER format and it always works correctly.
+fn encode_notebook_file(
+    file_path: &str,
+    workspace: &str,
+    lakehouse: Option<&str>,
+) -> Result<String> {
+    let file_content = std::fs::read(file_path).map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Failed to read file '{file_path}': {e}"),
+            "Provide a valid .py or .ipynb file path.",
+        )
+    })?;
+
+    // Try to detect if this is a valid ipynb (JSON with nbformat key)
+    if let Ok(parsed) = serde_json::from_slice::<Value>(&file_content)
+        && parsed.get("nbformat").is_some()
+    {
+        // Valid .ipynb — send the raw bytes as-is (base64-encode the JSON content)
+        return Ok(base64::Engine::encode(&BASE64, &file_content));
+    }
+
+    // Not a valid ipynb → treat as Python source code, wrap into ipynb structure
+    let code = String::from_utf8(file_content).map_err(|_| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("File '{file_path}' is not valid UTF-8 text"),
+            "Notebook files must be UTF-8 encoded Python (.py) or Jupyter (.ipynb) files.",
+        )
+    })?;
+
+    Ok(encode_notebook_code(&code, workspace, lakehouse))
+}
+
+// ─── Create ──────────────────────────────────────────────────────────────────
+
+async fn create(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    name: &str,
+    content: Option<&str>,
+    file: Option<&str>,
+    lakehouse: Option<&str>,
+) -> Result<()> {
+    let encoded = if let Some(file_path) = file {
+        // Read file and auto-detect format from content
+        encode_notebook_file(file_path, workspace, lakehouse)?
+    } else {
+        // Build ipynb from inline content (or default)
+        let code = content.unwrap_or("# New notebook\nprint('Hello from Fabric!')");
+        encode_notebook_code(code, workspace, lakehouse)
+    };
 
     let body = serde_json::json!({
         "displayName": name,
@@ -564,6 +609,10 @@ async fn create(
             }]
         }
     });
+
+    if output::dry_run_guard(cli, "notebook create", &body) {
+        return Ok(());
+    }
 
     let data = client
         .post(&format!("/workspaces/{workspace}/items"), &body, true)

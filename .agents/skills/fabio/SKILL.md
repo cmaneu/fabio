@@ -320,10 +320,14 @@ fabio shortcut create --workspace $WS --id $LH --path Files/external --name "dat
 
 **Notebooks:**
 ```bash
-fabio notebook create --workspace $WS --name "ETL" --lakehouse $LH --source etl.py
+fabio notebook create --workspace $WS --name "ETL" --file etl.py --lakehouse $LH
+fabio notebook create --workspace $WS --name "ETL" --file notebook.ipynb          # .ipynb also works
+fabio notebook create --workspace $WS --name "Quick" --content "print('hello')"   # inline code
 fabio notebook run --workspace $WS --id $NB --wait --timeout 600    # block until done, 10min max
 fabio notebook get-definition --workspace $WS --id $NB --strip-output
+fabio notebook update-definition --workspace $WS --id $NB --file updated.py       # replace content
 ```
+`--file` accepts both `.py` and `.ipynb` — format is auto-detected (if JSON with `nbformat` key → ipynb; otherwise → Python code wrapped into ipynb). Agents should always use `--file` when they have written code to a file.
 
 **Semantic Models & Reports:**
 ```bash
@@ -440,7 +444,7 @@ These cause silent failures if ignored:
 4. **Delete requires Member/Admin role** — Delete operations return FORBIDDEN without sufficient workspace role. Error hints show the required role.
 5. **Token sharing** — Same Fabric token (`https://api.fabric.microsoft.com/.default`) works for Power BI API. Use `fabio rest call --api powerbi` for Power BI endpoints.
 6. **KQL uses separate scope** — KQL database queries scope to `{kusto_uri}/.default`, not the standard Fabric scope.
-7. **Notebook source format** — `.ipynb` cells require `source: ["line1\n", "line2\n"]` (array of strings, not single string).
+7. **Notebook source format** — Use `--file` for both `.py` and `.ipynb` files (auto-detected). Use `--content` only for small inline code snippets. Fabio handles all format wrapping internally — agents do NOT need to construct ipynb JSON manually.
 8. **Deploy is stateless** — Content-hash diffing against live workspace. No state file. `--workspace` accepts display name or GUID (auto-resolved).
 9. **Hard delete on 38 item types** — `--hard-delete` flag permanently removes items (skips recycle bin).
 10. **SQL Database needs F4+ capacity** — F2 fails with error 18456 State 240.

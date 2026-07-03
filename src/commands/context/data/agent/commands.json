@@ -4196,7 +4196,11 @@
           },
           "--content": {
             "type": "string",
-            "description": "Notebook content (Python/PySpark code)"
+            "description": "Notebook content (Python/PySpark code inline)"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Path to .py or .ipynb file (auto-detected: .py is wrapped into ipynb; .ipynb is sent directly)"
           },
           "--lakehouse": {
             "type": "string",
