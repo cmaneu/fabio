@@ -932,6 +932,94 @@ async fn reconcile_shortcuts(
         total: source_shortcuts.len(),
     })
 }
+
+/// Apply governance tags to items that were created during deployment.
+///
+/// Non-fatal: failures are reported but don't fail the deploy.
+/// Only applies to newly created items — existing items retain their governance state.
+pub async fn apply_governance_tags(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace_id: &str,
+    succeeded: &[Change],
+    source: &super::platform::SourceWorkspace,
+) -> Vec<Value> {
+    let mut results = Vec::new();
+
+    for change in succeeded {
+        if change.action != ChangeAction::Create {
+            continue;
+        }
+
+        let Some(ref item_id) = change.deployed_id else {
+            continue;
+        };
+
+        // Find the source item
+        let source_item = source
+            .type_name_index
+            .get(&(change.item_type.clone(), change.name.clone()))
+            .and_then(|&idx| source.items.get(idx));
+
+        let Some(source_item) = source_item else {
+            continue;
+        };
+
+        let Some(ref governance) = source_item.governance else {
+            continue;
+        };
+
+        if governance.tags.is_empty() {
+            continue;
+        }
+
+        let tag_ids: Vec<&str> = governance.tags.iter().map(|t| t.id.as_str()).collect();
+
+        emit_progress(
+            cli.quiet,
+            &format!(
+                "governance: applying {} tag(s) to {} \"{}\"",
+                tag_ids.len(),
+                change.item_type,
+                change.name
+            ),
+        );
+
+        let url = format!("/workspaces/{workspace_id}/items/{item_id}/tags");
+        let body = json!({"tags": tag_ids.iter().map(|id| json!({"id": id})).collect::<Vec<_>>()});
+        match client.post(&url, &body, false).await {
+            Ok(_) => {
+                results.push(json!({
+                    "hook": "apply_tags",
+                    "item_type": change.item_type,
+                    "item_name": change.name,
+                    "status": "succeeded",
+                    "tags_applied": tag_ids.len()
+                }));
+            }
+            Err(e) => {
+                emit_progress(
+                    cli.quiet,
+                    &format!(
+                        "  governance WARNING: apply tags for \"{}\": {}",
+                        change.name,
+                        e.root_cause()
+                    ),
+                );
+                results.push(json!({
+                    "hook": "apply_tags",
+                    "item_type": change.item_type,
+                    "item_name": change.name,
+                    "status": "failed",
+                    "error": e.to_string()
+                }));
+            }
+        }
+    }
+
+    results
+}
+
 ///
 /// Returns the deployed item GUID on success.
 async fn execute_single_change(
@@ -1097,6 +1185,16 @@ async fn deploy_change(
                 body.as_object_mut()
                     .unwrap()
                     .insert("description".to_owned(), Value::from(desc.as_str()));
+            }
+
+            // Include sensitivityLabelSettings if governance metadata specifies a label
+            if let Some(ref gov) = source_item.governance
+                && let Some(ref label) = gov.sensitivity_label
+            {
+                body.as_object_mut().unwrap().insert(
+                    "sensitivityLabelSettings".to_owned(),
+                    json!({"sensitivityLabelId": label.id}),
+                );
             }
 
             if dry_run {
@@ -1938,6 +2036,7 @@ mod tests {
             source_path: std::path::PathBuf::from("/tmp"),
             creation_payload: None,
             shortcuts: None,
+            governance: None,
         };
 
         let refs = extract_pipeline_references(&item);
@@ -1987,6 +2086,7 @@ mod tests {
             source_path: std::path::PathBuf::from("/tmp"),
             creation_payload: None,
             shortcuts: None,
+            governance: None,
         };
 
         let refs = extract_pipeline_references(&item);
@@ -2036,6 +2136,7 @@ mod tests {
             source_path: std::path::PathBuf::from("/tmp"),
             creation_payload: None,
             shortcuts: None,
+            governance: None,
         };
 
         let refs = extract_pipeline_references(&item);
@@ -2203,6 +2304,7 @@ mod tests {
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
+                governance: None,
             }],
             logical_id_index: HashMap::from([(
                 "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_owned(),
@@ -2243,6 +2345,7 @@ mod tests {
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
+                governance: None,
             }],
             logical_id_index: HashMap::new(),
             type_name_index: HashMap::from([(("Notebook".to_owned(), "MyNB".to_owned()), 0)]),
@@ -2279,6 +2382,7 @@ mod tests {
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
                     shortcuts: None,
+                    governance: None,
                 },
                 SourceItem {
                     metadata: PlatformMetadata {
@@ -2295,6 +2399,7 @@ mod tests {
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
                     shortcuts: None,
+                    governance: None,
                 },
                 SourceItem {
                     metadata: PlatformMetadata {
@@ -2311,6 +2416,7 @@ mod tests {
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
                     shortcuts: None,
+                    governance: None,
                 },
             ],
             logical_id_index: HashMap::from([
@@ -2407,6 +2513,7 @@ mod tests {
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
                 shortcuts: None,
+                governance: None,
             }],
             logical_id_index: HashMap::from([("lid-lh1".to_owned(), 0)]),
             type_name_index: HashMap::from([(("Lakehouse".to_owned(), "LH1".to_owned()), 0)]),
@@ -2621,6 +2728,7 @@ mod tests {
             source_path: std::path::PathBuf::new(),
             creation_payload: None,
             shortcuts: None,
+            governance: None,
         };
 
         let pairs = extract_pipeline_activity_guid_map(&item);

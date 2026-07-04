@@ -10,6 +10,35 @@ use sha2::{Digest, Sha256};
 
 use crate::errors::{ErrorCode, FabioError, HintType};
 
+/// Governance metadata stored in `governance.metadata.json`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GovernanceMetadata {
+    /// Sensitivity label ID to apply at creation time.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        rename = "sensitivityLabel",
+        default
+    )]
+    pub sensitivity_label: Option<SensitivityLabelRef>,
+    /// Tags to apply post-creation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<TagRef>,
+}
+
+/// Reference to a sensitivity label (just the ID).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SensitivityLabelRef {
+    pub id: String,
+}
+
+/// Reference to a tag (ID + display name for readability).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TagRef {
+    pub id: String,
+    #[serde(rename = "displayName")]
+    pub display_name: String,
+}
+
 /// Metadata from a `.platform` file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlatformMetadata {
@@ -50,6 +79,9 @@ pub struct SourceItem {
     /// Optional shortcut definitions (from `shortcuts.metadata.json`).
     /// Only relevant for Lakehouse items. Contains the JSON array of shortcuts.
     pub shortcuts: Option<Vec<serde_json::Value>>,
+    /// Optional governance metadata (sensitivity label + tags).
+    /// Read from `governance.metadata.json` if it exists.
+    pub governance: Option<GovernanceMetadata>,
     /// Workspace folder path (e.g., "/ETL/Bronze"). Empty string means root level.
     pub folder_path: String,
     /// Path to the item directory on disk.
@@ -380,6 +412,31 @@ fn parse_item_directory(root: &Path, path: &Path) -> Result<SourceItem> {
         None
     };
 
+    // Read optional governance.metadata.json (sensitivity labels + tags)
+    let governance_path = path.join("governance.metadata.json");
+    let governance = if governance_path.exists() {
+        let content = std::fs::read_to_string(&governance_path).with_context(|| {
+            format!(
+                "Failed to read governance.metadata.json: {}",
+                governance_path.display()
+            )
+        })?;
+        let parsed: GovernanceMetadata = serde_json::from_str(&content).with_context(|| {
+            format!(
+                "Invalid JSON in governance.metadata.json: {}",
+                governance_path.display()
+            )
+        })?;
+        // Only keep if there's actually something to apply
+        if parsed.sensitivity_label.is_some() || !parsed.tags.is_empty() {
+            Some(parsed)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     // Compute folder path from item's parent relative to root
     let folder_path = super::folders::item_folder_path(root, path);
 
@@ -389,6 +446,7 @@ fn parse_item_directory(root: &Path, path: &Path) -> Result<SourceItem> {
         content_hash,
         creation_payload,
         shortcuts,
+        governance,
         folder_path,
         source_path: path.to_path_buf(),
     })
@@ -433,11 +491,14 @@ fn read_parts_recursive(
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            // Skip creationPayload.json and shortcuts.metadata.json
+            // Skip creationPayload.json, shortcuts.metadata.json, and governance.metadata.json
             // (not definition parts — handled separately)
             // NOTE: .platform IS included as a definition part (the Fabric API
             // uses it for metadata updates when ?updateMetadata=true is set)
-            if file_name == "creationPayload.json" || file_name == "shortcuts.metadata.json" {
+            if file_name == "creationPayload.json"
+                || file_name == "shortcuts.metadata.json"
+                || file_name == "governance.metadata.json"
+            {
                 continue;
             }
 
@@ -1074,5 +1135,142 @@ mod tests {
             .find(|i| i.metadata.display_name == "RootNb")
             .unwrap();
         assert_eq!(root.folder_path, "");
+    }
+
+    #[test]
+    fn test_parse_source_directory_with_governance_metadata() {
+        let dir = TempDir::new().unwrap();
+
+        let nb_dir = dir.path().join("MyNb.Notebook");
+        fs::create_dir_all(&nb_dir).unwrap();
+        fs::write(
+            nb_dir.join(".platform"),
+            r#"{"metadata":{"type":"Notebook","displayName":"MyNb"},"config":{"version":"2.0"}}"#,
+        )
+        .unwrap();
+        fs::write(nb_dir.join("notebook-content.py"), "# code").unwrap();
+        fs::write(
+            nb_dir.join("governance.metadata.json"),
+            r#"{
+                "sensitivityLabel": {"id": "label-uuid-123"},
+                "tags": [{"id": "tag-uuid-456", "displayName": "Production"}]
+            }"#,
+        )
+        .unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        assert_eq!(workspace.items.len(), 1);
+
+        let item = &workspace.items[0];
+        assert!(item.governance.is_some());
+        let gov = item.governance.as_ref().unwrap();
+        assert!(gov.sensitivity_label.is_some());
+        assert_eq!(gov.sensitivity_label.as_ref().unwrap().id, "label-uuid-123");
+        assert_eq!(gov.tags.len(), 1);
+        assert_eq!(gov.tags[0].id, "tag-uuid-456");
+        assert_eq!(gov.tags[0].display_name, "Production");
+
+        // governance.metadata.json should NOT be in definition parts
+        assert!(
+            !item
+                .parts
+                .iter()
+                .any(|p| p.path == "governance.metadata.json")
+        );
+    }
+
+    #[test]
+    fn test_parse_governance_metadata_label_only() {
+        let dir = TempDir::new().unwrap();
+
+        let nb_dir = dir.path().join("Nb.Notebook");
+        fs::create_dir_all(&nb_dir).unwrap();
+        fs::write(
+            nb_dir.join(".platform"),
+            r#"{"metadata":{"type":"Notebook","displayName":"Nb"},"config":{"version":"2.0"}}"#,
+        )
+        .unwrap();
+        fs::write(nb_dir.join("notebook-content.py"), "# code").unwrap();
+        fs::write(
+            nb_dir.join("governance.metadata.json"),
+            r#"{"sensitivityLabel": {"id": "label-only-uuid"}}"#,
+        )
+        .unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        let item = &workspace.items[0];
+        assert!(item.governance.is_some());
+        let gov = item.governance.as_ref().unwrap();
+        assert_eq!(
+            gov.sensitivity_label.as_ref().unwrap().id,
+            "label-only-uuid"
+        );
+        assert!(gov.tags.is_empty());
+    }
+
+    #[test]
+    fn test_parse_governance_metadata_tags_only() {
+        let dir = TempDir::new().unwrap();
+
+        let nb_dir = dir.path().join("Nb.Notebook");
+        fs::create_dir_all(&nb_dir).unwrap();
+        fs::write(
+            nb_dir.join(".platform"),
+            r#"{"metadata":{"type":"Notebook","displayName":"Nb"},"config":{"version":"2.0"}}"#,
+        )
+        .unwrap();
+        fs::write(nb_dir.join("notebook-content.py"), "# code").unwrap();
+        fs::write(
+            nb_dir.join("governance.metadata.json"),
+            r#"{"tags": [{"id": "tag-1", "displayName": "Dev"}, {"id": "tag-2", "displayName": "ETL"}]}"#,
+        )
+        .unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        let item = &workspace.items[0];
+        assert!(item.governance.is_some());
+        let gov = item.governance.as_ref().unwrap();
+        assert!(gov.sensitivity_label.is_none());
+        assert_eq!(gov.tags.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_governance_metadata_empty_is_none() {
+        let dir = TempDir::new().unwrap();
+
+        let nb_dir = dir.path().join("Nb.Notebook");
+        fs::create_dir_all(&nb_dir).unwrap();
+        fs::write(
+            nb_dir.join(".platform"),
+            r#"{"metadata":{"type":"Notebook","displayName":"Nb"},"config":{"version":"2.0"}}"#,
+        )
+        .unwrap();
+        fs::write(nb_dir.join("notebook-content.py"), "# code").unwrap();
+        // Empty governance file (no label, no tags)
+        fs::write(nb_dir.join("governance.metadata.json"), r"{}").unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        let item = &workspace.items[0];
+        // Should be None because there's nothing to apply
+        assert!(item.governance.is_none());
+    }
+
+    #[test]
+    fn test_parse_governance_metadata_absent_file() {
+        let dir = TempDir::new().unwrap();
+
+        let nb_dir = dir.path().join("Nb.Notebook");
+        fs::create_dir_all(&nb_dir).unwrap();
+        fs::write(
+            nb_dir.join(".platform"),
+            r#"{"metadata":{"type":"Notebook","displayName":"Nb"},"config":{"version":"2.0"}}"#,
+        )
+        .unwrap();
+        fs::write(nb_dir.join("notebook-content.py"), "# code").unwrap();
+        // No governance.metadata.json file
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        let item = &workspace.items[0];
+        assert!(item.governance.is_none());
     }
 }

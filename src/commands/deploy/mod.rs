@@ -903,6 +903,19 @@ async fn execute_apply(
         hook_results.extend(shortcut_results);
     }
 
+    // Apply governance tags to newly created items (unless --no-post-hooks)
+    if !no_post_hooks && !cli.dry_run {
+        let governance_results = apply::apply_governance_tags(
+            cli,
+            client,
+            &workspace_id,
+            &result.succeeded,
+            &source_workspace,
+        )
+        .await;
+        hook_results.extend(governance_results);
+    }
+
     // Render result
     let mut output_data = json!({
         "status": if result.failed.is_empty() { "succeeded" } else { "partial_failure" },

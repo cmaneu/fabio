@@ -9,6 +9,16 @@ use crate::client::FabricClient;
 
 use super::platform::{DefinitionPart, PlatformMetadata, write_source_directory};
 
+/// Exportable item with governance metadata.
+struct ExportableItem {
+    id: String,
+    item_type: String,
+    name: String,
+    description: Option<String>,
+    sensitivity_label: Option<Value>,
+    tags: Option<Vec<Value>>,
+}
+
 /// Export a workspace's item definitions to a local `.platform` directory.
 ///
 /// For each item in the workspace:
@@ -49,6 +59,11 @@ pub async fn export_workspace(
         export_lakehouse_shortcuts(client, workspace_id, output_dir, &items_to_export).await;
     }
 
+    // Export governance metadata (sensitivity labels + tags)
+    if !cli.dry_run {
+        write_governance_metadata(output_dir, &items_to_export);
+    }
+
     Ok(ExportResult {
         total_items: total,
         exported: count,
@@ -61,7 +76,7 @@ async fn collect_exportable_items(
     client: &FabricClient,
     workspace_id: &str,
     item_types: Option<&[String]>,
-) -> Result<Vec<(String, String, String, Option<String>)>> {
+) -> Result<Vec<ExportableItem>> {
     let resp = client
         .get_list(
             &format!("/workspaces/{workspace_id}/items"),
@@ -71,7 +86,7 @@ async fn collect_exportable_items(
         )
         .await?;
 
-    let mut items: Vec<(String, String, String, Option<String>)> = Vec::new();
+    let mut items: Vec<ExportableItem> = Vec::new();
 
     for item in &resp.items {
         let id = item.get("id").and_then(|v| v.as_str()).unwrap_or_default();
@@ -104,12 +119,18 @@ async fn collect_exportable_items(
             continue;
         }
 
-        items.push((
-            id.to_owned(),
-            item_type.to_owned(),
-            name.to_owned(),
+        // Extract governance metadata from the item response
+        let sensitivity_label = item.get("sensitivityLabel").cloned();
+        let tags = item.get("tags").and_then(|v| v.as_array()).cloned();
+
+        items.push(ExportableItem {
+            id: id.to_owned(),
+            item_type: item_type.to_owned(),
+            name: name.to_owned(),
             description,
-        ));
+            sensitivity_label,
+            tags,
+        });
     }
 
     Ok(items)
@@ -121,7 +142,7 @@ async fn collect_exportable_items(
 async fn fetch_definitions_parallel(
     client: &FabricClient,
     workspace_id: &str,
-    items: &[(String, String, String, Option<String>)],
+    items: &[ExportableItem],
     concurrency: usize,
     quiet: bool,
 ) -> Result<(Vec<(PlatformMetadata, Vec<DefinitionPart>)>, Vec<String>)> {
@@ -129,14 +150,14 @@ async fn fetch_definitions_parallel(
     let semaphore = Arc::new(Semaphore::new(batch_concurrency));
     let mut handles = Vec::with_capacity(items.len());
 
-    for (id, item_type, name, description) in items {
+    for item in items {
         let sem = Arc::clone(&semaphore);
         let client_clone = client.clone();
         let ws_id = workspace_id.to_owned();
-        let item_id = id.clone();
-        let item_type_owned = item_type.clone();
-        let name_owned = name.clone();
-        let description_owned = description.clone();
+        let item_id = item.id.clone();
+        let item_type_owned = item.item_type.clone();
+        let name_owned = item.name.clone();
+        let description_owned = item.description.clone();
 
         handles.push(tokio::spawn(async move {
             let _permit = sem.acquire().await.unwrap();
@@ -318,14 +339,14 @@ async fn export_lakehouse_shortcuts(
     client: &FabricClient,
     workspace_id: &str,
     output_dir: &std::path::Path,
-    items: &[(String, String, String, Option<String>)], // (id, type, name, description)
+    items: &[ExportableItem],
 ) {
-    for (id, item_type, name, _) in items {
-        if !item_type.eq_ignore_ascii_case("Lakehouse") {
+    for item in items {
+        if !item.item_type.eq_ignore_ascii_case("Lakehouse") {
             continue;
         }
 
-        let url = format!("/workspaces/{workspace_id}/items/{id}/shortcuts");
+        let url = format!("/workspaces/{workspace_id}/items/{}/shortcuts", item.id);
         let Ok(data) = client.get(&url).await else {
             continue;
         };
@@ -338,7 +359,7 @@ async fn export_lakehouse_shortcuts(
             continue;
         }
 
-        let dir_name = format!("{name}.{item_type}");
+        let dir_name = format!("{}.{}", item.name, item.item_type);
         let item_dir = output_dir.join(&dir_name);
 
         // Only write if the item directory already exists (was exported successfully)
@@ -348,6 +369,42 @@ async fn export_lakehouse_shortcuts(
 
         let content = serde_json::to_string_pretty(shortcuts).unwrap_or_default();
         let _ = std::fs::write(item_dir.join("shortcuts.metadata.json"), content);
+    }
+}
+
+/// Write `governance.metadata.json` for items that have tags or sensitivity labels.
+///
+/// Only writes the file when the item has at least one tag or a sensitivity label.
+/// Failures are silently ignored (governance metadata is optional).
+fn write_governance_metadata(output_dir: &std::path::Path, items: &[ExportableItem]) {
+    for item in items {
+        let has_label = item.sensitivity_label.is_some();
+        let has_tags = item.tags.as_ref().is_some_and(|t| !t.is_empty());
+
+        if !has_label && !has_tags {
+            continue;
+        }
+
+        let dir_name = format!("{}.{}", item.name, item.item_type);
+        let item_dir = output_dir.join(&dir_name);
+
+        // Only write if the item directory already exists (was exported successfully)
+        if !item_dir.exists() {
+            continue;
+        }
+
+        let mut metadata = serde_json::Map::new();
+        if let Some(ref label) = item.sensitivity_label {
+            metadata.insert("sensitivityLabel".to_owned(), label.clone());
+        }
+        if let Some(ref tags) = item.tags
+            && !tags.is_empty()
+        {
+            metadata.insert("tags".to_owned(), Value::Array(tags.clone()));
+        }
+
+        let content = serde_json::to_string_pretty(&Value::Object(metadata)).unwrap_or_default();
+        let _ = std::fs::write(item_dir.join("governance.metadata.json"), content);
     }
 }
 
@@ -574,5 +631,119 @@ mod tests {
         });
         let logical_id = extract_logical_id(&data);
         assert!(logical_id.is_none());
+    }
+
+    // ── write_governance_metadata ───────────────────────────────────────────
+
+    #[test]
+    fn governance_metadata_written_when_has_label() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let item_dir = dir.path().join("MyNb.Notebook");
+        std::fs::create_dir_all(&item_dir).unwrap();
+
+        let items = vec![ExportableItem {
+            id: "id-1".to_owned(),
+            item_type: "Notebook".to_owned(),
+            name: "MyNb".to_owned(),
+            description: None,
+            sensitivity_label: Some(json!({"id": "label-uuid"})),
+            tags: None,
+        }];
+
+        write_governance_metadata(dir.path(), &items);
+
+        let gov_path = item_dir.join("governance.metadata.json");
+        assert!(gov_path.exists());
+        let content = std::fs::read_to_string(&gov_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(parsed["sensitivityLabel"]["id"], "label-uuid");
+    }
+
+    #[test]
+    fn governance_metadata_written_when_has_tags() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let item_dir = dir.path().join("MyNb.Notebook");
+        std::fs::create_dir_all(&item_dir).unwrap();
+
+        let items = vec![ExportableItem {
+            id: "id-1".to_owned(),
+            item_type: "Notebook".to_owned(),
+            name: "MyNb".to_owned(),
+            description: None,
+            sensitivity_label: None,
+            tags: Some(vec![json!({"id": "tag-1", "displayName": "Prod"})]),
+        }];
+
+        write_governance_metadata(dir.path(), &items);
+
+        let gov_path = item_dir.join("governance.metadata.json");
+        assert!(gov_path.exists());
+        let content = std::fs::read_to_string(&gov_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(parsed["tags"][0]["id"], "tag-1");
+        assert_eq!(parsed["tags"][0]["displayName"], "Prod");
+    }
+
+    #[test]
+    fn governance_metadata_not_written_when_no_governance() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let item_dir = dir.path().join("MyNb.Notebook");
+        std::fs::create_dir_all(&item_dir).unwrap();
+
+        let items = vec![ExportableItem {
+            id: "id-1".to_owned(),
+            item_type: "Notebook".to_owned(),
+            name: "MyNb".to_owned(),
+            description: None,
+            sensitivity_label: None,
+            tags: None,
+        }];
+
+        write_governance_metadata(dir.path(), &items);
+
+        let gov_path = item_dir.join("governance.metadata.json");
+        assert!(!gov_path.exists());
+    }
+
+    #[test]
+    fn governance_metadata_not_written_when_empty_tags() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let item_dir = dir.path().join("MyNb.Notebook");
+        std::fs::create_dir_all(&item_dir).unwrap();
+
+        let items = vec![ExportableItem {
+            id: "id-1".to_owned(),
+            item_type: "Notebook".to_owned(),
+            name: "MyNb".to_owned(),
+            description: None,
+            sensitivity_label: None,
+            tags: Some(vec![]),
+        }];
+
+        write_governance_metadata(dir.path(), &items);
+
+        let gov_path = item_dir.join("governance.metadata.json");
+        assert!(!gov_path.exists());
+    }
+
+    #[test]
+    fn governance_metadata_not_written_if_dir_missing() {
+        let dir = tempfile::TempDir::new().unwrap();
+        // Don't create item_dir
+
+        let items = vec![ExportableItem {
+            id: "id-1".to_owned(),
+            item_type: "Notebook".to_owned(),
+            name: "MyNb".to_owned(),
+            description: None,
+            sensitivity_label: Some(json!({"id": "label-uuid"})),
+            tags: None,
+        }];
+
+        write_governance_metadata(dir.path(), &items);
+
+        // Should not crash, just skip
+        let gov_path = dir.path().join("MyNb.Notebook/governance.metadata.json");
+        assert!(!gov_path.exists());
     }
 }
