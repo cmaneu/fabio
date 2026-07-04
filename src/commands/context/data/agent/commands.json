@@ -18017,6 +18017,17 @@
       }
     }
   },
+  "label": {
+    "auth_scope": "fabric",
+    "description": "List and resolve sensitivity labels (from Microsoft Purview via Graph API)",
+    "subcommands": {
+      "list": {
+        "description": "List available sensitivity labels (from Microsoft Purview via Graph API)",
+        "mutates": false,
+        "returns": "list"
+      }
+    }
+  },
   "onelake-security": {
     "auth_scope": "fabric",
     "description": "Manage `OneLake` data access roles (row/column-level security)",

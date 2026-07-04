@@ -38,6 +38,7 @@ pub mod kql_dashboard;
 pub mod kql_database;
 pub mod kql_queryset;
 pub mod kql_utils;
+pub mod label;
 pub mod lakehouse;
 pub mod lro;
 pub mod managed_private_endpoint;
@@ -235,6 +236,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Deploy { command } => deploy::execute(&cli, &client, command).await,
         Command::JobScheduler { command } => job_scheduler::execute(&cli, &client, command).await,
         // Security & Governance
+        Command::Label { command } => label::execute(&cli, &client, command).await,
         Command::OnelakeSecurity { command } => {
             onelake_security::execute(&cli, &client, command).await
         }
@@ -439,6 +441,7 @@ fn extract_command_path(cli: &Cli) -> String {
         Command::Git { .. } => "git",
         Command::JobScheduler { .. } => "job-scheduler",
         Command::OnelakeSecurity { .. } => "onelake-security",
+        Command::Label { .. } => "label",
         Command::ManagedPrivateEndpoint { .. } => "managed-private-endpoint",
         Command::Auth { .. } => "auth",
         Command::Profile { .. } => "profile",

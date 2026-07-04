@@ -102,6 +102,9 @@ static SQL_SCOPE: LazyLock<String> =
 
 static ARM_SCOPE: LazyLock<String> =
     LazyLock::new(|| env_or_default("FABIO_ARM_SCOPE", "https://management.azure.com/.default"));
+
+static GRAPH_SCOPE: LazyLock<String> =
+    LazyLock::new(|| env_or_default("FABIO_GRAPH_SCOPE", "https://graph.microsoft.com/.default"));
 const LRO_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const LRO_MAX_WAIT: Duration = Duration::from_mins(2);
 
@@ -191,6 +194,7 @@ pub struct FabricClient {
     storage_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
     sql_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
     arm_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
+    graph_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
     credential_source: Arc<tokio::sync::RwLock<Option<CredentialSource>>>,
     /// When set, enables private link URL routing for workspace-scoped requests.
     private_link_workspace: Option<String>,
@@ -220,6 +224,7 @@ impl FabricClient {
             storage_token: Arc::new(tokio::sync::RwLock::new(None)),
             sql_token: Arc::new(tokio::sync::RwLock::new(None)),
             arm_token: Arc::new(tokio::sync::RwLock::new(None)),
+            graph_token: Arc::new(tokio::sync::RwLock::new(None)),
             credential_source: Arc::new(tokio::sync::RwLock::new(None)),
             private_link_workspace: None,
             lro_max_wait: LRO_MAX_WAIT,
@@ -418,6 +423,27 @@ impl FabricClient {
         let (token, _source) = acquire_token(&ARM_SCOPE).await?;
         let bearer = token.bearer_header.clone();
         let mut guard = self.arm_token.write().await;
+        *guard = Some(token);
+        drop(guard);
+        Ok(bearer)
+    }
+
+    /// Get a Microsoft Graph token (scope: `graph.microsoft.com`).
+    /// Returns the pre-formatted "Bearer {token}" header value.
+    /// Used for sensitivity label resolution (labels are managed in Purview, not Fabric).
+    pub async fn require_graph_auth(&self) -> Result<String> {
+        {
+            let guard = self.graph_token.read().await;
+            if let Some(ref cached) = *guard
+                && !cached.is_expired()
+            {
+                return Ok(cached.bearer_header.clone());
+            }
+        }
+
+        let (token, _source) = acquire_token(&GRAPH_SCOPE).await?;
+        let bearer = token.bearer_header.clone();
+        let mut guard = self.graph_token.write().await;
         *guard = Some(token);
         drop(guard);
         Ok(bearer)

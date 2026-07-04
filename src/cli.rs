@@ -6,7 +6,7 @@ use crate::commands::{
     data_build_tool_job, data_pipeline, dataagent, dataflow, datamart, deploy, deployment_pipeline,
     digital_twin_builder, digital_twin_builder_flow, domain, environment, event_schema_set,
     eventhouse, eventstream, feedback, gateway, git, graph_model, graph_query_set, graphql_api,
-    item, job_scheduler, jobs, kql_dashboard, kql_database, kql_queryset, lakehouse, lro,
+    item, job_scheduler, jobs, kql_dashboard, kql_database, kql_queryset, label, lakehouse, lro,
     managed_private_endpoint, map, mirrored_catalog, mirrored_database,
     mirrored_databricks_catalog, mirrored_warehouse, ml_experiment, ml_model, mounted_data_factory,
     notebook, onelake_security, ontology, operations_agent, org_app, org_app_audience,
@@ -544,6 +544,12 @@ pub enum Command {
     },
 
     // ── Security & Governance ────────────────────────────────────────────
+    /// List and resolve sensitivity labels (from Microsoft Purview via Graph API)
+    #[command(display_order = 49)]
+    Label {
+        #[command(subcommand)]
+        command: label::LabelCommand,
+    },
     /// Manage `OneLake` data access roles (row/column-level security)
     #[command(display_order = 50)]
     OnelakeSecurity {
