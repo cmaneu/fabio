@@ -1133,14 +1133,23 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
   - Workspace-scoped: All other resources at `/workspaces/{ws}/<resource>`
 
 ## Variable Library API Behaviors Discovered
-- **Definition format**: Two definition files: `variables.json` (variable definitions) + `settings.json` (ordering/display).
-- **variables.json schema**: `https://developer.microsoft.com/json-schemas/fabric/item/variableLibrary/definition/variables/1.0.0/schema.json`. Structure: `{"$schema":"...","variables":[]}`. Each variable has `name`, `type`, `defaultValue`, `valueSets`.
-- **settings.json schema**: `https://developer.microsoft.com/json-schemas/fabric/item/variableLibrary/definition/settings/1.0.0/schema.json`. Structure: `{"$schema":"...","valueSetsOrder":[]}`.
-- **updateDefinition requires valid content structure**: The API validates variable definitions. Sending a well-formed JSON with incorrect variable structure returns "Item content cannot be used". Both files may need to be included for a successful update.
+- **Definition format**: Three definition parts: `variables.json` (variable definitions) + `settings.json` (ordering/display) + `valueSets/<name>.json` (one per alternate value set). Path must use `valueSets/` (plural, forward slash).
+- **variables.json schema**: `https://developer.microsoft.com/json-schemas/fabric/item/variableLibrary/definition/variables/1.0.0/schema.json`. Structure: `{"$schema":"...","variables":[{"name":"...","type":"String","value":"...","note":""}]}`. Each variable has `name` (required), `type` (required), `value` (required), `note` (optional). Supported types: String, Number, Integer, DateTime, Boolean, ItemReference.
+- **settings.json schema**: `https://developer.microsoft.com/json-schemas/fabric/item/variableLibrary/definition/settings/1.0.0/schema.json`. Structure: `{"$schema":"...","valueSetsOrder":["setName1","setName2"]}`. The `valueSetsOrder` can be empty or partial; missing names are appended alphabetically.
+- **Value set file schema**: `https://developer.microsoft.com/json-schemas/fabric/item/variableLibrary/definition/valueSet/1.0.0/schema.json`. Structure: `{"$schema":"...","name":"prod","variableOverrides":[{"name":"var1","value":"override_val"}]}`. Key field is `variableOverrides` (NOT `values`). Only variables that differ from the default need to be listed.
+- **Value set path**: Must be `valueSets/<name>.json` (plural "valueSets", forward slash). NOT `valueSet/` (singular). The singular path causes "Item definition contains an unexpected definition part" error.
+- **updateDefinition requires valid content structure**: The API validates variable definitions. Sending a well-formed JSON with incorrect variable structure returns "Item content cannot be used". All required parts (variables.json + settings.json) must be included for a successful update.
+- **Active value set is a workspace-level setting**: NOT stored in the definition. Each workspace can have a different active set. Use `PATCH /workspaces/{ws}/variableLibraries/{id}` with `{"properties":{"activeValueSetName":"prod"}}` to switch.
+- **Default active value set name**: Freshly created libraries report `activeValueSetName: "Default value set"` (not just `"Default"`). The API returns this full string.
+- **Activating a non-existent value set**: Returns an API error (the API validates the name against defined value sets).
+- **Deploy ordering**: VariableLibrary is FIRST in deploy order (tier 0), deployed before all other item types.
+- **Deploy post-hook**: When `--env` is specified, fabio auto-activates the matching value set after deploying variable libraries. Non-fatal (failures warn but don't block).
+- **fabric-cicd compatibility**: fabric-cicd auto-activates value sets when environment name matches value set name. fabio implements the same behavior.
 - **Create is LRO**: Returns 202, requires polling.
-- **getDefinition is LRO**: Returns 202, requires polling. Returns `variables.json` + `settings.json` + `.platform`.
+- **getDefinition is LRO**: Returns 202, requires polling. Returns `variables.json` + `settings.json` + `.platform` + any `valueSets/*.json` parts.
 - **409 Conflict on duplicate name**: Same pattern as all other items.
 - **Endpoint pattern**: `/workspaces/{ws}/variableLibraries/{id}`.
+- **Service principal support**: Full support (create, update, delete, get/update definition, activate value set).
 
 ## Event Schema Set API Behaviors Discovered
 - **Definition file**: `EventSchemaSetDefinition.json` (NOT `definition.json`).

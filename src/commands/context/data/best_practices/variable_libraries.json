@@ -36,9 +36,9 @@
   },
   "definition_structure": {
     "files": [
-      "variables.json — All variable names, types, and default values",
-      "settings.json — Variable library configuration settings",
-      "valueSets/<name>.json — One file per alternate value set (only overrides, not defaults)",
+      "variables.json — {$schema, variables: [{name, type, value, note?}]} (all variables with defaults)",
+      "settings.json — {$schema, valueSetsOrder: []} (ordering config)",
+      "valueSets/<name>.json — {$schema, name, variableOverrides: [{name, value}]} (only overrides, NOT defaults)",
       ".platform — Standard platform metadata with logicalId"
     ],
     "git_representation": "Each value set is a separate JSON file under valueSets/, enabling independent tracking of per-environment changes in source control."

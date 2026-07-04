@@ -367,6 +367,17 @@ fabio git commit --workspace $WS --message "feat: add pipeline" --wait
 fabio git pull --workspace $WS --strategy prefer-remote --wait
 ```
 
+**Variable Library (environment-specific configuration for CI/CD):**
+```bash
+fabio variable-library list --workspace $WS
+fabio variable-library create --workspace $WS --name "environment_settings"
+fabio variable-library get-definition --workspace $WS --id $VL --decode
+fabio variable-library update-definition --workspace $WS --id $VL --file variables.json
+fabio variable-library list-value-sets --workspace $WS --id $VL              # show all value sets + active
+fabio variable-library activate-value-set --workspace $WS --id $VL --value-set prod  # switch active set
+```
+Variable libraries are Microsoft's strategic capability for environment-specific config. Define variables (connection strings, paths, IDs) and value sets (dev/test/prod overrides). Items read values at runtime via `notebookutils.variableLibrary.get()`. Name value sets to match `--env` values — `fabio deploy apply --env prod` auto-activates the "prod" value set as a post-deploy hook.
+
 **Deploy (CI/CD — stateless content-hash diffing):**
 ```bash
 fabio deploy export --workspace $WS --dir ./fabric-items/ --overwrite      # export workspace→disk

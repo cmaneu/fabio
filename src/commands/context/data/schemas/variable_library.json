@@ -4,9 +4,9 @@
   "create_command": "fabio variable-library create --workspace <WS> --name <NAME> [--description <DESC>]",
   "definition_format": "JSON (variables.json + settings.json + valueSets/*.json)",
   "definition_parts": [
-    "variables.json — All variable names, types, default values",
-    "settings.json — Library configuration settings",
-    "valueSets/<name>.json — One file per alternate value set (overrides only)"
+    "variables.json — {$schema, variables: [{name, type, value, note?}]}",
+    "settings.json — {$schema, valueSetsOrder: [\"set1\", \"set2\"]}",
+    "valueSets/<name>.json — {$schema, name, variableOverrides: [{name, value}]} (one per alternate set, overrides only)"
   ],
   "creation_body_template": {
     "displayName": "{{name}}",
