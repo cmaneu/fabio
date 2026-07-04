@@ -498,10 +498,13 @@ async fn list_value_sets(
 
     let mut value_sets: Vec<Value> = Vec::new();
 
-    // Always include "Default" as the base value set
+    // Always include "Default" as the base value set.
+    // The API returns activeValueSetName as "Default value set" for the default.
+    let is_default_active =
+        active_set.eq_ignore_ascii_case("Default value set") || active_set.is_empty();
     value_sets.push(serde_json::json!({
         "name": "Default",
-        "active": active_set == "Default" || active_set.is_empty(),
+        "active": is_default_active,
         "type": "default"
     }));
 
@@ -520,7 +523,14 @@ async fn list_value_sets(
                     .and_then(|encoded| BASE64.decode(encoded).ok())
                     .and_then(|bytes| String::from_utf8(bytes).ok())
                     .and_then(|json_str| serde_json::from_str::<Value>(&json_str).ok())
-                    .and_then(|val| val.as_array().map(Vec::len))
+                    .and_then(|val| {
+                        // Value set format: {"variableOverrides": [...]} or legacy {"values": [...]}
+                        val.get("variableOverrides")
+                            .or_else(|| val.get("values"))
+                            .and_then(|v| v.as_array())
+                            .map(Vec::len)
+                            .or_else(|| val.as_array().map(Vec::len))
+                    })
                     .unwrap_or(0);
 
                 value_sets.push(serde_json::json!({
