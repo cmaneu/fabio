@@ -13260,6 +13260,45 @@
         "mutates": true,
         "returns": "void",
         "async": true
+      },
+      "list-value-sets": {
+        "description": "List value sets defined in a variable library",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID or name"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Variable library ID or name"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "activate-value-set": {
+        "description": "Activate a value set for a variable library in a workspace",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID or name"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Variable library ID or name"
+          },
+          "--value-set": {
+            "type": "string",
+            "required": true,
+            "description": "Name of the value set to activate"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
       }
     }
   },

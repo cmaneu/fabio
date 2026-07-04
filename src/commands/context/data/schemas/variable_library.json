@@ -1,0 +1,41 @@
+{
+  "type": "VariableLibrary",
+  "description": "Stores environment-specific configuration as named variables with typed values. Items (notebooks, pipelines, copy jobs, dataflows) read variables at runtime via notebookutils.variableLibrary.get(). Supports value sets for multi-environment deployment (dev/test/prod). Microsoft's strategic capability for Fabric CI/CD parameterization.",
+  "create_command": "fabio variable-library create --workspace <WS> --name <NAME> [--description <DESC>]",
+  "definition_format": "JSON (variables.json + settings.json + valueSets/*.json)",
+  "definition_parts": [
+    "variables.json — All variable names, types, default values",
+    "settings.json — Library configuration settings",
+    "valueSets/<name>.json — One file per alternate value set (overrides only)"
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}",
+    "description": "{{description}}"
+  },
+  "flags": {
+    "--name": "Variable library display name",
+    "--description": "Optional description (max 256 chars)",
+    "--sensitivity-label": "Sensitivity label UUID to apply on creation"
+  },
+  "notes": [
+    "Create is LRO (202, polls until complete)",
+    "Always deployed FIRST in deploy ordering (before all other item types)",
+    "Active value set is a workspace-level setting, NOT part of the definition",
+    "Value sets in definition contain only overrides (variables differing from default)",
+    "Naming convention: name value sets to match deploy --env values (dev, test, prod)",
+    "fabio deploy auto-activates the value set matching --env after deployment",
+    "Supports variable types: String, Number, Integer, DateTime, GUID, Connection reference, Item reference",
+    "Connection reference variables parameterize data source connections",
+    "Item reference variables manage cross-workspace item dependencies",
+    "Max 1000 variables and 1000 value sets per library (total cells < 10000, size < 1MB)"
+  ],
+  "related_commands": [
+    "fabio variable-library list --workspace <WS>",
+    "fabio variable-library show --workspace <WS> --id <ID>",
+    "fabio variable-library get-definition --workspace <WS> --id <ID> --decode",
+    "fabio variable-library update-definition --workspace <WS> --id <ID> --file variables.json",
+    "fabio variable-library list-value-sets --workspace <WS> --id <ID>",
+    "fabio variable-library activate-value-set --workspace <WS> --id <ID> --value-set prod",
+    "fabio deploy apply --source <DIR> --workspace <WS> --env prod (auto-activates value set)"
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "topic": "cicd-lifecycle",
+  "title": "Fabric CI/CD Lifecycle Best Practices",
+  "summary": "End-to-end CI/CD lifecycle for Microsoft Fabric solutions: Git integration, feature workspaces, variable libraries, deployment strategies, auto-binding, data orchestration, and release processes. Covers single-workspace and multi-workspace solutions.",
+  "solution_design": {
+    "principles": [
+      "Design the Fabric solution as a composition of workspace item types",
+      "Use a medallion architecture (bronze/silver/gold) with lakehouses as storage containers",
+      "Determine if the solution fits in a single workspace or requires multiple workspaces",
+      "Multi-workspace: use for security isolation (staging vs presentation) or >1000 items",
+      "Use workspace folders to organize items by role or type within a workspace"
+    ],
+    "multi_workspace_triggers": [
+      "Security: business users should not see staging/ETL data",
+      "Scale: workspace limit is 1000 items",
+      "Ownership: different teams own different layers"
+    ]
+  },
+  "environment_planning": {
+    "standard_environments": ["dev", "test", "prod"],
+    "capacity_isolation": "Recommended: create a separate Fabric capacity per environment to isolate workload impact",
+    "environment_resources": [
+      "Fabric capacity (one per environment)",
+      "Workspace(s) assigned to the capacity",
+      "Azure Storage accounts (per environment)",
+      "Fabric connections (per environment)",
+      "Variable library value sets (per environment)"
+    ]
+  },
+  "git_integration": {
+    "source_of_truth": "The integration branch (e.g., 'main' or 'dev') is the single source of truth — always ready for deployment",
+    "git_folder_setting": "Use --directory with 'fabio git connect' to separate item definitions from workflow files (e.g., '/workspace')",
+    "multi_workspace_git": "Connect all workspaces to the SAME branch with different --directory values (e.g., '/workspace/staging', '/workspace/presentation')",
+    "branch_policy": "Configure the integration branch to only accept changes via pull requests — no direct commits",
+    "commands": {
+      "connect": "fabio git connect --workspace <WS> --provider github --owner <ORG> --repo <REPO> --branch main --directory /workspace",
+      "init": "fabio git init --workspace <WS> --strategy prefer-remote",
+      "commit": "fabio git commit --workspace <WS> --message 'Initial commit' --commit-all",
+      "pull": "fabio git pull --workspace <WS> --conflict-resolution prefer-remote",
+      "checkout": "fabio git checkout --workspace <WS> --branch feature/my-change"
+    }
+  },
+  "feature_workspaces": {
+    "concept": "Each developer works in an isolated feature workspace connected to a feature branch",
+    "workflow": [
+      "1. Create feature branch from integration branch",
+      "2. Create a new workspace (or reuse an existing feature workspace)",
+      "3. Connect workspace to the feature branch: fabio git connect --workspace <FW> --branch feature/xyz",
+      "4. Initialize (pulls items from branch): fabio git init --workspace <FW> --strategy prefer-remote",
+      "5. Work on changes in the feature workspace",
+      "6. Commit changes: fabio git commit --workspace <FW> --message 'Add feature XYZ' --commit-all",
+      "7. Create pull request to merge into integration branch",
+      "8. After merge, delete feature branch (keep branches short-lived)"
+    ],
+    "lifecycle_patterns": {
+      "create_and_delete": "Highest isolation — one workspace per PR. More provisioning overhead.",
+      "recycle": "Reuse feature workspaces across branches for dedicated teams. Lower overhead, but keep synchronized."
+    }
+  },
+  "parameterization_strategy": {
+    "preferred": "Variable libraries with value sets (Microsoft's strategic recommendation)",
+    "fallback": "Deploy parameter files (find_replace, key_value_replace) for item types that don't support variable libraries yet",
+    "design_steps": [
+      "1. Identify all environment-specific settings (connection strings, paths, IDs)",
+      "2. Create a variable library with variables for each setting",
+      "3. Update items to read from the variable library at runtime",
+      "4. Add value sets for each environment (test, prod)",
+      "5. Name value sets to match --env values for auto-activation"
+    ]
+  },
+  "auto_binding": {
+    "concept": "Auto-binding automatically reconnects item dependencies within the same workspace after deployment or Git sync",
+    "supported_via_logicalId": "Items use logicalId (not workspace-specific IDs) in definitions, enabling Fabric to resolve dependencies in any workspace",
+    "notebook_requirement": "Notebooks require notebook-settings.json in their item definition to enable auto-binding (added March 2026). Without it, lakehouse bindings won't auto-resolve.",
+    "cross_workspace": "Auto-binding only works within a single workspace. For cross-workspace dependencies, use Item reference variables in a variable library.",
+    "post_sync_scripts": "For item types that don't support auto-binding, write post-sync automation to reestablish relationships after deployment."
+  },
+  "data_orchestration": {
+    "principles": [
+      "Implement ETL logic using workspace items (notebooks, pipelines) — not external scripts",
+      "Expose a single top-level pipeline/notebook that runs end-to-end ETL",
+      "After deployment, run the top-level item to populate lakehouses with data",
+      "Use .schedules files in item definitions for ongoing data refresh",
+      "Manage schema changes via notebook code (add/remove tables and columns)"
+    ],
+    "post_deploy_pattern": "fabio deploy apply --source ./workspace --workspace <WS> --env prod && fabio data-pipeline run --workspace <WS> --id <pipeline-id> --wait"
+  },
+  "release_process_options": {
+    "deployment_pipeline": {
+      "best_for": "Low-code, small-to-medium projects focused on semantic models and reports",
+      "limitations": ["Same tenant only", "Manual config required", "Limited for large workspaces", "No cross-tenant support"]
+    },
+    "git_synchronization": {
+      "best_for": "Branch-based releases where target workspaces stay connected to Git",
+      "limitations": ["Commits environment-specific settings to Git", "Requires post-sync jobs", "Shows Git status in production workspace"]
+    },
+    "api_driven_fabio": {
+      "best_for": "Scalable releases with custom branching, parameterization, many workspaces",
+      "advantages": [
+        "Supports any branching strategy (GitFlow, trunk-based)",
+        "Built-in parameterization (no post-sync needed)",
+        "One-to-many: single branch → multiple target workspaces",
+        "Plan/validate before deploy",
+        "Content-hash diffing for minimal changes",
+        "Works cross-tenant with different service principals"
+      ],
+      "workflow": "fabio deploy plan → review → fabio deploy apply --env <target>"
+    }
+  },
+  "security_best_practices": [
+    "Use service principal authentication for all CI/CD automation",
+    "Never commit secrets to Git — use GitHub Secrets, Azure Key Vault, or $ENV: variables",
+    "Use OIDC federated credentials (recommended) for GitHub Actions instead of client secrets",
+    "Store Terraform state in encrypted cloud storage, not locally",
+    "Use Fabric connections (managed via Terraform) to hold data source credentials"
+  ],
+  "fabio_cicd_workflow": {
+    "full_lifecycle": [
+      "1. Infrastructure: Terraform provisions capacities, workspaces, connections, role assignments",
+      "2. Source of truth: fabio deploy export --workspace dev-ws --dir ./workspace (one-time)",
+      "3. Development: feature branches + feature workspaces + PRs to integration branch",
+      "4. Validation: fabio deploy validate --source ./workspace --parameters params.json --env prod",
+      "5. Plan: fabio deploy plan --source ./workspace --workspace prod-ws --env prod --parameters params.json",
+      "6. Apply: fabio deploy apply --source ./workspace --workspace prod-ws --env prod --parameters params.json",
+      "7. Post-deploy: Variable library value sets auto-activated, semantic models refreshed, environments published",
+      "8. Data orchestration: Run top-level pipeline to populate lakehouses"
+    ],
+    "see_also": "fabio context workflow cicd-deploy"
+  }
+}

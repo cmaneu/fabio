@@ -107,6 +107,34 @@ pub enum VariableLibraryCommand {
         #[arg(long)]
         content: Option<String>,
     },
+    /// List value sets defined in a variable library
+    #[command(display_order = 8)]
+    ListValueSets {
+        /// Workspace ID or name
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Variable library ID or name
+        #[arg(long)]
+        id: String,
+    },
+    /// Activate a value set for a variable library in a workspace
+    ///
+    /// Sets the active value set so that items reading variables will get
+    /// the values from the specified set. This is a workspace-level setting:
+    /// the same variable library definition can have different active value
+    /// sets in different workspaces (e.g., "dev", "test", "prod").
+    #[command(display_order = 9)]
+    ActivateValueSet {
+        /// Workspace ID or name
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Variable library ID or name
+        #[arg(long)]
+        id: String,
+        /// Name of the value set to activate
+        #[arg(long)]
+        value_set: String,
+    },
 }
 
 pub async fn execute(
@@ -175,6 +203,14 @@ pub async fn execute(
             )
             .await
         }
+        VariableLibraryCommand::ListValueSets { workspace, id } => {
+            list_value_sets(cli, client, workspace, id).await
+        }
+        VariableLibraryCommand::ActivateValueSet {
+            workspace,
+            id,
+            value_set,
+        } => activate_value_set(cli, client, workspace, id, value_set).await,
     }
 }
 
@@ -426,5 +462,123 @@ async fn update_definition(
     } else {
         output::render_object(cli, &data, "id");
     }
+    Ok(())
+}
+
+/// List value sets defined in a variable library by inspecting its definition.
+///
+/// The Fabric API does not expose a dedicated list-value-sets endpoint;
+/// value sets are stored as definition parts (one JSON file per set in
+/// the `valueSets/` path). We fetch the definition, decode the parts,
+/// and extract value set names along with their override counts.
+async fn list_value_sets(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    // First, get the variable library properties to find the active value set
+    let vl_info = client
+        .get(&format!("/workspaces/{workspace}/variableLibraries/{id}"))
+        .await?;
+    let active_set = vl_info
+        .pointer("/properties/activeValueSetName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Default");
+
+    // Fetch the definition to enumerate value sets
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/variableLibraries/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "variable-library list-value-sets", "Contributor"))?;
+
+    let mut value_sets: Vec<Value> = Vec::new();
+
+    // Always include "Default" as the base value set
+    value_sets.push(serde_json::json!({
+        "name": "Default",
+        "active": active_set == "Default" || active_set.is_empty(),
+        "type": "default"
+    }));
+
+    // Parse definition parts to find value set files (path: "valueSets/<name>.json")
+    if let Some(parts) = data.pointer("/definition/parts").and_then(|v| v.as_array()) {
+        for part in parts {
+            let path = part.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            if let Some(set_name) = path
+                .strip_prefix("valueSets/")
+                .and_then(|s| s.strip_suffix(".json"))
+            {
+                // Decode payload to count overrides
+                let override_count = part
+                    .get("payload")
+                    .and_then(|v| v.as_str())
+                    .and_then(|encoded| BASE64.decode(encoded).ok())
+                    .and_then(|bytes| String::from_utf8(bytes).ok())
+                    .and_then(|json_str| serde_json::from_str::<Value>(&json_str).ok())
+                    .and_then(|val| val.as_array().map(Vec::len))
+                    .unwrap_or(0);
+
+                value_sets.push(serde_json::json!({
+                    "name": set_name,
+                    "active": set_name == active_set,
+                    "type": "alternative",
+                    "overrides": override_count
+                }));
+            }
+        }
+    }
+
+    output::render_list_with_token(
+        cli,
+        &value_sets,
+        &["name", "active", "type", "overrides"],
+        &["NAME", "ACTIVE", "TYPE", "OVERRIDES"],
+        "name",
+        None,
+    );
+    Ok(())
+}
+
+/// Activate a value set for a variable library.
+///
+/// Uses PATCH /workspaces/{ws}/variableLibraries/{id} with
+/// `properties.activeValueSetName` to switch the active value set.
+/// This is a workspace-level setting — deploying the same definition
+/// to different workspaces allows each to have a different active set.
+async fn activate_value_set(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    value_set: &str,
+) -> Result<()> {
+    let body = serde_json::json!({
+        "properties": {
+            "activeValueSetName": value_set
+        }
+    });
+
+    if output::dry_run_guard(
+        cli,
+        "variable-library activate-value-set",
+        &serde_json::json!({ "workspace": workspace, "id": id, "valueSet": value_set }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(
+            &format!("/workspaces/{workspace}/variableLibraries/{id}"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "variable-library activate-value-set", "Contributor"))?;
+
+    output::render_object(cli, &data, "id");
     Ok(())
 }

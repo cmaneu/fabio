@@ -639,6 +639,92 @@ pub async fn execute_post_hooks(
     results
 }
 
+/// Post-hook: Activate variable library value sets matching the --env name.
+///
+/// Microsoft best practices recommend that value set names match environment
+/// names (e.g., "dev", "test", "prod"). After deploying variable libraries,
+/// this hook activates the value set whose name matches the deploy environment.
+/// Uses PATCH /workspaces/{ws}/variableLibraries/{id} with properties.activeValueSetName.
+///
+/// Non-fatal: failures are reported but don't fail the deployment.
+pub async fn activate_variable_library_value_sets(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace_id: &str,
+    succeeded: &[Change],
+    env_name: &str,
+) -> Vec<Value> {
+    let mut results: Vec<Value> = Vec::new();
+
+    for change in succeeded {
+        if !change.item_type.eq_ignore_ascii_case("VariableLibrary") {
+            continue;
+        }
+        // Only activate on create or update (skip/delete/rename irrelevant)
+        match change.action {
+            ChangeAction::Create | ChangeAction::Update => {}
+            _ => continue,
+        }
+
+        let Some(ref item_id) = change.deployed_id else {
+            continue;
+        };
+
+        emit_progress(
+            cli.quiet,
+            &format!(
+                "post-hook: activating value set \"{}\" for variable library \"{}\"",
+                env_name, change.name
+            ),
+        );
+
+        let body = serde_json::json!({
+            "properties": {
+                "activeValueSetName": env_name
+            }
+        });
+
+        match client
+            .patch(
+                &format!("/workspaces/{workspace_id}/variableLibraries/{item_id}"),
+                &body,
+            )
+            .await
+        {
+            Ok(_) => {
+                results.push(json!({
+                    "hook": "activate_value_set",
+                    "item_type": "VariableLibrary",
+                    "item_name": change.name,
+                    "value_set": env_name,
+                    "status": "activated"
+                }));
+            }
+            Err(e) => {
+                // Non-fatal: if the value set doesn't exist, warn but don't fail
+                let err_msg = e.root_cause().to_string();
+                emit_progress(
+                    cli.quiet,
+                    &format!(
+                        "  post-hook WARNING: activate value set \"{}\" for \"{}\": {}",
+                        env_name, change.name, err_msg
+                    ),
+                );
+                results.push(json!({
+                    "hook": "activate_value_set",
+                    "item_type": "VariableLibrary",
+                    "item_name": change.name,
+                    "value_set": env_name,
+                    "status": "failed",
+                    "error": err_msg
+                }));
+            }
+        }
+    }
+
+    results
+}
+
 /// Feature 3: Poll SQL endpoint provisioning status after Lakehouse creation.
 ///
 /// The SQL analytics endpoint takes time to provision after a lakehouse is created.

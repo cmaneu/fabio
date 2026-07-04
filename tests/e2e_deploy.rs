@@ -2827,6 +2827,11 @@ fn deploy_validate_valid_source_succeeds() {
     )
     .unwrap();
     std::fs::write(nb_dir.join("notebook-content.py"), "print('hello')").unwrap();
+    std::fs::write(
+        nb_dir.join("notebook-settings.json"),
+        r#"{"defaultLakehouse":{"knownName":"","referenceType":"LogicalIdReference"}}"#,
+    )
+    .unwrap();
 
     let assert = fabio()
         .args([
@@ -2844,6 +2849,42 @@ fn deploy_validate_valid_source_succeeds() {
     assert_eq!(data["items"], 1);
     assert_eq!(data["summary"]["errors"], 0);
     assert_eq!(data["summary"]["warnings"], 0);
+}
+
+#[test]
+fn deploy_validate_warns_notebook_missing_settings() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let nb_dir = dir.path().join("MyNotebook.Notebook");
+    std::fs::create_dir_all(&nb_dir).unwrap();
+    std::fs::write(
+        nb_dir.join(".platform"),
+        r#"{"metadata":{"type":"Notebook","displayName":"MyNotebook"},"config":{"version":"2.0","logicalId":"aaaaaaaa-1111-2222-3333-444444444444"}}"#,
+    )
+    .unwrap();
+    std::fs::write(nb_dir.join("notebook-content.py"), "print('hello')").unwrap();
+    // Intentionally NOT creating notebook-settings.json
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "validate",
+            "--source",
+            dir.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "valid");
+    assert_eq!(data["summary"]["warnings"], 1);
+    let warnings = data["warnings"].as_array().unwrap();
+    assert!(
+        warnings[0]
+            .as_str()
+            .unwrap()
+            .contains("notebook-settings.json")
+    );
 }
 
 #[test]

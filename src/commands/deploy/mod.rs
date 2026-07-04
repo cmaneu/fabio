@@ -916,6 +916,22 @@ async fn execute_apply(
         hook_results.extend(governance_results);
     }
 
+    // Activate variable library value sets matching --env name (unless --no-post-hooks)
+    if !no_post_hooks
+        && !cli.dry_run
+        && let Some(env_name) = env
+    {
+        let vl_results = apply::activate_variable_library_value_sets(
+            cli,
+            client,
+            &workspace_id,
+            &result.succeeded,
+            env_name,
+        )
+        .await;
+        hook_results.extend(vl_results);
+    }
+
     // Render result
     let mut output_data = json!({
         "status": if result.failed.is_empty() { "succeeded" } else { "partial_failure" },
@@ -1331,6 +1347,22 @@ fn execute_validate(
                 "Item of type \"{}\" has empty display name",
                 item.metadata.item_type
             ));
+        }
+    }
+
+    // --- 8. Check notebooks for missing notebook-settings.json (auto-binding) ---
+    for item in &source_ws.items {
+        if item.metadata.item_type.eq_ignore_ascii_case("Notebook") {
+            let has_settings = item
+                .parts
+                .iter()
+                .any(|p| p.path.eq_ignore_ascii_case("notebook-settings.json"));
+            if !has_settings {
+                warnings.push(format!(
+                    "Notebook \"{}\" is missing notebook-settings.json — auto-binding of lakehouse dependencies will not work after deployment. Add this file to enable automatic rebinding.",
+                    item.metadata.display_name
+                ));
+            }
         }
     }
 

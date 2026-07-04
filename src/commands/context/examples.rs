@@ -320,4 +320,8 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         "lakehouse/create-execution-definition",
         include_str!("data/examples/lakehouse_execution_definition.json"),
     ),
+    (
+        "variable-library/list-value-sets",
+        include_str!("data/examples/variable_library_list_value_sets.json"),
+    ),
 ];

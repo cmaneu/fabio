@@ -72,4 +72,8 @@ const ITEM_SCHEMAS: &[(&str, &str)] = &[
         include_str!("data/schemas/sql_database.json"),
     ),
     ("Connection", include_str!("data/schemas/connection.json")),
+    (
+        "VariableLibrary",
+        include_str!("data/schemas/variable_library.json"),
+    ),
 ];
