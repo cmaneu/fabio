@@ -11,11 +11,13 @@
   },
   "resolving_label_names": {
     "why_needed": "The Fabric API only returns label UUIDs. To make classification decisions (e.g., block access to Highly Confidential items), agents need the UUID-to-name mapping.",
-    "graph_endpoint": "GET https://graph.microsoft.com/v1.0/security/informationProtection/sensitivityLabels",
-    "az_cli_command": "az rest --method GET --url \"https://graph.microsoft.com/v1.0/security/informationProtection/sensitivityLabels\" --resource \"https://graph.microsoft.com\"",
-    "response_shape": "{\"value\": [{\"id\": \"<uuid>\", \"name\": \"Confidential\", \"description\": \"...\", \"isActive\": true, \"parent\": null}]}",
+    "fabio_command": "fabio label list",
+    "fabio_command_with_projection": "fabio label list --query \"data[].{id:id, name:name}\"",
+    "graph_endpoint": "GET https://graph.microsoft.com/beta/security/informationProtection/sensitivityLabels",
+    "response_shape": "{\"data\": [{\"id\": \"<uuid>\", \"name\": \"Confidential\", \"description\": \"...\"}], \"count\": 4}",
     "permission_required": "InformationProtection.Read (comes with M365 E5 user, no Fabric admin role needed)",
-    "caching_advice": "Labels change infrequently. Cache the mapping and refresh periodically (e.g., daily) rather than querying Graph on every invocation."
+    "caching_advice": "Labels change infrequently. Cache the output of 'fabio label list' and refresh periodically (e.g., daily) rather than querying on every invocation.",
+    "env_override": "FABIO_GRAPH_SCOPE (default: https://graph.microsoft.com/.default)"
   },
   "reading_labels": {
     "list_items_with_labels": "fabio item list --workspace $WS --output json --query \"data[?sensitivityLabel]\"",
@@ -35,9 +37,9 @@
     "assignment_method": "Standard (automated, default) or Priviledged (manual by admin). Note: API misspells 'Privileged' as 'Priviledged'."
   },
   "ai_agent_guardrail_workflow": {
-    "step_1_cache_mapping": "az rest --method GET --url \"https://graph.microsoft.com/v1.0/security/informationProtection/sensitivityLabels\" --resource \"https://graph.microsoft.com\" -o json > /tmp/label-map.json",
+    "step_1_get_label_mapping": "fabio label list --query \"data[].{id:id, name:name}\"",
     "step_2_read_item_label": "fabio item show --workspace $WS --id $ITEM_ID --query \"data.sensitivityLabel.id\"",
-    "step_3_classify": "Cross-reference the label UUID with the cached map to determine classification level (Public, Internal, Confidential, Highly Confidential)",
+    "step_3_classify": "Cross-reference the label UUID with the mapping from step 1 to determine classification level (Public, Internal, Confidential, Highly Confidential)",
     "step_4_decide": "Block writes to Highly Confidential items, require approval for Confidential, allow Public/Internal freely",
     "step_5_audit": "fabio item list --workspace $WS --output json --query \"data[?!sensitivityLabel].{name:displayName,id:id,type:type}\"",
     "step_6_remediate": "fabio admin bulk-set-labels --content '{\"items\":[{\"id\":\"<id>\",\"type\":\"<Type>\"}],\"labelId\":\"<label-uuid>\"}'"

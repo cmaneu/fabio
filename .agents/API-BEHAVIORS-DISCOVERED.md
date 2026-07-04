@@ -2069,16 +2069,18 @@ This enables fabio to work in environments where public Fabric endpoints are blo
 
 - **Fabric API only returns UUIDs**: There is no Fabric REST API endpoint to list available sensitivity labels or resolve UUIDs to names.
 - **Label definitions live in Microsoft Purview**: Names, descriptions, priority, and classification levels are managed in Purview Information Protection, not Fabric.
-- **Resolution via Microsoft Graph**: `GET https://graph.microsoft.com/v1.0/security/informationProtection/sensitivityLabels` returns all labels with `id`, `name`, `description`, `isActive`, `parent` fields.
-- **Resolution via `az rest`**: `az rest --method GET --url "https://graph.microsoft.com/v1.0/security/informationProtection/sensitivityLabels" --resource "https://graph.microsoft.com"` — works for any user with `InformationProtection.Read` permission (comes with M365 E5).
+- **Resolution via `fabio label list`**: Queries Microsoft Graph (`GET /beta/security/informationProtection/sensitivityLabels`) and returns all labels with `id`, `name`, `description` fields. Uses a dedicated Graph token (scope: `https://graph.microsoft.com/.default`).
+- **Alternative via `az rest`**: `az rest --method GET --url "https://graph.microsoft.com/beta/security/informationProtection/sensitivityLabels" --resource "https://graph.microsoft.com"` — equivalent but requires manual token handling.
 - **No admin role needed for listing**: Reading label definitions from Graph only requires `InformationProtection.Read` scope — not a Fabric Administrator role.
-- **Labels change infrequently**: The UUID→name mapping is stable (labels are rarely added/removed). Agents should cache it rather than querying Graph on every invocation.
+- **Requires M365 E5 + Purview**: The Graph endpoint returns 403 if the tenant does not have Microsoft Purview Information Protection configured or the user lacks the appropriate license.
+- **Labels change infrequently**: The UUID→name mapping is stable (labels are rarely added/removed). Agents should cache the output of `fabio label list` rather than querying on every invocation.
+- **Beta endpoint**: Uses `/beta/security/informationProtection/sensitivityLabels` because the v1.0 segment is not yet GA. Env override: `FABIO_GRAPH_SCOPE`.
 
 ### Agent Guardrail Pattern
 
 The complete workflow for an AI agent implementing sensitivity-label-based guardrails:
 
-1. **Cache label mapping** (one-time or periodic): `az rest` → Graph → store UUID→name map
+1. **Get label mapping** (one-time or periodic): `fabio label list --query "data[].{id:id, name:name}"` → cache the UUID→name map
 2. **Read item labels** (per operation): `fabio item list -w $WS -o json --query "data[?sensitivityLabel]"` or `fabio <type> show --id $ID --query "data.sensitivityLabel.id"`
 3. **Classify**: Cross-reference the label UUID with the cached map to determine classification level
 4. **Decide**: Block, escalate, or proceed based on classification (e.g., block writes to "Highly Confidential" items)
@@ -2087,6 +2089,7 @@ The complete workflow for an AI agent implementing sensitivity-label-based guard
 
 ### fabio CLI Support
 
+- **Label resolution**: `fabio label list` resolves UUIDs to names via Microsoft Graph (no az rest needed)
 - **All create commands**: `--sensitivity-label <uuid>` flag on every item-type create command (50 commands total)
 - **All list commands**: Dynamic `SENSITIVITY LABEL` column in table output when any item in the response has a label
 - **JSON output**: Full `sensitivityLabel` object passes through in all JSON responses
