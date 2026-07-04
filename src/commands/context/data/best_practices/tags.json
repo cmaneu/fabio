@@ -1,0 +1,57 @@
+{
+  "topic": "tags",
+  "title": "Fabric Organizational Tags",
+  "summary": "Fabric organizational tags enable multi-dimensional classification of workspaces and items. Tags are returned inline in item/workspace responses and can be used for governance, inventory, and agent-based filtering.",
+  "how_tags_work": {
+    "definition": "Tags are tenant-level organizational labels created by Fabric admins. Each tag has an ID (UUID), displayName, and optional scope.",
+    "api_behavior": "The tags array is returned on items and workspaces that have tags applied. Items/workspaces without tags omit the field entirely (same pattern as sensitivityLabel).",
+    "response_shape": "{\"tags\": [{\"id\": \"<uuid>\", \"displayName\": \"Production\"}]}",
+    "no_server_side_filter": "There is no query parameter to filter items/workspaces by tag server-side. Use JMESPath client-side filtering on the returned data.",
+    "cannot_set_at_creation": "Tags cannot be set during item/workspace creation. They must be applied after creation via the applyTags endpoint."
+  },
+  "reading_tags": {
+    "list_items_with_tags": "fabio item list --workspace $WS --output json --query \"data[?tags]\"",
+    "find_untagged_items": "fabio item list --workspace $WS --output json --query \"data[?!tags]\"",
+    "filter_by_tag_name": "fabio item list --workspace $WS --output json --query \"data[?tags[?displayName=='Production']]\"",
+    "filter_by_tag_id": "fabio item list --workspace $WS --output json --query \"data[?tags[?id=='<tag-uuid>']]\"",
+    "show_item_tags": "fabio item show --workspace $WS --id $ITEM_ID --query \"data.tags[].displayName\"",
+    "table_output": "All list commands dynamically show a TAGS column when any item in the response has tags applied."
+  },
+  "managing_tags": {
+    "list_available_tags": "fabio admin list-tags (requires Fabric Administrator role)",
+    "create_tags": "fabio admin create-tags --content '{\"createTagsRequest\":[{\"displayName\":\"Production\"},{\"displayName\":\"Development\"}]}'",
+    "update_tag": "fabio admin update-tag --id <tag-uuid> --name 'New Name' --description 'Updated description'",
+    "delete_tag": "fabio admin delete-tag --id <tag-uuid>",
+    "apply_to_item": "fabio item apply-tags --workspace $WS --id $ITEM_ID --tag-ids <uuid1>,<uuid2>",
+    "remove_from_item": "fabio item unapply-tags --workspace $WS --id $ITEM_ID --tag-ids <uuid1>,<uuid2>",
+    "apply_to_workspace": "fabio workspace apply-tags --id $WS --tag-ids <uuid1>,<uuid2>",
+    "remove_from_workspace": "fabio workspace unapply-tags --id $WS --tag-ids <uuid1>,<uuid2>"
+  },
+  "governance_patterns": [
+    "Tag workspaces by environment: Production, Development, Staging, Sandbox",
+    "Tag items by data domain: Finance, HR, Marketing, Engineering",
+    "Tag items by data sensitivity tier to complement sensitivity labels",
+    "Scan workspaces for untagged items and flag for remediation",
+    "Use tags to implement ownership tracking (tag with team/owner identifier)",
+    "Combine tags with sensitivity labels for multi-dimensional classification"
+  ],
+  "ai_agent_patterns": {
+    "environment_guardrail": "Check workspace tags before executing mutations — block writes to 'Production' tagged workspaces without approval",
+    "scope_discovery": "Use tags to identify relevant workspaces/items for a task without knowing specific IDs",
+    "inventory_report": "fabio item list --workspace $WS --all --output json --query \"data[].{name:displayName,type:type,tags:tags[].displayName}\"",
+    "cross_workspace_scan": "List all workspaces, then for each: list items and check tag coverage"
+  },
+  "prerequisites": {
+    "reading_tags": "Any workspace viewer role — tags are in the standard item/workspace response.",
+    "applying_tags": "Workspace Member or higher role for item tags. Workspace Admin for workspace tags.",
+    "admin_crud": "Fabric Administrator role for creating, updating, and deleting tag definitions.",
+    "rate_limit": "25 requests per minute for tag admin operations."
+  },
+  "differences_from_sensitivity_labels": {
+    "source": "Tags are Fabric-native (managed by admin within Fabric). Sensitivity labels are from Microsoft Purview (external system).",
+    "creation_time": "Sensitivity labels can be set at creation time (--sensitivity-label flag). Tags CANNOT — must apply post-creation.",
+    "name_resolution": "Tag names (displayName) are returned inline in item responses. Sensitivity labels return only UUIDs (names require Graph API via 'fabio label list').",
+    "admin_requirement": "Tag definition CRUD requires Fabric admin. Applying existing tags to items requires only workspace Member role.",
+    "bulk_operations": "Sensitivity labels have dedicated bulk-set/bulk-remove admin endpoints. Tags have per-item apply/unapply only."
+  }
+}

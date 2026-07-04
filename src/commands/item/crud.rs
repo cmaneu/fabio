@@ -43,30 +43,60 @@ pub(super) async fn list(
         .get_list(&path, "value", cli.all, cli.continuation_token.as_deref())
         .await?;
 
-    // Dynamically add sensitivity label column if any item has one
+    // Dynamically add sensitivity label and tags columns if any item has them
     let has_labels = resp
         .items
         .iter()
         .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
+    let has_tags = output::has_tags(&resp.items);
 
-    if has_labels {
-        output::render_list_with_token(
+    let display_items;
+    let items_ref: &[Value] = if has_tags {
+        display_items = output::enrich_with_tags_display(&resp.items);
+        &display_items
+    } else {
+        &resp.items
+    };
+
+    match (has_labels, has_tags) {
+        (true, true) => output::render_list_with_token(
             cli,
-            &resp.items,
+            items_ref,
+            &[
+                "displayName",
+                "id",
+                "type",
+                "sensitivityLabel.id",
+                "_tagsDisplay",
+            ],
+            &["NAME", "ID", "TYPE", "SENSITIVITY LABEL", "TAGS"],
+            "id",
+            resp.continuation_token.as_deref(),
+        ),
+        (true, false) => output::render_list_with_token(
+            cli,
+            items_ref,
             &["displayName", "id", "type", "sensitivityLabel.id"],
             &["NAME", "ID", "TYPE", "SENSITIVITY LABEL"],
             "id",
             resp.continuation_token.as_deref(),
-        );
-    } else {
-        output::render_list_with_token(
+        ),
+        (false, true) => output::render_list_with_token(
             cli,
-            &resp.items,
+            items_ref,
+            &["displayName", "id", "type", "_tagsDisplay"],
+            &["NAME", "ID", "TYPE", "TAGS"],
+            "id",
+            resp.continuation_token.as_deref(),
+        ),
+        (false, false) => output::render_list_with_token(
+            cli,
+            items_ref,
             &["displayName", "id", "type"],
             &["NAME", "ID", "TYPE"],
             "id",
             resp.continuation_token.as_deref(),
-        );
+        ),
     }
     Ok(())
 }

@@ -83,6 +83,34 @@ pub fn render_list(
     render_list_with_token(cli, items, columns, headers, plain_key, None);
 }
 
+/// Check if any item in the list has a non-empty `tags` array.
+pub fn has_tags(items: &[Value]) -> bool {
+    items.iter().any(|item| {
+        item.get("tags")
+            .is_some_and(|v| v.as_array().is_some_and(|a| !a.is_empty()))
+    })
+}
+
+/// Enrich items with a flat `_tagsDisplay` field containing comma-separated tag names.
+/// This enables rendering tags in table output using the standard column mechanism.
+/// Returns a new Vec with the enriched items (does not modify originals).
+pub fn enrich_with_tags_display(items: &[Value]) -> Vec<Value> {
+    items
+        .iter()
+        .map(|item| {
+            let mut enriched = item.clone();
+            if let Some(tags) = item.get("tags").and_then(Value::as_array) {
+                let names: Vec<&str> = tags
+                    .iter()
+                    .filter_map(|t| t.get("displayName").and_then(Value::as_str))
+                    .collect();
+                enriched["_tagsDisplay"] = Value::from(names.join(", "));
+            }
+            enriched
+        })
+        .collect()
+}
+
 /// Render a list of items with optional pagination continuation token.
 #[allow(clippy::too_many_lines)]
 pub fn render_list_with_token(
