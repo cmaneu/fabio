@@ -5,6 +5,8 @@
 //! - `key_value_replace`: JSONPath-based value replacement at specific JSON keys
 //! - `spark_pool`: Spark pool instance ID to environment-specific pool configuration mapping
 //! - `semantic_model_binding`: Semantic model connection ID promotion across environments
+//! - `label_replace`: Sensitivity label ID mapping for cross-tenant deployments
+//! - `tag_replace`: Governance tag ID mapping for cross-tenant deployments
 //! - Dynamic variables: `$workspace.id`, `$workspace.name`, `$items.Type.Name.id`, `$ENV:VAR`
 //!
 //! The parameter file format is a superset of fabric-cicd's YAML `parameter.yml`,
@@ -42,6 +44,22 @@ pub struct Parameters {
     /// Semantic model connection binding rules.
     #[serde(default)]
     pub semantic_model_binding: Option<SemanticModelBinding>,
+
+    /// Map source sensitivity label ID → target label ID (or null to skip).
+    ///
+    /// Enables cross-tenant deployments where governance label IDs differ between
+    /// source and target tenants. A `null` value explicitly skips the label (don't
+    /// apply in the target). IDs not in the map pass through unchanged.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub label_replace: HashMap<String, Option<String>>,
+
+    /// Map source tag ID → target tag ID (or null to skip).
+    ///
+    /// Enables cross-tenant deployments where governance tag IDs differ between
+    /// source and target tenants. A `null` value explicitly skips the tag (don't
+    /// apply in the target). IDs not in the map pass through unchanged.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub tag_replace: HashMap<String, Option<String>>,
 }
 
 /// A single find-and-replace rule.
@@ -435,6 +453,16 @@ pub fn apply_parameters(
     // Apply semantic_model_binding
     if let Some(ref binding) = params.semantic_model_binding {
         apply_semantic_model_binding(source, binding, env, &mut warnings)?;
+    }
+
+    // Apply label_replace to governance metadata (sensitivity labels)
+    if !params.label_replace.is_empty() {
+        apply_label_replace(source, &params.label_replace);
+    }
+
+    // Apply tag_replace to governance metadata (tags)
+    if !params.tag_replace.is_empty() {
+        apply_tag_replace(source, &params.tag_replace);
     }
 
     Ok(warnings)
@@ -1044,6 +1072,88 @@ fn apply_semantic_model_binding(
     Ok(())
 }
 
+/// Apply `label_replace` to governance metadata on source items.
+///
+/// For each item with a sensitivity label, resolves the label ID through the map:
+/// - `Some(target_id)` → substitute to the target ID
+/// - `None` → explicitly skip (remove the label)
+/// - Absent from map → pass through unchanged
+fn apply_label_replace(source: &mut SourceWorkspace, label_map: &HashMap<String, Option<String>>) {
+    for item in &mut source.items {
+        let Some(ref mut governance) = item.governance else {
+            continue;
+        };
+        let Some(ref label) = governance.sensitivity_label else {
+            continue;
+        };
+
+        if let Some(replacement) = label_map.get(&label.id) {
+            match replacement {
+                Some(target_id) => {
+                    // Mapped to a different label ID in the target tenant
+                    governance.sensitivity_label = Some(super::platform::SensitivityLabelRef {
+                        id: target_id.clone(),
+                    });
+                }
+                None => {
+                    // Explicitly skipped — do not apply this label in target
+                    governance.sensitivity_label = None;
+                }
+            }
+        }
+        // Absent from map → pass through unchanged (no-op)
+
+        // If governance has no label and no tags left, clear it entirely
+        if governance.sensitivity_label.is_none() && governance.tags.is_empty() {
+            item.governance = None;
+        }
+    }
+}
+
+/// Apply `tag_replace` to governance metadata on source items.
+///
+/// For each item with tags, resolves each tag ID through the map:
+/// - `Some(target_id)` → substitute to the target ID
+/// - `None` → explicitly skip (remove the tag)
+/// - Absent from map → pass through unchanged
+fn apply_tag_replace(source: &mut SourceWorkspace, tag_map: &HashMap<String, Option<String>>) {
+    for item in &mut source.items {
+        let Some(ref mut governance) = item.governance else {
+            continue;
+        };
+        if governance.tags.is_empty() {
+            continue;
+        }
+
+        let resolved_tags: Vec<super::platform::TagRef> = governance
+            .tags
+            .iter()
+            .filter_map(|tag| {
+                tag_map.get(&tag.id).map_or_else(
+                    // Not in map → pass through unchanged
+                    || Some(tag.clone()),
+                    // Tag is in the map: Some(id) = mapped, None = skip
+                    |replacement| {
+                        replacement
+                            .as_ref()
+                            .map(|target_id| super::platform::TagRef {
+                                id: target_id.clone(),
+                                display_name: tag.display_name.clone(),
+                            })
+                    },
+                )
+            })
+            .collect();
+
+        governance.tags = resolved_tags;
+
+        // If governance has no label and no tags left, clear it entirely
+        if governance.sensitivity_label.is_none() && governance.tags.is_empty() {
+            item.governance = None;
+        }
+    }
+}
+
 /// Find the connection ID for a specific model in the binding config.
 fn find_model_connection_id(
     binding: &SemanticModelBinding,
@@ -1432,6 +1542,8 @@ mod tests {
             key_value_replace: Vec::new(),
             spark_pool: Vec::new(),
             semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let content = r#"{"server": "old-server.database.windows.net"}"#;
@@ -1497,6 +1609,8 @@ mod tests {
             key_value_replace: Vec::new(),
             spark_pool: Vec::new(),
             semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let content = "REPLACE_ME";
@@ -1613,6 +1727,8 @@ mod tests {
             }],
             spark_pool: Vec::new(),
             semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -1681,6 +1797,8 @@ mod tests {
             }],
             spark_pool: Vec::new(),
             semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -1741,6 +1859,8 @@ mod tests {
             }],
             spark_pool: Vec::new(),
             semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -1825,6 +1945,8 @@ mod tests {
             }],
             spark_pool: Vec::new(),
             semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -1888,6 +2010,8 @@ mod tests {
             }],
             spark_pool: Vec::new(),
             semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -1947,6 +2071,8 @@ mod tests {
             }],
             spark_pool: Vec::new(),
             semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -2015,6 +2141,8 @@ mod tests {
                 item_name: None,
             }],
             semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -2101,6 +2229,8 @@ mod tests {
                 item_name: None,
             }],
             semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -2169,6 +2299,8 @@ mod tests {
                 item_name: None,
             }],
             semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -2231,6 +2363,8 @@ mod tests {
                 }),
                 models: Vec::new(),
             }),
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -2330,6 +2464,8 @@ mod tests {
                     )]),
                 }],
             }),
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -2404,6 +2540,8 @@ mod tests {
                 }),
                 models: Vec::new(),
             }),
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -2468,6 +2606,8 @@ mod tests {
                 }),
                 models: Vec::new(),
             }),
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -2586,6 +2726,8 @@ mod tests {
                 }),
                 models: Vec::new(),
             }),
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -2718,6 +2860,8 @@ mod tests {
             key_value_replace: vec![],
             spark_pool: vec![],
             semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -2774,6 +2918,8 @@ mod tests {
             }],
             spark_pool: vec![],
             semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -2923,6 +3069,8 @@ mod tests {
             key_value_replace: vec![],
             spark_pool: vec![],
             semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::new(),
         };
 
         let ctx = SubstitutionContext {
@@ -2939,5 +3087,332 @@ mod tests {
             source.items[0].parts[0].payload,
             BASE64.encode(&binary_content)
         );
+    }
+
+    #[test]
+    fn test_label_replace_substitutes_id() {
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: PlatformMetadata {
+                    item_type: "Notebook".to_owned(),
+                    display_name: "NB1".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                    platform_creation_payload: None,
+                },
+                parts: vec![],
+                content_hash: String::new(),
+                folder_path: String::new(),
+                source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
+                shortcuts: None,
+                governance: Some(super::super::platform::GovernanceMetadata {
+                    sensitivity_label: Some(super::super::platform::SensitivityLabelRef {
+                        id: "source-label-aaa".to_owned(),
+                    }),
+                    tags: vec![],
+                }),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: vec![],
+            key_value_replace: vec![],
+            spark_pool: vec![],
+            semantic_model_binding: None,
+            label_replace: HashMap::from([(
+                "source-label-aaa".to_owned(),
+                Some("target-label-bbb".to_owned()),
+            )]),
+            tag_replace: HashMap::new(),
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+
+        let gov = source.items[0].governance.as_ref().unwrap();
+        assert_eq!(
+            gov.sensitivity_label.as_ref().unwrap().id,
+            "target-label-bbb"
+        );
+    }
+
+    #[test]
+    fn test_label_replace_null_skips_label() {
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: PlatformMetadata {
+                    item_type: "Notebook".to_owned(),
+                    display_name: "NB1".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                    platform_creation_payload: None,
+                },
+                parts: vec![],
+                content_hash: String::new(),
+                folder_path: String::new(),
+                source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
+                shortcuts: None,
+                governance: Some(super::super::platform::GovernanceMetadata {
+                    sensitivity_label: Some(super::super::platform::SensitivityLabelRef {
+                        id: "dev-only-label".to_owned(),
+                    }),
+                    tags: vec![],
+                }),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: vec![],
+            key_value_replace: vec![],
+            spark_pool: vec![],
+            semantic_model_binding: None,
+            label_replace: HashMap::from([("dev-only-label".to_owned(), None)]),
+            tag_replace: HashMap::new(),
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+
+        // Label should be removed, and since no tags either, governance cleared entirely
+        assert!(source.items[0].governance.is_none());
+    }
+
+    #[test]
+    fn test_tag_replace_filters_and_maps() {
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: PlatformMetadata {
+                    item_type: "DataPipeline".to_owned(),
+                    display_name: "PL1".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                    platform_creation_payload: None,
+                },
+                parts: vec![],
+                content_hash: String::new(),
+                folder_path: String::new(),
+                source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
+                shortcuts: None,
+                governance: Some(super::super::platform::GovernanceMetadata {
+                    sensitivity_label: None,
+                    tags: vec![
+                        super::super::platform::TagRef {
+                            id: "tag-aaa".to_owned(),
+                            display_name: "Tag A".to_owned(),
+                        },
+                        super::super::platform::TagRef {
+                            id: "tag-bbb".to_owned(),
+                            display_name: "Tag B".to_owned(),
+                        },
+                        super::super::platform::TagRef {
+                            id: "tag-ccc".to_owned(),
+                            display_name: "Tag C".to_owned(),
+                        },
+                    ],
+                }),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: vec![],
+            key_value_replace: vec![],
+            spark_pool: vec![],
+            semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::from([
+                ("tag-aaa".to_owned(), Some("tag-xxx".to_owned())), // map to different ID
+                ("tag-bbb".to_owned(), None),                       // skip this tag
+                                                                    // tag-ccc not in map → pass through
+            ]),
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+
+        let gov = source.items[0].governance.as_ref().unwrap();
+        assert_eq!(gov.tags.len(), 2);
+        assert_eq!(gov.tags[0].id, "tag-xxx"); // mapped
+        assert_eq!(gov.tags[0].display_name, "Tag A"); // display name preserved
+        assert_eq!(gov.tags[1].id, "tag-ccc"); // passed through
+    }
+
+    #[test]
+    fn test_unmapped_ids_pass_through() {
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: PlatformMetadata {
+                    item_type: "Notebook".to_owned(),
+                    display_name: "NB".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                    platform_creation_payload: None,
+                },
+                parts: vec![],
+                content_hash: String::new(),
+                folder_path: String::new(),
+                source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
+                shortcuts: None,
+                governance: Some(super::super::platform::GovernanceMetadata {
+                    sensitivity_label: Some(super::super::platform::SensitivityLabelRef {
+                        id: "unmapped-label-id".to_owned(),
+                    }),
+                    tags: vec![super::super::platform::TagRef {
+                        id: "unmapped-tag-id".to_owned(),
+                        display_name: "Unmapped Tag".to_owned(),
+                    }],
+                }),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: vec![],
+            key_value_replace: vec![],
+            spark_pool: vec![],
+            semantic_model_binding: None,
+            label_replace: HashMap::from([(
+                "some-other-label".to_owned(),
+                Some("target".to_owned()),
+            )]),
+            tag_replace: HashMap::from([("some-other-tag".to_owned(), None)]),
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+
+        // Both should be unchanged since their IDs are not in the maps
+        let gov = source.items[0].governance.as_ref().unwrap();
+        assert_eq!(
+            gov.sensitivity_label.as_ref().unwrap().id,
+            "unmapped-label-id"
+        );
+        assert_eq!(gov.tags.len(), 1);
+        assert_eq!(gov.tags[0].id, "unmapped-tag-id");
+    }
+
+    #[test]
+    fn test_label_replace_parsed_from_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("params.json");
+        std::fs::write(
+            &path,
+            r#"{
+                "label_replace": {
+                    "source-label-uuid": "target-label-uuid",
+                    "dev-only-label-uuid": null
+                },
+                "tag_replace": {
+                    "source-tag-uuid": "target-tag-uuid",
+                    "dev-only-tag-uuid": null
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let params = parse_parameters(&path).unwrap();
+        assert_eq!(params.label_replace.len(), 2);
+        assert_eq!(
+            params.label_replace.get("source-label-uuid"),
+            Some(&Some("target-label-uuid".to_owned()))
+        );
+        assert_eq!(params.label_replace.get("dev-only-label-uuid"), Some(&None));
+        assert_eq!(params.tag_replace.len(), 2);
+        assert_eq!(
+            params.tag_replace.get("source-tag-uuid"),
+            Some(&Some("target-tag-uuid".to_owned()))
+        );
+        assert_eq!(params.tag_replace.get("dev-only-tag-uuid"), Some(&None));
+    }
+
+    #[test]
+    fn test_all_tags_skipped_clears_governance() {
+        let mut source = SourceWorkspace {
+            items: vec![SourceItem {
+                metadata: PlatformMetadata {
+                    item_type: "Report".to_owned(),
+                    display_name: "R1".to_owned(),
+                    logical_id: None,
+                    description: None,
+                    definition_format: None,
+                    platform_creation_payload: None,
+                },
+                parts: vec![],
+                content_hash: String::new(),
+                folder_path: String::new(),
+                source_path: std::path::PathBuf::from("/tmp"),
+                creation_payload: None,
+                shortcuts: None,
+                governance: Some(super::super::platform::GovernanceMetadata {
+                    sensitivity_label: None,
+                    tags: vec![
+                        super::super::platform::TagRef {
+                            id: "tag-1".to_owned(),
+                            display_name: "T1".to_owned(),
+                        },
+                        super::super::platform::TagRef {
+                            id: "tag-2".to_owned(),
+                            display_name: "T2".to_owned(),
+                        },
+                    ],
+                }),
+            }],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+
+        let params = Parameters {
+            find_replace: vec![],
+            key_value_replace: vec![],
+            spark_pool: vec![],
+            semantic_model_binding: None,
+            label_replace: HashMap::new(),
+            tag_replace: HashMap::from([("tag-1".to_owned(), None), ("tag-2".to_owned(), None)]),
+        };
+
+        let ctx = SubstitutionContext {
+            workspace_id: "ws-1",
+            workspace_name: None,
+            deployed_items: &HashMap::new(),
+        };
+
+        apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
+
+        // All tags skipped + no label → governance cleared entirely
+        assert!(source.items[0].governance.is_none());
     }
 }
