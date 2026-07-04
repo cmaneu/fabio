@@ -1,0 +1,25 @@
+{
+  "name": "Feature Workspace Setup",
+  "description": "Create an isolated feature workspace for development with Git integration, following Microsoft's recommended branched workspace pattern for Fabric CI/CD.",
+  "prerequisites": ["Authenticated via fabio auth login", "Git repository with integration branch containing item definitions", "Fabric capacity ID for the feature workspace", "Git connection ID (for GitHub) or Azure DevOps credentials"],
+  "steps": [
+    {"step_number": 1, "command": "fabio workspace create --name \"feature-my-change\" --capacity $CAPACITY_ID", "description": "Create a new workspace for the feature branch.", "notes": "Use a naming convention like 'feature-<name>' or '<developer>-<feature>'. The workspace needs to be assigned to a capacity."},
+    {"step_number": 2, "command": "fabio git connect --workspace \"feature-my-change\" --provider github --owner <ORG> --repo <REPO> --branch feature/my-change --connection-id $CONN_ID --directory /workspace", "description": "Connect the workspace to the feature branch.", "notes": "Use --directory to separate item definitions from workflow files. For Azure DevOps: --provider azure-devops --org <ORG> --project <PROJECT>."},
+    {"step_number": 3, "command": "fabio git init --workspace \"feature-my-change\" --strategy prefer-remote --wait", "description": "Initialize Git connection and populate workspace from branch (Update from Git).", "notes": "This creates workspace items from the item definitions in the branch. Use --strategy prefer-remote to take the branch as source of truth."},
+    {"step_number": 4, "command": "fabio git status --workspace \"feature-my-change\"", "description": "Verify all items are synced.", "notes": "All items should show 'Synced' status. If any show conflicts, resolve them."},
+    {"step_number": 5, "command": "fabio variable-library activate-value-set --workspace \"feature-my-change\" --id <VL_ID> --value-set dev", "description": "(Optional) Activate the dev value set if the workspace has a variable library.", "notes": "Feature workspaces typically use the 'dev' value set. Skip if no variable libraries exist."},
+    {"step_number": 6, "command": "# Make changes in the feature workspace via Fabric portal or API", "description": "Develop your feature in the isolated workspace.", "notes": "All changes are tracked by Git integration."},
+    {"step_number": 7, "command": "fabio git commit --workspace \"feature-my-change\" --message \"feat: add new pipeline\" --commit-all --wait", "description": "Commit changes to the feature branch.", "notes": "Use conventional commit messages. --commit-all includes all modified items."},
+    {"step_number": 8, "command": "# Create PR to merge feature branch into integration branch (via GitHub/Azure DevOps)", "description": "Submit pull request for code review.", "notes": "Configure branch protection rules on the integration branch to require PR reviews."},
+    {"step_number": 9, "command": "fabio workspace delete --id <feature-workspace-id>", "description": "(Optional) Delete the feature workspace after PR is merged.", "notes": "Keep feature branches short-lived. Delete workspace after merge to avoid drift. Alternatively, recycle it for the next feature."}
+  ],
+  "tips": [
+    "Feature branches should be short-lived — merge within days, not weeks, to avoid conflicts.",
+    "For selective branching (large workspaces): export only the items you need to modify.",
+    "Use fabio git checkout --workspace <WS> --branch <new-branch> to switch an existing workspace to a different branch.",
+    "For recycled workspaces: use 'fabio git checkout' to switch branches instead of creating new workspaces.",
+    "Post-sync automation: if items need rebinding after Update from Git, script it with fabio commands (e.g., activate value sets, configure default lakehouses).",
+    "For multi-workspace solutions: connect all workspaces to the same branch with different --directory values (e.g., /workspace/staging, /workspace/presentation).",
+    "Azure DevOps example: fabio git connect --workspace $WS --provider azure-devops --org myorg --project myproject --repo myrepo --branch feature/xyz --directory /workspace"
+  ]
+}

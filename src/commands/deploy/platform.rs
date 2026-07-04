@@ -82,6 +82,9 @@ pub struct SourceItem {
     /// Optional governance metadata (sensitivity label + tags).
     /// Read from `governance.metadata.json` if it exists.
     pub governance: Option<GovernanceMetadata>,
+    /// Optional job schedules (from `schedules.metadata.json`).
+    /// Contains an array of schedule configurations to apply after deployment.
+    pub schedules: Option<Vec<serde_json::Value>>,
     /// Workspace folder path (e.g., "/ETL/Bronze"). Empty string means root level.
     pub folder_path: String,
     /// Path to the item directory on disk.
@@ -327,6 +330,7 @@ fn discover_items_recursive(
 }
 
 /// Parse a single item directory into a `SourceItem`.
+#[allow(clippy::too_many_lines)]
 fn parse_item_directory(root: &Path, path: &Path) -> Result<SourceItem> {
     let platform_path = path.join(".platform");
     let mut metadata = parse_platform_file(&platform_path)?;
@@ -437,6 +441,29 @@ fn parse_item_directory(root: &Path, path: &Path) -> Result<SourceItem> {
         None
     };
 
+    // Read optional schedules.metadata.json (job schedules)
+    let schedules_path = path.join("schedules.metadata.json");
+    let schedules = if schedules_path.exists() {
+        let content = std::fs::read_to_string(&schedules_path).with_context(|| {
+            format!(
+                "Failed to read schedules.metadata.json: {}",
+                schedules_path.display()
+            )
+        })?;
+        let parsed: serde_json::Value = serde_json::from_str(&content).with_context(|| {
+            format!(
+                "Invalid JSON in schedules.metadata.json: {}",
+                schedules_path.display()
+            )
+        })?;
+        match parsed {
+            serde_json::Value::Array(arr) if !arr.is_empty() => Some(arr),
+            _ => None,
+        }
+    } else {
+        None
+    };
+
     // Compute folder path from item's parent relative to root
     let folder_path = super::folders::item_folder_path(root, path);
 
@@ -447,6 +474,7 @@ fn parse_item_directory(root: &Path, path: &Path) -> Result<SourceItem> {
         creation_payload,
         shortcuts,
         governance,
+        schedules,
         folder_path,
         source_path: path.to_path_buf(),
     })
@@ -491,13 +519,14 @@ fn read_parts_recursive(
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            // Skip creationPayload.json, shortcuts.metadata.json, and governance.metadata.json
-            // (not definition parts — handled separately)
+            // Skip creationPayload.json, shortcuts.metadata.json, governance.metadata.json,
+            // and schedules.metadata.json (not definition parts — handled separately)
             // NOTE: .platform IS included as a definition part (the Fabric API
             // uses it for metadata updates when ?updateMetadata=true is set)
             if file_name == "creationPayload.json"
                 || file_name == "shortcuts.metadata.json"
                 || file_name == "governance.metadata.json"
+                || file_name == "schedules.metadata.json"
             {
                 continue;
             }

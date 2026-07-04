@@ -64,6 +64,11 @@ pub async fn export_workspace(
         write_governance_metadata(output_dir, &items_to_export);
     }
 
+    // Export job schedules for items that have them
+    if !cli.dry_run {
+        export_item_schedules(client, workspace_id, output_dir, &items_to_export).await;
+    }
+
     Ok(ExportResult {
         total_items: total,
         exported: count,
@@ -405,6 +410,88 @@ fn write_governance_metadata(output_dir: &std::path::Path, items: &[ExportableIt
 
         let content = serde_json::to_string_pretty(&Value::Object(metadata)).unwrap_or_default();
         let _ = std::fs::write(item_dir.join("governance.metadata.json"), content);
+    }
+}
+
+/// Known job types to check for schedules per item type.
+/// Maps item type (case-insensitive) to the job type string used in the API path.
+const SCHEDULE_JOB_TYPES: &[(&str, &str)] = &[
+    ("Notebook", "DefaultJob"),
+    ("DataPipeline", "Pipeline"),
+    ("SparkJobDefinition", "SparkJob"),
+    ("Lakehouse", "DefaultJob"),
+    ("SemanticModel", "DefaultJob"),
+    ("Dataflow", "DefaultJob"),
+    ("CopyJob", "DefaultJob"),
+];
+
+/// Export job schedules for items that support them.
+///
+/// For each item, queries the Fabric Job Scheduler API to get existing schedules.
+/// Writes `schedules.metadata.json` to the item directory if schedules exist.
+/// Failures are silently skipped (not all items support schedules).
+async fn export_item_schedules(
+    client: &FabricClient,
+    workspace_id: &str,
+    output_dir: &std::path::Path,
+    items: &[ExportableItem],
+) {
+    for item in items {
+        // Determine the job type for this item
+        let job_type = SCHEDULE_JOB_TYPES
+            .iter()
+            .find(|(t, _)| t.eq_ignore_ascii_case(&item.item_type))
+            .map(|(_, jt)| *jt);
+
+        let Some(job_type) = job_type else {
+            continue;
+        };
+
+        let url = format!(
+            "/workspaces/{workspace_id}/items/{}/jobs/{job_type}/schedules",
+            item.id
+        );
+        let Ok(data) = client.get(&url).await else {
+            continue;
+        };
+
+        let Some(schedules) = data.get("value").and_then(|v| v.as_array()) else {
+            continue;
+        };
+
+        if schedules.is_empty() {
+            continue;
+        }
+
+        let dir_name = format!("{}.{}", item.name, item.item_type);
+        let item_dir = output_dir.join(&dir_name);
+
+        // Only write if the item directory already exists (was exported successfully)
+        if !item_dir.exists() {
+            continue;
+        }
+
+        // Strip server-generated fields (id, createdDateTime, owner) to make it portable
+        let portable_schedules: Vec<Value> = schedules
+            .iter()
+            .map(|s| {
+                let mut schedule = s.clone();
+                if let Some(obj) = schedule.as_object_mut() {
+                    obj.remove("id");
+                    obj.remove("createdDateTime");
+                    obj.remove("owner");
+                }
+                // Add the job type so we know what to create on import
+                schedule
+                    .as_object_mut()
+                    .unwrap()
+                    .insert("jobType".to_owned(), Value::from(job_type));
+                schedule
+            })
+            .collect();
+
+        let content = serde_json::to_string_pretty(&portable_schedules).unwrap_or_default();
+        let _ = std::fs::write(item_dir.join("schedules.metadata.json"), content);
     }
 }
 

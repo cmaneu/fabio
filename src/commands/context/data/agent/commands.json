@@ -17678,6 +17678,10 @@
           "--shortcut-exclude-regex": {
             "type": "string",
             "description": "Exclude shortcuts matching this regex during reconciliation"
+          },
+          "--post-run-item": {
+            "type": "string",
+            "description": "Run a pipeline or notebook after deployment completes (data orchestration)"
           }
         },
         "mutates": true,

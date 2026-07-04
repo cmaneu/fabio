@@ -238,6 +238,13 @@ pub enum DeployCommand {
         /// Exclude shortcuts matching this regex during reconciliation
         #[arg(long, value_name = "PATTERN")]
         shortcut_exclude_regex: Option<String>,
+
+        /// Run a pipeline or notebook after deployment completes (data orchestration)
+        ///
+        /// Triggers the named item's default job after all deploy operations succeed.
+        /// Useful for populating lakehouses after deploying a solution with ETL items.
+        #[arg(long, value_name = "NAME")]
+        post_run_item: Option<String>,
     },
 
     /// Export workspace item definitions to a local directory
@@ -401,6 +408,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
             no_folders,
             no_workspace_id_replace,
             shortcut_exclude_regex,
+            post_run_item,
         } => {
             let resolved = resolve_config_and_cli(
                 config.as_deref(),
@@ -435,6 +443,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
                 *no_folders,
                 *no_workspace_id_replace,
                 shortcut_exclude_regex.as_deref(),
+                post_run_item.as_deref(),
             )
             .await
         }
@@ -676,6 +685,7 @@ async fn execute_apply(
     _no_folders: bool,
     no_workspace_id_replace: bool,
     _shortcut_exclude_regex: Option<&str>,
+    post_run_item: Option<&str>,
 ) -> Result<()> {
     // Validate parameter flags
     if parameters.is_some() && env.is_none() {
@@ -930,6 +940,56 @@ async fn execute_apply(
         )
         .await;
         hook_results.extend(vl_results);
+    }
+
+    // Apply job schedules for deployed items (unless --no-post-hooks)
+    if !no_post_hooks && !cli.dry_run {
+        let schedule_results = apply::apply_item_schedules(
+            cli,
+            client,
+            &workspace_id,
+            &result.succeeded,
+            &source_workspace,
+        )
+        .await;
+        hook_results.extend(schedule_results);
+    }
+
+    // Run a post-deploy item (pipeline/notebook) if specified (unless --no-post-hooks)
+    if !no_post_hooks
+        && !cli.dry_run
+        && let Some(item_name) = post_run_item
+    {
+        apply::emit_progress(
+            cli.quiet,
+            &format!("post-hook: triggering run for \"{item_name}\""),
+        );
+        // Find the item ID from succeeded deploys or list workspace items
+        let run_result = run_post_deploy_item(client, &workspace_id, item_name).await;
+        match run_result {
+            Ok(status) => {
+                hook_results.push(json!({
+                    "hook": "post_run_item",
+                    "item_name": item_name,
+                    "status": status
+                }));
+            }
+            Err(e) => {
+                apply::emit_progress(
+                    cli.quiet,
+                    &format!(
+                        "  post-hook WARNING: run \"{item_name}\": {}",
+                        e.root_cause()
+                    ),
+                );
+                hook_results.push(json!({
+                    "hook": "post_run_item",
+                    "item_name": item_name,
+                    "status": "failed",
+                    "error": e.to_string()
+                }));
+            }
+        }
     }
 
     // Render result
@@ -1474,6 +1534,63 @@ pub(super) fn is_delete_allowed(item_type: &str, allow_delete_types: Option<&[St
     // Protected types require explicit opt-in
     allow_delete_types
         .is_some_and(|allowed| allowed.iter().any(|t| t.eq_ignore_ascii_case(item_type)))
+}
+
+/// Run a named item (pipeline/notebook) as a post-deploy data orchestration step.
+///
+/// Finds the item by display name in the workspace, determines its job type,
+/// and triggers a run-on-demand via the Job Scheduler API.
+async fn run_post_deploy_item(
+    client: &FabricClient,
+    workspace_id: &str,
+    item_name: &str,
+) -> Result<String> {
+    // List workspace items to find the named item
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace_id}/items"),
+            "value",
+            true,
+            None,
+        )
+        .await?;
+
+    let item = resp
+        .items
+        .iter()
+        .find(|i| {
+            i.get("displayName")
+                .and_then(|v| v.as_str())
+                .is_some_and(|n| n.eq_ignore_ascii_case(item_name))
+        })
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::NotFound,
+                format!("Item \"{item_name}\" not found in workspace"),
+                "Check the item name. List items: fabio item list --workspace <WS>",
+            )
+        })?;
+
+    let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or_default();
+    let item_type = item
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+
+    // Determine the job type based on item type
+    let job_type = match item_type {
+        "DataPipeline" => "Pipeline",
+        "Notebook" => "RunNotebook",
+        "SparkJobDefinition" => "SparkJob",
+        _ => "DefaultJob",
+    };
+
+    // Trigger run-on-demand
+    let path =
+        format!("/workspaces/{workspace_id}/items/{item_id}/jobs/instances?jobType={job_type}");
+    client.post(&path, &json!({}), false).await?;
+
+    Ok("triggered".to_owned())
 }
 
 #[cfg(test)]

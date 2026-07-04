@@ -19,7 +19,7 @@ use super::platform::SourceWorkspace;
 
 /// Write a progress line to stderr (diagnostics channel).
 /// Only emits when stderr is connected (non-quiet mode).
-fn emit_progress(quiet: bool, msg: &str) {
+pub(super) fn emit_progress(quiet: bool, msg: &str) {
     if !quiet {
         eprintln!("[deploy] {msg}");
     }
@@ -718,6 +718,107 @@ pub async fn activate_variable_library_value_sets(
                     "status": "failed",
                     "error": err_msg
                 }));
+            }
+        }
+    }
+
+    results
+}
+
+/// Post-hook: Apply job schedules from `schedules.metadata.json` to deployed items.
+///
+/// For each successfully deployed item that has schedules defined in the source,
+/// creates the schedules via the Fabric Job Scheduler API. Existing schedules
+/// on the item are left untouched (additive, not reconciling).
+///
+/// Non-fatal: failures are reported but don't fail the deployment.
+pub async fn apply_item_schedules(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace_id: &str,
+    succeeded: &[Change],
+    source: &super::platform::SourceWorkspace,
+) -> Vec<Value> {
+    let mut results: Vec<Value> = Vec::new();
+
+    for change in succeeded {
+        match change.action {
+            ChangeAction::Create | ChangeAction::Update => {}
+            _ => continue,
+        }
+
+        let Some(ref item_id) = change.deployed_id else {
+            continue;
+        };
+
+        // Find the source item with matching type + name
+        let source_item = source.items.iter().find(|si| {
+            si.metadata
+                .item_type
+                .eq_ignore_ascii_case(&change.item_type)
+                && si.metadata.display_name == change.name
+        });
+
+        let Some(source_item) = source_item else {
+            continue;
+        };
+
+        let Some(ref schedules) = source_item.schedules else {
+            continue;
+        };
+
+        emit_progress(
+            cli.quiet,
+            &format!(
+                "post-hook: applying {} schedule(s) for \"{}\"",
+                schedules.len(),
+                change.name
+            ),
+        );
+
+        for schedule in schedules {
+            let job_type = schedule
+                .get("jobType")
+                .and_then(|v| v.as_str())
+                .unwrap_or("DefaultJob");
+
+            // Build the create body (strip our internal jobType field)
+            let mut body = schedule.clone();
+            if let Some(obj) = body.as_object_mut() {
+                obj.remove("jobType");
+            }
+
+            let path =
+                format!("/workspaces/{workspace_id}/items/{item_id}/jobs/{job_type}/schedules");
+
+            match client.post(&path, &body, false).await {
+                Ok(_) => {
+                    results.push(json!({
+                        "hook": "create_schedule",
+                        "item_type": change.item_type,
+                        "item_name": change.name,
+                        "job_type": job_type,
+                        "status": "created"
+                    }));
+                }
+                Err(e) => {
+                    let err_msg = e.root_cause().to_string();
+                    emit_progress(
+                        cli.quiet,
+                        &format!(
+                            "  post-hook WARNING: create schedule for \"{}\": {}",
+                            change.name, err_msg
+                        ),
+                    );
+                    results.push(json!({
+                        "hook": "create_schedule",
+                        "item_type": change.item_type,
+                        "item_name": change.name,
+                        "job_type": job_type,
+                        "status": "failed",
+                        "error": err_msg
+                    }));
+                }
             }
         }
     }
@@ -2118,6 +2219,7 @@ mod tests {
             },
             parts: vec![],
             content_hash: "sha256:abc".to_owned(),
+            schedules: None,
             folder_path: String::new(),
             source_path: std::path::PathBuf::from("/tmp"),
             creation_payload: None,
@@ -2168,6 +2270,7 @@ mod tests {
                 payload_type: "InlineBase64".to_owned(),
             }],
             content_hash: "sha256:abc".to_owned(),
+            schedules: None,
             folder_path: String::new(),
             source_path: std::path::PathBuf::from("/tmp"),
             creation_payload: None,
@@ -2218,6 +2321,7 @@ mod tests {
                 payload_type: "InlineBase64".to_owned(),
             }],
             content_hash: "sha256:abc".to_owned(),
+            schedules: None,
             folder_path: String::new(),
             source_path: std::path::PathBuf::from("/tmp"),
             creation_payload: None,
@@ -2386,6 +2490,7 @@ mod tests {
                 },
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),
+                schedules: None,
                 folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
@@ -2427,6 +2532,7 @@ mod tests {
                 },
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),
+                schedules: None,
                 folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
@@ -2464,6 +2570,7 @@ mod tests {
                     },
                     parts: vec![],
                     content_hash: "sha256:abc".to_owned(),
+                    schedules: None,
                     folder_path: String::new(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
@@ -2481,6 +2588,7 @@ mod tests {
                     },
                     parts: vec![],
                     content_hash: "sha256:def".to_owned(),
+                    schedules: None,
                     folder_path: String::new(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
@@ -2498,6 +2606,7 @@ mod tests {
                     },
                     parts: vec![],
                     content_hash: "sha256:ghi".to_owned(),
+                    schedules: None,
                     folder_path: String::new(),
                     source_path: std::path::PathBuf::from("/tmp"),
                     creation_payload: None,
@@ -2595,6 +2704,7 @@ mod tests {
                 },
                 parts: vec![],
                 content_hash: "sha256:abc".to_owned(),
+                schedules: None,
                 folder_path: String::new(),
                 source_path: std::path::PathBuf::from("/tmp"),
                 creation_payload: None,
@@ -2810,6 +2920,7 @@ mod tests {
                 payload_type: "InlineBase64".to_owned(),
             }],
             content_hash: String::new(),
+            schedules: None,
             folder_path: String::new(),
             source_path: std::path::PathBuf::new(),
             creation_payload: None,
