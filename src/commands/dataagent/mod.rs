@@ -48,6 +48,10 @@ pub enum DataAgentCommand {
         /// Data agent description (max 256 characters)
         #[arg(long)]
         description: Option<String>,
+
+        /// Sensitivity label ID to apply on creation
+        #[arg(long)]
+        sensitivity_label: Option<String>,
     },
     /// Update a data agent (name and/or description)
     Update {
@@ -572,9 +576,17 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             workspace,
             name,
             description,
-        } => crud::create(cli, client, workspace, name, description.as_deref())
-            .await
-            .map_err(|e| enrich_forbidden(e, "data-agent create", "Member")),
+            sensitivity_label,
+        } => crud::create(
+            cli,
+            client,
+            workspace,
+            name,
+            description.as_deref(),
+            sensitivity_label.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-agent create", "Member")),
         DataAgentCommand::Update {
             workspace,
             id,

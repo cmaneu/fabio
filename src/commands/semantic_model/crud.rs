@@ -18,14 +18,30 @@ pub(super) async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> R
         )
         .await?;
 
-    output::render_list_with_token(
-        cli,
-        &resp.items,
-        &["displayName", "id", "description"],
-        &["NAME", "ID", "DESCRIPTION"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
+    let has_labels = resp
+        .items
+        .iter()
+        .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
+
+    if has_labels {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description", "sensitivityLabel.id"],
+            &["NAME", "ID", "DESCRIPTION", "SENSITIVITY LABEL"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    } else {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description"],
+            &["NAME", "ID", "DESCRIPTION"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    }
     Ok(())
 }
 
@@ -42,6 +58,7 @@ pub(super) async fn show(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -50,6 +67,7 @@ pub(super) async fn create(
     description: Option<&str>,
     file: &str,
     connection: Option<&str>,
+    sensitivity_label: Option<&str>,
 ) -> Result<()> {
     let content = std::fs::read_to_string(file).map_err(|e| {
         FabioError::with_hint(
@@ -111,6 +129,11 @@ pub(super) async fn create(
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
     }
+    if let Some(label_id) = sensitivity_label {
+        body["sensitivityLabelSettings"] = serde_json::json!({
+            "sensitivityLabelId": label_id
+        });
+    }
 
     if output::dry_run_guard(
         cli,
@@ -120,7 +143,8 @@ pub(super) async fn create(
             "displayName": name,
             "description": description,
             "file": file,
-            "connection": connection
+            "connection": connection,
+            "sensitivityLabel": sensitivity_label
         }),
     ) {
         return Ok(());

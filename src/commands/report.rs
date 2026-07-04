@@ -54,6 +54,10 @@ pub enum ReportCommand {
         /// Dataset/semantic model ID to bind report to (auto-generates definition.pbir)
         #[arg(long)]
         dataset: Option<String>,
+
+        /// Sensitivity label ID to apply on creation
+        #[arg(long)]
+        sensitivity_label: Option<String>,
     },
     /// Update report properties (name and/or description)
     #[command(display_order = 4)]
@@ -157,6 +161,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
             description,
             file,
             dataset,
+            sensitivity_label,
         } => {
             create(
                 cli,
@@ -166,6 +171,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
                 description.as_deref(),
                 file.as_deref(),
                 dataset.as_deref(),
+                sensitivity_label.as_deref(),
             )
             .await
         }
@@ -219,14 +225,30 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
         )
         .await?;
 
-    output::render_list_with_token(
-        cli,
-        &resp.items,
-        &["displayName", "id", "description"],
-        &["NAME", "ID", "DESCRIPTION"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
+    let has_labels = resp
+        .items
+        .iter()
+        .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
+
+    if has_labels {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description", "sensitivityLabel.id"],
+            &["NAME", "ID", "DESCRIPTION", "SENSITIVITY LABEL"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    } else {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description"],
+            &["NAME", "ID", "DESCRIPTION"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    }
     Ok(())
 }
 
@@ -238,6 +260,7 @@ async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Re
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -246,6 +269,7 @@ async fn create(
     description: Option<&str>,
     file: Option<&str>,
     dataset: Option<&str>,
+    sensitivity_label: Option<&str>,
 ) -> Result<()> {
     let mut parts: Vec<Value> = Vec::new();
 
@@ -320,6 +344,11 @@ async fn create(
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
     }
+    if let Some(label_id) = sensitivity_label {
+        body["sensitivityLabelSettings"] = serde_json::json!({
+            "sensitivityLabelId": label_id
+        });
+    }
 
     if output::dry_run_guard(
         cli,
@@ -329,7 +358,8 @@ async fn create(
             "displayName": name,
             "description": description,
             "dataset": dataset,
-            "file": file
+            "file": file,
+            "sensitivityLabel": sensitivity_label
         }),
     ) {
         return Ok(());

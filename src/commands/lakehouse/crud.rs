@@ -72,14 +72,30 @@ pub(super) async fn list_lakehouses(
         )
         .await?;
 
-    output::render_list_with_token(
-        cli,
-        &resp.items,
-        &["displayName", "id", "description"],
-        &["NAME", "ID", "DESCRIPTION"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
+    let has_labels = resp
+        .items
+        .iter()
+        .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
+
+    if has_labels {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description", "sensitivityLabel.id"],
+            &["NAME", "ID", "DESCRIPTION", "SENSITIVITY LABEL"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    } else {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description"],
+            &["NAME", "ID", "DESCRIPTION"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    }
     Ok(())
 }
 
@@ -103,6 +119,7 @@ pub(super) async fn create_lakehouse(
     name: &str,
     description: Option<&str>,
     enable_schemas: bool,
+    sensitivity_label: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "displayName": name,
@@ -115,6 +132,11 @@ pub(super) async fn create_lakehouse(
             "enableSchemas": true
         });
     }
+    if let Some(label_id) = sensitivity_label {
+        body["sensitivityLabelSettings"] = serde_json::json!({
+            "sensitivityLabelId": label_id
+        });
+    }
 
     if output::dry_run_guard(
         cli,
@@ -123,7 +145,8 @@ pub(super) async fn create_lakehouse(
             "workspace": workspace,
             "displayName": name,
             "description": description,
-            "enableSchemas": enable_schemas
+            "enableSchemas": enable_schemas,
+            "sensitivityLabel": sensitivity_label
         }),
     ) {
         return Ok(());

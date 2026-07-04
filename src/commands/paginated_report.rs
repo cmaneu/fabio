@@ -54,6 +54,10 @@ pub enum PaginatedReportCommand {
         /// Inline base64-encoded RDL content
         #[arg(long)]
         content: Option<String>,
+
+        /// Sensitivity label ID to apply on creation
+        #[arg(long)]
+        sensitivity_label: Option<String>,
     },
     /// Update paginated report properties (name and/or description)
     #[command(display_order = 4)]
@@ -143,6 +147,7 @@ pub async fn execute(
             description,
             file,
             content,
+            sensitivity_label,
         } => {
             create(
                 cli,
@@ -152,6 +157,7 @@ pub async fn execute(
                 description.as_deref(),
                 file.as_deref(),
                 content.as_deref(),
+                sensitivity_label.as_deref(),
             )
             .await
         }
@@ -212,14 +218,30 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
         )
         .await?;
 
-    output::render_list_with_token(
-        cli,
-        &resp.items,
-        &["displayName", "id", "description"],
-        &["NAME", "ID", "DESCRIPTION"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
+    let has_labels = resp
+        .items
+        .iter()
+        .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
+
+    if has_labels {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description", "sensitivityLabel.id"],
+            &["NAME", "ID", "DESCRIPTION", "SENSITIVITY LABEL"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    } else {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description"],
+            &["NAME", "ID", "DESCRIPTION"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    }
     Ok(())
 }
 
@@ -232,6 +254,7 @@ async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Re
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -240,6 +263,7 @@ async fn create(
     description: Option<&str>,
     file: Option<&str>,
     content: Option<&str>,
+    sensitivity_label: Option<&str>,
 ) -> Result<()> {
     // Build the definition parts from file or content
     let parts = match (file, content) {
@@ -286,6 +310,11 @@ async fn create(
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
     }
+    if let Some(label_id) = sensitivity_label {
+        body["sensitivityLabelSettings"] = serde_json::json!({
+            "sensitivityLabelId": label_id
+        });
+    }
 
     if output::dry_run_guard(
         cli,
@@ -293,7 +322,8 @@ async fn create(
         &serde_json::json!({
             "workspace": workspace,
             "displayName": name,
-            "description": description
+            "description": description,
+            "sensitivityLabel": sensitivity_label
         }),
     ) {
         return Ok(());

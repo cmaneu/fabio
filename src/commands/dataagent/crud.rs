@@ -16,14 +16,30 @@ pub(super) async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> R
         )
         .await?;
 
-    output::render_list_with_token(
-        cli,
-        &resp.items,
-        &["displayName", "id", "description"],
-        &["NAME", "ID", "DESCRIPTION"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
+    let has_labels = resp
+        .items
+        .iter()
+        .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
+
+    if has_labels {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description", "sensitivityLabel.id"],
+            &["NAME", "ID", "DESCRIPTION", "SENSITIVITY LABEL"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    } else {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description"],
+            &["NAME", "ID", "DESCRIPTION"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    }
     Ok(())
 }
 
@@ -46,12 +62,18 @@ pub(super) async fn create(
     workspace: &str,
     name: &str,
     description: Option<&str>,
+    sensitivity_label: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "displayName": name,
     });
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
+    }
+    if let Some(label_id) = sensitivity_label {
+        body["sensitivityLabelSettings"] = serde_json::json!({
+            "sensitivityLabelId": label_id
+        });
     }
 
     let data = client

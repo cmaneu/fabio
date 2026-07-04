@@ -47,6 +47,10 @@ pub enum OrgAppAudienceCommand {
         /// Optional description
         #[arg(long)]
         description: Option<String>,
+
+        /// Sensitivity label ID to apply on creation
+        #[arg(long)]
+        sensitivity_label: Option<String>,
     },
     /// Update org app audience properties (name and/or description)
     #[command(display_order = 4)]
@@ -132,7 +136,18 @@ pub async fn execute(
             workspace,
             name,
             description,
-        } => create(cli, client, workspace, name, description.as_deref()).await,
+            sensitivity_label,
+        } => {
+            create(
+                cli,
+                client,
+                workspace,
+                name,
+                description.as_deref(),
+                sensitivity_label.as_deref(),
+            )
+            .await
+        }
         OrgAppAudienceCommand::Update {
             workspace,
             id,
@@ -235,14 +250,30 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
         )
         .await?;
 
-    output::render_list_with_token(
-        cli,
-        &resp.items,
-        &["displayName", "id", "description"],
-        &["NAME", "ID", "DESCRIPTION"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
+    let has_labels = resp
+        .items
+        .iter()
+        .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
+
+    if has_labels {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description", "sensitivityLabel.id"],
+            &["NAME", "ID", "DESCRIPTION", "SENSITIVITY LABEL"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    } else {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description"],
+            &["NAME", "ID", "DESCRIPTION"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    }
     Ok(())
 }
 
@@ -258,8 +289,14 @@ async fn create(
     workspace: &str,
     name: &str,
     description: Option<&str>,
+    sensitivity_label: Option<&str>,
 ) -> Result<()> {
-    let body = build_create_body(name, description);
+    let mut body = build_create_body(name, description);
+    if let Some(label_id) = sensitivity_label {
+        body["sensitivityLabelSettings"] = serde_json::json!({
+            "sensitivityLabelId": label_id
+        });
+    }
 
     if output::dry_run_guard(cli, "org-app-audience create", &body) {
         return Ok(());

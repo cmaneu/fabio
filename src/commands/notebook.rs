@@ -58,6 +58,10 @@ pub enum NotebookCommand {
         /// Default lakehouse ID (binds the notebook so relative paths like Files/ and Tables/ work)
         #[arg(long)]
         lakehouse: Option<String>,
+
+        /// Sensitivity label ID to apply on creation
+        #[arg(long)]
+        sensitivity_label: Option<String>,
     },
     /// Update notebook properties (name and/or description)
     #[command(display_order = 2)]
@@ -254,6 +258,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
             content,
             file,
             lakehouse,
+            sensitivity_label,
         } => {
             create(
                 cli,
@@ -263,6 +268,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &NotebookCommand
                 content.as_deref(),
                 file.as_deref(),
                 lakehouse.as_deref(),
+                sensitivity_label.as_deref(),
             )
             .await
         }
@@ -371,14 +377,30 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
         )
         .await?;
 
-    output::render_list_with_token(
-        cli,
-        &resp.items,
-        &["displayName", "id", "description"],
-        &["NAME", "ID", "DESCRIPTION"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
+    let has_labels = resp
+        .items
+        .iter()
+        .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
+
+    if has_labels {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description", "sensitivityLabel.id"],
+            &["NAME", "ID", "DESCRIPTION", "SENSITIVITY LABEL"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    } else {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description"],
+            &["NAME", "ID", "DESCRIPTION"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    }
     Ok(())
 }
 
@@ -579,6 +601,7 @@ fn encode_notebook_file(
 
 // ─── Create ──────────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -587,6 +610,7 @@ async fn create(
     content: Option<&str>,
     file: Option<&str>,
     lakehouse: Option<&str>,
+    sensitivity_label: Option<&str>,
 ) -> Result<()> {
     let encoded = if let Some(file_path) = file {
         // Read file and auto-detect format from content
@@ -597,7 +621,7 @@ async fn create(
         encode_notebook_code(code, workspace, lakehouse)
     };
 
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "displayName": name,
         "type": "Notebook",
         "definition": {
@@ -609,6 +633,11 @@ async fn create(
             }]
         }
     });
+    if let Some(label_id) = sensitivity_label {
+        body["sensitivityLabelSettings"] = serde_json::json!({
+            "sensitivityLabelId": label_id
+        });
+    }
 
     if output::dry_run_guard(cli, "notebook create", &body) {
         return Ok(());

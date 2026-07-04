@@ -2272,6 +2272,10 @@
           "--enable-schemas": {
             "type": "bool",
             "description": "Enable schemas (multi-schema lakehouse)"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -4209,6 +4213,10 @@
           "--lakehouse": {
             "type": "string",
             "description": "Default lakehouse ID (binds the notebook so relative paths like Files/ and Tables/ work)"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -4546,6 +4554,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -4979,6 +4991,10 @@
           "--restorable-deleted-database-name": {
             "type": "string",
             "description": "Name of the restorable deleted database (for mode=RestoreDeletedDatabase)"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -5523,6 +5539,10 @@
           "--description": {
             "type": "string",
             "description": "Data agent description (max 256 characters)"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -6362,6 +6382,10 @@
           "--dir": {
             "type": "string",
             "description": "Path to a directory containing Fabric ontology definition structure (`EntityTypes/`, `RelationshipTypes/` with definition.json, `DataBindings/`, etc.)"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -6598,6 +6622,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -7023,6 +7051,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -7397,6 +7429,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -7573,6 +7609,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -7825,6 +7865,10 @@
           "--dataset": {
             "type": "string",
             "description": "Dataset/semantic model ID to bind report to (auto-generates definition.pbir)"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -8020,6 +8064,10 @@
           "--connection": {
             "type": "string",
             "description": "SQL endpoint or lakehouse ID for live connection (generates definition.pbism)"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -8571,6 +8619,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -8729,6 +8781,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -9296,6 +9352,10 @@
               "ReadOnlyFollowing"
             ],
             "description": "Database type: `ReadWrite` or `ReadOnlyFollowing`"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -9842,6 +9902,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -10021,6 +10085,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -10218,6 +10286,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -10452,6 +10524,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -10686,6 +10762,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -11019,6 +11099,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -11446,6 +11530,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -11632,6 +11720,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -11812,6 +11904,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -11966,6 +12062,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -12117,6 +12217,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -12273,6 +12377,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -12424,6 +12532,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -12575,6 +12687,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -12731,6 +12847,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -12882,6 +13002,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -13033,6 +13157,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -13184,6 +13312,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -13335,6 +13467,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -13490,6 +13626,10 @@
           "--ontology": {
             "type": "string",
             "description": "Ontology ID to link the graph model to"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -13729,6 +13869,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -13956,6 +14100,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -14180,6 +14328,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -14291,6 +14443,10 @@
           "--content": {
             "type": "string",
             "description": "Inline base64-encoded RDL content"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -14501,6 +14657,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -14652,6 +14812,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -15189,6 +15353,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -15301,6 +15469,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -15469,6 +15641,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -15649,6 +15825,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,
@@ -15800,6 +15980,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,

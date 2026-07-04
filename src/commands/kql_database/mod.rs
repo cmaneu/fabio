@@ -55,6 +55,10 @@ pub enum KqlDatabaseCommand {
         /// Database type: `ReadWrite` or `ReadOnlyFollowing`
         #[arg(long, default_value = "ReadWrite", value_parser = ["ReadWrite", "ReadOnlyFollowing"])]
         database_type: String,
+
+        /// Sensitivity label ID to apply on creation
+        #[arg(long)]
+        sensitivity_label: Option<String>,
     },
     /// Update KQL database properties (name and/or description)
     #[command(display_order = 4)]
@@ -415,6 +419,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseComm
             description,
             eventhouse_id,
             database_type,
+            sensitivity_label,
         } => {
             create(
                 cli,
@@ -424,6 +429,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseComm
                 description.as_deref(),
                 eventhouse_id,
                 database_type,
+                sensitivity_label.as_deref(),
             )
             .await
         }
@@ -657,14 +663,30 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
         )
         .await?;
 
-    output::render_list_with_token(
-        cli,
-        &resp.items,
-        &["displayName", "id", "description"],
-        &["NAME", "ID", "DESCRIPTION"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
+    let has_labels = resp
+        .items
+        .iter()
+        .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
+
+    if has_labels {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description", "sensitivityLabel.id"],
+            &["NAME", "ID", "DESCRIPTION", "SENSITIVITY LABEL"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    } else {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description"],
+            &["NAME", "ID", "DESCRIPTION"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    }
     Ok(())
 }
 
@@ -676,6 +698,7 @@ async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Re
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -684,6 +707,7 @@ async fn create(
     description: Option<&str>,
     eventhouse_id: &str,
     database_type: &str,
+    sensitivity_label: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "displayName": name,
@@ -694,6 +718,11 @@ async fn create(
     });
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
+    }
+    if let Some(label_id) = sensitivity_label {
+        body["sensitivityLabelSettings"] = serde_json::json!({
+            "sensitivityLabelId": label_id
+        });
     }
 
     if output::dry_run_guard(cli, "kql-database create", &body) {

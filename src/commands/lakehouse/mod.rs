@@ -62,6 +62,10 @@ pub enum LakehouseCommand {
         /// Enable schemas (multi-schema lakehouse)
         #[arg(long)]
         enable_schemas: bool,
+
+        /// Sensitivity label ID to apply on creation
+        #[arg(long)]
+        sensitivity_label: Option<String>,
     },
     /// Update a lakehouse (rename/redescribe)
     #[command(display_order = 0)]
@@ -1091,6 +1095,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             name,
             description,
             enable_schemas,
+            sensitivity_label,
         } => {
             crud::create_lakehouse(
                 cli,
@@ -1099,6 +1104,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
                 name,
                 description.as_deref(),
                 *enable_schemas,
+                sensitivity_label.as_deref(),
             )
             .await
         }

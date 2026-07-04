@@ -52,6 +52,10 @@ pub enum GraphModelCommand {
         /// Ontology ID to link the graph model to
         #[arg(long)]
         ontology: Option<String>,
+
+        /// Sensitivity label ID to apply on creation
+        #[arg(long)]
+        sensitivity_label: Option<String>,
     },
     /// Update graph model properties (name and/or description)
     #[command(display_order = 4)]
@@ -188,6 +192,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GraphModelComma
             name,
             description,
             ontology,
+            sensitivity_label,
         } => {
             create(
                 cli,
@@ -196,6 +201,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GraphModelComma
                 name,
                 description.as_deref(),
                 ontology.as_deref(),
+                sensitivity_label.as_deref(),
             )
             .await
         }
@@ -274,14 +280,30 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
         )
         .await?;
 
-    output::render_list_with_token(
-        cli,
-        &resp.items,
-        &["displayName", "id", "description"],
-        &["NAME", "ID", "DESCRIPTION"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
+    let has_labels = resp
+        .items
+        .iter()
+        .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
+
+    if has_labels {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description", "sensitivityLabel.id"],
+            &["NAME", "ID", "DESCRIPTION", "SENSITIVITY LABEL"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    } else {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description"],
+            &["NAME", "ID", "DESCRIPTION"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    }
     Ok(())
 }
 
@@ -300,6 +322,7 @@ async fn create(
     name: &str,
     description: Option<&str>,
     ontology: Option<&str>,
+    sensitivity_label: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({ "displayName": name });
     if let Some(desc) = description {
@@ -318,6 +341,11 @@ async fn create(
             }]
         });
     }
+    if let Some(label_id) = sensitivity_label {
+        body["sensitivityLabelSettings"] = serde_json::json!({
+            "sensitivityLabelId": label_id
+        });
+    }
 
     if output::dry_run_guard(
         cli,
@@ -326,7 +354,8 @@ async fn create(
             "workspace": workspace,
             "displayName": name,
             "description": description,
-            "ontology": ontology
+            "ontology": ontology,
+            "sensitivityLabel": sensitivity_label
         }),
     ) {
         return Ok(());

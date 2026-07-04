@@ -56,6 +56,10 @@ pub enum SemanticModelCommand {
         /// SQL endpoint or lakehouse ID for live connection (generates definition.pbism)
         #[arg(long, visible_alias = "connection-id")]
         connection: Option<String>,
+
+        /// Sensitivity label ID to apply on creation
+        #[arg(long)]
+        sensitivity_label: Option<String>,
     },
     /// Update semantic model properties (name and/or description)
     #[command(display_order = 4)]
@@ -391,6 +395,7 @@ pub async fn execute(
             description,
             file,
             connection,
+            sensitivity_label,
         } => {
             crud::create(
                 cli,
@@ -400,6 +405,7 @@ pub async fn execute(
                 description.as_deref(),
                 file,
                 connection.as_deref(),
+                sensitivity_label.as_deref(),
             )
             .await
         }

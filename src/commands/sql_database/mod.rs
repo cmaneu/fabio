@@ -77,6 +77,10 @@ pub enum SqlDatabaseCommand {
         /// Name of the restorable deleted database (for mode=RestoreDeletedDatabase)
         #[arg(long)]
         restorable_deleted_database_name: Option<String>,
+
+        /// Sensitivity label ID to apply on creation
+        #[arg(long)]
+        sensitivity_label: Option<String>,
     },
     /// Update SQL database properties
     #[command(display_order = 4)]
@@ -323,6 +327,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlDatabaseComm
             source_database,
             restore_point,
             restorable_deleted_database_name,
+            sensitivity_label,
         } => {
             crud::create(
                 cli,
@@ -337,6 +342,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlDatabaseComm
                 source_database.as_deref(),
                 restore_point.as_deref(),
                 restorable_deleted_database_name.as_deref(),
+                sensitivity_label.as_deref(),
             )
             .await
         }

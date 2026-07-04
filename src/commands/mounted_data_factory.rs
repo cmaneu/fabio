@@ -46,6 +46,10 @@ pub enum MountedDataFactoryCommand {
         /// Optional description
         #[arg(long)]
         description: Option<String>,
+
+        /// Sensitivity label ID to apply on creation
+        #[arg(long)]
+        sensitivity_label: Option<String>,
     },
     /// Update Mounted Data Factory properties
     #[command(display_order = 4)]
@@ -121,7 +125,19 @@ pub async fn execute(
             name,
             adf_id,
             description,
-        } => create(cli, client, workspace, name, adf_id, description.as_deref()).await,
+            sensitivity_label,
+        } => {
+            create(
+                cli,
+                client,
+                workspace,
+                name,
+                adf_id,
+                description.as_deref(),
+                sensitivity_label.as_deref(),
+            )
+            .await
+        }
         MountedDataFactoryCommand::Update {
             workspace,
             id,
@@ -176,14 +192,30 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
             cli.continuation_token.as_deref(),
         )
         .await?;
-    output::render_list_with_token(
-        cli,
-        &resp.items,
-        &["displayName", "id", "description"],
-        &["NAME", "ID", "DESCRIPTION"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
+    let has_labels = resp
+        .items
+        .iter()
+        .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
+
+    if has_labels {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description", "sensitivityLabel.id"],
+            &["NAME", "ID", "DESCRIPTION", "SENSITIVITY LABEL"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    } else {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "description"],
+            &["NAME", "ID", "DESCRIPTION"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    }
     Ok(())
 }
 
@@ -204,6 +236,7 @@ async fn create(
     name: &str,
     adf_id: &str,
     description: Option<&str>,
+    sensitivity_label: Option<&str>,
 ) -> Result<()> {
     // Build the definition with the ADF resource ID
     let content = serde_json::json!({ "dataFactoryResourceId": adf_id });
@@ -221,10 +254,16 @@ async fn create(
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
     }
+    if let Some(label_id) = sensitivity_label {
+        body["sensitivityLabelSettings"] = serde_json::json!({
+            "sensitivityLabelId": label_id
+        });
+    }
+
     if output::dry_run_guard(
         cli,
         "mounted-data-factory create",
-        &serde_json::json!({ "workspace": workspace, "displayName": name, "adfId": adf_id, "description": description }),
+        &serde_json::json!({ "workspace": workspace, "displayName": name, "adfId": adf_id, "description": description , "sensitivityLabel": sensitivity_label }),
     ) {
         return Ok(());
     }
