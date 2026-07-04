@@ -1671,3 +1671,61 @@ fn item_list_downstream_relations_invalid_item_fails() {
         .assert()
         .failure();
 }
+
+// ===========================================================================
+// Sensitivity label support
+// ===========================================================================
+
+#[test]
+fn item_create_dry_run_with_sensitivity_label() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "item",
+            "create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--name",
+            "Labeled Item",
+            "--type",
+            "Lakehouse",
+            "--sensitivity-label",
+            "cccccccc-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(
+        data["details"]["sensitivityLabel"],
+        "cccccccc-1111-2222-3333-444444444444"
+    );
+}
+
+#[test]
+fn item_create_dry_run_without_sensitivity_label() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "item",
+            "create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--name",
+            "Unlabeled Item",
+            "--type",
+            "Lakehouse",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert!(
+        data["details"]["sensitivityLabel"].is_null(),
+        "sensitivityLabel should be null when not provided"
+    );
+}

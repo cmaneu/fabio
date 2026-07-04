@@ -163,6 +163,10 @@ pub enum ItemCommand {
         /// Optional description
         #[arg(long)]
         description: Option<String>,
+
+        /// Sensitivity label ID to apply on creation
+        #[arg(long)]
+        sensitivity_label: Option<String>,
     },
     /// Update item properties (name and/or description)
     #[command(display_order = 11)]
@@ -558,6 +562,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             name,
             item_type,
             description,
+            sensitivity_label,
         } => {
             crud::create(
                 cli,
@@ -566,6 +571,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
                 name,
                 item_type,
                 description.as_deref(),
+                sensitivity_label.as_deref(),
             )
             .await
         }

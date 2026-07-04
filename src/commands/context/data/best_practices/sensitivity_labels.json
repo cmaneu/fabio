@@ -1,0 +1,43 @@
+{
+  "topic": "sensitivity-labels",
+  "title": "Sensitivity Labels in Microsoft Fabric",
+  "summary": "Sensitivity labels from Microsoft Purview Information Protection are now returned inline by the Fabric Items API. Use them for governance automation, AI agent guardrails, and compliance inventory.",
+  "how_labels_work": {
+    "source": "Labels are defined in Microsoft Purview (requires M365 E5 licensing) and published via label policies to users/groups.",
+    "api_behavior": "The sensitivityLabel field (containing the label UUID) is returned on items that have a label assigned. Items without labels omit the field entirely.",
+    "no_include_needed": "Unlike other optional fields (e.g., DefaultIdentity), sensitivity labels are returned by default — no --include parameter needed."
+  },
+  "reading_labels": {
+    "list_items_with_labels": "fabio item list --workspace $WS --output json --query \"data[?sensitivityLabel]\"",
+    "find_unlabeled_items": "fabio item list --workspace $WS --output json --query \"data[?!sensitivityLabel]\"",
+    "show_item_label": "fabio item show --workspace $WS --id $ITEM_ID --query \"data.sensitivityLabel.id\"",
+    "admin_scan": "fabio admin list-items --output json --query \"data[?sensitivityLabel].{name:name,type:type,workspace:workspaceId,label:sensitivityLabel.id}\""
+  },
+  "writing_labels": {
+    "on_creation": "fabio item create --workspace $WS --name MyItem --type Lakehouse --sensitivity-label <label-uuid>",
+    "bulk_set": "fabio admin bulk-set-labels --content '{\"items\":[{\"id\":\"<item-id>\",\"type\":\"Lakehouse\"}],\"labelId\":\"<label-uuid>\"}'",
+    "bulk_remove": "fabio admin bulk-remove-labels --content '{\"items\":[{\"id\":\"<item-id>\",\"type\":\"Lakehouse\"}]}'"
+  },
+  "ai_agent_guardrails": [
+    "Before accessing or modifying an item, query its sensitivity label",
+    "Map label UUIDs to classification levels (e.g., Public, Internal, Confidential, Highly Confidential)",
+    "Block or escalate operations on items with high sensitivity labels",
+    "Use --query to filter items by label presence/absence in pipeline scripts"
+  ],
+  "governance_patterns": [
+    "Scan all workspaces for unlabeled items and generate a compliance report",
+    "Enforce mandatory labeling by checking newly created items periodically",
+    "Use bulk-set-labels to remediate unlabeled items programmatically",
+    "Combine with item tags for multi-dimensional classification"
+  ],
+  "prerequisites": {
+    "reading": "Any workspace viewer role can see sensitivity labels on items they have access to.",
+    "writing": "Requires Microsoft Purview Information Protection configured in the tenant, M365 E5 licensing, and appropriate label policies published to the user.",
+    "admin_bulk": "Requires Fabric Administrator role for bulk-set-labels and bulk-remove-labels."
+  },
+  "common_errors": {
+    "label_not_found": "The specified label UUID does not exist or is not published to the calling user. Verify the label ID in Purview compliance portal.",
+    "insufficient_license": "M365 E5 or equivalent licensing is required for sensitivity label operations.",
+    "no_purview": "Sensitivity label features require Microsoft Purview Information Protection to be configured in the tenant."
+  }
+}

@@ -1730,6 +1730,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
           }
         },
         "mutates": true,

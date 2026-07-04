@@ -1,13 +1,16 @@
 {
   "command": "fabio item list --workspace $WS_ID",
-  "description": "Lists all items in a workspace with their type, name, and description.",
+  "description": "Lists all items in a workspace with their type, name, and description. Items with sensitivity labels include a sensitivityLabel object.",
   "response": {
     "data": [
       {
         "id": "d4e5f6a7-b8c9-0123-def0-234567890abc",
         "type": "Lakehouse",
         "displayName": "SalesLakehouse",
-        "description": "Main sales data lakehouse"
+        "description": "Main sales data lakehouse",
+        "sensitivityLabel": {
+          "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        }
       },
       {
         "id": "e5f6a7b8-c9d0-1234-ef01-34567890abcd",
@@ -19,7 +22,10 @@
         "id": "f6a7b8c9-d0e1-2345-f012-4567890abcde",
         "type": "SemanticModel",
         "displayName": "SalesModel",
-        "description": "Direct Lake model over sales tables"
+        "description": "Direct Lake model over sales tables",
+        "sensitivityLabel": {
+          "id": "b2c3d4e5-f6a7-8901-bcde-f23456789012"
+        }
       },
       {
         "id": "a7b8c9d0-e1f2-3456-0123-567890abcdef",
@@ -30,11 +36,15 @@
     ],
     "count": 4
   },
+  "notes": "The sensitivityLabel field is only present on items with a label assigned. Items without labels omit the field. No --include parameter is needed — labels are returned by default.",
   "query_examples": [
     {"query": "data[?type=='Lakehouse'].displayName", "description": "List all lakehouse names."},
     {"query": "data[?type=='Notebook'].id", "description": "Get IDs of all notebooks."},
     {"query": "data[].{name: displayName, type: type}", "description": "Project name and type only."},
     {"query": "data | sort_by(@, &type)[].{type: type, name: displayName}", "description": "List items sorted by type."},
-    {"query": "data[?contains(displayName, 'Sales')]", "description": "Find items with 'Sales' in the name."}
+    {"query": "data[?contains(displayName, 'Sales')]", "description": "Find items with 'Sales' in the name."},
+    {"query": "data[?sensitivityLabel].{name: displayName, type: type, label: sensitivityLabel.id}", "description": "List only labeled items with their label ID."},
+    {"query": "data[?!sensitivityLabel].{name: displayName, type: type}", "description": "Find unlabeled items (governance gap)."},
+    {"query": "length(data[?sensitivityLabel])", "description": "Count how many items have sensitivity labels."}
   ]
 }
