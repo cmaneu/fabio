@@ -1,4 +1,5 @@
 use anyhow::Result;
+use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
@@ -17,14 +18,84 @@ pub(super) async fn list_items(cli: &Cli, client: &FabricClient) -> Result<()> {
         )
         .await?;
 
-    output::render_list_with_token(
-        cli,
-        &resp.items,
-        &["name", "id", "type", "workspaceId", "state"],
-        &["NAME", "ID", "TYPE", "WORKSPACE", "STATE"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
+    let has_labels = resp
+        .items
+        .iter()
+        .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
+    let has_tags = output::has_tags(&resp.items);
+
+    let display_items;
+    let items_ref: &[Value] = if has_tags {
+        display_items = output::enrich_with_tags_display(&resp.items);
+        &display_items
+    } else {
+        &resp.items
+    };
+
+    match (has_labels, has_tags) {
+        (true, true) => output::render_list_with_token(
+            cli,
+            items_ref,
+            &[
+                "name",
+                "id",
+                "type",
+                "workspaceId",
+                "state",
+                "sensitivityLabel.id",
+                "_tagsDisplay",
+            ],
+            &[
+                "NAME",
+                "ID",
+                "TYPE",
+                "WORKSPACE",
+                "STATE",
+                "SENSITIVITY LABEL",
+                "TAGS",
+            ],
+            "id",
+            resp.continuation_token.as_deref(),
+        ),
+        (true, false) => output::render_list_with_token(
+            cli,
+            items_ref,
+            &[
+                "name",
+                "id",
+                "type",
+                "workspaceId",
+                "state",
+                "sensitivityLabel.id",
+            ],
+            &[
+                "NAME",
+                "ID",
+                "TYPE",
+                "WORKSPACE",
+                "STATE",
+                "SENSITIVITY LABEL",
+            ],
+            "id",
+            resp.continuation_token.as_deref(),
+        ),
+        (false, true) => output::render_list_with_token(
+            cli,
+            items_ref,
+            &["name", "id", "type", "workspaceId", "state", "_tagsDisplay"],
+            &["NAME", "ID", "TYPE", "WORKSPACE", "STATE", "TAGS"],
+            "id",
+            resp.continuation_token.as_deref(),
+        ),
+        (false, false) => output::render_list_with_token(
+            cli,
+            items_ref,
+            &["name", "id", "type", "workspaceId", "state"],
+            &["NAME", "ID", "TYPE", "WORKSPACE", "STATE"],
+            "id",
+            resp.continuation_token.as_deref(),
+        ),
+    }
     Ok(())
 }
 

@@ -29,14 +29,60 @@ pub(super) async fn list(
     } else {
         resp.items
     };
-    output::render_list_with_token(
-        cli,
-        &items,
-        &["displayName", "id", "type"],
-        &["NAME", "ID", "TYPE"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
+
+    let has_labels = items
+        .iter()
+        .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
+    let has_tags = output::has_tags(&items);
+
+    let display_items;
+    let items_ref: &[Value] = if has_tags {
+        display_items = output::enrich_with_tags_display(&items);
+        &display_items
+    } else {
+        &items
+    };
+
+    match (has_labels, has_tags) {
+        (true, true) => output::render_list_with_token(
+            cli,
+            items_ref,
+            &[
+                "displayName",
+                "id",
+                "type",
+                "sensitivityLabel.id",
+                "_tagsDisplay",
+            ],
+            &["NAME", "ID", "TYPE", "SENSITIVITY LABEL", "TAGS"],
+            "id",
+            resp.continuation_token.as_deref(),
+        ),
+        (true, false) => output::render_list_with_token(
+            cli,
+            items_ref,
+            &["displayName", "id", "type", "sensitivityLabel.id"],
+            &["NAME", "ID", "TYPE", "SENSITIVITY LABEL"],
+            "id",
+            resp.continuation_token.as_deref(),
+        ),
+        (false, true) => output::render_list_with_token(
+            cli,
+            items_ref,
+            &["displayName", "id", "type", "_tagsDisplay"],
+            &["NAME", "ID", "TYPE", "TAGS"],
+            "id",
+            resp.continuation_token.as_deref(),
+        ),
+        (false, false) => output::render_list_with_token(
+            cli,
+            items_ref,
+            &["displayName", "id", "type"],
+            &["NAME", "ID", "TYPE"],
+            "id",
+            resp.continuation_token.as_deref(),
+        ),
+    }
     Ok(())
 }
 pub(super) async fn show(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
