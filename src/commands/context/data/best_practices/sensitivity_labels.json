@@ -5,39 +5,62 @@
   "how_labels_work": {
     "source": "Labels are defined in Microsoft Purview (requires M365 E5 licensing) and published via label policies to users/groups.",
     "api_behavior": "The sensitivityLabel field (containing the label UUID) is returned on items that have a label assigned. Items without labels omit the field entirely.",
-    "no_include_needed": "Unlike other optional fields (e.g., DefaultIdentity), sensitivity labels are returned by default — no --include parameter needed."
+    "no_include_needed": "Unlike other optional fields (e.g., DefaultIdentity), sensitivity labels are returned by default — no --include parameter needed.",
+    "only_uuid_returned": "The Fabric API returns only the label UUID (not the name). Label definitions (names, descriptions, classification levels) are managed in Purview and queryable only via Microsoft Graph.",
+    "cannot_update_existing": "The PATCH /items/{id} endpoint does NOT support changing sensitivity labels. Labels can only be set at creation time (workspace-scoped) or via admin bulk operations."
+  },
+  "resolving_label_names": {
+    "why_needed": "The Fabric API only returns label UUIDs. To make classification decisions (e.g., block access to Highly Confidential items), agents need the UUID-to-name mapping.",
+    "graph_endpoint": "GET https://graph.microsoft.com/v1.0/security/informationProtection/sensitivityLabels",
+    "az_cli_command": "az rest --method GET --url \"https://graph.microsoft.com/v1.0/security/informationProtection/sensitivityLabels\" --resource \"https://graph.microsoft.com\"",
+    "response_shape": "{\"value\": [{\"id\": \"<uuid>\", \"name\": \"Confidential\", \"description\": \"...\", \"isActive\": true, \"parent\": null}]}",
+    "permission_required": "InformationProtection.Read (comes with M365 E5 user, no Fabric admin role needed)",
+    "caching_advice": "Labels change infrequently. Cache the mapping and refresh periodically (e.g., daily) rather than querying Graph on every invocation."
   },
   "reading_labels": {
     "list_items_with_labels": "fabio item list --workspace $WS --output json --query \"data[?sensitivityLabel]\"",
     "find_unlabeled_items": "fabio item list --workspace $WS --output json --query \"data[?!sensitivityLabel]\"",
     "show_item_label": "fabio item show --workspace $WS --id $ITEM_ID --query \"data.sensitivityLabel.id\"",
-    "admin_scan": "fabio admin list-items --output json --query \"data[?sensitivityLabel].{name:name,type:type,workspace:workspaceId,label:sensitivityLabel.id}\""
+    "count_labeled": "fabio item list --workspace $WS --output json --query \"length(data[?sensitivityLabel])\"",
+    "admin_scan": "fabio admin list-items --output json --query \"data[?sensitivityLabel].{name:name,type:type,workspace:workspaceId,label:sensitivityLabel.id}\"",
+    "type_specific": "fabio lakehouse list --workspace $WS (shows SENSITIVITY LABEL column in table output when labels are present)"
   },
   "writing_labels": {
-    "on_creation": "fabio item create --workspace $WS --name MyItem --type Lakehouse --sensitivity-label <label-uuid>",
+    "on_creation": "fabio lakehouse create --workspace $WS --name MyLakehouse --sensitivity-label <label-uuid>",
+    "on_creation_generic": "fabio item create --workspace $WS --name MyItem --type Lakehouse --sensitivity-label <label-uuid>",
+    "all_types_supported": "Every type-specific create command (50 total) accepts --sensitivity-label.",
     "bulk_set": "fabio admin bulk-set-labels --content '{\"items\":[{\"id\":\"<item-id>\",\"type\":\"Lakehouse\"}],\"labelId\":\"<label-uuid>\"}'",
-    "bulk_remove": "fabio admin bulk-remove-labels --content '{\"items\":[{\"id\":\"<item-id>\",\"type\":\"Lakehouse\"}]}'"
+    "bulk_remove": "fabio admin bulk-remove-labels --content '{\"items\":[{\"id\":\"<item-id>\",\"type\":\"Lakehouse\"}]}'",
+    "bulk_rate_limit": "Maximum 25 bulk requests per hour, up to 2000 items per request.",
+    "assignment_method": "Standard (automated, default) or Priviledged (manual by admin). Note: API misspells 'Privileged' as 'Priviledged'."
   },
-  "ai_agent_guardrails": [
-    "Before accessing or modifying an item, query its sensitivity label",
-    "Map label UUIDs to classification levels (e.g., Public, Internal, Confidential, Highly Confidential)",
-    "Block or escalate operations on items with high sensitivity labels",
-    "Use --query to filter items by label presence/absence in pipeline scripts"
-  ],
+  "ai_agent_guardrail_workflow": {
+    "step_1_cache_mapping": "az rest --method GET --url \"https://graph.microsoft.com/v1.0/security/informationProtection/sensitivityLabels\" --resource \"https://graph.microsoft.com\" -o json > /tmp/label-map.json",
+    "step_2_read_item_label": "fabio item show --workspace $WS --id $ITEM_ID --query \"data.sensitivityLabel.id\"",
+    "step_3_classify": "Cross-reference the label UUID with the cached map to determine classification level (Public, Internal, Confidential, Highly Confidential)",
+    "step_4_decide": "Block writes to Highly Confidential items, require approval for Confidential, allow Public/Internal freely",
+    "step_5_audit": "fabio item list --workspace $WS --output json --query \"data[?!sensitivityLabel].{name:displayName,id:id,type:type}\"",
+    "step_6_remediate": "fabio admin bulk-set-labels --content '{\"items\":[{\"id\":\"<id>\",\"type\":\"<Type>\"}],\"labelId\":\"<label-uuid>\"}'"
+  },
   "governance_patterns": [
     "Scan all workspaces for unlabeled items and generate a compliance report",
     "Enforce mandatory labeling by checking newly created items periodically",
     "Use bulk-set-labels to remediate unlabeled items programmatically",
-    "Combine with item tags for multi-dimensional classification"
+    "Combine with item tags for multi-dimensional classification",
+    "Auto-label new items based on workspace naming conventions or content analysis",
+    "Alert when high-sensitivity items are created in non-production workspaces"
   ],
   "prerequisites": {
-    "reading": "Any workspace viewer role can see sensitivity labels on items they have access to.",
-    "writing": "Requires Microsoft Purview Information Protection configured in the tenant, M365 E5 licensing, and appropriate label policies published to the user.",
-    "admin_bulk": "Requires Fabric Administrator role for bulk-set-labels and bulk-remove-labels."
+    "reading_labels_on_items": "Any workspace viewer role — labels are in the standard item response.",
+    "resolving_label_names": "InformationProtection.Read permission on Microsoft Graph (M365 E5 user).",
+    "setting_labels_on_create": "Workspace ReadWrite role + Purview label policy published to the user.",
+    "admin_bulk_operations": "Fabric Administrator role. Service principals NOT supported — user principal only."
   },
   "common_errors": {
     "label_not_found": "The specified label UUID does not exist or is not published to the calling user. Verify the label ID in Purview compliance portal.",
     "insufficient_license": "M365 E5 or equivalent licensing is required for sensitivity label operations.",
-    "no_purview": "Sensitivity label features require Microsoft Purview Information Protection to be configured in the tenant."
+    "no_purview": "Sensitivity label features require Microsoft Purview Information Protection to be configured in the tenant.",
+    "cannot_update_label": "PATCH endpoint does not support label changes. To change a label on an existing item: use admin bulk-set-labels (requires admin role) or delete and recreate the item.",
+    "service_principal_not_supported": "Bulk label operations only support user principals, not service principals or managed identities."
   }
 }

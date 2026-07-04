@@ -2036,3 +2036,60 @@ This enables fabio to work in environments where public Fabric endpoints are blo
 - `save` overwrites all fields (not merge) — omitted fields become `null`
 - `delete` removes the profile; if it was active, `active` is cleared
 - Profiles are NOT authentication identities — switching profiles does not change the authenticated user/service principal
+
+## Sensitivity Labels API Behaviors Discovered
+
+### Read Behavior (Items API)
+
+- **Inline in responses**: The `sensitivityLabel` field is returned on all items that have a label assigned, as part of the standard item response. No special `include` parameter is needed.
+- **Field shape**: `"sensitivityLabel": {"id": "<uuid>"}` — only the label UUID is returned, never the human-readable name.
+- **Absent when unset**: Items without a sensitivity label omit the `sensitivityLabel` field entirely (not `null`, just absent).
+- **Works on all item endpoints**: Both `GET /workspaces/{ws}/items` (list) and `GET /workspaces/{ws}/items/{id}` (show) return the field. Type-specific endpoints (e.g., `/workspaces/{ws}/lakehouses`) also return it.
+- **No admin required for reading**: Any workspace Viewer role can see sensitivity labels on items they have access to.
+- **`ItemIncludeOption` does NOT include sensitivity labels**: The only valid `include` value is `DefaultIdentity`. Sensitivity labels are always returned by default — no opt-in needed.
+
+### Write Behavior (Create)
+
+- **Set at creation time**: The Create Item API accepts `sensitivityLabelSettings` in the request body: `{"sensitivityLabelSettings": {"sensitivityLabelId": "<uuid>"}}`. This works on all item types.
+- **Cannot update via PATCH**: The Update Item API (`PATCH /workspaces/{ws}/items/{id}`) only accepts `displayName` and `description`. There is no way to change a sensitivity label on an existing item via the workspace-scoped API.
+- **Requires Purview configuration**: Setting a label requires Microsoft Purview Information Protection configured in the tenant, M365 E5 licensing, and the label published to the calling user via label policy.
+- **Error on invalid label**: If the label UUID doesn't exist or isn't in the user's label policy, the API returns a descriptive error (not a generic 400).
+
+### Admin Bulk Operations
+
+- **Bulk set**: `POST /admin/items/bulkSetLabels` — sets a label on up to 2,000 items per request. Returns per-item status (`Succeeded`, `Failed`, `NotFound`, `InsufficientUsageRights`, `FailedToGetUsageRights`).
+- **Bulk remove**: `POST /admin/items/bulkRemoveLabels` — removes labels from up to 2,000 items per request. Same status response shape.
+- **Rate limit**: Maximum 25 requests per hour for both bulk endpoints.
+- **Admin role required**: Both require Fabric Administrator role. Service principals are NOT supported — only user principals.
+- **Delegated principal**: `bulk-set-labels` supports a `delegatedPrincipal` field to set labels on behalf of another user (the delegated user is marked as the label issuer).
+- **Assignment method**: `Standard` (automated/default) or `Priviledged` (manual assignment by admin). Note: the API misspells "Privileged" as "Priviledged" — use the misspelled value.
+- **Auto-cascades to linked items**: Labels set on Lakehouse, Warehouse, Datamart, SQLDatabase, or MirroredDatabase automatically cascade to their auto-provisioned linked items (e.g., SQLEndpoint).
+
+### Label Name Resolution (NOT in Fabric API)
+
+- **Fabric API only returns UUIDs**: There is no Fabric REST API endpoint to list available sensitivity labels or resolve UUIDs to names.
+- **Label definitions live in Microsoft Purview**: Names, descriptions, priority, and classification levels are managed in Purview Information Protection, not Fabric.
+- **Resolution via Microsoft Graph**: `GET https://graph.microsoft.com/v1.0/security/informationProtection/sensitivityLabels` returns all labels with `id`, `name`, `description`, `isActive`, `parent` fields.
+- **Resolution via `az rest`**: `az rest --method GET --url "https://graph.microsoft.com/v1.0/security/informationProtection/sensitivityLabels" --resource "https://graph.microsoft.com"` — works for any user with `InformationProtection.Read` permission (comes with M365 E5).
+- **No admin role needed for listing**: Reading label definitions from Graph only requires `InformationProtection.Read` scope — not a Fabric Administrator role.
+- **Labels change infrequently**: The UUID→name mapping is stable (labels are rarely added/removed). Agents should cache it rather than querying Graph on every invocation.
+
+### Agent Guardrail Pattern
+
+The complete workflow for an AI agent implementing sensitivity-label-based guardrails:
+
+1. **Cache label mapping** (one-time or periodic): `az rest` → Graph → store UUID→name map
+2. **Read item labels** (per operation): `fabio item list -w $WS -o json --query "data[?sensitivityLabel]"` or `fabio <type> show --id $ID --query "data.sensitivityLabel.id"`
+3. **Classify**: Cross-reference the label UUID with the cached map to determine classification level
+4. **Decide**: Block, escalate, or proceed based on classification (e.g., block writes to "Highly Confidential" items)
+5. **Audit unlabeled**: `fabio item list -w $WS -o json --query "data[?!sensitivityLabel]"` to find governance gaps
+6. **Remediate** (admin only): `fabio admin bulk-set-labels --content '{"items":[...],"labelId":"<uuid>"}'`
+
+### fabio CLI Support
+
+- **All create commands**: `--sensitivity-label <uuid>` flag on every item-type create command (50 commands total)
+- **All list commands**: Dynamic `SENSITIVITY LABEL` column in table output when any item in the response has a label
+- **JSON output**: Full `sensitivityLabel` object passes through in all JSON responses
+- **JMESPath queries**: Filter by label presence (`data[?sensitivityLabel]`) or absence (`data[?!sensitivityLabel]`)
+- **Admin bulk operations**: `fabio admin bulk-set-labels` and `fabio admin bulk-remove-labels`
+- **Best-practice guide**: `fabio context best-practices sensitivity-labels` provides governance patterns and agent guardrail guidance
