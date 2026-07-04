@@ -3609,3 +3609,142 @@ fn deploy_plan_no_deletes_not_destructive() {
         "destructive should be false without deletes or --force-all"
     );
 }
+
+// ── Governance metadata tests ────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_export_writes_governance_metadata() {
+    let cfg = TestConfig::from_env();
+    let output_dir = tempfile::TempDir::new().unwrap();
+
+    fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            output_dir.path().to_str().unwrap(),
+            "--overwrite",
+        ])
+        .timeout(Duration::from_mins(5))
+        .assert()
+        .success();
+}
+
+#[test]
+fn deploy_plan_reads_governance_metadata() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let source = dir.path();
+
+    // Create a notebook item with governance metadata
+    let nb_dir = source.join("TestNb.Notebook");
+    std::fs::create_dir_all(&nb_dir).unwrap();
+    std::fs::write(
+        nb_dir.join(".platform"),
+        r#"{"metadata":{"type":"Notebook","displayName":"TestNb"},"config":{"version":"2.0","logicalId":"test-lid-001"}}"#,
+    )
+    .unwrap();
+    std::fs::write(nb_dir.join("notebook-content.py"), "# hello").unwrap();
+    std::fs::write(
+        nb_dir.join("governance.metadata.json"),
+        r#"{"sensitivityLabel":{"id":"label-uuid-001"},"tags":[{"id":"tag-uuid-001","displayName":"Production"}]}"#,
+    )
+    .unwrap();
+
+    // Validate accepts governance metadata without errors
+    let assert = fabio()
+        .args(["deploy", "validate", "--source", source.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "valid");
+    assert_eq!(data["items"], 1);
+    assert_eq!(data["summary"]["errors"], 0);
+}
+
+#[test]
+fn deploy_validate_accepts_label_replace_params() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let source = dir.path();
+
+    // Create minimal source with governance metadata
+    let nb_dir = source.join("Nb.Notebook");
+    std::fs::create_dir_all(&nb_dir).unwrap();
+    std::fs::write(
+        nb_dir.join(".platform"),
+        r#"{"metadata":{"type":"Notebook","displayName":"Nb"},"config":{"version":"2.0"}}"#,
+    )
+    .unwrap();
+    std::fs::write(nb_dir.join("notebook-content.py"), "# code").unwrap();
+    std::fs::write(
+        nb_dir.join("governance.metadata.json"),
+        r#"{"sensitivityLabel":{"id":"source-label-uuid"},"tags":[{"id":"source-tag-uuid","displayName":"Dev"}]}"#,
+    )
+    .unwrap();
+
+    // Create parameters file with label_replace and tag_replace
+    let params_file = dir.path().join("params.json");
+    std::fs::write(
+        &params_file,
+        r#"{"label_replace":{"source-label-uuid":"target-label-uuid"},"tag_replace":{"source-tag-uuid":"target-tag-uuid"}}"#,
+    )
+    .unwrap();
+
+    // Validate accepts the params without error
+    let assert = fabio()
+        .args([
+            "deploy",
+            "validate",
+            "--source",
+            source.to_str().unwrap(),
+            "--parameters",
+            params_file.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "valid");
+}
+
+#[test]
+fn deploy_validate_label_replace_null_removes_governance() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let source = dir.path();
+
+    let nb_dir = source.join("Nb.Notebook");
+    std::fs::create_dir_all(&nb_dir).unwrap();
+    std::fs::write(
+        nb_dir.join(".platform"),
+        r#"{"metadata":{"type":"Notebook","displayName":"Nb"},"config":{"version":"2.0"}}"#,
+    )
+    .unwrap();
+    std::fs::write(nb_dir.join("notebook-content.py"), "# code").unwrap();
+    std::fs::write(
+        nb_dir.join("governance.metadata.json"),
+        r#"{"sensitivityLabel":{"id":"dev-label"}}"#,
+    )
+    .unwrap();
+
+    // null value means "skip this label"
+    let params_file = dir.path().join("params.json");
+    std::fs::write(&params_file, r#"{"label_replace":{"dev-label":null}}"#).unwrap();
+
+    fabio()
+        .args([
+            "deploy",
+            "validate",
+            "--source",
+            source.to_str().unwrap(),
+            "--parameters",
+            params_file.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+}

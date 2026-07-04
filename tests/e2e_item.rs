@@ -1729,3 +1729,31 @@ fn item_create_dry_run_without_sensitivity_label() {
         "sensitivityLabel should be null when not provided"
     );
 }
+
+// ── Typed create commands with sensitivity label (dry-run) ───────────────────
+
+#[test]
+fn lakehouse_create_dry_run_with_sensitivity_label() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "lakehouse",
+            "create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--name",
+            "LabeledLH",
+            "--sensitivity-label",
+            "cccccccc-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(
+        data["details"]["sensitivityLabel"],
+        "cccccccc-1111-2222-3333-444444444444"
+    );
+}

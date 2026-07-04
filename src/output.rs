@@ -1455,4 +1455,51 @@ mod tests {
         assert!(lines[1].contains('0'));
         assert!(lines[1].contains("Query executed successfully"));
     }
+
+    // ─── has_tags tests ──────────────────────────────────────────────────────
+
+    #[test]
+    fn has_tags_returns_false_for_empty_list() {
+        assert!(!super::has_tags(&[]));
+    }
+
+    #[test]
+    fn has_tags_returns_false_when_no_items_have_tags() {
+        let items = vec![
+            serde_json::json!({"displayName": "A", "id": "1"}),
+            serde_json::json!({"displayName": "B", "id": "2", "tags": []}),
+        ];
+        assert!(!super::has_tags(&items));
+    }
+
+    #[test]
+    fn has_tags_returns_true_when_any_item_has_tags() {
+        let items = vec![
+            serde_json::json!({"displayName": "A", "id": "1"}),
+            serde_json::json!({"displayName": "B", "id": "2", "tags": [{"id": "t1", "displayName": "Prod"}]}),
+        ];
+        assert!(super::has_tags(&items));
+    }
+
+    // ─── enrich_with_tags_display tests ──────────────────────────────────────
+
+    #[test]
+    fn enrich_with_tags_display_adds_comma_separated_names() {
+        let items = vec![
+            serde_json::json!({"displayName": "A", "tags": [{"id": "t1", "displayName": "Prod"}, {"id": "t2", "displayName": "Finance"}]}),
+            serde_json::json!({"displayName": "B"}),
+        ];
+        let enriched = super::enrich_with_tags_display(&items);
+        assert_eq!(enriched[0]["_tagsDisplay"], "Prod, Finance");
+        assert!(enriched[1].get("_tagsDisplay").is_none());
+    }
+
+    #[test]
+    fn enrich_with_tags_display_handles_missing_display_name() {
+        let items = vec![
+            serde_json::json!({"displayName": "A", "tags": [{"id": "t1"}, {"id": "t2", "displayName": "OK"}]}),
+        ];
+        let enriched = super::enrich_with_tags_display(&items);
+        assert_eq!(enriched[0]["_tagsDisplay"], "OK");
+    }
 }
