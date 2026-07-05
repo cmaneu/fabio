@@ -16724,6 +16724,43 @@
           "fabio git checkout --workspace $WS --branch feature/new-model --strategy prefer-remote"
         ]
       },
+      "branch-out": {
+        "description": "Create a feature workspace from the current branch (branch out)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Source workspace (already connected to Git integration branch)"
+          },
+          "--branch": {
+            "type": "string",
+            "required": true,
+            "description": "Name of the new feature branch to create"
+          },
+          "--new-workspace": {
+            "type": "string",
+            "description": "Name for the new feature workspace (default: branch name)"
+          },
+          "--capacity": {
+            "type": "string",
+            "description": "Capacity ID for the new workspace"
+          },
+          "--existing-workspace": {
+            "type": "string",
+            "description": "Use an existing workspace instead of creating a new one"
+          },
+          "--wait": {
+            "type": "bool",
+            "description": "Wait for initialization to complete"
+          },
+          "--timeout": {
+            "type": "string",
+            "description": "Timeout in seconds when --wait is used (default: 120)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "connection": {
         "description": "Show or manage Git connection and credentials",
         "mutates": false,

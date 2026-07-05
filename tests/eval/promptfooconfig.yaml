@@ -1695,3 +1695,141 @@ tests:
         value: |
           output.includes('adlsgen2') || output.includes('adls') || output.includes('ADLS')
         metric: shortcut-adls-target
+
+  # ============================================================
+  # VARIABLE LIBRARY & VALUE SETS (CI/CD Parameterization)
+  # ============================================================
+
+  - description: "Variable Library: list value sets"
+    vars:
+      user_query: "Show me what value sets are available in my variable library and which one is currently active"
+    assert:
+      - type: icontains
+        value: "list-value-sets"
+      - type: icontains
+        value: "--workspace"
+
+  - description: "Variable Library: activate value set for production"
+    vars:
+      user_query: "Switch the active value set to 'prod' for the environment_settings variable library in my workspace"
+    assert:
+      - type: icontains
+        value: "activate-value-set"
+      - type: icontains
+        value: "--value-set"
+      - type: javascript
+        value: |
+          output.includes('prod')
+        metric: prod-value-set-specified
+
+  - description: "Variable Library: deploy with auto-activation"
+    vars:
+      user_query: "Deploy my fabric items to the production workspace, making sure the prod value set gets activated for any variable libraries"
+    assert:
+      - type: icontains
+        value: "deploy apply"
+      - type: icontains
+        value: "--env"
+      - type: javascript
+        value: |
+          output.includes('prod')
+        metric: env-prod-for-value-set
+
+  - description: "Variable Library: create and configure for multi-environment"
+    vars:
+      user_query: "Create a variable library named 'connection_config' in my workspace for storing environment-specific database connection settings"
+    assert:
+      - type: icontains
+        value: "variable-library create"
+      - type: icontains
+        value: "--name"
+
+  # ============================================================
+  # WORKSPACE CLONE (Bulk APIs)
+  # ============================================================
+
+  - description: "Workspace Clone: replicate workspace"
+    vars:
+      user_query: "Clone all items from my development workspace to a new production workspace"
+    assert:
+      - type: icontains
+        value: "workspace clone"
+      - type: icontains
+        value: "--source"
+      - type: icontains
+        value: "--dest"
+
+  - description: "Workspace Clone: initial clone with name matching"
+    vars:
+      user_query: "Clone my workspace items to a fresh empty workspace. Since there's no logicalId matching yet, use name-based pairing."
+    assert:
+      - type: icontains
+        value: "workspace clone"
+      - type: icontains
+        value: "--allow-pairing-by-name"
+
+  - description: "Workspace Clone: selective by item type"
+    vars:
+      user_query: "Clone only the notebooks and data pipelines from workspace A to workspace B"
+    assert:
+      - type: icontains
+        value: "workspace clone"
+      - type: icontains
+        value: "--item-types"
+      - type: javascript
+        value: |
+          output.includes('Notebook') && output.includes('DataPipeline')
+        metric: both-types-specified
+
+  # ============================================================
+  # DEPLOY SCHEDULES & POST-RUN
+  # ============================================================
+
+  - description: "Deploy: export with schedules"
+    vars:
+      user_query: "Export all item definitions from my workspace, including any scheduled jobs configured on pipelines and notebooks"
+    assert:
+      - type: icontains
+        value: "deploy export"
+      - type: icontains
+        value: "--workspace"
+      - type: llm-rubric
+        value: "The response mentions that schedules are automatically included in the export (as schedules.metadata.json files) without needing an extra flag"
+        metric: schedules-auto-export
+
+  - description: "Deploy: trigger data orchestration after deployment"
+    vars:
+      user_query: "Deploy my items to production and after everything is deployed, trigger the 'ETL Master Pipeline' to populate the lakehouses with data"
+    assert:
+      - type: icontains
+        value: "deploy apply"
+      - type: icontains
+        value: "--post-run-item"
+      - type: javascript
+        value: |
+          output.includes('ETL Master Pipeline') || output.includes('ETL')
+        metric: post-run-pipeline-name
+
+  - description: "Deploy: validate before applying (notebook-settings check)"
+    vars:
+      user_query: "Before deploying my fabric items, validate them locally to catch any issues without making API calls"
+    assert:
+      - type: icontains
+        value: "deploy validate"
+      - type: icontains
+        value: "--source"
+
+  # ============================================================
+  # FEATURE WORKSPACE WORKFLOW
+  # ============================================================
+
+  - description: "Feature Workspace: create and connect to Git branch"
+    vars:
+      user_query: "I want to create an isolated feature workspace for my development. Create a new workspace, connect it to my feature branch on GitHub, and initialize it from the branch content."
+    assert:
+      - type: javascript
+        value: |
+          output.includes('workspace create') && output.includes('git connect') && output.includes('git init')
+        metric: three-step-feature-workspace
+      - type: icontains
+        value: "--branch"
