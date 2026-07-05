@@ -245,6 +245,15 @@ pub enum DeployCommand {
         /// Useful for populating lakehouses after deploying a solution with ETL items.
         #[arg(long, value_name = "NAME")]
         post_run_item: Option<String>,
+
+        /// Deployment execution strategy
+        ///
+        /// - default: per-item create/update with bounded parallelism (content-hash skip)
+        /// - bulk: batch creates/updates via Bulk Import Definitions API (faster for
+        ///   large initial deploys; requires no Git integration on target workspace)
+        /// - sequential: fully sequential execution (for debugging API issues)
+        #[arg(long, value_parser = ["default", "bulk", "sequential"], default_value = "default")]
+        strategy: String,
     },
 
     /// Export workspace item definitions to a local directory
@@ -409,6 +418,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
             no_workspace_id_replace,
             shortcut_exclude_regex,
             post_run_item,
+            strategy,
         } => {
             let resolved = resolve_config_and_cli(
                 config.as_deref(),
@@ -444,6 +454,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
                 *no_workspace_id_replace,
                 shortcut_exclude_regex.as_deref(),
                 post_run_item.as_deref(),
+                strategy,
             )
             .await
         }
@@ -686,6 +697,7 @@ async fn execute_apply(
     no_workspace_id_replace: bool,
     _shortcut_exclude_regex: Option<&str>,
     post_run_item: Option<&str>,
+    strategy: &str,
 ) -> Result<()> {
     // Validate parameter flags
     if parameters.is_some() && env.is_none() {
@@ -881,17 +893,28 @@ async fn execute_apply(
         return Ok(());
     }
 
-    // Execute the changeset
-    let result = apply::execute_changeset(
-        cli,
-        client,
-        &workspace_id,
-        &changeset,
-        &source_workspace,
-        concurrency,
-        fail_fast,
-    )
-    .await?;
+    // Execute the changeset (strategy dispatch)
+    let effective_concurrency = if strategy == "sequential" {
+        1
+    } else {
+        concurrency
+    };
+
+    let result = if strategy == "bulk" {
+        apply::execute_changeset_bulk(cli, client, &workspace_id, &changeset, &source_workspace)
+            .await?
+    } else {
+        apply::execute_changeset(
+            cli,
+            client,
+            &workspace_id,
+            &changeset,
+            &source_workspace,
+            effective_concurrency,
+            fail_fast,
+        )
+        .await?
+    };
 
     // Execute post-deploy hooks (unless --no-post-hooks)
     let mut hook_results: Vec<serde_json::Value> = if !no_post_hooks && !cli.dry_run {

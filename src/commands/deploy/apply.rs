@@ -481,6 +481,227 @@ pub async fn execute_changeset(
     })
 }
 
+/// Execute a changeset using the Bulk Import Definitions API.
+///
+/// Batches all creates/updates into a single `bulkImportDefinitions` call for speed.
+/// Deletes and renames are still handled per-item (bulk API is additive-only).
+///
+/// **Limitations vs per-item strategy:**
+/// - No mid-session logical ID resolution (`$items.Type.Name.id` won't resolve for items created in the same batch)
+/// - No per-item error granularity (one failure may affect the whole batch)
+/// - Requires workspace NOT connected to Git (API limitation: `ActiveCiCdOperationInProgress`)
+/// - Renames still executed per-item
+///
+/// **Best for:** initial deployments to empty workspaces, large batch creates.
+#[allow(clippy::too_many_lines)]
+pub async fn execute_changeset_bulk(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace_id: &str,
+    changeset: &Changeset,
+    source: &SourceWorkspace,
+) -> Result<DeployResult> {
+    let start = Instant::now();
+
+    let mut succeeded: Vec<Change> = Vec::new();
+    let mut failed: Vec<DeployFailure> = Vec::new();
+    let mut skipped: Vec<Change> = Vec::new();
+
+    // Separate by action
+    let mut bulk_items: Vec<&Change> = Vec::new();
+    let mut deletes: Vec<&Change> = Vec::new();
+    let mut renames: Vec<&Change> = Vec::new();
+
+    for change in &changeset.changes {
+        match change.action {
+            ChangeAction::Create | ChangeAction::Update => bulk_items.push(change),
+            ChangeAction::Rename => renames.push(change),
+            ChangeAction::Delete => deletes.push(change),
+            ChangeAction::Skip => skipped.push(change.clone()),
+        }
+    }
+
+    // Execute renames per-item first (bulk API doesn't support renames)
+    for change in &renames {
+        if let Some(ref item_id) = change.deployed_id {
+            let body = json!({"displayName": change.name});
+            match client
+                .patch(
+                    &format!("/workspaces/{workspace_id}/items/{item_id}"),
+                    &body,
+                )
+                .await
+            {
+                Ok(_) => {
+                    let mut c = (*change).clone();
+                    c.deployed_id = Some(item_id.clone());
+                    succeeded.push(c);
+                }
+                Err(e) => {
+                    failed.push(DeployFailure {
+                        change: (*change).clone(),
+                        error: e.to_string(),
+                        code: "RENAME_FAILED".to_owned(),
+                    });
+                }
+            }
+        }
+    }
+
+    // Build bulk import payload
+    if !bulk_items.is_empty() {
+        emit_progress(
+            cli.quiet,
+            &format!(
+                "[bulk strategy] submitting {} item(s) via bulkImportDefinitions...",
+                bulk_items.len()
+            ),
+        );
+
+        let mut item_definitions: Vec<Value> = Vec::new();
+
+        for change in &bulk_items {
+            // Find the source item definition
+            let source_item = source.items.iter().find(|si| {
+                si.metadata
+                    .item_type
+                    .eq_ignore_ascii_case(&change.item_type)
+                    && si.metadata.display_name == change.name
+            });
+
+            let Some(source_item) = source_item else {
+                failed.push(DeployFailure {
+                    change: (*change).clone(),
+                    error: "Source item not found in source workspace".to_owned(),
+                    code: "SOURCE_NOT_FOUND".to_owned(),
+                });
+                continue;
+            };
+
+            // Build definition parts (without logical ID resolution — can't resolve mid-batch)
+            let parts: Vec<Value> = source_item
+                .parts
+                .iter()
+                .map(|p| {
+                    json!({
+                        "path": p.path,
+                        "payload": p.payload,
+                        "payloadType": p.payload_type,
+                    })
+                })
+                .collect();
+
+            let mut item_def = json!({
+                "displayName": change.name,
+                "type": change.item_type,
+            });
+
+            if !parts.is_empty() {
+                item_def["definition"] = json!({"parts": parts});
+            }
+
+            item_definitions.push(item_def);
+        }
+
+        // Submit bulk import
+        let import_body = json!({
+            "itemDefinitions": item_definitions,
+            "allowPairingByName": true
+        });
+
+        match client
+            .post(
+                &format!("/workspaces/{workspace_id}/items/bulkImportDefinitions?beta=True"),
+                &import_body,
+                true, // LRO poll
+            )
+            .await
+        {
+            Ok(response) => {
+                // Mark all items as succeeded (bulk API doesn't give per-item status easily)
+                for change in &bulk_items {
+                    let mut c = (*change).clone();
+                    // Try to extract deployed ID from response index
+                    if let Some(index) = response
+                        .get("itemDefinitionsIndex")
+                        .and_then(|v| v.as_array())
+                    {
+                        for idx_item in index {
+                            if idx_item
+                                .get("displayName")
+                                .and_then(|v| v.as_str())
+                                .is_some_and(|n| n.eq_ignore_ascii_case(&change.name))
+                            {
+                                c.deployed_id = idx_item
+                                    .get("id")
+                                    .and_then(|v| v.as_str())
+                                    .map(str::to_owned);
+                                break;
+                            }
+                        }
+                    }
+                    succeeded.push(c);
+                }
+            }
+            Err(e) => {
+                let err_msg = e.to_string();
+                // If bulk fails, mark ALL items as failed
+                if err_msg.contains("ActiveCiCdOperation") {
+                    let hint = "Bulk strategy requires workspace not connected to Git. Use --strategy default, or disconnect Git: fabio git disconnect --workspace <WS>";
+                    for change in &bulk_items {
+                        failed.push(DeployFailure {
+                            change: (*change).clone(),
+                            error: format!(
+                                "Bulk import blocked: workspace has Git integration active. {hint}"
+                            ),
+                            code: "BULK_GIT_BLOCKED".to_owned(),
+                        });
+                    }
+                } else {
+                    for change in &bulk_items {
+                        failed.push(DeployFailure {
+                            change: (*change).clone(),
+                            error: err_msg.clone(),
+                            code: "BULK_IMPORT_FAILED".to_owned(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Execute deletes per-item (bulk API doesn't support deletes)
+    for change in &deletes {
+        if let Some(ref item_id) = change.deployed_id {
+            emit_progress(
+                cli.quiet,
+                &format!("  deleting {} \"{}\"", change.item_type, change.name),
+            );
+            match client
+                .delete(&format!("/workspaces/{workspace_id}/items/{item_id}"))
+                .await
+            {
+                Ok(_) => succeeded.push((*change).clone()),
+                Err(e) => {
+                    failed.push(DeployFailure {
+                        change: (*change).clone(),
+                        error: e.to_string(),
+                        code: "DELETE_FAILED".to_owned(),
+                    });
+                }
+            }
+        }
+    }
+
+    let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    Ok(DeployResult {
+        succeeded,
+        failed,
+        skipped,
+        duration_ms,
+    })
+}
+
 /// Execute post-deploy hooks for items that were successfully deployed.
 ///
 /// Hooks:

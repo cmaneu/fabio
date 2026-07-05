@@ -17748,6 +17748,15 @@
           "--post-run-item": {
             "type": "string",
             "description": "Run a pipeline or notebook after deployment completes (data orchestration)"
+          },
+          "--strategy": {
+            "type": "enum",
+            "values": [
+              "default",
+              "bulk",
+              "sequential"
+            ],
+            "description": "Deployment execution strategy"
           }
         },
         "mutates": true,
