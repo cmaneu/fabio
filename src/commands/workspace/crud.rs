@@ -158,3 +158,125 @@ pub(super) async fn delete(cli: &Cli, client: &FabricClient, id: &str) -> Result
     );
     Ok(())
 }
+
+/// Clone workspace items from source to destination using the Bulk APIs.
+///
+/// Flow:
+/// 1. Resolve workspace names to IDs
+/// 2. Call `bulkExportDefinitions` on source (LRO)
+/// 3. Transform the export response into a `bulkImportDefinitions` request
+/// 4. Call `bulkImportDefinitions` on destination (LRO)
+pub(super) async fn clone_workspace(
+    cli: &Cli,
+    client: &FabricClient,
+    source: &str,
+    dest: &str,
+    item_types: Option<&[String]>,
+    allow_pairing_by_name: bool,
+) -> Result<()> {
+    use crate::commands::deploy::plan::resolve_workspace;
+
+    let source_id = resolve_workspace(client, source).await?;
+    let dest_id = resolve_workspace(client, dest).await?;
+
+    if source_id == dest_id {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Source and destination workspaces cannot be the same".to_string(),
+            "Provide different --source and --dest workspace IDs or names.".to_string(),
+        )
+        .into());
+    }
+
+    if output::dry_run_guard(
+        cli,
+        "workspace clone",
+        &serde_json::json!({
+            "source_workspace": source_id,
+            "dest_workspace": dest_id,
+            "item_types": item_types,
+            "allow_pairing_by_name": allow_pairing_by_name,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    // Step 1: Build bulk export request
+    let mut export_body = serde_json::json!({});
+    if let Some(types) = item_types {
+        let type_values: Vec<Value> = types.iter().map(|t| Value::from(t.as_str())).collect();
+        export_body["itemTypes"] = Value::Array(type_values);
+    }
+
+    if !cli.quiet {
+        eprintln!("[workspace clone] exporting definitions from source workspace...");
+    }
+
+    // Step 2: Call bulkExportDefinitions on source
+    let export_result = client
+        .post(
+            &format!("/workspaces/{source_id}/items/bulkExportDefinitions"),
+            &export_body,
+            true, // LRO poll
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace clone (export)", "Contributor"))?;
+
+    // Step 3: Extract itemDefinitions from export result and build import body
+    let item_definitions = export_result
+        .get("itemDefinitions")
+        .cloned()
+        .unwrap_or(Value::Array(vec![]));
+
+    let items_count = item_definitions.as_array().map_or(0, Vec::len);
+    if items_count == 0 {
+        output::render_object(
+            cli,
+            &serde_json::json!({
+                "status": "empty",
+                "message": "No exportable items found in source workspace",
+                "source_workspace": source_id,
+                "dest_workspace": dest_id,
+            }),
+            "status",
+        );
+        return Ok(());
+    }
+
+    if !cli.quiet {
+        eprintln!("[workspace clone] importing {items_count} item(s) to destination workspace...");
+    }
+
+    let mut import_body = serde_json::json!({
+        "itemDefinitions": item_definitions,
+    });
+    if allow_pairing_by_name {
+        import_body["allowPairingByName"] = Value::Bool(true);
+    }
+
+    // Step 4: Call bulkImportDefinitions on destination
+    let import_result = client
+        .post(
+            &format!("/workspaces/{dest_id}/items/bulkImportDefinitions"),
+            &import_body,
+            true, // LRO poll
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace clone (import)", "Contributor"))?;
+
+    // Render result
+    let mut result = serde_json::json!({
+        "status": "succeeded",
+        "source_workspace": source_id,
+        "dest_workspace": dest_id,
+        "items_exported": items_count,
+    });
+
+    // Include import details if available
+    if let Some(index) = import_result.get("itemDefinitionsIndex") {
+        result["import_details"] = index.clone();
+    }
+
+    output::render_object(cli, &result, "status");
+    Ok(())
+}

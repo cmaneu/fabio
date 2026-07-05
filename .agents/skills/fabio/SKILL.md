@@ -237,6 +237,8 @@ Credential chain: fabio cache > env vars > managed identity > Azure CLI > Azure 
 fabio workspace create --name "MyProject"
 fabio workspace assign-capacity --id $WS --capacity $CAP    # two-step: create, THEN assign
 fabio workspace list                                         # returns {"data":[...],"count":N}
+fabio workspace clone --source $SRC_WS --dest $DST_WS       # bulk clone via export/import APIs
+fabio workspace clone --source $SRC_WS --dest $DST_WS --allow-pairing-by-name  # initial clone (no logicalId match)
 fabio item list --workspace $WS --type Lakehouse             # filter by type
 fabio item exists --workspace $WS --id $ID                   # returns {"data":{"exists":true}}
 fabio item bulk-create --workspace $WS --items '[{"type":"Notebook","displayName":"NB1"},{"type":"Notebook","displayName":"NB2"}]'
@@ -380,12 +382,13 @@ Variable libraries are Microsoft's strategic capability for environment-specific
 
 **Deploy (CI/CD — stateless content-hash diffing):**
 ```bash
-fabio deploy export --workspace $WS --dir ./fabric-items/ --overwrite      # export workspace→disk
+fabio deploy export --workspace $WS --dir ./fabric-items/ --overwrite      # export workspace→disk (includes schedules)
 fabio deploy validate --source ./fabric-items/                              # offline pre-flight checks
 fabio deploy plan --source ./fabric-items/ --workspace "Production"         # diff source vs live (DRY-RUN)
 fabio deploy apply --source ./fabric-items/ --workspace "Production"        # apply changes
 fabio deploy apply --source ./items/ --workspace $WS --parameters params.json --env prod  # with env params
 fabio deploy apply --config deploy.yaml --env staging                       # config file: per-env workspace mapping
+fabio deploy apply --source ./items/ --workspace $WS --env prod --post-run-item "ETL Pipeline"  # trigger data orchestration after deploy
 fabio deploy init-params --source ./fabric-items/ --out params.json         # scaffold parameter file
 ```
 **Deploy from a git repo** (any repo with Fabric Git Integration `.platform` format):

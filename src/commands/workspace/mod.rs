@@ -84,6 +84,27 @@ pub enum WorkspaceCommand {
         #[arg(long)]
         id: String,
     },
+    /// Clone workspace items from one workspace to another using bulk APIs
+    ///
+    /// Uses Bulk Export Definitions (source) → Bulk Import Definitions (target)
+    /// to replicate item definitions. Items are matched by logicalId for updates
+    /// or created new. Use --allow-pairing-by-name for initial clones where
+    /// logicalIds may not match.
+    #[command(display_order = 13)]
+    Clone {
+        /// Source workspace ID or name
+        #[arg(long)]
+        source: String,
+        /// Destination workspace ID or name
+        #[arg(long)]
+        dest: String,
+        /// Only clone specific item types (comma-separated, e.g., "Notebook,DataPipeline")
+        #[arg(long, value_delimiter = ',')]
+        item_types: Option<Vec<String>>,
+        /// Match items by display name (instead of logicalId) for initial clones
+        #[arg(long)]
+        allow_pairing_by_name: bool,
+    },
     /// Assign a workspace to a capacity
     #[command(display_order = 20)]
     AssignCapacity {
@@ -513,6 +534,22 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
             description,
         } => crud::update(cli, client, id, name.as_deref(), description.as_deref()).await,
         WorkspaceCommand::Delete { id } => crud::delete(cli, client, id).await,
+        WorkspaceCommand::Clone {
+            source,
+            dest,
+            item_types,
+            allow_pairing_by_name,
+        } => {
+            crud::clone_workspace(
+                cli,
+                client,
+                source,
+                dest,
+                item_types.as_deref(),
+                *allow_pairing_by_name,
+            )
+            .await
+        }
         WorkspaceCommand::AssignCapacity { id, capacity } => {
             capacity::assign_capacity(cli, client, id, capacity).await
         }

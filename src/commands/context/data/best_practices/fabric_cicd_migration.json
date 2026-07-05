@@ -1,0 +1,64 @@
+{
+  "topic": "fabric-cicd-migration",
+  "title": "Migrating from fabric-cicd to fabio deploy",
+  "summary": "Guide for teams migrating from Microsoft's fabric-cicd Python library to fabio's deploy commands. Shows the equivalent config mappings, parameter format translation, and additional capabilities available in fabio.",
+  "config_mapping": {
+    "fabric_cicd_deploy_yml": {
+      "core.workspace_id.<env>": "environments.<env>.workspace",
+      "core.repository_directory": "source",
+      "core.item_types_in_scope": "filters.item_types",
+      "core.parameter": "parameters"
+    },
+    "fabio_equivalent": {
+      "file": "deploy-config.yaml (JSON or YAML)",
+      "example": {
+        "source": "./workspace",
+        "parameters": "./parameters.json",
+        "environments": {
+          "test": { "workspace": "a0a0a0a0-bbbb-cccc-dddd-e1e1e1e1e1e1" },
+          "prod": { "workspace": "b1b1b1b1-cccc-dddd-eeee-f2f2f2f2f2f2" }
+        },
+        "filters": {
+          "item_types": ["VariableLibrary", "Lakehouse", "Notebook", "DataPipeline", "SemanticModel", "Report"]
+        }
+      }
+    }
+  },
+  "parameter_mapping": {
+    "fabric_cicd_parameter_yml": {
+      "find_replace[].find_value": "find_replace[].find_value",
+      "find_replace[].replace_value.<env>": "find_replace[].replace_value.<env>",
+      "find_replace[].is_regex": "find_replace[].is_regex",
+      "find_replace[].item_type": "find_replace[].item_type",
+      "find_replace[].item_name": "find_replace[].item_name",
+      "find_replace[].file_path": "find_replace[].file_path"
+    },
+    "note": "The find_replace format is identical between fabric-cicd and fabio. Just rename the file from parameter.yml to parameters.json and wrap in JSON syntax (or keep YAML — fabio supports both)."
+  },
+  "command_mapping": {
+    "fabric_cicd_deploy_with_config()": "fabio deploy apply --config deploy.yaml --env prod",
+    "fabric_cicd_deploy()": "fabio deploy apply --source ./workspace --workspace <WS> --parameters params.json --env prod"
+  },
+  "additional_capabilities": [
+    "fabio deploy plan: preview changes before applying (fabric-cicd has no plan mode)",
+    "fabio deploy validate: offline pre-flight checks (no API calls needed)",
+    "fabio deploy export: export from live workspace to disk (fabric-cicd requires Git)",
+    "fabio deploy init-params: auto-scaffold parameter file by scanning definitions",
+    "Content-hash diffing: only updates items that actually changed (fabric-cicd always redeploys all)",
+    "Rename detection: preserves item IDs when items are renamed",
+    "45+ item types (vs 27 in fabric-cicd)",
+    "Post-deploy hooks: semantic model refresh, environment publish, value set activation, schedule creation",
+    "--post-run-item: trigger data orchestration after deploy",
+    "--delete-orphans: remove items not in source (with protected type safety)",
+    "--git-diff: only deploy items changed since a git ref"
+  ],
+  "migration_steps": [
+    "1. Install fabio (cargo install --git https://github.com/iemejia/fabio.git)",
+    "2. Translate deploy.yml → deploy-config.yaml using the mapping above",
+    "3. Translate parameter.yml → parameters.json (format is identical, just rename/convert)",
+    "4. Test with: fabio deploy plan --config deploy-config.yaml --env test",
+    "5. Apply with: fabio deploy apply --config deploy-config.yaml --env test",
+    "6. Verify convergence: fabio deploy plan --config deploy-config.yaml --env test (should show all skip)"
+  ],
+  "agent_guidance": "When a user has an existing fabric-cicd setup (deploy.yml + parameter.yml), help them translate to fabio's config format. The parameter find_replace format is identical — only the config file structure differs. Fabio's --config file supports both JSON and YAML."
+}

@@ -779,6 +779,31 @@
           "fabio workspace delete --id $WS --dry-run"
         ]
       },
+      "clone": {
+        "description": "Clone workspace items from one workspace to another using bulk APIs",
+        "flags": {
+          "--source": {
+            "type": "string",
+            "required": true,
+            "description": "Source workspace ID or name"
+          },
+          "--dest": {
+            "type": "string",
+            "required": true,
+            "description": "Destination workspace ID or name"
+          },
+          "--item-types": {
+            "type": "string",
+            "description": "Only clone specific item types (comma-separated, e.g., \"Notebook,DataPipeline\")"
+          },
+          "--allow-pairing-by-name": {
+            "type": "bool",
+            "description": "Match items by display name (instead of logicalId) for initial clones"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "assign-capacity": {
         "description": "Assign a workspace to a capacity",
         "flags": {
