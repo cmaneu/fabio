@@ -579,9 +579,11 @@ pub async fn execute_changeset_bulk(
             };
 
             // Build definition parts (without logical ID resolution — can't resolve mid-batch)
+            // Exclude .platform from parts (the API uses displayName/type from the outer object)
             let parts: Vec<Value> = source_item
                 .parts
                 .iter()
+                .filter(|p| p.path != ".platform")
                 .map(|p| {
                     json!({
                         "path": p.path,

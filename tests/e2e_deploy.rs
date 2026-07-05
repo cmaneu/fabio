@@ -3888,3 +3888,116 @@ fn deploy_validate_ignores_schedules_metadata_in_parts() {
     assert_eq!(data["status"], "valid");
     assert_eq!(data["summary"]["errors"], 0);
 }
+
+// --- deploy --strategy tests ---
+
+#[test]
+fn deploy_apply_strategy_invalid_value_fails() {
+    fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            ".",
+            "--workspace",
+            "test",
+            "--strategy",
+            "invalid_strategy",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("invalid value"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+fn deploy_apply_strategy_default_live() {
+    let cfg = common::TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let nb_dir = dir.path().join("StrategyTestNB.Notebook");
+    std::fs::create_dir_all(&nb_dir).unwrap();
+    std::fs::write(
+        nb_dir.join(".platform"),
+        r#"{"metadata":{"type":"Notebook","displayName":"StrategyTestNB"},"config":{"version":"2.0","logicalId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}}"#,
+    )
+    .unwrap();
+    std::fs::write(nb_dir.join("notebook-content.py"), "# strategy test").unwrap();
+    std::fs::write(
+        nb_dir.join("notebook-settings.json"),
+        r#"{"defaultLakehouse":{"knownName":"","referenceType":"LogicalIdReference"}}"#,
+    )
+    .unwrap();
+
+    // Default strategy plan with --item-types to limit scope
+    let assert = fabio()
+        .args([
+            "deploy",
+            "plan",
+            "--source",
+            dir.path().to_str().unwrap(),
+            "--workspace",
+            &cfg.source_workspace,
+            "--item-types",
+            "Notebook",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Plan should produce a status (dry_run or planned)
+    assert!(
+        data.get("status").is_some() || data.get("summary").is_some(),
+        "Plan should produce structured output with status or summary"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+fn deploy_apply_strategy_bulk_on_source_workspace() {
+    // Source workspace has NO Git integration — test that bulk strategy
+    // executes without crashing (may fail at API level if bulk import
+    // is not available on this tenant/workspace configuration)
+    let cfg = common::TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let nb_dir = dir.path().join("BulkTestNB.Notebook");
+    std::fs::create_dir_all(&nb_dir).unwrap();
+    std::fs::write(
+        nb_dir.join(".platform"),
+        r#"{"metadata":{"type":"Notebook","displayName":"BulkTestNB"},"config":{"version":"2.0","logicalId":"11111111-2222-3333-4444-555555555555"}}"#,
+    )
+    .unwrap();
+    std::fs::write(nb_dir.join("notebook-content.py"), "# bulk strategy test").unwrap();
+    std::fs::write(
+        nb_dir.join("notebook-settings.json"),
+        r#"{"defaultLakehouse":{"knownName":"","referenceType":"LogicalIdReference"}}"#,
+    )
+    .unwrap();
+
+    // Bulk strategy — the API may succeed or fail with InvalidInput
+    // (bulk import API availability depends on tenant configuration).
+    // We verify it doesn't crash and returns structured output.
+    let assert = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            dir.path().to_str().unwrap(),
+            "--workspace",
+            &cfg.source_workspace,
+            "--strategy",
+            "bulk",
+            "--item-types",
+            "Notebook",
+        ])
+        .assert();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    // Should produce valid JSON regardless of success/failure
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let data = &json["data"];
+    // Status should be "succeeded" or "partial_failure" (not a crash)
+    assert!(
+        data["status"] == "succeeded" || data["status"] == "partial_failure",
+        "Expected structured output with status, got: {data}"
+    );
+}
