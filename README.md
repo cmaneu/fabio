@@ -41,6 +41,10 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Export from workspace | No | `deploy export` |
 | Local validation | No | `deploy validate` (no API calls needed) |
 | Parameter scaffolding | No | `deploy init-params` (scans/diffs GUIDs automatically) |
+| Variable library value sets | Auto-activate matching env | Same + `list-value-sets` + `activate-value-set` CLI |
+| Schedule export/apply | No | `deploy export` includes `.schedules`; `apply` creates them |
+| Workspace clone (bulk) | No | `workspace clone --source → --dest` (bulk APIs) |
+| Post-deploy orchestration | No | `--post-run-item` triggers pipeline/notebook after deploy |
 | Output format | Python logs | JSON envelope (stdout/stderr separation) |
 | Item types supported | 27 (deploy only) | 46 (deploy) + 76 command groups (full CRUD, query, run) |
 | Selective filtering | Feature-flagged, limited | `--exclude-regex`, `--include-items`, `--include-folders` |
@@ -55,7 +59,9 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Saved deployment plans** — `--out plan.json` then `apply --plan plan.json` (with staleness detection)
 - **Workspace folder management** — infers folder hierarchy, creates/moves/deletes automatically
 - **Protected type deletion guards** — Lakehouse/Warehouse/Eventhouse safe from accidental deletion
-- **Post-deploy automation** — Semantic Model refresh, Environment publish, SQL endpoint polling
+- **Post-deploy automation** — Semantic Model refresh, Environment publish, SQL endpoint polling, Variable Library value set activation, job schedule creation
+- **Workspace clone** — replicate workspace items via Bulk Export/Import APIs (`--allow-pairing-by-name` for initial clones)
+- **Data orchestration** — `--post-run-item` triggers a pipeline or notebook after deployment to populate lakehouses
 - **Parallel execution** — bounded-concurrency async deployment (default 8 parallel ops per type)
 - **Profile management** — named profiles store default workspace, capacity, output format, and private link settings; switch contexts with `fabio profile use`
 

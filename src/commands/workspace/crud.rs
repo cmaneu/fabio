@@ -267,7 +267,18 @@ pub(super) async fn clone_workspace(
             true, // LRO poll
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "workspace clone (export)", "Contributor"))?;
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("ActiveCiCdOperation") {
+                FabioError::with_hint(
+                    ErrorCode::ApiError,
+                    "Source workspace has an active CI/CD operation (Git integration connected)".to_string(),
+                    "Bulk APIs cannot run while Git integration is active. Either: (1) disconnect Git first: fabio git disconnect --workspace <WS>, or (2) use deploy export/apply instead: fabio deploy export --workspace <WS> --dir ./export && fabio deploy apply --source ./export --workspace <DEST>".to_string(),
+                ).into()
+            } else {
+                enrich_forbidden(e, "workspace clone (export)", "Contributor")
+            }
+        })?;
 
     // Step 3: Transform export response into import format
     // Export returns: { itemDefinitionsIndex: [{id, rootPath}], definitionParts: [{path, payload, payloadType}] }

@@ -823,9 +823,11 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Definition format query param**: `POST /workspaces/{ws}/items/{id}/getDefinition?format={fmt}` supports format selection.
 - **Update definition metadata**: `POST /workspaces/{ws}/items/{id}/updateDefinition?updateMetadata=true` updates `.platform` metadata alongside definition parts.
 - **Bulk operations (all LRO)**:
-  - `POST /workspaces/{ws}/items/bulkExportDefinitions?beta=True` — exports multiple item definitions. Body: `{"mode":"All"}` (all items) or `{"mode":"Selective","items":[{"id":"<uuid>"},...]}`. Requires `?beta=True` query param. Response: `{"itemDefinitionsIndex":[{"id":"...","rootPath":"..."}],"definitionParts":[{"path":"...","payload":"...","payloadType":"InlineBase64"}]}`. Only exports items caller has read+write permissions for. Items with protected sensitivity labels are excluded.
-  - `POST /workspaces/{ws}/items/bulkImportDefinitions` — imports multiple item definitions
+  - `POST /workspaces/{ws}/items/bulkExportDefinitions?beta=True` — exports multiple item definitions. Body: `{"mode":"All"}` (all items) or `{"mode":"Selective","items":[{"id":"<uuid>"},...]}`. Requires `?beta=True` query param. Response: `{"itemDefinitionsIndex":[{"id":"...","rootPath":"...","displayName":"...","type":"..."}],"definitionParts":[{"path":"...","payload":"...","payloadType":"InlineBase64"}]}`. Only exports items caller has read+write permissions for. Items with protected sensitivity labels are excluded.
+  - `POST /workspaces/{ws}/items/bulkImportDefinitions?beta=True` — imports multiple item definitions. Body: `{"itemDefinitions":[{"displayName":"...","type":"...","definition":{"parts":[...]}}],"allowPairingByName":true}`. The `allowPairingByName` option matches items by display name instead of logicalId (useful for initial clones). Requires `?beta=True` query param.
   - `POST /workspaces/{ws}/items/bulkMove` — moves multiple items between folders/workspaces
+  - **Git integration blocker**: Both `bulkExportDefinitions` and `bulkImportDefinitions` fail with `ActiveCiCdOperationInProgress` error when the workspace has Git integration connected. Disconnect Git first (`fabio git disconnect --workspace <WS>`) or use `deploy export/apply` instead (which uses per-item `getDefinition`/`updateDefinition` and is not affected by Git).
+  - **Workspace clone**: `fabio workspace clone --source <WS> --dest <WS>` orchestrates bulk export → transform → bulk import. Supports `--allow-pairing-by-name` and `--item-types` for selective cloning.
 - **External data shares**: CRUD at `/workspaces/{ws}/items/{id}/externalDataShares`. Create body: `{"paths": [...], "recipient": {"tenantId": "<id>"}}`. Accept invitations at `/externalDataShares/invitations/{id}/accept`. Supports polymorphic recipients: add `"userPrincipal": {"userPrincipalName": "<upn>"}` or `"servicePrincipal": {"id": "<sp-id>"}` to the `recipient` object.
 - **Move to folder**: `POST /workspaces/{ws}/items/{id}/move` with `{"targetFolderId": "<id>"}`. Omit `targetFolderId` or pass `null` to move to workspace root.
 - **Identity assignment**: `POST /workspaces/{ws}/items/{id}/identities/default/assign`.
@@ -1046,6 +1048,11 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Job ID extraction from Location header**: Pattern: `/workspaces/{ws}/items/{id}/jobs/instances/{job_id}`. Falls back to `x-ms-operation-id` header, then response body `id` field.
 - **TableMaintenance cold start**: On small capacity (F2), table maintenance jobs can take 2-5 minutes to complete due to Spark session allocation. First run is always slowest.
 - **Fire-and-forget mode**: Without `--wait`, returns immediately with `{"status":"accepted","jobId":"..."}` after recording in local job ledger.
+- **Schedule response format**: `GET .../schedules` returns `{"value":[{"id":"uuid","enabled":true,"createdDateTime":"...","owner":{"id":"...","type":"User"},"configuration":{"type":"Cron","interval":5,"startDateTime":"...","endDateTime":"...","localTimeZoneId":"UTC"}}]}`.
+- **Deploy schedule export**: `deploy export` queries schedules for item types: Notebook (DefaultJob), DataPipeline (Pipeline), SparkJobDefinition (SparkJob), Lakehouse (DefaultJob), SemanticModel (DefaultJob), Dataflow (DefaultJob), CopyJob (DefaultJob). Writes `schedules.metadata.json` per item (strips `id`, `createdDateTime`, `owner`; adds `jobType`).
+- **Deploy schedule apply**: `deploy apply` creates schedules via `POST .../schedules` as a post-hook. Additive (doesn't delete existing schedules). Non-fatal (failures warn but don't block deploy).
+- **Schedule export portability**: The `configuration` block varies by type — Cron uses `interval`/`startDateTime`/`endDateTime`/`localTimeZoneId`; other types may use different fields. The entire `configuration` object is preserved as-is for round-trip fidelity.
+- **Max 20 schedules per item**: Fabric enforces a limit of 20 schedules per item. Deploy apply should be used carefully to avoid hitting this limit on repeated deploys.
 
 ## Copy Job API Behaviors Discovered
 - **Definition file**: Part path is `CopyJobV1.json`.
