@@ -16749,6 +16749,10 @@
             "type": "string",
             "description": "Use an existing workspace instead of creating a new one"
           },
+          "--connection-id": {
+            "type": "string",
+            "description": "Connection ID for Git credentials (required for GitHub)"
+          },
           "--wait": {
             "type": "bool",
             "description": "Wait for initialization to complete"

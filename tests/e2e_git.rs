@@ -2661,3 +2661,54 @@ fn git_show_tracked_on_unconnected_workspace_gives_hint() {
         "Hint should suggest 'fabio connection list' for GitHub: {hint}"
     );
 }
+
+// --- git branch-out tests ---
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_branch_out_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "git",
+            "branch-out",
+            "--workspace",
+            &cfg.dest_workspace, // dest workspace is connected to Git
+            "--branch",
+            "feature/dry-run-test",
+            "--new-workspace",
+            "dry-run-feature-ws",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "git branch-out");
+    assert_eq!(data["details"]["branch"], "feature/dry-run-test");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_branch_out_fails_on_unconnected_workspace() {
+    let cfg = TestConfig::from_env();
+    // The source workspace is NOT connected to Git
+    let assert = fabio()
+        .args([
+            "git",
+            "branch-out",
+            "--workspace",
+            &cfg.source_workspace,
+            "--branch",
+            "feature/should-fail",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("not connected to Git"),
+        "Should fail with 'not connected' error, got stderr: {stderr}"
+    );
+}

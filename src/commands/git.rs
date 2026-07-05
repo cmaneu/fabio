@@ -206,6 +206,10 @@ pub enum GitCommand {
         #[arg(long, conflicts_with_all = ["new_workspace", "capacity"])]
         existing_workspace: Option<String>,
 
+        /// Connection ID for Git credentials (required for GitHub)
+        #[arg(long)]
+        connection_id: Option<String>,
+
         /// Wait for initialization to complete
         #[arg(long)]
         wait: bool,
@@ -372,6 +376,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             new_workspace,
             capacity,
             existing_workspace,
+            connection_id,
             wait,
             timeout,
         } => {
@@ -383,6 +388,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
                 new_workspace.as_deref(),
                 capacity.as_deref(),
                 existing_workspace.as_deref(),
+                connection_id.as_deref(),
                 *wait,
                 *timeout,
             )
@@ -938,6 +944,7 @@ async fn branch_out(
     new_workspace_name: Option<&str>,
     capacity_id: Option<&str>,
     existing_workspace: Option<&str>,
+    connection_id: Option<&str>,
     wait: bool,
     timeout: u64,
 ) -> Result<()> {
@@ -949,6 +956,7 @@ async fn branch_out(
 
     let git_provider = conn_data
         .get("gitProviderDetails")
+        .filter(|v| !v.is_null())
         .ok_or_else(|| FabioError::with_hint(
             ErrorCode::InvalidInput,
             "Source workspace is not connected to Git".to_string(),
@@ -1022,6 +1030,14 @@ async fn branch_out(
         eprintln!("[git branch-out] connecting workspace to branch: {branch_name}");
     }
 
+    // Fetch credentials from source workspace (required for GitHub)
+    let credentials = client
+        .get(&format!(
+            "/workspaces/{source_workspace}/git/myGitCredentials"
+        ))
+        .await
+        .ok();
+
     // Build the connect body from the source connection details
     let mut connect_body = serde_json::json!({
         "gitProviderDetails": git_provider.clone()
@@ -1032,7 +1048,19 @@ async fn branch_out(
         .get_mut("gitProviderDetails")
         .and_then(|v| v.as_object_mut())
     {
-        details.insert("branch".to_owned(), Value::from(branch_name));
+        details.insert("branchName".to_owned(), Value::from(branch_name));
+    }
+
+    // Include credentials: prefer explicit --connection-id, fall back to source workspace credentials
+    if let Some(conn_id) = connection_id {
+        connect_body["myGitCredentials"] = serde_json::json!({
+            "source": "ConfiguredConnection",
+            "connectionId": conn_id,
+        });
+    } else if let Some(ref creds) = credentials
+        && creds.get("source").is_some()
+    {
+        connect_body["myGitCredentials"] = creds.clone();
     }
 
     client
@@ -1042,7 +1070,23 @@ async fn branch_out(
             false,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "git branch-out (connect)", "Admin"))?;
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("AuthenticationFailed") || msg.contains("GitProvider") {
+                FabioError::with_hint(
+                    ErrorCode::AuthRequired,
+                    "Git provider authentication failed for the new workspace".to_string(),
+                    format!(
+                        "The Git connection credentials may be workspace-scoped. Options:\n\
+                         1. For GitHub: configure a connection on the new workspace first, then use --existing-workspace\n\
+                         2. For Azure DevOps with Automatic credentials: should work without --connection-id\n\
+                         3. Manual flow: fabio git connect --workspace {target_workspace_id} --provider <PROVIDER> --repo <REPO> --branch {branch_name} --connection-id <ID>"
+                    ),
+                ).into()
+            } else {
+                enrich_forbidden(e, "git branch-out (connect)", "Admin")
+            }
+        })?;
 
     // Step 4: Initialize with prefer-remote to populate from branch
     if !cli.quiet {

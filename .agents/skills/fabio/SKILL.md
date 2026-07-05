@@ -367,6 +367,8 @@ fabio git init --workspace $WS --strategy prefer-workspace
 fabio git status --workspace $WS
 fabio git commit --workspace $WS --message "feat: add pipeline" --wait
 fabio git pull --workspace $WS --strategy prefer-remote --wait
+fabio git checkout --workspace $WS --branch feature/my-change --wait       # switch branch (atomic)
+fabio git branch-out --workspace $WS --branch feature/new --capacity $CAP --connection-id $CONN --wait  # create feature workspace
 ```
 
 **Variable Library (environment-specific configuration for CI/CD):**
