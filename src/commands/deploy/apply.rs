@@ -320,6 +320,70 @@ pub async fn execute_changeset(
             let group_type = ordered_group
                 .first()
                 .map_or("unknown", |c| c.item_type.as_str());
+
+            // Auto-create Lakehouses referenced by pipelines but not in source
+            if group_type == "DataPipeline" && !cli.dry_run {
+                let lakehouse_deps =
+                    extract_pipeline_lakehouse_deps(ordered_group, source, &source_map);
+                for (lakehouse_name, artifact_ids) in &lakehouse_deps {
+                    // Skip if already created/deployed
+                    if created_ids.contains_key(&("Lakehouse".to_owned(), lakehouse_name.clone())) {
+                        // Map old artifact IDs to the known deployed ID
+                        if let Some(deployed_id) = created_ids
+                            .get(&("Lakehouse".to_owned(), lakehouse_name.clone()))
+                            .cloned()
+                        {
+                            for old_id in artifact_ids {
+                                created_ids.insert(
+                                    ("_artifact_alias".to_owned(), old_id.clone()),
+                                    deployed_id.clone(),
+                                );
+                            }
+                        }
+                        continue;
+                    }
+                    // Create shell Lakehouse in target workspace
+                    emit_progress(
+                        cli.quiet,
+                        &format!(
+                            "  auto-creating Lakehouse \"{lakehouse_name}\" (referenced by pipeline)"
+                        ),
+                    );
+                    let body = serde_json::json!({
+                        "displayName": lakehouse_name,
+                        "type": "Lakehouse"
+                    });
+                    match client
+                        .post(&format!("/workspaces/{workspace_id}/items"), &body, true)
+                        .await
+                    {
+                        Ok(resp) => {
+                            if let Some(id) = resp.get("id").and_then(|v| v.as_str()) {
+                                // Register the new Lakehouse and map old artifact IDs
+                                created_ids.insert(
+                                    ("Lakehouse".to_owned(), lakehouse_name.clone()),
+                                    id.to_owned(),
+                                );
+                                for old_id in artifact_ids {
+                                    created_ids.insert(
+                                        ("_artifact_alias".to_owned(), old_id.clone()),
+                                        id.to_owned(),
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            emit_progress(
+                                cli.quiet,
+                                &format!(
+                                    "  WARNING: failed to auto-create Lakehouse \"{lakehouse_name}\": {e}"
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
+
             emit_progress(
                 cli.quiet,
                 &format!(
@@ -2023,7 +2087,110 @@ fn build_resolution_map(
         }
     }
 
+    // Include artifact alias mappings (old artifactId → new deployed ID).
+    // These are created by the pipeline Lakehouse auto-creation step.
+    for ((key_type, old_id), new_id) in created_ids {
+        if key_type == "_artifact_alias" {
+            map.insert(old_id.clone(), new_id.clone());
+        }
+    }
+
     map
+}
+
+/// Extract Lakehouse dependencies from pipeline definitions.
+///
+/// Scans `linkedService` entries in pipeline activities for Lakehouse references.
+/// Returns a map of `lakehouse_name → Vec<old_artifact_id>` for Lakehouses
+/// that are NOT in the source directory (need to be auto-created).
+fn extract_pipeline_lakehouse_deps(
+    pipeline_changes: &[&Change],
+    source: &super::platform::SourceWorkspace,
+    source_map: &HashMap<(&str, &str), usize>,
+) -> HashMap<String, Vec<String>> {
+    let mut deps: HashMap<String, Vec<String>> = HashMap::new();
+
+    // Names of Lakehouses already in the source (will be deployed normally)
+    let source_lakehouse_names: std::collections::HashSet<&str> = source
+        .items
+        .iter()
+        .filter(|i| i.metadata.item_type.eq_ignore_ascii_case("Lakehouse"))
+        .map(|i| i.metadata.display_name.as_str())
+        .collect();
+
+    for change in pipeline_changes {
+        let Some(&idx) = source_map.get(&(change.item_type.as_str(), change.name.as_str())) else {
+            continue;
+        };
+        let source_item = &source.items[idx];
+
+        for part in &source_item.parts {
+            let Ok(decoded) = BASE64.decode(&part.payload) else {
+                continue;
+            };
+            let Ok(content) = String::from_utf8(decoded) else {
+                continue;
+            };
+
+            // Find all linkedService Lakehouse references via regex for performance
+            // Pattern: "type": "Lakehouse" within a linkedService block with "name" and "artifactId"
+            // Use JSON parsing for correctness
+            let Ok(json) = serde_json::from_str::<Value>(&content) else {
+                continue;
+            };
+
+            // Recursively find all linkedService entries with type=Lakehouse
+            find_lakehouse_refs_recursive(&json, &source_lakehouse_names, &mut deps);
+        }
+    }
+
+    deps
+}
+
+/// Recursively search a JSON value for `linkedService` entries that reference Lakehouses.
+fn find_lakehouse_refs_recursive(
+    value: &Value,
+    source_lakehouse_names: &std::collections::HashSet<&str>,
+    deps: &mut HashMap<String, Vec<String>>,
+) {
+    match value {
+        Value::Object(map) => {
+            // Check if this object is a linkedService with type=Lakehouse
+            if let (Some(name_val), Some(props)) = (map.get("name"), map.get("properties")) {
+                let ls_type = props
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or_default();
+                if ls_type.eq_ignore_ascii_case("Lakehouse") {
+                    let ls_name = name_val.as_str().unwrap_or_default();
+                    let artifact_id = props
+                        .get("typeProperties")
+                        .and_then(|tp| tp.get("artifactId"))
+                        .and_then(|a| a.as_str())
+                        .unwrap_or_default();
+
+                    if !ls_name.is_empty()
+                        && !artifact_id.is_empty()
+                        && !source_lakehouse_names.contains(ls_name)
+                    {
+                        deps.entry(ls_name.to_owned())
+                            .or_default()
+                            .push(artifact_id.to_owned());
+                    }
+                }
+            }
+            // Recurse into all values
+            for v in map.values() {
+                find_lakehouse_refs_recursive(v, source_lakehouse_names, deps);
+            }
+        }
+        Value::Array(arr) => {
+            for v in arr {
+                find_lakehouse_refs_recursive(v, source_lakehouse_names, deps);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Extract (`referenceName` GUID, activity name) pairs from `ExecutePipeline` activities.
