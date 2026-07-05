@@ -280,16 +280,17 @@ pub(super) async fn clone_workspace(
             }
         })?;
 
-    // Step 3: Transform export response into import format
-    // Export returns: { itemDefinitionsIndex: [{id, rootPath}], definitionParts: [{path, payload, payloadType}] }
-    // Import expects: { itemDefinitions: [{displayName, type, definition: {parts: [...]}}] }
-    let index = export_result
-        .get("itemDefinitionsIndex")
+    // Step 3: The import API uses the same flat definitionParts format as the export response.
+    // Export returns: { itemDefinitionsIndex: [{id, rootPath, displayName, type}], definitionParts: [{path, payload, payloadType}] }
+    // Import expects: { definitionParts: [{path, payload, payloadType}], options: { allowPairingByName: bool } }
+    // Parts already have full paths (e.g., /Name.Type/file.ext), so we pass them through directly.
+    let parts = export_result
+        .get("definitionParts")
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
-    let parts = export_result
-        .get("definitionParts")
+    let index = export_result
+        .get("itemDefinitionsIndex")
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
@@ -309,69 +310,16 @@ pub(super) async fn clone_workspace(
         return Ok(());
     }
 
-    // Build per-item definitions by matching parts to their rootPath
-    let mut item_definitions: Vec<Value> = Vec::new();
-    for item_meta in &index {
-        let root_path = item_meta
-            .get("rootPath")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default();
-        let display_name = item_meta
-            .get("displayName")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default();
-        let item_type = item_meta
-            .get("type")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default();
-
-        // Collect parts belonging to this item (path starts with rootPath)
-        let item_parts: Vec<Value> = parts
-            .iter()
-            .filter(|p| {
-                p.get("path")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|path| path.starts_with(root_path))
-            })
-            .map(|p| {
-                // Strip the rootPath prefix from the part path
-                let mut part = p.clone();
-                let relative = part
-                    .get("path")
-                    .and_then(|v| v.as_str())
-                    .map(|path| {
-                        path.strip_prefix(root_path)
-                            .unwrap_or(path)
-                            .trim_start_matches('/')
-                            .to_owned()
-                    })
-                    .unwrap_or_default();
-                part.as_object_mut()
-                    .unwrap()
-                    .insert("path".to_owned(), Value::from(relative));
-                part
-            })
-            .collect();
-
-        item_definitions.push(serde_json::json!({
-            "displayName": display_name,
-            "type": item_type,
-            "definition": {
-                "parts": item_parts
-            }
-        }));
-    }
-
     if !cli.quiet {
         eprintln!("[workspace clone] importing {items_count} item(s) to destination workspace...");
     }
 
-    let mut import_body = serde_json::json!({
-        "itemDefinitions": item_definitions,
+    let import_body = serde_json::json!({
+        "definitionParts": parts,
+        "options": {
+            "allowPairingByName": allow_pairing_by_name
+        }
     });
-    if allow_pairing_by_name {
-        import_body["allowPairingByName"] = Value::Bool(true);
-    }
 
     // Step 4: Call bulkImportDefinitions on destination (requires beta=True)
     let import_result = client
@@ -392,8 +340,8 @@ pub(super) async fn clone_workspace(
     });
 
     // Include import details if available
-    if let Some(index) = import_result.get("itemDefinitionsIndex") {
-        result["import_details"] = index.clone();
+    if let Some(details) = import_result.get("importItemDefinitionsDetails") {
+        result["import_details"] = details.clone();
     }
 
     output::render_object(cli, &result, "status");

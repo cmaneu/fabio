@@ -236,7 +236,8 @@ pub async fn execute_changeset(
 
                     let source_item = src_idx.map(|idx| source.items[idx].clone());
                     let res_map = build_resolution_map(source, &created_ids);
-                    let sm_ids = build_semantic_model_name_map(&created_ids);
+                    let mut sm_ids = build_semantic_model_name_map(&created_ids);
+                    extend_semantic_model_map_with_dir_aliases(&mut sm_ids, source);
 
                     handles.push(tokio::spawn(async move {
                         let _permit = sem.acquire().await.unwrap();
@@ -486,13 +487,21 @@ pub async fn execute_changeset(
 /// Batches all creates/updates into a single `bulkImportDefinitions` call for speed.
 /// Deletes and renames are still handled per-item (bulk API is additive-only).
 ///
+/// Uses the flat `definitionParts` format: each part's path includes the item directory
+/// prefix (`/<displayName>.<itemType>/<relativePath>`), matching the format returned by
+/// `bulkExportDefinitions`. The server infers items from directory structure in paths.
+///
 /// **Limitations vs per-item strategy:**
 /// - No mid-session logical ID resolution (`$items.Type.Name.id` won't resolve for items created in the same batch)
-/// - No per-item error granularity (one failure may affect the whole batch)
+/// - Items with duplicate logical IDs (e.g., all `00000000-...`) are rejected (`BadSystemFiles`)
+/// - Items with inter-dependencies (`KQLDatabase` -> `Eventhouse`, `Report` -> `SemanticModel`)
+///   fail with `DependenciesCouldNotBeResolved` — the bulk API cannot sequence creation order
+/// - No per-item error granularity (response includes per-item status in `importItemDefinitionsDetails`)
 /// - Requires workspace NOT connected to Git (API limitation: `ActiveCiCdOperationInProgress`)
 /// - Renames still executed per-item
 ///
-/// **Best for:** initial deployments to empty workspaces, large batch creates.
+/// **Best for:** workspace-to-workspace cloning (round-trip with `bulkExportDefinitions`),
+/// deploying independent items (standalone Notebooks) to empty workspaces.
 #[allow(clippy::too_many_lines)]
 pub async fn execute_changeset_bulk(
     cli: &Cli,
@@ -548,7 +557,10 @@ pub async fn execute_changeset_bulk(
         }
     }
 
-    // Build bulk import payload
+    // Build bulk import payload using the flat definitionParts format.
+    // The API expects: { "definitionParts": [{path, payload, payloadType}, ...], "options": {...} }
+    // Each part path includes the item directory prefix: /<displayName>.<itemType>/<relativePath>
+    // This matches the format returned by bulkExportDefinitions.
     if !bulk_items.is_empty() {
         emit_progress(
             cli.quiet,
@@ -558,7 +570,7 @@ pub async fn execute_changeset_bulk(
             ),
         );
 
-        let mut item_definitions: Vec<Value> = Vec::new();
+        let mut definition_parts: Vec<Value> = Vec::new();
 
         for change in &bulk_items {
             // Find the source item definition
@@ -578,37 +590,26 @@ pub async fn execute_changeset_bulk(
                 continue;
             };
 
-            // Build definition parts (without logical ID resolution — can't resolve mid-batch)
-            // Exclude .platform from parts (the API uses displayName/type from the outer object)
-            let parts: Vec<Value> = source_item
-                .parts
-                .iter()
-                .filter(|p| p.path != ".platform")
-                .map(|p| {
-                    json!({
-                        "path": p.path,
-                        "payload": p.payload,
-                        "payloadType": p.payload_type,
-                    })
-                })
-                .collect();
+            // Build the item directory prefix: /<displayName>.<itemType>/
+            let item_dir = format!("/{}.{}", change.name, change.item_type);
 
-            let mut item_def = json!({
-                "displayName": change.name,
-                "type": change.item_type,
-            });
-
-            if !parts.is_empty() {
-                item_def["definition"] = json!({"parts": parts});
+            // Include ALL parts (including .platform) with full paths.
+            // The server infers items from the directory structure in the paths.
+            for p in &source_item.parts {
+                definition_parts.push(json!({
+                    "path": format!("{}/{}", item_dir, p.path),
+                    "payload": p.payload,
+                    "payloadType": p.payload_type,
+                }));
             }
-
-            item_definitions.push(item_def);
         }
 
-        // Submit bulk import
+        // Submit bulk import with flat definitionParts format
         let import_body = json!({
-            "itemDefinitions": item_definitions,
-            "allowPairingByName": true
+            "definitionParts": definition_parts,
+            "options": {
+                "allowPairingByName": true
+            }
         });
 
         match client
@@ -620,27 +621,41 @@ pub async fn execute_changeset_bulk(
             .await
         {
             Ok(response) => {
-                // Mark all items as succeeded (bulk API doesn't give per-item status easily)
+                // Parse per-item results from importItemDefinitionsDetails
+                let details = response
+                    .get("importItemDefinitionsDetails")
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+
                 for change in &bulk_items {
                     let mut c = (*change).clone();
-                    // Try to extract deployed ID from response index
-                    if let Some(index) = response
-                        .get("itemDefinitionsIndex")
-                        .and_then(|v| v.as_array())
-                    {
-                        for idx_item in index {
-                            if idx_item
-                                .get("displayName")
+                    // Find matching detail by displayName + type
+                    let detail = details.iter().find(|d| {
+                        d.get("displayName")
+                            .and_then(|v| v.as_str())
+                            .is_some_and(|n| n.eq_ignore_ascii_case(&change.name))
+                            && d.get("type")
                                 .and_then(|v| v.as_str())
-                                .is_some_and(|n| n.eq_ignore_ascii_case(&change.name))
-                            {
-                                c.deployed_id = idx_item
-                                    .get("id")
-                                    .and_then(|v| v.as_str())
-                                    .map(str::to_owned);
-                                break;
-                            }
+                                .is_some_and(|t| t.eq_ignore_ascii_case(&change.item_type))
+                    });
+                    if let Some(detail) = detail {
+                        let status = detail.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                        if status.eq_ignore_ascii_case("Failed") {
+                            let err_msg = detail
+                                .get("errorDetails")
+                                .and_then(|v| v.get("errorCode"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("Unknown bulk import error");
+                            failed.push(DeployFailure {
+                                change: c,
+                                error: err_msg.to_owned(),
+                                code: "BULK_IMPORT_FAILED".to_owned(),
+                            });
+                            continue;
                         }
+                        c.deployed_id =
+                            detail.get("id").and_then(|v| v.as_str()).map(str::to_owned);
                     }
                     succeeded.push(c);
                 }
@@ -1457,7 +1472,8 @@ async fn execute_single_change(
     let resolution_map = build_resolution_map(source, created_ids);
 
     // Build semantic model name → deployed_id map for report byConnection resolution
-    let semantic_model_ids = build_semantic_model_name_map(created_ids);
+    let mut semantic_model_ids = build_semantic_model_name_map(created_ids);
+    extend_semantic_model_map_with_dir_aliases(&mut semantic_model_ids, source);
 
     deploy_change(
         cli.dry_run,
@@ -2247,17 +2263,38 @@ fn transform_report_bypath_to_byconnection(
         },
     );
 
-    // Rewrite from byPath to byConnection
-    pbir["datasetReference"] = json!({
-        "byConnection": {
-            "connectionString": null,
-            "pbiServiceModelId": null,
-            "pbiModelVirtualServerName": "sobe_wowvirtualserver",
-            "pbiModelDatabaseName": database_id,
-            "name": "EntityDataSource",
-            "connectionType": "pbiServiceXmlaStyleLive"
-        }
-    });
+    // Check schema version to determine output format:
+    // v2 PBIR (schema 2.0.0+) uses connectionString only.
+    // v1 PBIR uses pbiModelDatabaseName + pbiModelVirtualServerName.
+    let is_v2 = pbir
+        .get("$schema")
+        .and_then(|s| s.as_str())
+        .is_some_and(|s| s.contains("/2.") || s.contains("/3.") || s.contains("/4."));
+
+    if is_v2 {
+        // v2 format: connectionString with semanticmodelid
+        let conn_str = format!(
+            "Data Source=pbiazure://api.powerbi.com;initial catalog={model_name};\
+             integrated security=ClaimsToken;semanticmodelid={database_id}"
+        );
+        pbir["datasetReference"] = json!({
+            "byConnection": {
+                "connectionString": conn_str
+            }
+        });
+    } else {
+        // v1 format: all properties required
+        pbir["datasetReference"] = json!({
+            "byConnection": {
+                "connectionString": null,
+                "pbiServiceModelId": null,
+                "pbiModelVirtualServerName": "sobe_wowvirtualserver",
+                "pbiModelDatabaseName": database_id,
+                "name": "EntityDataSource",
+                "connectionType": "pbiServiceXmlaStyleLive"
+            }
+        });
+    }
 
     let new_content = serde_json::to_string(&pbir).unwrap_or(content);
     BASE64.encode(new_content.as_bytes())
@@ -2339,7 +2376,7 @@ fn resolve_report_byconnection_model_id(
         .and_then(|s| s.as_str())
         .is_some_and(|s| s.contains("/2.") || s.contains("/3.") || s.contains("/4."));
 
-    if is_v2 || conn_str.is_some() {
+    if is_v2 {
         // v2 format: rewrite the connectionString with the resolved semanticmodelid
         let new_conn_str = format!(
             "Data Source=pbiazure://api.powerbi.com;initial catalog={name};\
@@ -2351,7 +2388,7 @@ fn resolve_report_byconnection_model_id(
             }
         });
     } else {
-        // v1 format: use the classic pbiModelDatabaseName approach
+        // v1 format: use the classic pbiModelDatabaseName approach with all required properties
         pbir["datasetReference"] = json!({
             "byConnection": {
                 "connectionString": null,
@@ -2368,10 +2405,14 @@ fn resolve_report_byconnection_model_id(
     BASE64.encode(new_content.as_bytes())
 }
 
-/// Build a map of semantic model display name → deployed ID from `created_ids`.
+/// Build a map of semantic model name → deployed ID from `created_ids`.
 ///
 /// Used by `resolve_report_byconnection_model_id` to resolve `semanticmodelid`
 /// GUIDs in report connection strings by matching the `initial catalog` name.
+///
+/// Includes both display names AND source directory names as aliases, so that
+/// reports referencing a semantic model by its original directory name (before a
+/// `.platform` rename) can still be resolved.
 fn build_semantic_model_name_map(
     created_ids: &HashMap<(String, String), String>,
 ) -> HashMap<String, String> {
@@ -2380,6 +2421,47 @@ fn build_semantic_model_name_map(
         .filter(|((item_type, _), _)| item_type.eq_ignore_ascii_case("SemanticModel"))
         .map(|((_, name), id)| (name.clone(), id.clone()))
         .collect()
+}
+
+/// Extend the semantic model name map with directory-name aliases from source items.
+///
+/// When a source directory is named `FCA_Core_SM.SemanticModel` but the `.platform`
+/// displayName is `FCA`, the report's `initial catalog` may reference either name.
+/// This function adds the directory name (minus the type suffix) as an alias.
+fn extend_semantic_model_map_with_dir_aliases(
+    map: &mut HashMap<String, String>,
+    source: &super::platform::SourceWorkspace,
+) {
+    for item in &source.items {
+        if !item
+            .metadata
+            .item_type
+            .eq_ignore_ascii_case("SemanticModel")
+        {
+            continue;
+        }
+        // Extract directory name: e.g., "FCA_Core_SM" from "/path/to/FCA_Core_SM.SemanticModel"
+        let dir_name = item
+            .source_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| {
+                n.strip_suffix(".SemanticModel")
+                    .or_else(|| n.strip_suffix(".Dataset"))
+            });
+
+        if let Some(dir_name) = dir_name {
+            // Only add if different from the display name (avoid duplicates)
+            if !dir_name.eq_ignore_ascii_case(&item.metadata.display_name)
+                && !map.contains_key(dir_name)
+            {
+                // Use the same deployed ID as the display name
+                if let Some(id) = map.get(&item.metadata.display_name) {
+                    map.insert(dir_name.to_owned(), id.clone());
+                }
+            }
+        }
+    }
 }
 
 /// Apply logical ID resolution to a JSON value (for creationPayload).
