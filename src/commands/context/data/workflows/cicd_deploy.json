@@ -25,6 +25,8 @@
     "Use $workspace.id and $items.Type.Name.id for cross-item references that resolve at deploy time.",
     "Check data.destructive field in plan output — true means deletions or force-all overwrites are planned.",
     "For multi-workspace solutions: deploy each workspace separately with different --source and --workspace. Deploy storage/data workspaces first, then presentation workspaces.",
-    "Use --no-post-hooks to skip value set activation, semantic model refresh, and environment publish (useful for partial/incremental deploys)."
+    "Use --no-post-hooks to skip value set activation, semantic model refresh, and environment publish (useful for partial/incremental deploys).",
+    "Use --strategy bulk for large initial deployments (100+ items) to empty workspaces without Git integration. ~10x faster than per-item. Falls back to per-item for renames/deletes.",
+    "Use --strategy sequential (concurrency=1) when debugging API failures or rate-limit issues."
   ]
 }

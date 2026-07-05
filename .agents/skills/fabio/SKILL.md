@@ -408,6 +408,16 @@ fabio deploy init-params --source ./src --resolve-connections --out params.json
 # 3. Deploy with parameters
 fabio deploy apply --source ./src --workspace $WS --parameters params.json
 ```
+**Deploy strategies** (`--strategy`):
+```bash
+fabio deploy apply --source ./items --workspace $WS --strategy default      # per-item parallel (default, best for CI/CD)
+fabio deploy apply --source ./items --workspace $WS --strategy bulk         # single bulk API call (fast initial deploy)
+fabio deploy apply --source ./items --workspace $WS --strategy sequential   # one item at a time (debugging)
+```
+- **default**: Per-item create/update with bounded parallelism. Content-hash skips unchanged items. Full error granularity, logical ID resolution, rename detection. Best for iterative CI/CD (95% of deploys).
+- **bulk**: Batches all creates/updates into one `bulkImportDefinitions` API call. Significantly faster for large initial deploys (100+ items to an empty workspace). Requires: workspace NOT connected to Git. Renames/deletes still per-item.
+- **sequential**: Same logic as default but concurrency=1. Use for debugging API ordering issues or rate-limit problems.
+
 `--workspace` accepts a display name OR GUID. Deploy handles LRO polling automatically for all create/update operations. **Rename detection**: deploy plan detects item renames via `logicalId` matching in `.platform` files — a renamed item shows as RENAME (not delete+create), preserving its ID, permissions, and sharing links.
 
 **SAFETY FOR DESTRUCTIVE OPERATIONS:**

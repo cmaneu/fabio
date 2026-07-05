@@ -50,7 +50,8 @@
     "Post-deploy hooks: semantic model refresh, environment publish, value set activation, schedule creation",
     "--post-run-item: trigger data orchestration after deploy",
     "--delete-orphans: remove items not in source (with protected type safety)",
-    "--git-diff: only deploy items changed since a git ref"
+    "--git-diff: only deploy items changed since a git ref",
+    "--strategy bulk: single Bulk Import API call for large initial deploys (~10x faster for 100+ items to empty workspaces)"
   ],
   "migration_steps": [
     "1. Install fabio (cargo install --git https://github.com/iemejia/fabio.git)",

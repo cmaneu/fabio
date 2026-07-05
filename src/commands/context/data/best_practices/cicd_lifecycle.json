@@ -102,9 +102,15 @@
         "One-to-many: single branch → multiple target workspaces",
         "Plan/validate before deploy",
         "Content-hash diffing for minimal changes",
-        "Works cross-tenant with different service principals"
+        "Works cross-tenant with different service principals",
+        "Strategy selection: --strategy bulk for fast initial deploys, default for incremental CI/CD"
       ],
-      "workflow": "fabio deploy plan → review → fabio deploy apply --env <target>"
+      "workflow": "fabio deploy plan → review → fabio deploy apply --env <target>",
+      "strategy_guide": {
+        "default": "Per-item parallel. Best for iterative CI/CD — content-hash skips unchanged items, full error granularity, rename detection.",
+        "bulk": "Single Bulk Import API call. Best for large initial deploys (100+ items) to empty workspaces NOT connected to Git. ~10x faster than per-item for first-time deployments.",
+        "sequential": "Same as default with concurrency=1. Use for debugging API ordering issues or rate-limit problems."
+      }
     }
   },
   "security_best_practices": [
