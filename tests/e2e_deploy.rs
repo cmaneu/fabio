@@ -3789,3 +3789,102 @@ fn deploy_validate_label_replace_null_removes_governance() {
         .assert()
         .success();
 }
+
+// --- deploy export schedule tests ---
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+fn deploy_export_includes_schedules() {
+    let cfg = common::TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+
+    fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            dir.path().to_str().unwrap(),
+            "--overwrite",
+        ])
+        .assert()
+        .success();
+
+    // Check if any schedules.metadata.json files were created
+    let mut has_schedules = false;
+    let mut schedule_path = std::path::PathBuf::new();
+    for entry in std::fs::read_dir(dir.path()).unwrap() {
+        let entry = entry.unwrap();
+        let sched_file = entry.path().join("schedules.metadata.json");
+        if sched_file.exists() {
+            has_schedules = true;
+            schedule_path = sched_file;
+            break;
+        }
+    }
+
+    // We know the source workspace has a DataPipeline with a schedule
+    assert!(
+        has_schedules,
+        "Expected at least one schedules.metadata.json in export output"
+    );
+
+    // Validate the schedule file format
+    let content = std::fs::read_to_string(&schedule_path).unwrap();
+    let schedules: Vec<serde_json::Value> = serde_json::from_str(&content).unwrap();
+    assert!(!schedules.is_empty(), "Schedule array should not be empty");
+
+    // Each schedule should have jobType and enabled fields
+    for schedule in &schedules {
+        assert!(
+            schedule.get("jobType").is_some(),
+            "Schedule should have jobType field"
+        );
+        assert!(
+            schedule.get("enabled").is_some(),
+            "Schedule should have enabled field"
+        );
+        // Should NOT have id (server-generated, stripped for portability)
+        assert!(
+            schedule.get("id").is_none(),
+            "Schedule should not have id field (stripped for portability)"
+        );
+    }
+}
+
+// --- deploy validate with schedules.metadata.json ---
+
+#[test]
+fn deploy_validate_ignores_schedules_metadata_in_parts() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let nb_dir = dir.path().join("MyPipeline.DataPipeline");
+    std::fs::create_dir_all(&nb_dir).unwrap();
+    std::fs::write(
+        nb_dir.join(".platform"),
+        r#"{"metadata":{"type":"DataPipeline","displayName":"MyPipeline"},"config":{"version":"2.0","logicalId":"bbbbbbbb-1111-2222-3333-444444444444"}}"#,
+    )
+    .unwrap();
+    std::fs::write(nb_dir.join("pipeline-content.json"), "{}").unwrap();
+    // Add a schedules.metadata.json — should NOT appear in definition parts
+    std::fs::write(
+        nb_dir.join("schedules.metadata.json"),
+        r#"[{"enabled":true,"jobType":"Pipeline","configuration":{"type":"Cron","interval":60}}]"#,
+    )
+    .unwrap();
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "validate",
+            "--source",
+            dir.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "valid");
+    assert_eq!(data["summary"]["errors"], 0);
+}

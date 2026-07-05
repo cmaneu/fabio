@@ -166,6 +166,7 @@ pub(super) async fn delete(cli: &Cli, client: &FabricClient, id: &str) -> Result
 /// 2. Call `bulkExportDefinitions` on source (LRO)
 /// 3. Transform the export response into a `bulkImportDefinitions` request
 /// 4. Call `bulkImportDefinitions` on destination (LRO)
+#[allow(clippy::too_many_lines)]
 pub(super) async fn clone_workspace(
     cli: &Cli,
     client: &FabricClient,
@@ -202,33 +203,87 @@ pub(super) async fn clone_workspace(
     }
 
     // Step 1: Build bulk export request
-    let mut export_body = serde_json::json!({});
-    if let Some(types) = item_types {
-        let type_values: Vec<Value> = types.iter().map(|t| Value::from(t.as_str())).collect();
-        export_body["itemTypes"] = Value::Array(type_values);
-    }
+    // The API requires {"mode":"All"} or {"mode":"Selective","items":[{"id":"<uuid>"}]}
+    let export_body = if let Some(types) = item_types {
+        // Need to list items first to get IDs for selective export
+        if !cli.quiet {
+            eprintln!("[workspace clone] listing items to filter by type...");
+        }
+        let resp = client
+            .get_list(
+                &format!("/workspaces/{source_id}/items"),
+                "value",
+                true,
+                None,
+            )
+            .await?;
+
+        let selected_items: Vec<Value> = resp
+            .items
+            .iter()
+            .filter(|item| {
+                item.get("type")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|t| types.iter().any(|ft| ft.eq_ignore_ascii_case(t)))
+            })
+            .filter_map(|item| {
+                item.get("id")
+                    .and_then(|v| v.as_str())
+                    .map(|id| serde_json::json!({"id": id}))
+            })
+            .collect();
+
+        if selected_items.is_empty() {
+            output::render_object(
+                cli,
+                &serde_json::json!({
+                    "status": "empty",
+                    "message": format!("No items of types {:?} found in source workspace", types),
+                    "source_workspace": source_id,
+                    "dest_workspace": dest_id,
+                }),
+                "status",
+            );
+            return Ok(());
+        }
+
+        serde_json::json!({
+            "mode": "Selective",
+            "items": selected_items
+        })
+    } else {
+        serde_json::json!({"mode": "All"})
+    };
 
     if !cli.quiet {
         eprintln!("[workspace clone] exporting definitions from source workspace...");
     }
 
-    // Step 2: Call bulkExportDefinitions on source
+    // Step 2: Call bulkExportDefinitions on source (requires beta=True query param)
     let export_result = client
         .post(
-            &format!("/workspaces/{source_id}/items/bulkExportDefinitions"),
+            &format!("/workspaces/{source_id}/items/bulkExportDefinitions?beta=True"),
             &export_body,
             true, // LRO poll
         )
         .await
         .map_err(|e| enrich_forbidden(e, "workspace clone (export)", "Contributor"))?;
 
-    // Step 3: Extract itemDefinitions from export result and build import body
-    let item_definitions = export_result
-        .get("itemDefinitions")
+    // Step 3: Transform export response into import format
+    // Export returns: { itemDefinitionsIndex: [{id, rootPath}], definitionParts: [{path, payload, payloadType}] }
+    // Import expects: { itemDefinitions: [{displayName, type, definition: {parts: [...]}}] }
+    let index = export_result
+        .get("itemDefinitionsIndex")
+        .and_then(|v| v.as_array())
         .cloned()
-        .unwrap_or(Value::Array(vec![]));
+        .unwrap_or_default();
+    let parts = export_result
+        .get("definitionParts")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
 
-    let items_count = item_definitions.as_array().map_or(0, Vec::len);
+    let items_count = index.len();
     if items_count == 0 {
         output::render_object(
             cli,
@@ -243,6 +298,59 @@ pub(super) async fn clone_workspace(
         return Ok(());
     }
 
+    // Build per-item definitions by matching parts to their rootPath
+    let mut item_definitions: Vec<Value> = Vec::new();
+    for item_meta in &index {
+        let root_path = item_meta
+            .get("rootPath")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let display_name = item_meta
+            .get("displayName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let item_type = item_meta
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+
+        // Collect parts belonging to this item (path starts with rootPath)
+        let item_parts: Vec<Value> = parts
+            .iter()
+            .filter(|p| {
+                p.get("path")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|path| path.starts_with(root_path))
+            })
+            .map(|p| {
+                // Strip the rootPath prefix from the part path
+                let mut part = p.clone();
+                let relative = part
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .map(|path| {
+                        path.strip_prefix(root_path)
+                            .unwrap_or(path)
+                            .trim_start_matches('/')
+                            .to_owned()
+                    })
+                    .unwrap_or_default();
+                part.as_object_mut()
+                    .unwrap()
+                    .insert("path".to_owned(), Value::from(relative));
+                part
+            })
+            .collect();
+
+        item_definitions.push(serde_json::json!({
+            "displayName": display_name,
+            "type": item_type,
+            "definition": {
+                "parts": item_parts
+            }
+        }));
+    }
+
     if !cli.quiet {
         eprintln!("[workspace clone] importing {items_count} item(s) to destination workspace...");
     }
@@ -254,10 +362,10 @@ pub(super) async fn clone_workspace(
         import_body["allowPairingByName"] = Value::Bool(true);
     }
 
-    // Step 4: Call bulkImportDefinitions on destination
+    // Step 4: Call bulkImportDefinitions on destination (requires beta=True)
     let import_result = client
         .post(
-            &format!("/workspaces/{dest_id}/items/bulkImportDefinitions"),
+            &format!("/workspaces/{dest_id}/items/bulkImportDefinitions?beta=True"),
             &import_body,
             true, // LRO poll
         )

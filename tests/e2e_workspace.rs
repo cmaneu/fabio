@@ -2846,3 +2846,72 @@ fn workspace_get_encryption_live() {
         "Expected encryption details in response"
     );
 }
+
+// --- workspace clone tests ---
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_clone_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "workspace",
+            "clone",
+            "--source",
+            &cfg.source_workspace,
+            "--dest",
+            &cfg.dest_workspace,
+            "--allow-pairing-by-name",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "workspace clone");
+    assert_eq!(data["details"]["allow_pairing_by_name"], true);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_clone_same_workspace_fails() {
+    let cfg = TestConfig::from_env();
+    fabio()
+        .args([
+            "workspace",
+            "clone",
+            "--source",
+            &cfg.source_workspace,
+            "--dest",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be the same"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_clone_with_item_types_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "workspace",
+            "clone",
+            "--source",
+            &cfg.source_workspace,
+            "--dest",
+            &cfg.dest_workspace,
+            "--item-types",
+            "Notebook,DataPipeline",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "workspace clone");
+}
