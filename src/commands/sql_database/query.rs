@@ -4,7 +4,6 @@ use anyhow::Result;
 use mssql_tds::connection::client_context::{ClientContext, TdsAuthenticationMethod};
 use mssql_tds::connection::tds_client::{ResultSet, ResultSetClient};
 use mssql_tds::connection_provider::tds_connection_provider::TdsConnectionProvider;
-use mssql_tds::datatypes::column_values::ColumnValues;
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -207,89 +206,16 @@ pub(super) async fn plan(
     id: &str,
     sql: Option<&str>,
 ) -> Result<()> {
+    use crate::commands::tds_utils::capture_query_plan;
+
     let sql_text = resolve_sql_input(sql)?;
 
-    // Resolve connection details
-    let (server, port, database) = resolve_sql_connection(client, workspace, id).await?;
+    // Resolve connection details — pass "host,port" since capture_query_plan appends ,1433
+    // but SQL Database might use a different port
+    let (server, _port, database) = resolve_sql_connection(client, workspace, id).await?;
 
-    // Acquire AAD token for SQL scope
-    let token = client.require_sql_auth().await?;
+    let plans = capture_query_plan(client, &server, &database, &sql_text).await?;
 
-    // Build TDS connection
-    let data_source = format!("tcp:{server},{port}");
-    let mut context = ClientContext::with_data_source(&data_source);
-    context.database = database;
-    context.tds_authentication_method = TdsAuthenticationMethod::AccessToken;
-    context.access_token = Some(token);
-    context.application_name = "fabio".to_string();
-    context.connect_timeout = 30;
-
-    let provider = TdsConnectionProvider {};
-    let mut tds_client = provider
-        .create_client(context, &data_source, None)
-        .await
-        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("TDS connection failed: {e}")))?;
-
-    // Enable SHOWPLAN_XML — server returns plan XML instead of executing the query
-    tds_client
-        .execute("SET SHOWPLAN_XML ON".to_string(), Some(10), None)
-        .await
-        .map_err(|e| {
-            FabioError::new(
-                ErrorCode::ApiError,
-                format!("Failed to enable SHOWPLAN_XML: {e}"),
-            )
-        })?;
-    tds_client.close_query().await.ok();
-
-    // Execute the user's SQL — server returns plan XML as a result set
-    tds_client
-        .execute(sql_text, Some(60), None)
-        .await
-        .map_err(|e| {
-            FabioError::new(
-                ErrorCode::ApiError,
-                format!("Failed to get execution plan: {e}"),
-            )
-        })?;
-
-    // Each statement in the batch produces one row with one XML column
-    let mut plans: Vec<String> = Vec::new();
-    if let Some(rs) = tds_client.get_current_resultset() {
-        while let Some(row) = rs.next_row().await.map_err(|e| {
-            FabioError::new(ErrorCode::ApiError, format!("Failed to read plan row: {e}"))
-        })? {
-            for val in &row {
-                let xml = match val {
-                    ColumnValues::Xml(xml) => xml.as_string(),
-                    ColumnValues::String(s) => s.to_utf8_string(),
-                    _ => continue,
-                };
-                if !xml.is_empty() {
-                    plans.push(xml);
-                }
-            }
-        }
-    }
-
-    tds_client.close_query().await.ok();
-
-    // Disable SHOWPLAN_XML (cleanup, best-effort)
-    tds_client
-        .execute("SET SHOWPLAN_XML OFF".to_string(), Some(10), None)
-        .await
-        .ok();
-    tds_client.close_query().await.ok();
-
-    if plans.is_empty() {
-        return Err(FabioError::new(
-            ErrorCode::ApiError,
-            "No execution plan returned. The query may be invalid or unsupported.",
-        )
-        .into());
-    }
-
-    // Output as structured JSON
     let plan_objects: Vec<Value> = plans
         .iter()
         .enumerate()

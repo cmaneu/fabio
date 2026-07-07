@@ -1000,6 +1000,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Query plan (`.show queryplan <| query`)**: Returns execution plan rows with operator tree, estimated row counts, concurrency hints. Uses management endpoint.
 - **Cluster diagnostics**: `.show capacity`, `.show cluster`, `.show diagnostics` are independent commands. Each may fail independently due to permissions (Fabric KQL databases may restrict some admin commands). The `diagnostics` command aggregates results gracefully, reporting errors per section.
 - **Deeplink URL patterns**: Fabric KQL databases use `https://app.fabric.microsoft.com/groups/{ws}/kqlDatabases/{id}?query={encoded}&database={name}`. ADX clusters use `https://dataexplorer.azure.com/clusters/{uri}/databases/{db}?query={encoded}`. Auto-detection uses URI pattern: `.kusto.fabric.microsoft.com` → Fabric, `.kusto.windows.net` → ADX.
+- **Query monitoring commands**: `.show running queries` returns currently executing queries (may return empty on idle clusters). `.show journal` returns operations history (schema changes, ingestion operations). `.show queries` returns recently completed queries with full detail (duration, CPU, memory peak, scanned extents, cache statistics). All use management endpoint (`/v1/rest/mgmt`). Verified live — `.show queries` includes `ClientRequestProperties` with user agent, timeout settings, and resource usage breakdown.
 
 ## OneLake Security API Behaviors Discovered
 - **Upsert-all pattern**: `PUT /workspaces/{ws}/items/{id}/dataAccessRoles` replaces ALL roles atomically. There is no individual role create/update endpoint.
@@ -1248,6 +1249,8 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Audit settings structure**: `{"state":"Disabled|Enabled","retentionDays":N,"auditActionsAndGroups":["GROUP1","GROUP2",...]}`.
 - **Default audit groups**: `SUCCESSFUL_DATABASE_AUTHENTICATION_GROUP`, `FAILED_DATABASE_AUTHENTICATION_GROUP`, `BATCH_COMPLETED_GROUP`.
 - **Endpoint pattern**: `/workspaces/{ws}/sqlEndpoints/{id}`.
+- **Query insights views available**: SQL Endpoints expose the same `queryinsights.*` schema views as warehouses (`frequently_run_queries`, `long_running_queries`, `exec_requests_history`). The `sys.dm_exec_requests` DMV is also available for running query monitoring. Verified live — all views return data successfully.
+- **No queries-kill**: SQL Endpoints are read-only views, so `KILL <session_id>` is not appropriate (and would not work for user sessions).
 
 ## Apache Airflow Job API Behaviors Discovered
 - **Definition format**: Main definition file is `apacheairflowjob-content.json` with a companion `dags/requirements.txt`.

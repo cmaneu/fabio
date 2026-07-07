@@ -9,6 +9,7 @@ mod common;
 
 use common::{TestConfig, extract_data, fabio, parse_json};
 use serde_json::Value;
+use serial_test::serial;
 
 // ─── CRUD Tests ──────────────────────────────────────────────────────────────
 
@@ -942,6 +943,115 @@ fn kql_database_ingest_live() {
             "--kql",
             &format!(".drop table ['{table_name}']"),
         ])
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// kql-database queries-running
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn kql_database_queries_running() {
+    let cfg = TestConfig::from_env();
+
+    // List KQL databases to get an ID
+    let assert = fabio()
+        .args(["kql-database", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    if items.is_empty() {
+        eprintln!("No KQL databases found, skipping");
+        return;
+    }
+    let db_id = items[0]["id"].as_str().unwrap();
+
+    fabio()
+        .args([
+            "kql-database",
+            "queries-running",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            db_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// kql-database journal
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn kql_database_journal() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args(["kql-database", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    if items.is_empty() {
+        eprintln!("No KQL databases found, skipping");
+        return;
+    }
+    let db_id = items[0]["id"].as_str().unwrap();
+
+    fabio()
+        .args([
+            "kql-database",
+            "journal",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            db_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// kql-database queries-completed
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn kql_database_queries_completed() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args(["kql-database", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    if items.is_empty() {
+        eprintln!("No KQL databases found, skipping");
+        return;
+    }
+    let db_id = items[0]["id"].as_str().unwrap();
+
+    fabio()
+        .args([
+            "kql-database",
+            "queries-completed",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            db_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
         .assert()
         .success();
 }
