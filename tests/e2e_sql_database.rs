@@ -904,3 +904,111 @@ fn sql_database_revalidate_cmk_dry_run() {
     let data = extract_data(&json);
     assert_eq!(data["would_execute"], "sql-database revalidate-cmk");
 }
+
+// ---------------------------------------------------------------------------
+// sql-database queries-kill dry-run
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sql_database_queries_kill_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "sql-database",
+            "queries-kill",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--session-id",
+            "42",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+}
+
+// ---------------------------------------------------------------------------
+// sql-database statistics-create dry-run
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sql_database_statistics_create_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "sql-database",
+            "statistics-create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--table",
+            "dbo.orders",
+            "--column",
+            "customer_id",
+            "--name",
+            "st_orders_customer",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+}
+
+// ---------------------------------------------------------------------------
+// sql-database statistics-update dry-run
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sql_database_statistics_update_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "sql-database",
+            "statistics-update",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "st_orders_customer",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+}
+
+// ---------------------------------------------------------------------------
+// sql-database statistics-delete dry-run
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sql_database_statistics_delete_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "sql-database",
+            "statistics-delete",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "st_orders_customer",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+}

@@ -2,8 +2,10 @@ mod audit;
 mod crud;
 mod definitions;
 mod import;
+mod insights;
 mod mirroring;
 mod query;
+mod statistics;
 
 use anyhow::Result;
 use clap::Subcommand;
@@ -324,9 +326,141 @@ pub enum SqlDatabaseCommand {
         #[arg(long, default_value = "100")]
         batch_size: usize,
     },
+
+    // ── Query Insights ───────────────────────────────────────────────────
+    /// List currently running queries on a SQL database
+    #[command(display_order = 70)]
+    QueriesRunning {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL database ID
+        #[arg(long)]
+        id: String,
+    },
+    /// List completed query history
+    #[command(display_order = 71)]
+    QueriesHistory {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Number of rows to return
+        #[arg(long, default_value = "100")]
+        top: u32,
+    },
+    /// Kill a running query session by session ID
+    #[command(display_order = 72)]
+    QueriesKill {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Session ID to kill
+        #[arg(long)]
+        session_id: i32,
+    },
+
+    // ── Statistics ────────────────────────────────────────────────────────
+    /// List statistics on a SQL database
+    #[command(display_order = 80)]
+    StatisticsList {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Filter by table (schema.table or just table name)
+        #[arg(long)]
+        table: Option<String>,
+    },
+    /// Show details of a statistic
+    #[command(display_order = 81)]
+    StatisticsShow {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Statistic name
+        #[arg(long)]
+        name: String,
+    },
+    /// Create a user-defined statistic on a column
+    #[command(display_order = 82)]
+    StatisticsCreate {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Table name (schema.table or just table name)
+        #[arg(long)]
+        table: String,
+
+        /// Column name
+        #[arg(long)]
+        column: String,
+
+        /// Statistic name
+        #[arg(long)]
+        name: String,
+    },
+    /// Update (refresh) an existing statistic
+    #[command(display_order = 83)]
+    StatisticsUpdate {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Statistic name
+        #[arg(long)]
+        name: String,
+    },
+    /// Delete a user-defined statistic
+    #[command(display_order = 84)]
+    StatisticsDelete {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Statistic name
+        #[arg(long)]
+        name: String,
+    },
 }
 
-#[allow(clippy::too_many_lines, clippy::large_futures)]
+#[allow(
+    clippy::too_many_lines,
+    clippy::large_futures,
+    clippy::large_stack_frames
+)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlDatabaseCommand) -> Result<()> {
     match command {
         SqlDatabaseCommand::List { workspace } => crud::list(cli, client, workspace).await,
@@ -466,5 +600,47 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlDatabaseComm
             )
             .await
         }
+
+        // ── Query Insights ───────────────────────────────────────────────
+        SqlDatabaseCommand::QueriesRunning { workspace, id } => {
+            insights::queries_running(cli, client, workspace, id).await
+        }
+        SqlDatabaseCommand::QueriesHistory { workspace, id, top } => {
+            insights::queries_history(cli, client, workspace, id, *top).await
+        }
+        SqlDatabaseCommand::QueriesKill {
+            workspace,
+            id,
+            session_id,
+        } => insights::queries_kill(cli, client, workspace, id, *session_id).await,
+
+        // ── Statistics ────────────────────────────────────────────────────
+        SqlDatabaseCommand::StatisticsList {
+            workspace,
+            id,
+            table,
+        } => statistics::list(cli, client, workspace, id, table.as_deref()).await,
+        SqlDatabaseCommand::StatisticsShow {
+            workspace,
+            id,
+            name,
+        } => statistics::show(cli, client, workspace, id, name).await,
+        SqlDatabaseCommand::StatisticsCreate {
+            workspace,
+            id,
+            table,
+            column,
+            name,
+        } => statistics::create(cli, client, workspace, id, table, column, name).await,
+        SqlDatabaseCommand::StatisticsUpdate {
+            workspace,
+            id,
+            name,
+        } => statistics::update(cli, client, workspace, id, name).await,
+        SqlDatabaseCommand::StatisticsDelete {
+            workspace,
+            id,
+            name,
+        } => statistics::delete(cli, client, workspace, id, name).await,
     }
 }
