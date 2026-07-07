@@ -19,6 +19,9 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Default output | Human text | JSON (machine-parseable by default) |
 | Item type coverage | ~20 commands | 76 command groups |
 | SQL query execution | No | Warehouse, SQL Database, Lakehouse (T-SQL via TDS) |
+| Query plan capture | No | Estimated execution plan (SHOWPLAN_XML) without executing |
+| Query performance monitoring | No | Running/frequent/long-running queries, kill sessions |
+| Statistics management | No | List/show/create/update/delete user-defined statistics |
 | KQL query execution | No | KQL Database and Eventhouse queries |
 | Data Agent interaction | No | Create, configure, publish, and query Data Agents (28 subcommands: staging management API, datasource/fewshot/config CRUD, `--stage` for draft vs published, `--show-steps`) |
 | Git integration | No | Full lifecycle: connect, status, commit, pull, switch branch |
@@ -172,6 +175,16 @@ fabio lakehouse list-tables --workspace <ws> --id <lh> -o table
 # 7. Query the data via SQL
 fabio warehouse query --workspace <ws> --id <warehouse-id> \
   --sql "SELECT country, SUM(revenue) as total FROM dbo.orders GROUP BY country"
+
+# 8. Capture an execution plan without running the query
+fabio warehouse plan --workspace <ws> --id <warehouse-id> \
+  --sql "SELECT * FROM dbo.orders WHERE country = 'US'"
+
+# 9. See what queries are running right now
+fabio warehouse queries-running --workspace <ws> --id <warehouse-id>
+
+# 10. Find your most expensive queries
+fabio warehouse queries-long-running --workspace <ws> --id <warehouse-id> --top 5
 ```
 
 That's it -- from sign-in to queryable Delta tables in 7 commands.

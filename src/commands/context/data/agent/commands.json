@@ -4667,6 +4667,27 @@
           "fabio warehouse query --workspace $WS --id $WH --sql @queries/monthly_report.sql"
         ]
       },
+      "plan": {
+        "description": "Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse or Lakehouse ID"
+          },
+          "--sql": {
+            "type": "string",
+            "description": "SQL query to plan (prefix with @ to read from file, omit to read from stdin)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "connection-string": {
         "description": "Get the connection string for a warehouse",
         "flags": {
@@ -4936,6 +4957,227 @@
         "mutates": true,
         "returns": "object",
         "async": true
+      },
+      "queries-running": {
+        "description": "List currently running queries on a warehouse",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse or Lakehouse ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "queries-frequent": {
+        "description": "List frequently-run queries (from `queryinsights.frequently_run_queries`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse or Lakehouse ID"
+          },
+          "--top": {
+            "type": "string",
+            "description": "Maximum rows to return (default: 100)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "queries-long-running": {
+        "description": "List long-running queries (from `queryinsights.long_running_queries`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse or Lakehouse ID"
+          },
+          "--top": {
+            "type": "string",
+            "description": "Maximum rows to return (default: 100)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "queries-history": {
+        "description": "List completed query history (from `queryinsights.exec_requests_history`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse or Lakehouse ID"
+          },
+          "--top": {
+            "type": "string",
+            "description": "Maximum rows to return (default: 100)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "queries-kill": {
+        "description": "Kill a running query session by session ID",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse or Lakehouse ID"
+          },
+          "--session-id": {
+            "type": "string",
+            "required": true,
+            "description": "Session ID to terminate"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "statistics-list": {
+        "description": "List user-defined statistics on a warehouse or SQL endpoint",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse or Lakehouse ID"
+          },
+          "--table": {
+            "type": "string",
+            "description": "Filter by table name (schema.table)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "statistics-show": {
+        "description": "Show details of a statistic (header, density vector, histogram)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse or Lakehouse ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Statistic name to inspect"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "statistics-create": {
+        "description": "Create a user-defined statistic on a column",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse or Lakehouse ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Schema-qualified table name (e.g., dbo.orders)"
+          },
+          "--column": {
+            "type": "string",
+            "required": true,
+            "description": "Column name to create statistics on"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Name for the new statistic"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "statistics-update": {
+        "description": "Update (refresh) an existing statistic",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse or Lakehouse ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Statistic name to update"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "statistics-delete": {
+        "description": "Delete a user-defined statistic",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse or Lakehouse ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Statistic name to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
       }
     }
   },
@@ -5269,6 +5511,27 @@
           "fabio sql-database query --workspace $WS --id $DB --sql \"SELECT status, COUNT(*) as cnt FROM orders GROUP BY status\""
         ]
       },
+      "plan": {
+        "description": "Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "SQL database ID"
+          },
+          "--sql": {
+            "type": "string",
+            "description": "SQL query to plan (prefix with @ to read from file, omit to read from stdin)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "connection-string": {
         "description": "Show the TDS connection string for a SQL database",
         "flags": {
@@ -5424,6 +5687,27 @@
           "echo \"SELECT 1\" | fabio sql-endpoint query --workspace $WS --id $ID",
           "fabio sql-endpoint query --workspace $WS --id $SQLEP --sql \"SELECT TOP 10 * FROM dbo.sales ORDER BY order_date DESC\""
         ]
+      },
+      "plan": {
+        "description": "Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "SQL endpoint ID"
+          },
+          "--sql": {
+            "type": "string",
+            "description": "SQL query to plan (prefix with @ to read from file, omit to read from stdin)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
       },
       "refresh-metadata": {
         "description": "Refresh metadata for all tables in a SQL endpoint (LRO)",

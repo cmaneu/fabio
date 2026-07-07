@@ -512,3 +512,277 @@ fn warehouse_delete_hard_delete_dry_run() {
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["details"]["hardDelete"], true);
 }
+
+// ---------------------------------------------------------------------------
+// warehouse plan — capture execution plan via SHOWPLAN_XML
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_plan_returns_xml() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "plan",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--sql",
+            "SELECT 1 AS test",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["statementCount"], 1);
+    let plans = data["plans"].as_array().expect("plans should be array");
+    assert_eq!(plans.len(), 1);
+    let plan_xml = plans[0]["planXml"]
+        .as_str()
+        .expect("planXml should be string");
+    assert!(
+        plan_xml.contains("ShowPlanXML"),
+        "Plan XML should contain ShowPlanXML element"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// warehouse queries-running — list running queries
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_queries_running() {
+    let cfg = TestConfig::from_env();
+
+    // This may return an empty list (no active queries), but should succeed
+    fabio()
+        .args([
+            "warehouse",
+            "queries-running",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// warehouse queries-frequent — list frequently-run queries
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_queries_frequent() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "warehouse",
+            "queries-frequent",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--top",
+            "10",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// warehouse queries-long-running — list long-running queries
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_queries_long_running() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "warehouse",
+            "queries-long-running",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--top",
+            "10",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// warehouse queries-history — list query execution history
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_queries_history() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "warehouse",
+            "queries-history",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--top",
+            "10",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// warehouse statistics-list — list statistics objects
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_statistics_list() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "warehouse",
+            "statistics-list",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// warehouse statistics-create dry-run
+// ---------------------------------------------------------------------------
+
+#[test]
+fn warehouse_statistics_create_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "statistics-create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--table",
+            "dbo.orders",
+            "--column",
+            "customer_id",
+            "--name",
+            "st_orders_customer",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+}
+
+// ---------------------------------------------------------------------------
+// warehouse statistics-update dry-run
+// ---------------------------------------------------------------------------
+
+#[test]
+fn warehouse_statistics_update_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "statistics-update",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "st_orders_customer",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+}
+
+// ---------------------------------------------------------------------------
+// warehouse statistics-delete dry-run
+// ---------------------------------------------------------------------------
+
+#[test]
+fn warehouse_statistics_delete_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "statistics-delete",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "st_orders_customer",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+}
+
+// ---------------------------------------------------------------------------
+// warehouse queries-kill dry-run
+// ---------------------------------------------------------------------------
+
+#[test]
+fn warehouse_queries_kill_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "queries-kill",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--session-id",
+            "42",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+}

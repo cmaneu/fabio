@@ -5,7 +5,7 @@ use serde_json::Value;
 use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::commands::tds_utils::{
-    execute_and_render_sql, parse_connection_string, resolve_sql_input,
+    capture_query_plan, execute_and_render_sql, parse_connection_string, resolve_sql_input,
 };
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
@@ -67,8 +67,23 @@ pub enum SqlEndpointCommand {
         #[arg(long)]
         sql: Option<String>,
     },
-    /// Refresh metadata for all tables in a SQL endpoint (LRO)
+    /// Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query
     #[command(display_order = 5)]
+    Plan {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL endpoint ID
+        #[arg(long)]
+        id: String,
+
+        /// SQL query to plan (prefix with @ to read from file, omit to read from stdin)
+        #[arg(long)]
+        sql: Option<String>,
+    },
+    /// Refresh metadata for all tables in a SQL endpoint (LRO)
+    #[command(display_order = 6)]
     RefreshMetadata {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
@@ -155,6 +170,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlEndpointComm
         }
         SqlEndpointCommand::Query { workspace, id, sql } => {
             Box::pin(query(cli, client, workspace, id, sql.as_deref())).await
+        }
+        SqlEndpointCommand::Plan { workspace, id, sql } => {
+            Box::pin(plan(cli, client, workspace, id, sql.as_deref())).await
         }
         SqlEndpointCommand::RefreshMetadata { workspace, id } => {
             refresh_metadata(cli, client, workspace, id).await
@@ -341,6 +359,74 @@ async fn query(
     };
 
     execute_and_render_sql(cli, client, &server, &database, &sql_text).await
+}
+
+async fn plan(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    sql: Option<&str>,
+) -> Result<()> {
+    let sql_text = resolve_sql_input(sql)?;
+
+    // Fetch endpoint metadata to get the display name (used as initial catalog)
+    let item = client
+        .get(&format!("/workspaces/{workspace}/sqlEndpoints/{id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "sql-endpoint plan", "Viewer"))?;
+
+    let display_name = item
+        .get("displayName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    // Fetch the connection string
+    let conn_data = client
+        .get(&format!(
+            "/workspaces/{workspace}/sqlEndpoints/{id}/connectionString"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "sql-endpoint plan", "Viewer"))?;
+
+    let conn_str = conn_data
+        .get("connectionString")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::NotFound,
+                "SQL endpoint connection string not available.",
+                "The SQL endpoint may still be provisioning. Wait and retry, or check with: fabio sql-endpoint show --workspace <WS> --id <ID>",
+            )
+        })?;
+
+    let (server, parsed_db) = parse_connection_string(conn_str);
+    let database = if display_name.is_empty() {
+        parsed_db
+    } else {
+        display_name.to_string()
+    };
+
+    let plans = capture_query_plan(client, &server, &database, &sql_text).await?;
+
+    let plan_objects: Vec<Value> = plans
+        .iter()
+        .enumerate()
+        .map(|(i, xml)| {
+            serde_json::json!({
+                "statementIndex": i,
+                "planXml": xml
+            })
+        })
+        .collect();
+    let obj = serde_json::json!({
+        "statementCount": plans.len(),
+        "plans": plan_objects
+    });
+    output::render_object(cli, &obj, "statementCount");
+
+    Ok(())
 }
 
 // ─── Mutations ───────────────────────────────────────────────────────────────

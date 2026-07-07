@@ -499,6 +499,10 @@ Automated: `./scripts/release.sh <version>` handles all steps end-to-end.
 - Spark rate limit on small capacity: LRO reports 430 `TooManyRequestsForCapacity` (non-standard code)
 - Test env vars: `FABIO_TEST_SOURCE_WORKSPACE`, `FABIO_TEST_SOURCE_LAKEHOUSE`, `FABIO_TEST_DEST_WORKSPACE`, `FABIO_TEST_DEST_LAKEHOUSE`, `FABIO_TEST_NOTEBOOK_ID`, `FABIO_TEST_CAPACITY_ID`
 - Fabric REST API specs (OpenAPI): `https://github.com/Azure/azure-rest-api-specs/` (look under `specification/fabric/`)
+- **Warehouse execution plan capture**: `warehouse plan` / `sql-database plan` / `sql-endpoint plan` — uses `SET SHOWPLAN_XML ON` via TDS to capture estimated execution plans without executing the query. Returns plan XML in structured JSON (`{"statementCount": N, "plans": [{"statementIndex": i, "planXml": "<ShowPlanXML...>"}]}`). Safe for DDL/DML (not executed). Works on Warehouse, Lakehouse SQL Endpoint, and SQL Database.
+- **Warehouse query insights**: `warehouse queries-running|queries-frequent|queries-long-running|queries-history|queries-kill` — TDS queries against `sys.dm_exec_requests` and `queryinsights.*` schema views. `queries-kill` executes `KILL <session_id>` (mutating, guarded by `dry_run_guard`). Note: `sys.dm_exec_requests` on Fabric does NOT have `login_name` column (it's in `sys.dm_exec_sessions`).
+- **Warehouse statistics management**: `warehouse statistics-list|statistics-show|statistics-create|statistics-update|statistics-delete` — TDS-based CRUD for user-defined statistics. `statistics-list` queries `sys.stats` + `sys.stats_columns` + `sys.tables` (works on both Warehouse and SQL endpoints). `statistics-show` uses `DBCC SHOW_STATISTICS` with auto-lookup of owning table via `sys.stats`. Note: `sys.dm_db_stats_properties` is NOT supported on Lakehouse SQL endpoints — removed from list query.
+- **Warehouse module directory structure**: Refactored from single `warehouse.rs` (1357 lines) into `warehouse/` directory module: `mod.rs` (enum + dispatch + shared helpers), `crud.rs`, `query.rs`, `admin.rs`, `restore_points.rs`, `insights.rs`, `statistics.rs`.
 
 
 ## Relevant Files

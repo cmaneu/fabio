@@ -263,8 +263,23 @@ pub enum SqlDatabaseCommand {
         #[arg(long)]
         sql: Option<String>,
     },
-    /// Show the TDS connection string for a SQL database
+    /// Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query
     #[command(display_order = 61)]
+    Plan {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// SQL query to plan (prefix with @ to read from file, omit to read from stdin)
+        #[arg(long)]
+        sql: Option<String>,
+    },
+    /// Show the TDS connection string for a SQL database
+    #[command(display_order = 62)]
     ConnectionString {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
@@ -422,6 +437,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlDatabaseComm
         }
         SqlDatabaseCommand::Query { workspace, id, sql } => {
             query::query(cli, client, workspace, id, sql.as_deref()).await
+        }
+        SqlDatabaseCommand::Plan { workspace, id, sql } => {
+            query::plan(cli, client, workspace, id, sql.as_deref()).await
         }
         SqlDatabaseCommand::ConnectionString { workspace, id } => {
             query::connection_string(cli, client, workspace, id).await
