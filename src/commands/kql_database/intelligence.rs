@@ -428,3 +428,53 @@ pub(super) async fn deeplink(
     output::render_object(cli, &obj, "url");
     Ok(())
 }
+
+// ─── Query Monitoring ────────────────────────────────────────────────────────
+
+/// Show currently running queries on the KQL database.
+pub(super) async fn queries_running(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    query_uri_override: Option<&str>,
+) -> Result<()> {
+    let (kusto_uri, db_name) =
+        kql_utils::resolve_query_uri(client, workspace, id, query_uri_override).await?;
+    let (rows, columns) =
+        kql_utils::execute_kql(client, &kusto_uri, &db_name, ".show running queries").await?;
+    kql_utils::render_kql_results(cli, &rows, &columns);
+    Ok(())
+}
+
+/// Show the operations journal (completed operations history).
+pub(super) async fn journal(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    query_uri_override: Option<&str>,
+) -> Result<()> {
+    let (kusto_uri, db_name) =
+        kql_utils::resolve_query_uri(client, workspace, id, query_uri_override).await?;
+    let (rows, columns) =
+        kql_utils::execute_kql(client, &kusto_uri, &db_name, ".show journal").await?;
+    kql_utils::render_kql_results(cli, &rows, &columns);
+    Ok(())
+}
+
+/// Show recently completed queries.
+pub(super) async fn queries_completed(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    query_uri_override: Option<&str>,
+) -> Result<()> {
+    let (kusto_uri, db_name) =
+        kql_utils::resolve_query_uri(client, workspace, id, query_uri_override).await?;
+    let (rows, columns) =
+        kql_utils::execute_kql(client, &kusto_uri, &db_name, ".show queries").await?;
+    kql_utils::render_kql_results(cli, &rows, &columns);
+    Ok(())
+}

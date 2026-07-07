@@ -282,9 +282,56 @@ pub enum KqlDatabaseCommand {
         query_uri: Option<String>,
     },
 
+    // ── Query Monitoring ─────────────────────────────────────────────────
+    /// Show currently running queries on the KQL database
+    #[command(display_order = 15)]
+    QueriesRunning {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// KQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Override the Kusto query URI
+        #[arg(long)]
+        query_uri: Option<String>,
+    },
+    /// Show the operations journal (completed operations history)
+    #[command(display_order = 16)]
+    Journal {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// KQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Override the Kusto query URI
+        #[arg(long)]
+        query_uri: Option<String>,
+    },
+    /// Show recently completed queries
+    #[command(display_order = 17)]
+    QueriesCompleted {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// KQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Override the Kusto query URI
+        #[arg(long)]
+        query_uri: Option<String>,
+    },
+
     // ── Definitions ──────────────────────────────────────────────────────
     /// Get the definition of a KQL database (KQL script)
-    #[command(name = "get-definition", display_order = 15)]
+    #[command(name = "get-definition", display_order = 18)]
     GetDefinition {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
@@ -577,6 +624,23 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseComm
         } => {
             intelligence::deeplink(cli, client, workspace, id, kql, style, query_uri.as_deref())
                 .await
+        }
+        KqlDatabaseCommand::QueriesRunning {
+            workspace,
+            id,
+            query_uri,
+        } => intelligence::queries_running(cli, client, workspace, id, query_uri.as_deref()).await,
+        KqlDatabaseCommand::Journal {
+            workspace,
+            id,
+            query_uri,
+        } => intelligence::journal(cli, client, workspace, id, query_uri.as_deref()).await,
+        KqlDatabaseCommand::QueriesCompleted {
+            workspace,
+            id,
+            query_uri,
+        } => {
+            intelligence::queries_completed(cli, client, workspace, id, query_uri.as_deref()).await
         }
         KqlDatabaseCommand::GetDefinition {
             workspace,
