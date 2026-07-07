@@ -17,7 +17,7 @@
 - `src/commands/auth.rs`: login (device code + browser PKCE + service principal: secret/certificate/federated token), logout, status
 - `src/commands/workspace.rs`: 47 subcommands (CRUD + capacity + identity + role assignments + settings + networking + storage format + folders + OneLake + lifecycle policies + url)
 - `src/commands/item.rs`: 18 subcommands (CRUD + copy/move + definitions + list-connections + exists/url/inspect + bulk-create/bulk-delete + move-to-folder + create-external-data-share + list-upstream-relations/list-downstream-relations (beta))
-- `src/commands/lakehouse.rs`: 34+ subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, create-directory, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut, optimize-table, vacuum-table, table-schema, iceberg-config, iceberg-namespaces, iceberg-namespace, iceberg-tables, iceberg-table, iceberg-table-exists, iceberg-namespace-exists, iceberg-credentials, iceberg-stats, iceberg-snapshots, query, refresh-materialized-views + materialized-views-schedule CRUD, list/show/create/update/delete-execution-definition (MLV execution definitions in `lakehouse/execution_definitions.rs`))
+- `src/commands/lakehouse/`: 39+ subcommands (CRUD + tables, files, upload, download, load-table, copy-file, delete-file, move-file, create-directory, delete-table, copy-table, move-table, sync, create-shortcut, get-shortcut, delete-shortcut, optimize-table, vacuum-table, table-schema, iceberg-config, iceberg-namespaces, iceberg-namespace, iceberg-tables, iceberg-table, iceberg-table-exists, iceberg-namespace-exists, iceberg-credentials, iceberg-stats, iceberg-snapshots, query, plan, queries-running/frequent/long-running/history, refresh-materialized-views + materialized-views-schedule CRUD, list/show/create/update/delete-execution-definition (MLV execution definitions in `lakehouse/execution_definitions.rs`))
 - `src/commands/notebook.rs`: create/get-definition (with --strip-output)/run (with --wait/--timeout/--parameters/--compute-type/--execution-data)/status/stop/delete
 - `src/commands/warehouse/mod.rs`: Warehouse command enum, dispatch, shared helpers (get_connection_string, execute_insights_query)
 - `src/commands/warehouse/crud.rs`: list/show/create/update/delete
@@ -26,7 +26,7 @@
 - `src/commands/warehouse/restore_points.rs`: list/create/show/update/delete restore points + restore-to-point
 - `src/commands/warehouse/insights.rs`: queries-running/queries-frequent/queries-long-running/queries-history/queries-kill (TDS against DMVs and queryinsights schema)
 - `src/commands/warehouse/statistics.rs`: statistics-list/statistics-show/statistics-create/statistics-update/statistics-delete (TDS-based statistics CRUD)
-- `src/commands/sql_database/`: list/show/create/update/delete/query/plan/connection-string/import (TDS + type inference) + definitions/mirroring/cmk/audit
+- `src/commands/sql_database/`: list/show/create/update/delete/query/plan/connection-string/import (TDS + type inference) + definitions/mirroring/cmk/audit + insights (queries-running/history/kill) + statistics (list/show/create/update/delete)
 - `src/commands/tds_utils.rs`: Shared TDS utilities (resolve_sql_input, parse_connection_string, execute_and_render_sql, capture_query_plan, column_value_to_json)
 - `src/commands/dataagent.rs`: list/show/create/update/delete/query/get-definition/update-definition/publish + get-config/update-config, add/remove/list/show-datasource, select-tables, list-elements/describe-element, add/remove/list-fewshots/upload-fewshots
 - `src/commands/git.rs`: status/commit/pull/connect/disconnect/initialize/switch/connection/credentials/show-tracked
@@ -69,7 +69,7 @@
 - `src/commands/digital_twin_builder_flow.rs`: list/show/create/update/delete/get-definition/update-definition (requires parent DTB)
 - `src/commands/cosmos_db_database.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json)
 - `src/commands/snowflake_database.rs`: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
-- `src/commands/sql_endpoint.rs`: list/show/connection-string/query/refresh-metadata/get-audit-settings/update-audit-settings/set-audit-actions
+- `src/commands/sql_endpoint.rs`: list/show/connection-string/query/plan/refresh-metadata/get-audit-settings/update-audit-settings/set-audit-actions + insights (queries-running/frequent/long-running/history)
 - `src/commands/anomaly_detector.rs`: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
 - `src/commands/deploy/mod.rs`: DeployCommand enum (plan/apply/export/init-params/validate); execute dispatch; workspace name resolution
 - `src/commands/deploy/apply.rs`: execute_changeset, execute_post_hooks, Rename handling (PATCH + updateDefinition), build_resolution_map, resolve_logical_ids_in_payload
