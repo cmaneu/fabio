@@ -238,3 +238,154 @@ fn sql_endpoint_query_from_stdin() {
     let count = extract_count(&json);
     assert_eq!(count, 1);
 }
+
+// ---------------------------------------------------------------------------
+// sql-endpoint queries-running
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sql_endpoint_queries_running() {
+    let cfg = TestConfig::from_env();
+
+    // List to get the SQL endpoint ID
+    let assert = fabio()
+        .args(["sql-endpoint", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    if items.is_empty() {
+        eprintln!("No SQL endpoints found, skipping");
+        return;
+    }
+    let ep_id = items[0]["id"].as_str().unwrap();
+
+    fabio()
+        .args([
+            "sql-endpoint",
+            "queries-running",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            ep_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// sql-endpoint queries-frequent
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sql_endpoint_queries_frequent() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args(["sql-endpoint", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    if items.is_empty() {
+        eprintln!("No SQL endpoints found, skipping");
+        return;
+    }
+    let ep_id = items[0]["id"].as_str().unwrap();
+
+    fabio()
+        .args([
+            "sql-endpoint",
+            "queries-frequent",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            ep_id,
+            "--top",
+            "5",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// sql-endpoint queries-long-running
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sql_endpoint_queries_long_running() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args(["sql-endpoint", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    if items.is_empty() {
+        eprintln!("No SQL endpoints found, skipping");
+        return;
+    }
+    let ep_id = items[0]["id"].as_str().unwrap();
+
+    fabio()
+        .args([
+            "sql-endpoint",
+            "queries-long-running",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            ep_id,
+            "--top",
+            "5",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// sql-endpoint queries-history
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sql_endpoint_queries_history() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args(["sql-endpoint", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    if items.is_empty() {
+        eprintln!("No SQL endpoints found, skipping");
+        return;
+    }
+    let ep_id = items[0]["id"].as_str().unwrap();
+
+    fabio()
+        .args([
+            "sql-endpoint",
+            "queries-history",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            ep_id,
+            "--top",
+            "5",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}

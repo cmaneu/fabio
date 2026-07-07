@@ -146,6 +146,64 @@ pub enum SqlEndpointCommand {
         #[arg(long, value_delimiter = ',')]
         actions: Vec<String>,
     },
+
+    // ── Query Insights ───────────────────────────────────────────────────
+    /// List currently running queries on a SQL endpoint
+    #[command(display_order = 20)]
+    QueriesRunning {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL endpoint ID
+        #[arg(long)]
+        id: String,
+    },
+    /// List frequently-run queries (from `queryinsights.frequently_run_queries`)
+    #[command(display_order = 21)]
+    QueriesFrequent {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL endpoint ID
+        #[arg(long)]
+        id: String,
+
+        /// Maximum rows to return (default: 100)
+        #[arg(long, default_value = "100")]
+        top: u32,
+    },
+    /// List long-running queries (from `queryinsights.long_running_queries`)
+    #[command(display_order = 22)]
+    QueriesLongRunning {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL endpoint ID
+        #[arg(long)]
+        id: String,
+
+        /// Maximum rows to return (default: 100)
+        #[arg(long, default_value = "100")]
+        top: u32,
+    },
+    /// List completed query history (from `queryinsights.exec_requests_history`)
+    #[command(display_order = 23)]
+    QueriesHistory {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL endpoint ID
+        #[arg(long)]
+        id: String,
+
+        /// Maximum rows to return (default: 100)
+        #[arg(long, default_value = "100")]
+        top: u32,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlEndpointCommand) -> Result<()> {
@@ -205,6 +263,18 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlEndpointComm
             id,
             actions,
         } => set_audit_actions(cli, client, workspace, id, actions).await,
+        SqlEndpointCommand::QueriesRunning { workspace, id } => {
+            Box::pin(insights_running(cli, client, workspace, id)).await
+        }
+        SqlEndpointCommand::QueriesFrequent { workspace, id, top } => {
+            Box::pin(insights_frequent(cli, client, workspace, id, *top)).await
+        }
+        SqlEndpointCommand::QueriesLongRunning { workspace, id, top } => {
+            Box::pin(insights_long_running(cli, client, workspace, id, *top)).await
+        }
+        SqlEndpointCommand::QueriesHistory { workspace, id, top } => {
+            Box::pin(insights_history(cli, client, workspace, id, *top)).await
+        }
     }
 }
 
@@ -559,4 +629,129 @@ async fn set_audit_actions(
     let obj = serde_json::json!({ "id": id, "status": "audit_actions_updated" });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+// ─── Query Insights ──────────────────────────────────────────────────────────
+
+/// Helper: resolve SQL endpoint connection and execute a TDS query.
+async fn execute_endpoint_query(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    sql_text: &str,
+) -> Result<()> {
+    let item = client
+        .get(&format!("/workspaces/{workspace}/sqlEndpoints/{id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "sql-endpoint query", "Viewer"))?;
+
+    let display_name = item
+        .get("displayName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    let conn_data = client
+        .get(&format!(
+            "/workspaces/{workspace}/sqlEndpoints/{id}/connectionString"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "sql-endpoint query", "Viewer"))?;
+
+    let conn_str = conn_data
+        .get("connectionString")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::NotFound,
+                "SQL endpoint connection string not available.",
+                "The SQL endpoint may still be provisioning. Wait and retry.",
+            )
+        })?;
+
+    let (server, parsed_db) = parse_connection_string(conn_str);
+    let database = if display_name.is_empty() {
+        parsed_db
+    } else {
+        display_name.to_string()
+    };
+
+    execute_and_render_sql(cli, client, &server, &database, sql_text).await
+}
+
+async fn insights_running(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let sql = "SELECT r.session_id, r.status, \
+               r.command, r.start_time, r.total_elapsed_time \
+               FROM sys.dm_exec_requests r \
+               WHERE r.status != 'background' \
+               ORDER BY r.total_elapsed_time DESC";
+    execute_endpoint_query(cli, client, workspace, id, sql).await
+}
+
+async fn insights_frequent(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    top: u32,
+) -> Result<()> {
+    let sql = format!(
+        "SELECT TOP ({top}) \
+         last_run_command, number_of_runs, \
+         avg_total_elapsed_time_ms, \
+         min_run_total_elapsed_time_ms, \
+         max_run_total_elapsed_time_ms, \
+         number_of_successful_runs, \
+         query_hash \
+         FROM queryinsights.frequently_run_queries \
+         ORDER BY number_of_runs DESC"
+    );
+    execute_endpoint_query(cli, client, workspace, id, &sql).await
+}
+
+async fn insights_long_running(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    top: u32,
+) -> Result<()> {
+    let sql = format!(
+        "SELECT TOP ({top}) \
+         last_run_command, number_of_runs, \
+         median_total_elapsed_time_ms, \
+         last_run_total_elapsed_time_ms, \
+         last_run_start_time, \
+         query_hash \
+         FROM queryinsights.long_running_queries \
+         ORDER BY median_total_elapsed_time_ms DESC"
+    );
+    execute_endpoint_query(cli, client, workspace, id, &sql).await
+}
+
+async fn insights_history(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    top: u32,
+) -> Result<()> {
+    let sql = format!(
+        "SELECT TOP ({top}) \
+         command, status, \
+         total_elapsed_time_ms, \
+         login_name, \
+         start_time, end_time, \
+         row_count, \
+         query_hash \
+         FROM queryinsights.exec_requests_history \
+         ORDER BY start_time DESC"
+    );
+    execute_endpoint_query(cli, client, workspace, id, &sql).await
 }
