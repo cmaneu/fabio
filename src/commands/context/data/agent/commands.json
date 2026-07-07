@@ -2431,6 +2431,107 @@
         "mutates": false,
         "returns": "list"
       },
+      "plan": {
+        "description": "Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          },
+          "--sql": {
+            "type": "string",
+            "description": "SQL query to plan (prefix with @ to read from file, omit to read from stdin)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "queries-running": {
+        "description": "List currently running queries on the lakehouse SQL endpoint",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "queries-frequent": {
+        "description": "List frequently-run queries (from `queryinsights.frequently_run_queries`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          },
+          "--top": {
+            "type": "string",
+            "description": "Maximum rows to return (default: 100)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "queries-long-running": {
+        "description": "List long-running queries (from `queryinsights.long_running_queries`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          },
+          "--top": {
+            "type": "string",
+            "description": "Maximum rows to return (default: 100)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "queries-history": {
+        "description": "List completed query history (from `queryinsights.exec_requests_history`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          },
+          "--top": {
+            "type": "string",
+            "description": "Maximum rows to return (default: 100)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "upload": {
         "description": "Upload files to a lakehouse (supports glob patterns for parallel upload)",
         "flags": {

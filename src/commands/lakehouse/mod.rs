@@ -14,6 +14,7 @@ mod definitions;
 mod execution_definitions;
 mod files;
 mod iceberg;
+mod insights;
 mod livy;
 mod maintenance;
 mod shortcuts;
@@ -145,6 +146,77 @@ pub enum LakehouseCommand {
         /// SQL query to execute (prefix with @ to read from file, omit to read from stdin)
         #[arg(long)]
         sql: Option<String>,
+    },
+    /// Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query
+    #[command(display_order = 4)]
+    Plan {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// SQL query to plan (prefix with @ to read from file, omit to read from stdin)
+        #[arg(long)]
+        sql: Option<String>,
+    },
+    /// List currently running queries on the lakehouse SQL endpoint
+    #[command(display_order = 5)]
+    QueriesRunning {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+    },
+    /// List frequently-run queries (from `queryinsights.frequently_run_queries`)
+    #[command(display_order = 6)]
+    QueriesFrequent {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Maximum rows to return (default: 100)
+        #[arg(long, default_value = "100")]
+        top: u32,
+    },
+    /// List long-running queries (from `queryinsights.long_running_queries`)
+    #[command(display_order = 7)]
+    QueriesLongRunning {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Maximum rows to return (default: 100)
+        #[arg(long, default_value = "100")]
+        top: u32,
+    },
+    /// List completed query history (from `queryinsights.exec_requests_history`)
+    #[command(display_order = 8)]
+    QueriesHistory {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Maximum rows to return (default: 100)
+        #[arg(long, default_value = "100")]
+        top: u32,
     },
 
     // ── Read/Write ───────────────────────────────────────────────────────
@@ -1083,7 +1155,11 @@ pub enum LakehouseCommand {
     },
 }
 
-#[allow(clippy::too_many_lines, clippy::large_futures)]
+#[allow(
+    clippy::too_many_lines,
+    clippy::large_futures,
+    clippy::large_stack_frames
+)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseCommand) -> Result<()> {
     match command {
         LakehouseCommand::List { workspace } => crud::list_lakehouses(cli, client, workspace).await,
@@ -1139,6 +1215,21 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
         } => files::files(cli, client, workspace, id, path.as_deref()).await,
         LakehouseCommand::Query { workspace, id, sql } => {
             crud::query_lakehouse(cli, client, workspace, id, sql.as_deref()).await
+        }
+        LakehouseCommand::Plan { workspace, id, sql } => {
+            insights::plan(cli, client, workspace, id, sql.as_deref()).await
+        }
+        LakehouseCommand::QueriesRunning { workspace, id } => {
+            insights::queries_running(cli, client, workspace, id).await
+        }
+        LakehouseCommand::QueriesFrequent { workspace, id, top } => {
+            insights::queries_frequent(cli, client, workspace, id, *top).await
+        }
+        LakehouseCommand::QueriesLongRunning { workspace, id, top } => {
+            insights::queries_long_running(cli, client, workspace, id, *top).await
+        }
+        LakehouseCommand::QueriesHistory { workspace, id, top } => {
+            insights::queries_history(cli, client, workspace, id, *top).await
         }
         LakehouseCommand::Upload {
             workspace,

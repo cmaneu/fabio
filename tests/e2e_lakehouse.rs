@@ -1073,3 +1073,141 @@ fn lakehouse_show_execution_definition_nonexistent_fails() {
         .assert()
         .failure();
 }
+
+// ---------------------------------------------------------------------------
+// lakehouse plan — capture execution plan
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_plan_returns_xml() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "plan",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--sql",
+            "SELECT 1 AS test",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["statementCount"], 1);
+    let plans = data["plans"].as_array().expect("plans should be array");
+    assert!(!plans.is_empty());
+    let plan_xml = plans[0]["planXml"]
+        .as_str()
+        .expect("planXml should be string");
+    assert!(plan_xml.contains("ShowPlanXML"));
+}
+
+// ---------------------------------------------------------------------------
+// lakehouse queries-running
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_queries_running() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "lakehouse",
+            "queries-running",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// lakehouse queries-frequent
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_queries_frequent() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "lakehouse",
+            "queries-frequent",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--top",
+            "5",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// lakehouse queries-long-running
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_queries_long_running() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "lakehouse",
+            "queries-long-running",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--top",
+            "5",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
+// ---------------------------------------------------------------------------
+// lakehouse queries-history
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_queries_history() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "lakehouse",
+            "queries-history",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--top",
+            "5",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
