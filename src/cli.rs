@@ -469,7 +469,12 @@ pub enum Command {
         command: apache_airflow_job::ApacheAirflowJobCommand,
     },
     /// Manage app backends (Power Apps backend services) [preview]
-    #[command(name = "app-backend", display_order = 61)]
+    #[command(
+        name = "app-backend",
+        alias = "rayfin-app",
+        alias = "data-app",
+        display_order = 61
+    )]
     AppBackend {
         #[command(subcommand)]
         command: app_backend::AppBackendCommand,
@@ -481,7 +486,12 @@ pub enum Command {
         command: azure_databricks_storage::AzureDatabricksStorageCommand,
     },
     /// Manage data build tool jobs (dbt-style transformations) [preview]
-    #[command(name = "data-build-tool-job", display_order = 63)]
+    #[command(
+        name = "data-build-tool-job",
+        alias = "dbt-job",
+        alias = "dbt",
+        display_order = 63
+    )]
     DataBuildToolJob {
         #[command(subcommand)]
         command: data_build_tool_job::DataBuildToolJobCommand,
