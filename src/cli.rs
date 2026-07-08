@@ -471,8 +471,8 @@ pub enum Command {
     /// Manage app backends (Power Apps backend services) [preview]
     #[command(
         name = "app-backend",
-        alias = "rayfin-app",
-        alias = "data-app",
+        visible_alias = "rayfin-app",
+        visible_alias = "data-app",
         display_order = 61
     )]
     AppBackend {
@@ -488,8 +488,8 @@ pub enum Command {
     /// Manage data build tool jobs (dbt-style transformations) [preview]
     #[command(
         name = "data-build-tool-job",
-        alias = "dbt-job",
-        alias = "dbt",
+        visible_alias = "dbt-job",
+        visible_alias = "dbt",
         display_order = 63
     )]
     DataBuildToolJob {
