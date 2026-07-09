@@ -90,11 +90,13 @@ jobs:
         run: cargo clippy --tests --target ${{ matrix.target }} -- -D warnings
         env:
           CC_aarch64_unknown_linux_musl: musl-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
 
       - name: Run unit tests
         run: cargo test --target ${{ matrix.target }}
         env:
           CC_aarch64_unknown_linux_musl: musl-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
 
   audit:
     runs-on: ubuntu-latest

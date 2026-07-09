@@ -74,6 +74,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
         env:
           CC_aarch64_unknown_linux_musl: musl-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
 
       - name: Package binary (Unix)
         if: runner.os != 'Windows'
