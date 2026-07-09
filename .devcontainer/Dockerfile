@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     build-essential \
+    cmake \
     pkg-config \
     libssl-dev \
     musl-tools \
