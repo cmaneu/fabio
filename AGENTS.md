@@ -538,7 +538,7 @@ Multi-arch manifest: `linux/amd64` + `linux/arm64`.
 
 Located in `.devcontainer/` for VS Code and GitHub Codespaces. Provides the full development environment:
 
-**System packages** (in Dockerfile): `build-essential`, `pkg-config`, `libssl-dev`, `musl-tools`, `lld`, `clang`, `zig 0.16.0`
+**System packages** (in Dockerfile): `build-essential`, `cmake`, `pkg-config`, `libssl-dev`, `musl-tools`, `lld`, `clang`, `zig 0.16.0`
 
 **Devcontainer features**: Rust (with cross targets), Git, GitHub CLI, Azure CLI
 
@@ -548,23 +548,24 @@ Located in `.devcontainer/` for VS Code and GitHub Codespaces. Provides the full
 
 **VS Code extensions**: rust-analyzer, Even Better TOML, CodeLLDB debugger, Dependi (crate version checker)
 
+**MANDATORY: Keep devcontainer in sync** — When adding a new Cargo dependency that requires system libraries or build tools (e.g., a `-sys` crate needing `cmake`, `libfoo-dev`, or a new linker), you MUST also update `.devcontainer/Dockerfile` to install the required package. The devcontainer must always be able to fully build fabio from source without additional manual setup.
+
 ### Docker CI Workflow (`.github/workflows/docker.yml`)
 
 | Trigger | Build | Push to GHCR |
 |---------|-------|--------------|
-| Pull request | amd64 + arm64 | No (validation only) |
-| Push to `main` | amd64 + arm64 | No (validation only) |
+| `.devcontainer/**` or workflow change | devcontainer image | Yes (on push to `main`) |
 
-Uses GitHub Actions cache (`type=gha`) for Docker layer caching. QEMU for arm64 cross-build. `GITHUB_TOKEN` for GHCR auth (no extra secrets).
+`GITHUB_TOKEN` for GHCR auth (no extra secrets).
 
-The release workflow (`.github/workflows/release.yml`) handles tagged version images (`:latest`, `:X.Y.Z`, `:X.Y`) as a separate `docker` job that runs after binaries are published.
+The release workflow (`.github/workflows/release.yml`) handles tagged version images (`:latest`, `:X.Y.Z`, `:X.Y`) as a separate `docker` job that uses pre-built binaries from the build job (no compilation in Docker).
 
 ### Relevant Docker Files
 
-- `Dockerfile`: Production multi-stage image (Alpine musl builder + `FROM scratch` runtime)
+- `Dockerfile`: Production image (copies pre-built static binaries into `FROM scratch`, used by release workflow)
 - `.devcontainer/Dockerfile`: Dev environment base image (Ubuntu + system deps + musl-tools + zig)
 - `.devcontainer/devcontainer.json`: Features, extensions, cargo tools, cross targets
-- `.github/workflows/docker.yml`: Build validation + GHCR publish workflow
+- `.github/workflows/docker.yml`: Devcontainer build + GHCR publish workflow
 
 ## API Behaviors Discovered
 
