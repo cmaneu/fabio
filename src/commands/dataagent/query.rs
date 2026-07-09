@@ -135,7 +135,7 @@ async fn run_assistant_query(
     verbose: bool,
     max_wait: Duration,
 ) -> Result<QueryResult> {
-    let http = reqwest::Client::builder()
+    let http = crate::client::http_client_builder()
         .timeout(Duration::from_mins(6))
         .redirect(reqwest::redirect::Policy::none())
         .build()

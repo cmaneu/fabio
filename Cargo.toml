@@ -28,6 +28,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"
 
 # HTTP
 reqwest = { version = "0.13", features = ["json", "rustls", "form", "multipart"], default-features = false }
+webpki-root-certs = "1"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

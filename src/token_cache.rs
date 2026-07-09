@@ -263,10 +263,10 @@ pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Res
     let scope = scope.unwrap_or(FABRIC_SCOPE);
 
     // Disable redirects on token endpoint client to prevent credential forwarding
-    let http = reqwest::Client::builder()
+    let http = crate::client::http_client_builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .unwrap_or_else(|_| reqwest::Client::new());
+        .expect("Failed to build HTTP client for device code flow");
 
     // Step 1: Request device code
     let device_code_url =
@@ -443,10 +443,10 @@ pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Res
 /// Refresh an access token using a refresh token.
 async fn refresh_access_token(refresh_token: &str, tenant: &str, scope: &str) -> Result<TokenData> {
     // Disable redirects to prevent credential forwarding via POST body
-    let http = reqwest::Client::builder()
+    let http = crate::client::http_client_builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .unwrap_or_else(|_| reqwest::Client::new());
+        .expect("Failed to build HTTP client for token refresh");
     let token_url = format!("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token");
 
     let resp = http
@@ -848,10 +848,10 @@ pub async fn browser_login(tenant: Option<&str>, scope: Option<&str>) -> Result<
     })??;
 
     // Step 6: Exchange the code for tokens
-    let http = reqwest::Client::builder()
+    let http = crate::client::http_client_builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .unwrap_or_else(|_| reqwest::Client::new());
+        .expect("Failed to build HTTP client for auth code exchange");
 
     let token_url = format!("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token");
     let resp = http

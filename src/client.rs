@@ -15,6 +15,30 @@ use azure_core::credentials::TokenCredential;
 use crate::errors::{ErrorCode, ErrorDetail, FabioError, RelatedResource};
 use crate::verbose;
 
+// ── Bundled CA Roots ─────────────────────────────────────────────────────────
+//
+// On minimal Linux systems (stripped containers, `FROM scratch` images, systems
+// without `ca-certificates`), `rustls-platform-verifier` cannot find system CA
+// certificates and fails with "No CA certificates were loaded from the system".
+// We pre-load Mozilla's bundled root certificates into the reqwest ClientBuilder
+// so the TLS root store is never empty, regardless of the host system.
+
+/// Returns a `reqwest::ClientBuilder` pre-loaded with Mozilla's bundled CA root
+/// certificates. This ensures HTTPS works on systems without system CA stores
+/// (e.g., minimal containers, musl static binaries on stripped hosts).
+///
+/// Call sites should chain additional configuration (timeouts, redirect policy,
+/// user-agent) onto the returned builder.
+pub fn http_client_builder() -> reqwest::ClientBuilder {
+    let mut builder = Client::builder();
+    for cert_der in webpki_root_certs::TLS_SERVER_ROOT_CERTS {
+        if let Ok(cert) = reqwest::Certificate::from_der(cert_der.as_ref()) {
+            builder = builder.add_root_certificate(cert);
+        }
+    }
+    builder
+}
+
 /// Maximum length of raw response body to include in error messages.
 /// Prevents leaking unbounded server-side error details.
 const MAX_ERROR_BODY_LEN: usize = 500;
@@ -211,12 +235,12 @@ impl FabricClient {
         // Disable automatic redirect following to prevent bearer token leakage.
         // HTTP redirects could forward Authorization headers to attacker-controlled
         // domains. We handle LRO Location headers explicitly with validation instead.
-        let http = Client::builder()
+        let http = http_client_builder()
             .timeout(Duration::from_mins(1))
             .redirect(reqwest::redirect::Policy::none())
             .user_agent(concat!("fabio/", env!("CARGO_PKG_VERSION")))
             .build()
-            .unwrap_or_else(|_| Client::new());
+            .expect("Failed to build HTTP client: TLS initialization error");
 
         Self {
             http,

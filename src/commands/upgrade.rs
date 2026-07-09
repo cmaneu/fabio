@@ -114,7 +114,7 @@ async fn download_and_install(target_version: &str) -> Result<()> {
     eprintln!("[upgrade] Downloading {artifact} ({target_version})...");
 
     // Download archive and checksum
-    let http = reqwest::Client::builder()
+    let http = crate::client::http_client_builder()
         .user_agent(format!("fabio/{CURRENT_VERSION}"))
         .build()?;
 
@@ -154,7 +154,7 @@ async fn download_and_install(target_version: &str) -> Result<()> {
 /// Fetch the latest release version from GitHub.
 async fn fetch_latest_version() -> Result<String> {
     let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases/latest");
-    let http = reqwest::Client::builder()
+    let http = crate::client::http_client_builder()
         .user_agent(format!("fabio/{CURRENT_VERSION}"))
         .build()?;
 
