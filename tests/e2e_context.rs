@@ -235,7 +235,7 @@ fn context_tenant_returns_graph_structure() {
     // Verify summary fields
     let summary = &data["summary"];
     assert!(summary["totalNodes"].as_u64().unwrap() > 0);
-    assert!(summary["workspacesScanned"].as_u64().unwrap() == 1);
+    assert_eq!(summary["workspacesScanned"].as_u64().unwrap(), 1);
     assert!(summary["itemTypes"].is_object());
 }
 
