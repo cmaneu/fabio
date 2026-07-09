@@ -555,7 +555,7 @@ pub async fn sp_login_secret(
 }
 
 /// Authenticate a service principal using a PEM or PFX certificate.
-/// Only available on Windows (requires OpenSSL via azure_identity client_certificate feature).
+/// Only available on Windows (requires OpenSSL via `azure_identity` `client_certificate` feature).
 #[cfg(windows)]
 pub async fn sp_login_certificate(
     tenant: &str,
