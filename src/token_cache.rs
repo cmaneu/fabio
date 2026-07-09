@@ -555,6 +555,8 @@ pub async fn sp_login_secret(
 }
 
 /// Authenticate a service principal using a PEM or PFX certificate.
+/// Only available on Windows (requires OpenSSL via azure_identity client_certificate feature).
+#[cfg(windows)]
 pub async fn sp_login_certificate(
     tenant: &str,
     client_id: &str,
@@ -622,6 +624,24 @@ pub async fn sp_login_certificate(
 
     save_token(&data)?;
     Ok(data)
+}
+
+/// Certificate auth is only available on Windows (requires OpenSSL).
+#[cfg(not(windows))]
+#[allow(clippy::unused_async)]
+pub async fn sp_login_certificate(
+    _tenant: &str,
+    _client_id: &str,
+    _certificate_path: &str,
+    _certificate_password: Option<&str>,
+    _scope: &str,
+) -> Result<TokenData> {
+    Err(FabioError::with_hint(
+        ErrorCode::InvalidInput,
+        "--certificate authentication is only supported on Windows.",
+        "Use --client-secret or --federated-token on this platform.".to_string(),
+    )
+    .into())
 }
 
 /// Authenticate a service principal using a federated token (OIDC assertion).

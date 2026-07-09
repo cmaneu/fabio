@@ -243,6 +243,7 @@ fn sp_login_rejects_multiple_credential_types() {
 }
 
 #[test]
+#[cfg(windows)]
 fn sp_login_certificate_file_not_found() {
     let assert = fabio()
         .args([
@@ -263,6 +264,31 @@ fn sp_login_certificate_file_not_found() {
     assert!(
         stderr.contains("Failed to read certificate file"),
         "expected file not found error, got: {stderr}"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn sp_login_certificate_unsupported_on_non_windows() {
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "abc",
+            "--client-id",
+            "def",
+            "--certificate",
+            "/nonexistent/path/cert.pem",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("only supported on Windows"),
+        "expected platform error, got: {stderr}"
     );
 }
 
@@ -448,6 +474,7 @@ fn sp_login_empty_federated_token_treated_as_no_credential() {
 // ── File content edge case tests (offline) ──────────────────────────────────
 
 #[test]
+#[cfg(windows)]
 fn sp_login_empty_certificate_file() {
     // Create a temp empty file
     let temp = std::env::temp_dir().join("fabio_test_empty_cert.pem");
@@ -472,6 +499,37 @@ fn sp_login_empty_certificate_file() {
     assert!(
         stderr.contains("is empty"),
         "empty certificate file should produce clear error, got: {stderr}"
+    );
+
+    std::fs::remove_file(&temp).ok();
+}
+
+#[test]
+#[cfg(not(windows))]
+fn sp_login_certificate_rejects_on_non_windows() {
+    // Create a temp empty file
+    let temp = std::env::temp_dir().join("fabio_test_empty_cert.pem");
+    std::fs::write(&temp, "").unwrap();
+
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--service-principal",
+            "--tenant",
+            "abc",
+            "--client-id",
+            "def",
+            "--certificate",
+            temp.to_str().unwrap(),
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("only supported on Windows"),
+        "expected platform error, got: {stderr}"
     );
 
     std::fs::remove_file(&temp).ok();
