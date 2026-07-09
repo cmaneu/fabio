@@ -1,41 +1,23 @@
 # syntax=docker/dockerfile:1
 
-# Build stage — Alpine uses musl natively, producing a fully static binary.
-FROM rust:1-alpine AS builder
+# Production Dockerfile — uses pre-built static binaries from CI.
+# Expects binaries placed in binaries/{amd64,arm64}/fabio by the release
+# workflow before building. Produces a multi-arch scratch image (~8MB).
 
-RUN apk add --no-cache musl-dev git
+FROM alpine:3 AS certs
+# Extract CA certificates from Alpine (we only need the cert bundle)
+RUN apk add --no-cache ca-certificates
 
-WORKDIR /src
-
-# Copy manifests and build script first to cache dependency builds
-COPY Cargo.toml Cargo.lock rust-toolchain.toml build.rs ./
-
-# Copy data files needed by build.rs at compile time
-COPY src/commands/context/data/best_practices/ src/commands/context/data/best_practices/
-COPY src/commands/context/data/workflows/ src/commands/context/data/workflows/
-
-# Create a dummy main to pre-build dependencies
-RUN mkdir -p src && echo 'fn main() {}' > src/main.rs && \
-    cargo build --release 2>/dev/null || true && \
-    rm -rf src
-
-# Copy the actual source code
-COPY src/ src/
-
-# Touch main.rs so cargo rebuilds with actual source
-RUN touch src/main.rs
-
-# Build the release binary (statically linked via musl — zero runtime deps)
-RUN cargo build --release
-
-# Runtime stage — scratch: empty image, just the binary + CA certs (~8MB)
 FROM scratch
 
 # CA certificates for HTTPS (Fabric API, OneLake, Azure auth endpoints)
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-# Copy the compiled static binary from the build stage
-COPY --from=builder /src/target/release/fabio /usr/local/bin/fabio
+# ARG TARGETARCH is automatically set by Docker Buildx (amd64, arm64, etc.)
+ARG TARGETARCH
+
+# Copy the pre-built static binary for the target architecture
+COPY binaries/${TARGETARCH}/fabio /usr/local/bin/fabio
 
 USER 65534
 
