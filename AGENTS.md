@@ -28,13 +28,13 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - JSON output by default with `--output json|table|plain` flag
 - Composable: manage inputs and produce outputs for piping
 - Machine-readable error codes in structured JSON envelope
-- Rust (edition 2024, rust-version 1.96), uses clap derive, tokio, reqwest, azure_identity, serde, serde_yaml, comfy-table, thiserror/anyhow
+- Rust (edition 2024, rust-version 1.97), uses clap derive, tokio, reqwest, azure_identity, serde, serde_yaml, comfy-table, thiserror/anyhow
 - Linting: clippy pedantic+nursery (zero warnings), rustfmt
 - CI: GitHub Actions (cargo fmt, clippy, test, build release) on ubuntu/macos/windows
 - Installable via `cargo install --git https://github.com/iemejia/fabio.git`
 - **Dependency version freshness** — When introducing a new Cargo dependency or a new GitHub Action, always validate that you are using the most recent available and compatible version. Check crates.io for Rust crates and the action's repository releases/tags for GitHub Actions. Do NOT copy outdated versions from examples or memory — verify against the source of truth before adding. Additionally, reject any dependency with an incompatible license (GPL, LGPL, AGPL, SSPL, or any other copyleft license that would impose restrictions on the project). Only permissive licenses (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0, etc.) are acceptable.
 - **GitHub Actions pinning** — ALL GitHub Actions in `.github/workflows/*.yml` MUST be pinned to their full commit SHA with the version in a trailing comment. Format: `uses: owner/action@<40-char-sha> # v<major>` (or `# v<major>.<minor>.<patch>` for non-major tags). NEVER use floating tag references like `@v7` or `@stable`. This prevents supply-chain attacks where a tag is force-pushed to a compromised commit. When updating an action, always verify the new SHA matches the expected release tag from the action's repository.
-- **Modern Rust idioms (MANDATORY)** — All code MUST leverage features available in the declared `rust-version` (currently 1.96). Do NOT write code using older patterns when a modern equivalent exists. When the MSRV is bumped, audit and migrate existing code. Key idioms to prefer:
+- **Modern Rust idioms (MANDATORY)** — All code MUST leverage features available in the declared `rust-version` (currently 1.97). Do NOT write code using older patterns when a modern equivalent exists. When the MSRV is bumped, audit and migrate existing code. Key idioms to prefer:
   - `str::floor_char_boundary()` for safe string truncation (never raw `&s[..n]` on user/API text)
   - Let chains (`if let Some(x) = opt && condition { ... }`) instead of nested `if let` + `if`
   - `Option::is_none_or(|v| cond)` instead of `opt.is_none() || opt == Some(x)` or `opt.map_or(true, ...)`
@@ -448,6 +448,7 @@ Automated: `./scripts/release.sh <version>` handles all steps end-to-end.
 - Auth relies on a multi-source credential chain: fabio cache (device code, browser PKCE, or service principal), environment variables, managed identity, Azure CLI, Azure Developer CLI
 - `azure_identity`/`azure_core` with `default-features = false` (no OpenSSL on Linux/macOS); `client_certificate` feature Windows-only (vendored OpenSSL)
 - **Fully static Linux binaries** — Built with musl (`x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`); zero runtime library dependencies; runs on any Linux kernel 2.6.39+; Docker image uses `FROM scratch`
+- **Bundled CA roots** — `webpki-root-certs` crate pre-loads Mozilla CA certificates into every HTTP client via `http_client_builder()` in `src/client.rs`. Ensures HTTPS works on minimal Linux systems without `ca-certificates` installed (`rustls-platform-verifier` has no bundled fallback on Linux). All `reqwest::Client` construction MUST use `http_client_builder()` — never raw `Client::builder()`.
 - **Windows-first compatibility** — Token cache encrypted with DPAPI (`CryptProtectData`, user scope); WAM broker SSO via `--wam` flag
 - `unsafe_code = "forbid"` in lints
 - **KQL Queryset definition format**: Uses `RealTimeQueryset.json` (NOT `RawQueryset.kql`). JSON structure: `{"queryset":{"version":"1.0.0","dataSources":[{"id","clusterUri","type","databaseName"}],"tabs":[{"id","content","title","dataSourceId"}]}}`. The `content` field holds the KQL query text with `\n` for newlines.

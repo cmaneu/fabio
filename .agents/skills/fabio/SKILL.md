@@ -1,6 +1,6 @@
 ---
 name: fabio
-description: "Manage Microsoft Fabric artifacts and data using the fabio CLI - an agent-native command-line tool with 851+ subcommands across 74 groups, structured JSON output, composable piping, and machine-readable errors. Use when working with Fabric workspaces, lakehouses, warehouses, notebooks, eventhouses, semantic models, reports, data pipelines, KQL databases, eventstreams, deploy CI/CD, REST passthrough, Power BI API, capacity lifecycle, app-backend (Power Apps), data-build-tool-job (dbt), org-app (Organizational App), azure-databricks-storage (Azure Databricks integration), or any Fabric REST API resource. Covers CRUD operations, file upload/download, SQL/DAX/KQL queries, Git integration, deployment pipelines, CI/CD deploy (plan/apply/export/validate/config-file/git-diff), natural language to KQL, KQL schema discovery and diagnostics, and administration."
+description: "Manage Microsoft Fabric artifacts and data using the fabio CLI - an agent-native command-line tool with 856+ subcommands across 77 groups, structured JSON output, composable piping, and machine-readable errors. Use when working with Fabric workspaces, lakehouses, warehouses, notebooks, eventhouses, semantic models, reports, data pipelines, KQL databases, eventstreams, deploy CI/CD, REST passthrough, Power BI API, capacity lifecycle, app-backend (Power Apps), data-build-tool-job (dbt), org-app (Organizational App), azure-databricks-storage (Azure Databricks integration), or any Fabric REST API resource. Covers CRUD operations, file upload/download, SQL/DAX/KQL queries, execution plans, query monitoring and insights, Git integration, deployment pipelines, CI/CD deploy (plan/apply/export/validate/config-file/git-diff), natural language to KQL, KQL schema discovery and diagnostics, and administration."
 license: MIT
 compatibility: "Requires fabio binary (Linux/macOS/Windows x64/arm64). Authentication via `fabio auth login` (uses same Microsoft Identity platform as Azure CLI). Network access to api.fabric.microsoft.com, api.powerbi.com, and onelake.dfs.fabric.microsoft.com required."
 metadata:
@@ -247,7 +247,11 @@ fabio item list-upstream-relations --workspace $WS --id $ITEM_ID    # beta: item
 fabio item list-downstream-relations --workspace $WS --id $ITEM_ID  # beta: items that depend on $ITEM
 fabio capacity list                                          # tenant-scoped (no --workspace)
 fabio gateway list                                           # tenant-scoped (no --workspace)
+fabio gateway create-streaming --name "MyVNetGW" \           # streaming VNet gateway
+  --subscription-id $SUB --resource-group $RG --vnet $VNET --subnet $SUBNET
 fabio deployment-pipeline list                               # tenant-scoped (no --workspace)
+# Command aliases: app-backend (aliases: rayfin-app, data-app), data-build-tool-job (aliases: dbt-job, dbt)
+fabio dbt list --workspace $WS                               # same as: fabio data-build-tool-job list
 ```
 
 **Lakehouse (files, tables, sync, Iceberg, Materialized Lake Views):**
@@ -292,6 +296,24 @@ fabio warehouse query --workspace $WS --id $WH --sql "SELECT COUNT(*) FROM dbo.o
 fabio warehouse query --workspace $WS --id $WH --sql @queries/report.sql   # from file
 fabio sql-database create --workspace $WS --name "OrdersDB"
 fabio sql-database import --workspace $WS --id $DB --file data.csv --table orders --drop-if-exists
+# Execution plans (estimated, does not execute the query)
+fabio warehouse plan --workspace $WS --id $WH --sql "SELECT * FROM orders WHERE id = 1"
+fabio sql-database plan --workspace $WS --id $DB --sql "SELECT * FROM dbo.users"
+fabio lakehouse plan --workspace $WS --id $LH --sql "SELECT COUNT(*) FROM products"
+# Query monitoring and insights
+fabio warehouse queries-running --workspace $WS --id $WH          # active queries (sys.dm_exec_requests)
+fabio warehouse queries-history --workspace $WS --id $WH          # recent completed queries
+fabio warehouse queries-frequent --workspace $WS --id $WH         # most frequent queries
+fabio warehouse queries-long-running --workspace $WS --id $WH     # slowest queries
+fabio warehouse queries-kill --workspace $WS --id $WH --session-id 42   # terminate a session
+fabio sql-database queries-running --workspace $WS --id $DB
+fabio sql-database queries-kill --workspace $WS --id $DB --session-id 42
+fabio lakehouse queries-running --workspace $WS --id $LH
+# Statistics management (warehouse and sql-database)
+fabio warehouse statistics-list --workspace $WS --id $WH
+fabio warehouse statistics-create --workspace $WS --id $WH --table orders --columns "customer_id,order_date"
+fabio warehouse statistics-show --workspace $WS --id $WH --name stat_orders_customer
+fabio warehouse statistics-delete --workspace $WS --id $WH --name stat_orders_customer
 ```
 
 **KQL & Real-Time Intelligence:**
@@ -304,6 +326,10 @@ fabio kql-database ingest --workspace $WS --id $KDB --table Events --data "col1,
 # KQL management commands (create tables, mappings via .create-or-alter)
 fabio kql-database manage --workspace $WS --id $KDB --command ".create table T (col1:string, col2:real)"
 fabio kql-database manage --workspace $WS --id $KDB --command ".create-or-alter table T ingestion json mapping 'M' '[{\"column\":\"col1\",\"path\":\"$.field\"}]'"
+# KQL query monitoring
+fabio kql-database queries-running --workspace $WS --id $KDB     # .show running queries
+fabio kql-database journal --workspace $WS --id $KDB             # .show journal (admin ops log)
+fabio kql-database queries-completed --workspace $WS --id $KDB   # .show queries (recent completed)
 # EventStream: create, add source, add destination, get connection string
 fabio eventstream create --workspace $WS --name "Ingestion"
 fabio eventstream add-source --workspace $WS --id $ES --name "src" --source-type CustomEndpoint
