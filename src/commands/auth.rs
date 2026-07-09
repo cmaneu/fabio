@@ -340,6 +340,7 @@ async fn status(cli: &Cli) -> Result<()> {
         Ok(_) => {
             let source = client.credential_source().await;
             let source_type = source.map_or("unknown", |s| match s {
+                CredentialSource::AccessToken => "access_token",
                 CredentialSource::FabioCache => "fabio_cache",
                 CredentialSource::Environment => "environment",
                 CredentialSource::ManagedIdentity => "managed_identity",

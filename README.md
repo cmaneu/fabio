@@ -130,10 +130,16 @@ docker run --rm ghcr.io/iemejia/fabio:0.43.0 workspace list
 Pass credentials via environment variables for non-interactive use:
 
 ```bash
+# Service principal (recommended for CI/CD)
 docker run --rm \
   -e AZURE_TENANT_ID=<tenant-id> \
   -e AZURE_CLIENT_ID=<client-id> \
   -e AZURE_CLIENT_SECRET=<client-secret> \
+  ghcr.io/iemejia/fabio workspace list --output json
+
+# Static access token (when you already have a token)
+docker run --rm \
+  -e FABIO_ACCESS_TOKEN=<token> \
   ghcr.io/iemejia/fabio workspace list --output json
 ```
 
@@ -143,6 +149,7 @@ base (~20MB) with no shell or package manager. Authentication options inside the
 | Method | How |
 |--------|-----|
 | Service principal | `-e AZURE_TENANT_ID` + `-e AZURE_CLIENT_ID` + `-e AZURE_CLIENT_SECRET` |
+| Static access token | `-e FABIO_ACCESS_TOKEN=<token>` (for pre-existing tokens) |
 | Workload identity (AKS/OIDC) | `-e AZURE_TENANT_ID` + `-e AZURE_CLIENT_ID` + `-e AZURE_FEDERATED_TOKEN_FILE` + volume mount |
 | Managed identity | Automatic in Azure compute (Container Apps, ACI, AKS) |
 
@@ -287,16 +294,20 @@ fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID
 # Windows WAM broker SSO (Windows only — uses OS-level sign-in)
 fabio auth login --wam
 
+# Static access token (Fabric Notebooks, environments with pre-existing tokens)
+export FABIO_ACCESS_TOKEN=<token>
+
 # Verify authentication
 fabio auth status
 ```
 
 Supported credential sources (in priority order):
-1. Fabio CLI identity (`fabio auth login` -- recommended for interactive use)
-2. Environment variables (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`)
-3. Managed Identity (when running on Azure)
-4. Azure CLI (`az login`)
-5. Azure Developer CLI (`azd auth login`)
+1. Static access token (`FABIO_ACCESS_TOKEN` env var — for Fabric Notebooks and pre-existing tokens)
+2. Fabio CLI identity (`fabio auth login` -- recommended for interactive use)
+3. Environment variables (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`)
+4. Managed Identity (when running on Azure)
+5. Azure CLI (`az login` -- recommended for CI/CD with `azure/login` action)
+6. Azure Developer CLI (`azd auth login`)
 
 **Windows-specific features:**
 - Token cache encrypted with DPAPI (`CryptProtectData`, user scope) — matches Azure CLI behavior
@@ -444,6 +455,36 @@ jobs:
           fabio deploy plan --source ./fabric-items/ --workspace "Production"
           fabio deploy apply --source ./fabric-items/ --workspace "Production"
 ```
+
+## Fabric Notebooks
+
+Run fabio from inside Microsoft Fabric Notebooks using `FABIO_ACCESS_TOKEN`. This is the recommended auth method when running fabio within Fabric itself, since `az login` and device code flows are not available in notebook environments.
+
+```python
+import subprocess, os, json
+
+# Get a token from the current Fabric session
+token = notebookutils.credentials.getToken("pbi")
+
+# Run fabio with the session token
+env = {**os.environ, "FABIO_ACCESS_TOKEN": token}
+
+result = subprocess.run(
+    ["fabio", "workspace", "list", "-o", "json"],
+    env=env, capture_output=True, text=True
+)
+workspaces = json.loads(result.stdout)
+print(f"Found {workspaces['count']} workspaces")
+
+# Deploy items from a repo cloned into the notebook environment
+result = subprocess.run(
+    ["fabio", "deploy", "apply", "--source", "./fabric-items/", "--workspace", workspace_id],
+    env=env, capture_output=True, text=True
+)
+print(result.stdout)
+```
+
+> **Note:** `FABIO_ACCESS_TOKEN` uses the same token for all API scopes (Fabric, Storage, SQL, ARM, Graph). The `pbi` scope from `notebookutils.credentials.getToken("pbi")` covers Fabric REST API calls. For OneLake storage operations, you may need a separate token with the storage scope.
 
 ### Agent Safety
 

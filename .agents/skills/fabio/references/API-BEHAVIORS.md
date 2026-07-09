@@ -51,7 +51,7 @@ Example hint-driven recovery:
 
 All login methods share the same `~/.fabio/token_cache.json` cache. On Windows, the cache is encrypted with DPAPI (matching Azure CLI behavior).
 
-| Method | Command | Notes |
+| Method | Command / Env Var | Notes |
 |--------|---------|-------|
 | Device code | `fabio auth login` | Headless/SSH; user must visit URL and enter code |
 | Browser PKCE | `fabio auth login --browser` | Faster; SSO on macOS with Enterprise Extension |
@@ -61,27 +61,13 @@ All login methods share the same `~/.fabio/token_cache.json` cache. On Windows, 
 | Federated token (OIDC) | `fabio auth login --service-principal --tenant T --client-id C --federated-token <jwt>` | GitHub Actions OIDC |
 | Federated token file | `fabio auth login --service-principal --tenant T --client-id C --federated-token-file /path/token` | File is trimmed of whitespace |
 | Windows WAM broker | `fabio auth login --wam` | Windows only; SSO with current Windows account; no browser/code |
+| Static access token | `FABIO_ACCESS_TOKEN=<token>` | Fabric Notebooks and environments with pre-existing tokens; same token for all scopes |
 
 **SP error handling**: Empty strings for `--tenant`, `--client-id`, `--client-secret`, `--certificate`, `--federated-token` are treated as "not provided" with structured JSON error output.
 
 **Security**: `--verbose` output and `--dry-run` previews automatically redact sensitive JSON fields (password, client_secret, credentials, access_token, key, connectionString, etc.) before logging. Redaction is recursive and case-insensitive.
 
 ### CI/CD Authentication
-
-`DefaultAzureCredential` with client secret environment variables works correctly in CI as of v0.16.0. Set these three variables before running fabio:
-
-```bash
-export AZURE_CLIENT_ID="<app-id>"
-export AZURE_TENANT_ID="<tenant-id>"
-export AZURE_CLIENT_SECRET="<secret>"
-fabio auth status   # confirms env-var credential source
-```
-
-Or use `fabio auth login --service-principal` directly (credentials stored in token cache):
-
-```bash
-fabio auth login --service-principal --tenant $TENANT_ID --client-id $CLIENT_ID --client-secret $CLIENT_SECRET
-```
 
 **GitHub Actions — OIDC federated credentials (recommended, secretless):**
 
@@ -110,7 +96,43 @@ steps:
     run: fabio workspace list
 ```
 
+Service principal env vars also work outside GitHub Actions. Set these three variables before running fabio:
+
+```bash
+export AZURE_CLIENT_ID="<app-id>"
+export AZURE_TENANT_ID="<tenant-id>"
+export AZURE_CLIENT_SECRET="<secret>"
+fabio auth status   # confirms env-var credential source
+```
+
+Or use `fabio auth login --service-principal` directly (credentials stored in token cache):
+
+```bash
+fabio auth login --service-principal --tenant $TENANT_ID --client-id $CLIENT_ID --client-secret $CLIENT_SECRET
+```
+
 > **Fix in v0.16.0**: Prior versions panicked at runtime with "The reqwest feature is required to use the default HTTP client" when using client secret env vars. The `reqwest` and `tokio` features are now enabled on `azure_identity`/`azure_core`.
+
+### Fabric Notebook Authentication
+
+Use `FABIO_ACCESS_TOKEN` to run fabio from inside Microsoft Fabric Notebooks. This is the recommended auth method in notebook environments where `az login` and device code flows are unavailable.
+
+```python
+import subprocess, os, json
+
+# Get a token from the current Fabric session
+token = notebookutils.credentials.getToken("pbi")
+env = {**os.environ, "FABIO_ACCESS_TOKEN": token}
+
+# Run fabio commands with the session token
+result = subprocess.run(
+    ["fabio", "workspace", "list", "-o", "json"],
+    env=env, capture_output=True, text=True
+)
+workspaces = json.loads(result.stdout)
+```
+
+> **Note:** `FABIO_ACCESS_TOKEN` uses the same token for ALL API scopes (Fabric, Storage, SQL, ARM, Graph). The `pbi` scope from `notebookutils.credentials.getToken("pbi")` covers Fabric REST API calls. For OneLake storage operations, you may need a separate token with the storage scope.
 
 ## Query Filtering (--query / JMESPath)
 

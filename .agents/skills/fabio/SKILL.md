@@ -2,7 +2,7 @@
 name: fabio
 description: "Manage Microsoft Fabric artifacts and data using the fabio CLI - an agent-native command-line tool with 856+ subcommands across 77 groups, structured JSON output, composable piping, and machine-readable errors. Use when working with Fabric workspaces, lakehouses, warehouses, notebooks, eventhouses, semantic models, reports, data pipelines, KQL databases, eventstreams, deploy CI/CD, REST passthrough, Power BI API, capacity lifecycle, app-backend (Power Apps), data-build-tool-job (dbt), org-app (Organizational App), azure-databricks-storage (Azure Databricks integration), or any Fabric REST API resource. Covers CRUD operations, file upload/download, SQL/DAX/KQL queries, execution plans, query monitoring and insights, Git integration, deployment pipelines, CI/CD deploy (plan/apply/export/validate/config-file/git-diff), natural language to KQL, KQL schema discovery and diagnostics, and administration."
 license: MIT
-compatibility: "Requires fabio binary (Linux/macOS/Windows x64/arm64). Authentication via `fabio auth login` (uses same Microsoft Identity platform as Azure CLI). Network access to api.fabric.microsoft.com, api.powerbi.com, and onelake.dfs.fabric.microsoft.com required."
+compatibility: "Requires fabio binary (Linux/macOS/Windows x64/arm64). Authentication via `fabio auth login`, `FABIO_ACCESS_TOKEN` env var, or Azure CLI fallback (uses same Microsoft Identity platform as Azure CLI). Network access to api.fabric.microsoft.com, api.powerbi.com, and onelake.dfs.fabric.microsoft.com required."
 metadata:
   author: iemejia
   version: "0.31.0-dev"
@@ -224,9 +224,16 @@ fabio auth login --service-principal --tenant <T> --client-id <C> --federated-to
 
 # Windows WAM broker
 fabio auth login --wam
+
+# Static access token (Fabric Notebooks, environments with pre-existing tokens)
+export FABIO_ACCESS_TOKEN=$(notebookutils.credentials.getToken("pbi"))  # in Fabric Notebooks
 ```
 
-Credential chain: fabio cache > env vars > managed identity > Azure CLI > Azure Developer CLI
+Credential chain: FABIO_ACCESS_TOKEN > fabio cache > env vars > managed identity > Azure CLI > Azure Developer CLI
+
+**CI/CD:** Use `azure/login@v3` with OIDC (recommended) or service principal env vars. Do NOT use `FABIO_ACCESS_TOKEN` for CI/CD.
+
+**Fabric Notebooks:** Use `FABIO_ACCESS_TOKEN` with `notebookutils.credentials.getToken("pbi")`. This is the only auth method that works inside Fabric notebook environments.
 
 ## Command Quick Reference
 

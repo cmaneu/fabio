@@ -20,6 +20,7 @@ fn auth_status_returns_authenticated() {
     let source = data["credential_source"].as_str().unwrap_or("");
     assert!(
         [
+            "access_token",
             "environment",
             "managed_identity",
             "azure_cli",
@@ -138,6 +139,7 @@ fn auth_status_reports_credential_source() {
     let source = data.as_str().unwrap_or("");
     assert!(
         [
+            "access_token",
             "environment",
             "managed_identity",
             "azure_cli",
@@ -1154,7 +1156,139 @@ fn sp_login_federated_token_file_with_newlines_trimmed() {
     std::fs::remove_file(&token_file).ok();
 }
 
-// ── DPAPI token cache encryption tests (Windows only) ───────────────────────
+// ── FABIO_ACCESS_TOKEN environment variable tests (offline) ─────────────────
+
+#[test]
+fn access_token_env_auth_status_reports_credential_source() {
+    // FABIO_ACCESS_TOKEN is checked before all other credential sources.
+    // auth status only calls require_auth() (no API call), so a fake token works.
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-bearer-token")
+        .args(["auth", "status", "-o", "json"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    assert_eq!(data["status"], "authenticated");
+    assert_eq!(
+        data["credential_source"], "access_token",
+        "should report access_token credential source"
+    );
+    let msg = data["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("FABIO_ACCESS_TOKEN"),
+        "message should mention FABIO_ACCESS_TOKEN, got: {msg}"
+    );
+}
+
+#[test]
+fn access_token_env_empty_reports_error() {
+    // An empty FABIO_ACCESS_TOKEN should fail with a clear error, not silently
+    // fall through to the next credential source.
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "")
+        .args(["auth", "status", "-o", "json"])
+        .assert()
+        .success(); // auth status always exits 0 (reports status in JSON)
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    assert_eq!(data["status"], "not_authenticated");
+    let msg = data["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("FABIO_ACCESS_TOKEN is set but empty"),
+        "should report empty token error, got: {msg}"
+    );
+}
+
+#[test]
+fn access_token_env_takes_precedence_over_azure_sp() {
+    // When FABIO_ACCESS_TOKEN is set alongside service principal env vars,
+    // the static token should win (it's checked first in the credential chain).
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "my-static-token")
+        .env("AZURE_TENANT_ID", "fake-tenant")
+        .env("AZURE_CLIENT_ID", "fake-client")
+        .env("AZURE_CLIENT_SECRET", "fake-secret")
+        .args(["auth", "status", "-o", "json"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+
+    assert_eq!(data["credential_source"], "access_token");
+}
+
+#[test]
+fn access_token_env_json_envelope_structure() {
+    // Verify the JSON envelope is well-formed with expected fields.
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "test-token-for-envelope")
+        .args(["auth", "status", "-o", "json"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    assert!(json.get("data").is_some(), "should have data field");
+    let data = extract_data(&json);
+    assert!(data.get("status").is_some(), "data should have status");
+    assert!(
+        data.get("credential_source").is_some(),
+        "data should have credential_source"
+    );
+    assert!(data.get("message").is_some(), "data should have message");
+}
+
+#[test]
+fn access_token_env_table_format() {
+    // Table output should mention the credential source.
+    fabio()
+        .env("FABIO_ACCESS_TOKEN", "test-token-table")
+        .args(["auth", "status", "-o", "table"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("access_token")
+                .or(predicate::str::contains("FABIO_ACCESS_TOKEN")),
+        );
+}
+
+#[test]
+fn access_token_env_query_extracts_credential_source() {
+    // --query credential_source should extract just the string value.
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "test-token-query")
+        .args(["auth", "status", "--query", "credential_source"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data, "access_token");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn access_token_env_invalid_token_rejected_by_api() {
+    // A fake token should authenticate locally (auth status succeeds) but fail
+    // when actually calling the API (workspace list returns 401).
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "definitely-not-a-valid-jwt")
+        .args(["workspace", "list", "--limit", "1", "-o", "json"])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("AUTH_REQUIRED") || stderr.contains("401"),
+        "invalid token should be rejected by the API, got: {stderr}"
+    );
+}
 
 #[test]
 #[cfg(windows)]

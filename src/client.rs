@@ -158,6 +158,8 @@ pub struct PaginatedResponse {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CredentialSource {
+    /// Pre-existing bearer token injected via `FABIO_ACCESS_TOKEN` env var.
+    AccessToken,
     /// Fabio's own cached token (from `fabio auth login` device code flow).
     FabioCache,
     /// Service principal via `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET` env vars.
@@ -173,6 +175,7 @@ pub enum CredentialSource {
 impl std::fmt::Display for CredentialSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::AccessToken => write!(f, "access token (FABIO_ACCESS_TOKEN)"),
             Self::FabioCache => write!(f, "fabio cache (device code)"),
             Self::Environment => write!(f, "environment (service principal)"),
             Self::ManagedIdentity => write!(f, "managed identity"),
@@ -2906,13 +2909,20 @@ impl FabricClient {
 }
 
 /// Acquire an access token using the credential chain:
-/// 1. Environment (service principal via `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET`)
-/// 2. Managed Identity (for Azure-hosted workloads)
-/// 3. Developer Tools (Azure CLI, then Azure Developer CLI)
+/// 0. Static token (`FABIO_ACCESS_TOKEN` env var — raw bearer token, highest priority)
+/// 1. Fabio cache (`fabio auth login`)
+/// 2. Environment (service principal via `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET`)
+/// 3. Managed Identity (for Azure-hosted workloads)
+/// 4. Developer Tools (Azure CLI, then Azure Developer CLI)
 ///
 /// Returns the cached token and which credential source provided it.
 async fn acquire_token(scope: &str) -> Result<(CachedToken, CredentialSource)> {
-    // 0. Try fabio's own cached token (from `fabio auth login`)
+    // 0. Try static access token from FABIO_ACCESS_TOKEN env var (highest priority)
+    if let Some(result) = try_access_token_env() {
+        return result;
+    }
+
+    // 1. Try fabio's own cached token (from `fabio auth login`)
     if let Some(result) = try_fabio_cache(scope).await {
         return result;
     }
@@ -2940,6 +2950,45 @@ async fn acquire_token(scope: &str) -> Result<(CachedToken, CredentialSource)> {
 
     // 3. Fall back to developer tools (az cli, azd)
     try_developer_tools_credential(scope).await
+}
+
+/// Try a pre-existing bearer token from the `FABIO_ACCESS_TOKEN` environment variable.
+/// This is the highest-priority credential source — when set, it bypasses all other
+/// authentication methods. Primary use case: running fabio from inside Microsoft Fabric
+/// Notebooks where `az login` and device code flows are unavailable. The notebook session
+/// token can be obtained via `notebookutils.credentials.getToken("pbi")`.
+///
+/// Also useful in Docker containers, constrained CI environments, or any context where
+/// a token is already available from a prior step.
+///
+/// The token is used as-is with a far-future expiry (1 hour). If the token is actually
+/// expired, the API will return 401 and fabio will report an auth error.
+///
+/// **Important:** This uses the same token for ALL scopes (Fabric, Storage, SQL, ARM,
+/// Graph). If your workflow requires different tokens per scope, use service principal
+/// auth or `fabio auth login` instead.
+///
+/// **For CI/CD:** Prefer `azure/login` with OIDC (GitHub Actions) or service principal
+/// env vars (`AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET`) instead.
+fn try_access_token_env() -> Option<Result<(CachedToken, CredentialSource)>> {
+    let token = std::env::var("FABIO_ACCESS_TOKEN").ok()?;
+    if token.is_empty() {
+        return Some(Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "FABIO_ACCESS_TOKEN is set but empty.",
+            "Set FABIO_ACCESS_TOKEN to a valid bearer token, or unset it to use other credential sources.".to_string(),
+        )
+        .into()));
+    }
+
+    // Use a 1-hour expiry — the token may expire sooner, but the API will reject it
+    // with 401 and fabio will report an auth error. We cannot introspect JWT expiry
+    // without pulling in a JWT library, and the token might not even be a JWT.
+    let expires_on = std::time::SystemTime::now() + Duration::from_hours(1);
+    Some(Ok((
+        CachedToken::new(token, expires_on),
+        CredentialSource::AccessToken,
+    )))
 }
 
 /// Try fabio's own persistent token cache (from `fabio auth login`).
@@ -3066,8 +3115,8 @@ async fn try_developer_tools_credential(scope: &str) -> Result<(CachedToken, Cre
 
     Err(FabioError::with_hint(
         ErrorCode::AuthRequired,
-        "No valid credentials found. Tried: environment variables, managed identity, Azure CLI, Azure Developer CLI.",
-        "Run 'az login' or set AZURE_TENANT_ID + AZURE_CLIENT_ID + AZURE_CLIENT_SECRET environment variables.".to_string(),
+        "No valid credentials found. Tried: FABIO_ACCESS_TOKEN, environment variables, managed identity, Azure CLI, Azure Developer CLI.",
+        "Run 'az login', set FABIO_ACCESS_TOKEN to a bearer token, or set AZURE_TENANT_ID + AZURE_CLIENT_ID + AZURE_CLIENT_SECRET environment variables.".to_string(),
     )
     .into())
 }
@@ -3792,6 +3841,14 @@ mod tests {
     }
 
     // ── CredentialSource Display ─────────────────────────────────────────
+
+    #[test]
+    fn credential_source_display_access_token() {
+        assert_eq!(
+            CredentialSource::AccessToken.to_string(),
+            "access token (FABIO_ACCESS_TOKEN)"
+        );
+    }
 
     #[test]
     fn credential_source_display_fabio_cache() {
