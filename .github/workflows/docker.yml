@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - "Dockerfile"
+      - "Dockerfile.release"
       - ".devcontainer/**"
       - ".github/workflows/docker.yml"
   pull_request:
     branches: [main]
     paths:
       - "Dockerfile"
+      - "Dockerfile.release"
       - ".devcontainer/**"
       - ".github/workflows/docker.yml"
 
