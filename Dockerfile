@@ -1,15 +1,9 @@
 # syntax=docker/dockerfile:1
 
-# Build stage — official Rust image (avoids rustup install overhead)
-FROM rust:1-slim-bookworm AS builder
+# Build stage — Alpine uses musl natively, producing a fully static binary.
+FROM rust:1-alpine AS builder
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config \
-    libssl-dev \
-    make \
-    perl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache musl-dev git
 
 WORKDIR /src
 
@@ -22,7 +16,7 @@ COPY src/commands/context/data/workflows/ src/commands/context/data/workflows/
 
 # Create a dummy main to pre-build dependencies
 RUN mkdir -p src && echo 'fn main() {}' > src/main.rs && \
-    cargo build --release --features vendored-openssl 2>/dev/null || true && \
+    cargo build --release 2>/dev/null || true && \
     rm -rf src
 
 # Copy the actual source code
@@ -31,15 +25,18 @@ COPY src/ src/
 # Touch main.rs so cargo rebuilds with actual source
 RUN touch src/main.rs
 
-# Build the release binary with vendored OpenSSL (no runtime libssl needed)
-RUN cargo build --release --features vendored-openssl
+# Build the release binary (statically linked via musl — zero runtime deps)
+RUN cargo build --release
 
-# Runtime stage — distroless: glibc + libgcc + CA certs, nothing else (~20MB)
-FROM gcr.io/distroless/cc-debian12
+# Runtime stage — scratch: empty image, just the binary + CA certs (~8MB)
+FROM scratch
 
-# Copy the compiled binary from the build stage
+# CA certificates for HTTPS (Fabric API, OneLake, Azure auth endpoints)
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Copy the compiled static binary from the build stage
 COPY --from=builder /src/target/release/fabio /usr/local/bin/fabio
 
-USER nonroot
+USER 65534
 
 ENTRYPOINT ["fabio"]

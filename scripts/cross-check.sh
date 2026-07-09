@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# scripts/cross-check.sh — Validate compilation across all 6 CI targets from Linux.
+# scripts/cross-check.sh — Validate compilation across all CI targets from Linux.
 #
 # Uses cargo check (type-check + borrow-check, no linking) with:
-#   - cargo-zigbuild: provides zig as the C cross-compiler for macOS and linux-arm64
+#   - cargo-zigbuild: provides zig as the C cross-compiler for macOS and linux-arm64-musl
 #   - cargo-xwin: provides Windows SDK headers for Windows MSVC targets
-#   - OpenSSL stub directory: satisfies openssl-sys build script without vendoring
+#   - OpenSSL stub directory: satisfies openssl-sys build script for Windows target
 #
 # Prerequisites (run with --setup to install automatically):
-#   System:  lld, clang, zig, libssl-dev
+#   System:  lld, clang, zig, musl-tools, libssl-dev
 #   Cargo:   cargo-xwin, cargo-zigbuild
-#   Rustup:  targets for windows-msvc, apple-darwin, linux-gnu arm64
+#   Rustup:  targets for windows-msvc, apple-darwin, linux-musl
 #
 # Usage:
 #   ./scripts/cross-check.sh                           # check all 5 targets
@@ -29,8 +29,8 @@ set -euo pipefail
 # Format: "name|rust_triple|tool"
 # tool: native, zigbuild, xwin
 TARGETS=(
-  "linux-x64|x86_64-unknown-linux-gnu|native"
-  "linux-arm64|aarch64-unknown-linux-gnu|zigbuild"
+  "linux-x64|x86_64-unknown-linux-musl|native"
+  "linux-arm64|aarch64-unknown-linux-musl|zigbuild"
   "macos-x64|x86_64-apple-darwin|zigbuild"
   "macos-arm64|aarch64-apple-darwin|zigbuild"
   "windows-x64|x86_64-pc-windows-msvc|xwin"
@@ -91,8 +91,8 @@ done
 do_setup() {
   header "Installing prerequisites"
 
-  info "Installing system packages (lld, clang, libssl-dev)..."
-  sudo apt update -qq && sudo apt install -y -qq lld clang libssl-dev
+  info "Installing system packages (lld, clang, musl-tools, libssl-dev)..."
+  sudo apt update -qq && sudo apt install -y -qq lld clang musl-tools libssl-dev
 
   if ! command -v zig &>/dev/null; then
     info "Installing zig via snap..."
@@ -106,11 +106,11 @@ do_setup() {
 
   info "Adding rustup targets..."
   rustup target add \
+    x86_64-unknown-linux-musl \
+    aarch64-unknown-linux-musl \
     x86_64-pc-windows-msvc \
-    aarch64-pc-windows-msvc \
     x86_64-apple-darwin \
-    aarch64-apple-darwin \
-    aarch64-unknown-linux-gnu
+    aarch64-apple-darwin
 
   echo ""
   ok "Setup complete. Run $(basename "$0") to validate all targets."
@@ -125,9 +125,9 @@ fi
 check_prereqs() {
   local missing=0
 
-  for cmd in lld clang; do
+  for cmd in lld clang musl-gcc; do
     if ! command -v "$cmd" &>/dev/null; then
-      warn "Missing system package: $cmd"
+      warn "Missing: $cmd (install via: sudo apt install lld clang musl-tools)"
       missing=1
     fi
   done
@@ -144,11 +144,6 @@ check_prereqs() {
     fi
   done
 
-  if [ ! -f /usr/include/openssl/opensslv.h ]; then
-    warn "Missing: libssl-dev (install via: sudo apt install libssl-dev)"
-    missing=1
-  fi
-
   if [ $missing -ne 0 ]; then
     echo ""
     warn "Some prerequisites are missing. Run: $(basename "$0") --setup"
@@ -156,32 +151,26 @@ check_prereqs() {
   fi
 }
 
-# ── OpenSSL stub directory ──────────────────────────────────────────────────
-# Cross-compilation needs OpenSSL headers but can't use pkg-config or build
-# vendored OpenSSL for non-native targets. We create a merged directory with
-# all headers (main + platform-specific) and stub .lib files for Windows.
-# Since we only do `cargo check` (no linking), real libraries aren't needed.
+# ── OpenSSL stub directory (Windows target only) ────────────────────────────
+# The Windows target needs OpenSSL headers/libs for client_certificate feature.
+# Since we only do `cargo check` (no linking), stub .lib files suffice.
+# Linux/macOS targets do NOT use OpenSSL.
 setup_openssl_stub() {
   OPENSSL_STUB=$(mktemp -d)
   mkdir -p "$OPENSSL_STUB/include/openssl" "$OPENSSL_STUB/lib"
 
-  # Symlink main OpenSSL headers
-  ln -sf /usr/include/openssl/* "$OPENSSL_STUB/include/openssl/"
+  # Symlink system OpenSSL headers (satisfies openssl-sys build script)
+  if [ -d /usr/include/openssl ]; then
+    ln -sf /usr/include/openssl/* "$OPENSSL_STUB/include/openssl/"
+  fi
 
-  # Copy platform-specific headers (opensslconf.h, configuration.h) that live
-  # in /usr/include/<arch>/openssl/ on Debian/Ubuntu — these override the
-  # symlinks created above
+  # Copy platform-specific headers on Debian/Ubuntu
   local arch_dir="/usr/include/$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo x86_64-linux-gnu)/openssl"
   if [ -d "$arch_dir" ]; then
     cp "$arch_dir"/*.h "$OPENSSL_STUB/include/openssl/" 2>/dev/null || true
   fi
 
-  # Symlink native libraries (for build script detection; not linked by cargo check)
-  local lib_dir="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo x86_64-linux-gnu)"
-  ln -sf "$lib_dir"/libssl.* "$OPENSSL_STUB/lib/" 2>/dev/null || true
-  ln -sf "$lib_dir"/libcrypto.* "$OPENSSL_STUB/lib/" 2>/dev/null || true
-
-  # Create empty .lib stubs for Windows targets (cargo check won't link)
+  # Create empty .lib stubs for Windows (cargo check won't link)
   touch "$OPENSSL_STUB/lib/libssl.lib" "$OPENSSL_STUB/lib/libcrypto.lib"
   touch "$OPENSSL_STUB/lib/ssl.lib" "$OPENSSL_STUB/lib/crypto.lib"
 
@@ -203,17 +192,14 @@ run_native() {
 
 run_zigbuild() {
   local triple=$1
-  # cargo-zigbuild check: zig provides the C cross-compiler for build scripts,
-  # cargo check type-checks Rust code without linking
-  OPENSSL_NO_VENDOR=1 OPENSSL_DIR="$OPENSSL_STUB" \
-    cargo-zigbuild check --target "$triple" 2>&1
+  # cargo-zigbuild check: zig provides the C cross-compiler for build scripts
+  cargo-zigbuild check --target "$triple" 2>&1
 }
 
 run_xwin() {
   local triple=$1
-  # cargo xwin check: xwin provides Windows SDK, OPENSSL_NO_VENDOR skips the
-  # vendored OpenSSL build (which fails because Linux Perl can't configure
-  # OpenSSL for Windows), and the stub dir satisfies the build script
+  # cargo xwin check: xwin provides Windows SDK; OpenSSL stub satisfies
+  # the openssl-sys build script for the client_certificate feature
   OPENSSL_NO_VENDOR=1 OPENSSL_DIR="$OPENSSL_STUB" \
     cargo xwin check --target "$triple" 2>&1
 }

@@ -1,0 +1,10 @@
+# Cargo configuration for fabio
+#
+# Linux builds target musl for fully static binaries (zero runtime dependencies).
+# Requires: musl-tools (apt install musl-tools)
+
+[target.x86_64-unknown-linux-musl]
+linker = "musl-gcc"
+
+[target.aarch64-unknown-linux-musl]
+linker = "aarch64-linux-gnu-musl-gcc"

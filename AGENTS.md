@@ -446,7 +446,8 @@ Automated: `./scripts/release.sh <version>` handles all steps end-to-end.
 - Cross-workspace ops use `--source-workspace`/`--dest-workspace` with `visible_alias` short forms
 - **CLI flag conventions**: `--workspace` always has `-w` shorthand and `env = "FABIO_WORKSPACE"`; `--capacity-id` always has `env = "FABIO_CAPACITY"`; cross-workspace flags (`--dest-workspace`, `--source-workspace`) are `long`-only (no env, no short). `semantic-model clone` uses `--target-workspace` with `visible_alias = "dest-workspace"` for backward compat. All `run` commands support `--wait`/`--timeout`/`--cancel-on-timeout` for LRO polling.
 - Auth relies on a multi-source credential chain: fabio cache (device code, browser PKCE, or service principal), environment variables, managed identity, Azure CLI, Azure Developer CLI
-- `azure_identity`/`azure_core` with `default-features = false` (no OpenSSL dependency on Linux/macOS; OpenSSL for certificate auth via `client_certificate` feature)
+- `azure_identity`/`azure_core` with `default-features = false` (no OpenSSL on Linux/macOS); `client_certificate` feature Windows-only (vendored OpenSSL)
+- **Fully static Linux binaries** — Built with musl (`x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`); zero runtime library dependencies; runs on any Linux kernel 2.6.39+; Docker image uses `FROM scratch`
 - **Windows-first compatibility** — Token cache encrypted with DPAPI (`CryptProtectData`, user scope); WAM broker SSO via `--wam` flag
 - `unsafe_code = "forbid"` in lints
 - **KQL Queryset definition format**: Uses `RealTimeQueryset.json` (NOT `RawQueryset.kql`). JSON structure: `{"queryset":{"version":"1.0.0","dataSources":[{"id","clusterUri","type","databaseName"}],"tabs":[{"id","content","title","dataSourceId"}]}}`. The `content` field holds the KQL query text with `\n` for newlines.
@@ -531,19 +532,19 @@ ghcr.io/iemejia/fabio:0.40         # major.minor
 
 Multi-arch manifest: `linux/amd64` + `linux/arm64`.
 
-**Dockerfile** (root): Multi-stage build — compiles release binary in Ubuntu builder stage, copies to minimal runtime image (~52MB) with only `ca-certificates`.
+**Dockerfile** (root): Multi-stage build — compiles in Alpine (native musl) builder stage, copies to `FROM scratch` runtime with only CA certs (~8MB). Binary is fully static (zero runtime dependencies).
 
 ### Devcontainer
 
 Located in `.devcontainer/` for VS Code and GitHub Codespaces. Provides the full development environment:
 
-**System packages** (in Dockerfile): `build-essential`, `pkg-config`, `libssl-dev`, `lld`, `clang`, `zig 0.16.0`
+**System packages** (in Dockerfile): `build-essential`, `pkg-config`, `libssl-dev`, `musl-tools`, `lld`, `clang`, `zig 0.16.0`
 
 **Devcontainer features**: Rust (with cross targets), Git, GitHub CLI, Azure CLI
 
 **Cargo tools** (installed via `postCreateCommand`): `git-cliff`, `cargo-zigbuild`, `cargo-xwin`, `cargo-audit`
 
-**Cross-compilation targets** (for `./scripts/cross-check.sh`): `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`
+**Cross-compilation targets** (for `./scripts/cross-check.sh`): `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`
 
 **VS Code extensions**: rust-analyzer, Even Better TOML, CodeLLDB debugger, Dependi (crate version checker)
 
@@ -560,8 +561,8 @@ The release workflow (`.github/workflows/release.yml`) handles tagged version im
 
 ### Relevant Docker Files
 
-- `Dockerfile`: Production multi-stage image (builder + minimal runtime)
-- `.devcontainer/Dockerfile`: Dev environment base image (Ubuntu + system deps + zig)
+- `Dockerfile`: Production multi-stage image (Alpine musl builder + `FROM scratch` runtime)
+- `.devcontainer/Dockerfile`: Dev environment base image (Ubuntu + system deps + musl-tools + zig)
 - `.devcontainer/devcontainer.json`: Features, extensions, cargo tools, cross targets
 - `.github/workflows/docker.yml`: Build validation + GHCR publish workflow
 

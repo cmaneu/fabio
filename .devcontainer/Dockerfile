@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     pkg-config \
     libssl-dev \
+    musl-tools \
     sudo \
     lld \
     clang \
@@ -31,7 +32,8 @@ ENV PATH="/home/ubuntu/.cargo/bin:${PATH}"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
     --default-toolchain stable \
     --component rustfmt clippy \
-    --target aarch64-unknown-linux-gnu \
+    --target x86_64-unknown-linux-musl \
+           aarch64-unknown-linux-musl \
            x86_64-apple-darwin \
            aarch64-apple-darwin \
            x86_64-pc-windows-msvc
