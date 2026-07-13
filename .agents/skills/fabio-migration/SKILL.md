@@ -103,6 +103,15 @@ Deploy item definitions from a local directory to a workspace
 - Do NOT decommission source systems until parity validation passes.
 - Deploy migrated items with 'deploy plan' (dry-run) reviewed before 'deploy apply'.
 
+## Shared references
+Cross-cutting operational guidance (the "common" layer) — consult the relevant topic before non-trivial work:
+
+| Reference | Covers |
+|---|---|
+| `fabio context best-practices migration-api-shims` | Translation table for porting Synapse, Databricks, and HDInsight code to Fabric: utility APIs (mssparkutils/dbutils -> notebookutils), storage paths (DBFS/WASB/ADLS -> OneLake), catalogs, and orchestration. |
+| `fabio context best-practices fabric-cicd-migration` | Guide for teams migrating from Microsoft's fabric-cicd Python library to fabio's deploy commands. Shows the equivalent config mappings, parameter format translation, and additional capabilities available in fabio. |
+| `fabio context best-practices variable-libraries` | Variable libraries are Microsoft's strategic Fabric capability for managing environment-specific settings across dev/test/prod. They store parameterized values (connection strings, paths, IDs) that items read at runtime, eliminating hardcoded environment references from item definitions. |
+
 ## See also
 - fabio context persona migration-engineer
 - fabio context best-practices migration-api-shims

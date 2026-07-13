@@ -45,6 +45,7 @@
     {"symptom": "list-tables shows no rows after an ETL run", "fix": "Confirm the notebook/job actually wrote Delta tables and completed (use notebook run --wait)."},
     {"symptom": "move-file returns 403 across items", "fix": "Atomic rename only works within the same lakehouse; across items fabio falls back to copy+delete automatically."}
   ],
+  "shared_references": ["throttling", "pagination", "lro", "shortcuts", "lakehouse-mlv"],
   "see_also": [
     "fabio context persona data-engineer",
     "fabio context workflow lakehouse-etl",

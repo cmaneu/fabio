@@ -45,6 +45,7 @@
     {"symptom": "bulk strategy fails on a Git-connected workspace", "fix": "Bulk import requires no Git integration; use --strategy default."},
     {"symptom": "Connections resolve to TODO in params", "fix": "Run deploy init-params --resolve-connections and fill in the correct connection IDs before apply."}
   ],
+  "shared_references": ["cicd-lifecycle", "deploy-parameters", "variable-libraries", "fabric-cicd-migration", "lro"],
   "see_also": [
     "fabio context persona migration-engineer",
     "fabio context workflow cicd-deploy",

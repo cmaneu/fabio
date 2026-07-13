@@ -154,6 +154,15 @@ Manage warehouse snapshots
 - queries-kill terminates a running session (KILL) — confirm the session id and impact with the user.
 - DDL/DML via query (DROP/DELETE/TRUNCATE) is executed for real — use 'plan' to inspect without executing, and confirm destructive statements.
 
+## Shared references
+Cross-cutting operational guidance (the "common" layer) — consult the relevant topic before non-trivial work:
+
+| Reference | Covers |
+|---|---|
+| `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
+| `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
+| `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |
+
 ## See also
 - fabio context persona data-engineer
 - fabio context disambiguate sql-endpoint

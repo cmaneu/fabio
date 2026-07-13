@@ -126,6 +126,48 @@ fn render_troubleshooting(family_value: &Value) -> String {
     out
 }
 
+/// Look up a best-practice topic's summary from the embedded best-practices data.
+/// Returns `None` if the topic does not exist (used by drift/validation tests).
+fn best_practice_summary(topic: &str) -> Option<String> {
+    let normalized = topic.to_lowercase().replace(['-', '_'], "");
+    super::best_practices::entries()
+        .iter()
+        .find(|(name, _)| name.to_lowercase().replace(['-', '_'], "") == normalized)
+        .and_then(|(_, content)| serde_json::from_str::<Value>(content).ok())
+        .and_then(|v| {
+            v.get("summary")
+                .or_else(|| v.get("title"))
+                .and_then(Value::as_str)
+                .map(String::from)
+        })
+}
+
+/// Render the "## Shared references" section — the cross-cutting "common" layer.
+/// Each entry links to a `context best-practices` topic; the "Covers" column is
+/// pulled from that topic's own summary, so it stays drift-free.
+fn render_shared_references(family_value: &Value) -> String {
+    let Some(topics) = family_value
+        .get("shared_references")
+        .and_then(Value::as_array)
+        .filter(|a| !a.is_empty())
+    else {
+        return String::new();
+    };
+    let mut out = String::from(
+        "## Shared references\nCross-cutting operational guidance (the \"common\" layer) — consult the relevant topic before non-trivial work:\n\n| Reference | Covers |\n|---|---|\n",
+    );
+    for topic in topics.iter().filter_map(Value::as_str) {
+        let summary = best_practice_summary(topic).unwrap_or_default();
+        let _ = writeln!(
+            out,
+            "| `fabio context best-practices {topic}` | {} |",
+            escape_cell(&summary)
+        );
+    }
+    out.push('\n');
+    out
+}
+
 /// Generate the full SKILL.md Markdown for one sub-skill family.
 pub(super) fn generate_markdown(family_value: &Value, commands: &Value) -> String {
     let family = family_value
@@ -204,6 +246,8 @@ pub(super) fn generate_markdown(family_value: &Value, commands: &Value) -> Strin
         md.push('\n');
     }
 
+    md.push_str(&render_shared_references(family_value));
+
     let see_also = render_bullets(family_value.get("see_also"));
     if !see_also.is_empty() {
         md.push_str("## See also\n");
@@ -255,6 +299,21 @@ mod tests {
                     cmds.get(group).is_some(),
                     "skill family '{name}' references unknown command group '{group}'"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn skill_family_shared_references_exist() {
+        for (name, content) in SKILLS {
+            let val: Value = serde_json::from_str(content).unwrap();
+            if let Some(topics) = val.get("shared_references").and_then(Value::as_array) {
+                for topic in topics.iter().filter_map(Value::as_str) {
+                    assert!(
+                        best_practice_summary(topic).is_some(),
+                        "skill family '{name}' references unknown best-practice topic '{topic}'"
+                    );
+                }
             }
         }
     }

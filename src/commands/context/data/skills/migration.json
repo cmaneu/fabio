@@ -44,6 +44,7 @@
     {"symptom": "Table exists in source but not in Fabric", "fix": "Map Unity Catalog / Hive tables to lakehouse Delta tables; Delta is cross-compatible (often just repoint)."},
     {"symptom": "Pipeline references a missing connection", "fix": "Recreate the Linked Service as a Fabric Connection and resolve it via deploy init-params --resolve-connections."}
   ],
+  "shared_references": ["migration-api-shims", "fabric-cicd-migration", "variable-libraries"],
   "see_also": [
     "fabio context persona migration-engineer",
     "fabio context best-practices migration-api-shims",

@@ -202,6 +202,17 @@ List and resolve sensitivity labels (from Microsoft Purview via Graph API)
 - Tenant setting changes are broad — confirm scope before applying.
 - Deleting a workspace is permanent and removes ALL items inside — warn and suggest --dry-run.
 
+## Shared references
+Cross-cutting operational guidance (the "common" layer) — consult the relevant topic before non-trivial work:
+
+| Reference | Covers |
+|---|---|
+| `fabio context best-practices admin-apis` | fabio has both workspace-scoped commands (for regular users) and admin commands (for Fabric administrators). Use admin commands only when explicitly needed. |
+| `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
+| `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
+| `fabio context best-practices sensitivity-labels` | Sensitivity labels from Microsoft Purview Information Protection are now returned inline by the Fabric Items API. Use them for governance automation, AI agent guardrails, and compliance inventory. |
+| `fabio context best-practices tags` | Fabric organizational tags enable multi-dimensional classification of workspaces and items. Tags are returned inline in item/workspace responses and can be used for governance, inventory, and agent-based filtering. |
+
 ## See also
 - fabio context persona fabric-admin
 - fabio context best-practices admin-apis

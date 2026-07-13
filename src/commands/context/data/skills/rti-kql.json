@@ -44,6 +44,7 @@
     {"symptom": "A .create command has no effect via query", "fix": "Management commands must go through kql-database manage, which routes to the mgmt endpoint."},
     {"symptom": "AUTH errors on KQL queries", "fix": "KQL uses a separate token scope ({kusto_uri}/.default); re-run fabio auth login if the cached token lacks it."}
   ],
+  "shared_references": ["throttling", "pagination", "lro"],
   "see_also": [
     "fabio context persona rti-engineer",
     "fabio context workflow rti-pipeline",

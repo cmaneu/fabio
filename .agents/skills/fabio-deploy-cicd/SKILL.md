@@ -126,6 +126,17 @@ Manage variable libraries (shared variables)
 - --delete-orphans removes workspace items not in source; protected data types (Lakehouse/Warehouse/SQLDatabase/Eventhouse/KQLDatabase) require --allow-delete-types.
 - Deploy output includes a 'destructive' boolean — surface it to the human before applying.
 
+## Shared references
+Cross-cutting operational guidance (the "common" layer) — consult the relevant topic before non-trivial work:
+
+| Reference | Covers |
+|---|---|
+| `fabio context best-practices cicd-lifecycle` | End-to-end CI/CD lifecycle for Microsoft Fabric solutions: Git integration, feature workspaces, variable libraries, deployment strategies, auto-binding, data orchestration, and release processes. Covers single-workspace and multi-workspace solutions. |
+| `fabio context best-practices deploy-parameters` | Deploy parameters enable environment-specific value injection (dev/staging/prod) via find-replace, JSONPath key-value, Spark pool, and semantic model binding rules. Values support dynamic variables including $ENV:VAR_NAME for CI/CD secrets injection. |
+| `fabio context best-practices variable-libraries` | Variable libraries are Microsoft's strategic Fabric capability for managing environment-specific settings across dev/test/prod. They store parameterized values (connection strings, paths, IDs) that items read at runtime, eliminating hardcoded environment references from item definitions. |
+| `fabio context best-practices fabric-cicd-migration` | Guide for teams migrating from Microsoft's fabric-cicd Python library to fabio's deploy commands. Shows the equivalent config mappings, parameter format translation, and additional capabilities available in fabio. |
+| `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |
+
 ## See also
 - fabio context persona migration-engineer
 - fabio context workflow cicd-deploy

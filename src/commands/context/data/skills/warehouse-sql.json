@@ -43,6 +43,7 @@
     {"symptom": "'invalid column name login_name'", "fix": "Join sys.dm_exec_sessions for login_name; sys.dm_exec_requests does not have it on Fabric."},
     {"symptom": "FORBIDDEN executing a query", "fix": "You need appropriate workspace role / SQL permissions on the item."}
   ],
+  "shared_references": ["throttling", "pagination", "lro"],
   "see_also": [
     "fabio context persona data-engineer",
     "fabio context disambiguate sql-endpoint",
