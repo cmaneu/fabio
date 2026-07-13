@@ -1,11 +1,11 @@
 ---
 name: fabio-ontology
 description: >-
-  Intent-scoped fabio skill for Fabric knowledge/graph modeling: ontology items (entity/relationship types and bindings), graph models, and graph querysets. Use to define/evolve ontologies and query graphs for agent grounding. fabio can also export a tenant scan as OWL (context tenant --format owl) and import it. Triggers: "ontology", "fabric iq ontology", "knowledge graph", "graph model", "graph query", "entity type", "relationship type", "owl".
+  Intent-scoped fabio skill for Fabric knowledge/graph and digital-twin modeling: ontology items (entity/relationship types and bindings), graph models, graph querysets, and Digital Twin Builder models/flows. Use to define/evolve ontologies, query graphs for agent grounding, and build operational digital twins. fabio can also export a tenant scan as OWL (context tenant --format owl) and import it. Triggers: "ontology", "fabric iq ontology", "knowledge graph", "graph model", "graph query", "entity type", "relationship type", "digital twin", "digital twin builder", "owl".
 license: MIT
 ---
 
-# fabio-ontology — Ontology & Graph — Fabric IQ ontologies, graph models, graph querysets
+# fabio-ontology — Ontology, Graph & Digital Twins — Fabric IQ ontologies, graph models, digital twin builder
 
 > **Generated file — do not edit by hand.** This intent-scoped sub-skill of the `fabio` skill is generated from fabio's command schema plus authored judgment. Regenerate with `cargo test generate_subskills -- --ignored`. For install, auth, output envelope, global flags, and agent-safety rules, see the root `fabio` skill.
 
@@ -14,6 +14,7 @@ license: MIT
 ## When to use
 - Creating/evolving an ontology item (entity types, relationship types, data bindings).
 - Managing graph models and running graph querysets.
+- Modeling IoT/operational digital twins (Digital Twin Builder models and flows).
 - Grounding an agent in a knowledge graph over Fabric data.
 - Importing an OWL schema (e.g. one produced by 'fabio context tenant --format owl').
 
@@ -70,6 +71,32 @@ Manage graph query sets
 | `fabio graph-query-set show` | no | Show details of a graph query set |
 | `fabio graph-query-set update` | yes | Update graph query set properties |
 | `fabio graph-query-set update-definition` | yes | Update the definition of a graph query set |
+
+### fabio digital-twin-builder
+Manage Digital Twin Builder models
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio digital-twin-builder create` | yes | Create a new Digital Twin Builder |
+| `fabio digital-twin-builder delete` | yes | Delete a Digital Twin Builder |
+| `fabio digital-twin-builder get-definition` | no | Get the definition of a Digital Twin Builder |
+| `fabio digital-twin-builder list` | no | List Digital Twin Builders in a workspace |
+| `fabio digital-twin-builder show` | no | Show details of a Digital Twin Builder |
+| `fabio digital-twin-builder update` | yes | Update Digital Twin Builder properties |
+| `fabio digital-twin-builder update-definition` | yes | Update the definition of a Digital Twin Builder |
+
+### fabio digital-twin-builder-flow
+Manage Digital Twin Builder flows
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio digital-twin-builder-flow create` | yes | Create a new Digital Twin Builder flow |
+| `fabio digital-twin-builder-flow delete` | yes | Delete a Digital Twin Builder flow |
+| `fabio digital-twin-builder-flow get-definition` | no | Get the definition of a Digital Twin Builder flow |
+| `fabio digital-twin-builder-flow list` | no | List Digital Twin Builder flows in a workspace |
+| `fabio digital-twin-builder-flow show` | no | Show details of a Digital Twin Builder flow |
+| `fabio digital-twin-builder-flow update` | yes | Update Digital Twin Builder flow properties |
+| `fabio digital-twin-builder-flow update-definition` | yes | Update the definition of a Digital Twin Builder flow |
 
 ## Must / Prefer / Avoid
 ### MUST

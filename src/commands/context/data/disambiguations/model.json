@@ -1,0 +1,47 @@
+{
+  "term": "model",
+  "summary": "Disambiguate 'model' in Fabric: a Semantic Model (BI tabular model queried with DAX) vs an ML Model (data-science model with versions/scoring) vs a Digital Twin Builder model vs a Graph Model. Same word, four different artifacts and command groups.",
+  "aliases": ["model", "the model", "build a model", "create model", "train a model"],
+  "meanings": [
+    {
+      "context": "BI / analytics",
+      "artifact": "Semantic Model (dataset)",
+      "description": "Tabular data model (tables, measures, relationships) queried with DAX; the BI layer. Formerly 'dataset'.",
+      "command_group": "semantic-model",
+      "example_commands": [
+        "fabio semantic-model create --workspace $WS --name Sales --file model.tmdl --connection $SQLEP",
+        "fabio semantic-model query --workspace $WS --id $SM --dax \"EVALUATE Sales\""
+      ]
+    },
+    {
+      "context": "Machine learning / data science",
+      "artifact": "ML Model",
+      "description": "A trained model with versions, serving endpoints, and batch scoring. Managed alongside ML experiments.",
+      "command_group": "ml-model",
+      "example_commands": [
+        "fabio ml-model list --workspace $WS",
+        "fabio ml-model score-version --workspace $WS --id $M --version 3 ..."
+      ]
+    },
+    {
+      "context": "IoT / digital twins",
+      "artifact": "Digital Twin Builder model",
+      "description": "A digital-twin domain model (entities/relationships for IoT/operational twins).",
+      "command_group": "digital-twin-builder",
+      "example_commands": [
+        "fabio digital-twin-builder list --workspace $WS"
+      ]
+    },
+    {
+      "context": "Knowledge graph",
+      "artifact": "Graph Model",
+      "description": "A graph data model for Fabric IQ / graph querying.",
+      "command_group": "graph-model",
+      "example_commands": [
+        "fabio graph-model list --workspace $WS"
+      ]
+    }
+  ],
+  "default_action": "DAX/reporting -> semantic-model. Train/score/versions -> ml-model. IoT twin -> digital-twin-builder. Graph -> graph-model. If unclear, ask whether they mean BI (semantic) or ML (data science).",
+  "related": ["fabio context persona bi-developer", "fabio context persona data-scientist"]
+}

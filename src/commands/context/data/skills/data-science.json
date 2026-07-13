@@ -1,0 +1,53 @@
+{
+  "family": "data-science",
+  "title": "Data Science — ML experiments, models, versions, scoring, anomaly detection",
+  "description": "Intent-scoped fabio skill for Fabric machine learning and data science: ML experiments (runs, metrics), ML models (registry, versions, endpoints, batch scoring), and anomaly detectors. Use to track experiments, register/version/serve models, score data, and configure anomaly detection. Triggers: \"ml model\", \"ml experiment\", \"mlflow\", \"register model\", \"model version\", \"score model\", \"batch scoring\", \"model endpoint\", \"anomaly detection\", \"train model\", \"data science\".",
+  "command_groups": ["ml-experiment", "ml-model", "anomaly-detector"],
+  "when_to_use": [
+    "Creating/listing ML experiments to organize training runs and metrics.",
+    "Registering ML models and managing versions (list-versions, get-version, activate-version, deactivate-version).",
+    "Serving/scoring: get-endpoint/update-endpoint, score and score-version for batch inference.",
+    "Creating and configuring anomaly detectors (get-definition/update-definition)."
+  ],
+  "when_not_to_use": [
+    "Writing the training code itself (notebooks/Spark) -> use fabio-data-engineering.",
+    "The lakehouse feature tables the model reads/writes -> use fabio-lakehouse.",
+    "BI semantic models ('model' in a reporting sense) -> use fabio-bi (see disambiguate model)."
+  ],
+  "must": [
+    "Create/select an ML experiment to track runs before registering a model from the best run.",
+    "Reference a specific model version for reproducible scoring (score-version), not just the active alias.",
+    "Author anomaly-detector logic via its definition (get-definition/update-definition)."
+  ],
+  "prefer": [
+    "Experiment tracking (ml-experiment) over ad-hoc metric logging so runs are comparable.",
+    "Batch scoring via score/score-version over hand-rolled inference loops.",
+    "Runtime introspection (context agent --group ml-model|ml-experiment) for exact flags."
+  ],
+  "avoid": [
+    "Confusing an ML model with a BI semantic model — different groups (see disambiguate model).",
+    "Deactivating all model versions (deactivate-all-versions) without confirming nothing serves from them.",
+    "Scoring against an unpinned version when reproducibility matters."
+  ],
+  "key_gotchas": [
+    "ML models are versioned: a model item holds multiple versions; activate-version sets the serving alias while list-versions/get-version address specific ones.",
+    "Scoring has two forms: score (active version) and score-version (a pinned version); endpoints are managed separately (get-endpoint/update-endpoint).",
+    "Anomaly detectors carry their logic in a definition part (base64) — edit via update-definition, not plain flags."
+  ],
+  "troubleshooting": [
+    {"symptom": "Scoring returns unexpected results after a retrain", "fix": "The active version changed; pin with score-version <id>, or confirm which version is active via list-versions."},
+    {"symptom": "Model endpoint not responding", "fix": "Check get-endpoint; the serving endpoint is managed separately from version activation."},
+    {"symptom": "Runs are hard to compare", "fix": "Group them under an ml-experiment and log metrics per run rather than ad-hoc."},
+    {"symptom": "Anomaly detector changes ignored", "fix": "Edit its definition via update-definition (base64 part); metadata-only update does not change logic."}
+  ],
+  "safety": [
+    "deactivate-all-versions / deactivate-version can take a served model offline — confirm nothing depends on it.",
+    "Deleting an ml-model removes all its versions — irreversible; confirm with the user."
+  ],
+  "shared_references": ["throttling", "pagination", "lro"],
+  "see_also": [
+    "fabio context persona data-scientist",
+    "fabio context disambiguate model",
+    "fabio context workflow lakehouse-etl"
+  ]
+}

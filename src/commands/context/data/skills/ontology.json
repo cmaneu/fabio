@@ -1,11 +1,12 @@
 {
   "family": "ontology",
-  "title": "Ontology & Graph — Fabric IQ ontologies, graph models, graph querysets",
-  "description": "Intent-scoped fabio skill for Fabric knowledge/graph modeling: ontology items (entity/relationship types and bindings), graph models, and graph querysets. Use to define/evolve ontologies and query graphs for agent grounding. fabio can also export a tenant scan as OWL (context tenant --format owl) and import it. Triggers: \"ontology\", \"fabric iq ontology\", \"knowledge graph\", \"graph model\", \"graph query\", \"entity type\", \"relationship type\", \"owl\".",
-  "command_groups": ["ontology", "graph-model", "graph-query-set"],
+  "title": "Ontology, Graph & Digital Twins — Fabric IQ ontologies, graph models, digital twin builder",
+  "description": "Intent-scoped fabio skill for Fabric knowledge/graph and digital-twin modeling: ontology items (entity/relationship types and bindings), graph models, graph querysets, and Digital Twin Builder models/flows. Use to define/evolve ontologies, query graphs for agent grounding, and build operational digital twins. fabio can also export a tenant scan as OWL (context tenant --format owl) and import it. Triggers: \"ontology\", \"fabric iq ontology\", \"knowledge graph\", \"graph model\", \"graph query\", \"entity type\", \"relationship type\", \"digital twin\", \"digital twin builder\", \"owl\".",
+  "command_groups": ["ontology", "graph-model", "graph-query-set", "digital-twin-builder", "digital-twin-builder-flow"],
   "when_to_use": [
     "Creating/evolving an ontology item (entity types, relationship types, data bindings).",
     "Managing graph models and running graph querysets.",
+    "Modeling IoT/operational digital twins (Digital Twin Builder models and flows).",
     "Grounding an agent in a knowledge graph over Fabric data.",
     "Importing an OWL schema (e.g. one produced by 'fabio context tenant --format owl')."
   ],

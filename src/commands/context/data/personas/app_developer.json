@@ -8,6 +8,7 @@
     {"request_type": "App backend", "command_groups": ["app-backend"], "notes": "app-backend (aliases: rayfin-app, data-app) backs Power Apps / data apps."},
     {"request_type": "Transactional store", "command_groups": ["sql-database", "cosmos-db-database"], "notes": "SQL Database for relational OLTP (F4+); Cosmos DB for NoSQL."},
     {"request_type": "AI data agent (NL Q&A over data)", "command_groups": ["data-agent"], "workflows": ["data-agent-setup"], "notes": "Create, configure datasources/few-shots, publish, and query a Data Agent."},
+    {"request_type": "AI operations agent", "command_groups": ["operations-agent"], "notes": "AI-powered operations agents (author logic via their definition)."},
     {"request_type": "Organizational app / distribution", "command_groups": ["org-app", "org-app-audience"], "notes": "Package and share items as an Organizational App with audiences."}
   ],
   "decision_gates": [

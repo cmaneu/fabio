@@ -915,3 +915,56 @@ fn context_list_has_full_persona_and_skill_coverage() {
         );
     }
 }
+
+#[test]
+fn data_scientist_persona_routes_ml_groups() {
+    let assert = fabio()
+        .args(["context", "persona", "data-scientist"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("ml-model") && stdout.contains("ml-experiment"),
+        "data-scientist persona should route ML command groups"
+    );
+}
+
+#[test]
+fn disambiguate_mirroring_distinguishes_replication_from_shortcut() {
+    let assert = fabio()
+        .args(["context", "disambiguate", "mirroring"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let groups: Vec<&str> = json["data"]["meanings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["command_group"].as_str().unwrap())
+        .collect();
+    assert!(
+        groups.contains(&"mirrored-database") && groups.contains(&"lakehouse"),
+        "mirroring disambiguation should distinguish replication (mirrored-database) from shortcut (lakehouse)"
+    );
+}
+
+#[test]
+fn disambiguate_model_distinguishes_ml_from_semantic() {
+    let assert = fabio()
+        .args(["context", "disambiguate", "model"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let groups: Vec<&str> = json["data"]["meanings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["command_group"].as_str().unwrap())
+        .collect();
+    assert!(
+        groups.contains(&"ml-model") && groups.contains(&"semantic-model"),
+        "model disambiguation should distinguish ml-model from semantic-model"
+    );
+}

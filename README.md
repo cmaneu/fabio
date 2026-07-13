@@ -114,7 +114,7 @@ git clone https://github.com/iemejia/fabio ~/.agents/skills/fabio-repo
 # Skills are at ~/.agents/skills/fabio-repo/.agents/skills/fabio/
 ```
 
-The root `fabio` skill covers cross-cutting concerns (install, auth, output envelope, safety). For progressive disclosure, fabio also ships ten **intent-scoped sub-skills** — `fabio-lakehouse`, `fabio-warehouse-sql`, `fabio-data-engineering`, `fabio-dataflows`, `fabio-rti-kql`, `fabio-bi`, `fabio-ontology`, `fabio-deploy-cicd`, `fabio-admin`, `fabio-migration` — so an agent can load only the workload it needs. Each pairs authored judgment (when to use, gotchas, safety, routing) with a command index generated from fabio's own schema, so they never drift from the CLI.
+The root `fabio` skill covers cross-cutting concerns (install, auth, output envelope, safety). For progressive disclosure, fabio also ships twelve **intent-scoped sub-skills** — `fabio-lakehouse`, `fabio-warehouse-sql`, `fabio-data-engineering`, `fabio-dataflows`, `fabio-data-science`, `fabio-mirroring`, `fabio-rti-kql`, `fabio-bi`, `fabio-ontology`, `fabio-deploy-cicd`, `fabio-admin`, `fabio-migration` — so an agent can load only the workload it needs. Each pairs authored judgment (when to use, gotchas, safety, routing) with a command index generated from fabio's own schema, so they never drift from the CLI.
 
 **Docker** (multi-arch: amd64 + arm64):
 

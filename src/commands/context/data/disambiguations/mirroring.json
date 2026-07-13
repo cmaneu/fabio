@@ -1,0 +1,47 @@
+{
+  "term": "mirroring",
+  "summary": "Disambiguate how to bring external/other data into Fabric: mirroring (continuous replication) vs shortcut (in-place reference, no copy) vs copy-job (one-time move) vs dataflow (low-code transform). They look similar but have very different semantics.",
+  "aliases": ["mirror", "mirroring", "replicate", "replication", "bring data in", "connect external data"],
+  "meanings": [
+    {
+      "context": "Continuous replication of an external DB",
+      "artifact": "Mirrored Database / Catalog (Snowflake, Databricks UC, Cosmos, SQL)",
+      "description": "Continuously replicates a source into OneLake Delta; read-only in Fabric, queried via the SQL analytics endpoint. Use when you want a live, queryable copy.",
+      "command_group": "mirrored-database",
+      "example_commands": [
+        "fabio mirrored-database create --workspace $WS --name Repl --content '{...}'",
+        "fabio mirrored-database start --workspace $WS --id $DB",
+        "fabio mirrored-database status --workspace $WS --id $DB"
+      ]
+    },
+    {
+      "context": "Reference data in place (no copy)",
+      "artifact": "OneLake Shortcut",
+      "description": "Points at external storage (ADLS, S3, Dataverse, OneLake) without copying. Use when you want to query in place and avoid duplication.",
+      "command_group": "lakehouse",
+      "example_commands": [
+        "fabio shortcut create --workspace $WS --id $LH --path Files/ext --name data --target adlsgen2 --location ... --key ..."
+      ]
+    },
+    {
+      "context": "One-time / scheduled copy between items",
+      "artifact": "Copy Job",
+      "description": "Moves data once (or on a schedule) between Fabric items. Use for a bulk move, not continuous sync.",
+      "command_group": "copy-job",
+      "example_commands": [
+        "fabio copy-job create --workspace $WS --name Move --content '{...}'"
+      ]
+    },
+    {
+      "context": "Low-code transform while ingesting",
+      "artifact": "Dataflow Gen2",
+      "description": "Power Query ETL that transforms as it loads. Use when the data needs shaping, not just replication.",
+      "command_group": "dataflow",
+      "example_commands": [
+        "fabio dataflow create --workspace $WS --name Prep --content '{...}'"
+      ]
+    }
+  ],
+  "default_action": "Live queryable copy of an external DB -> mirroring. Reference in place -> shortcut. One-time move -> copy-job. Transform while ingesting -> dataflow.",
+  "related": ["fabio context persona data-engineer", "fabio context disambiguate sql-endpoint"]
+}

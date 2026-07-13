@@ -70,11 +70,11 @@ fabio context best-practices <topic>
 
 # Orchestrator personas — which command groups + workflows to use for a role (start here for a broad task)
 fabio context persona <name>
-# Available: data-engineer, app-developer, bi-developer, rti-engineer, migration-engineer, fabric-admin
+# Available: data-engineer, data-scientist, app-developer, bi-developer, rti-engineer, migration-engineer, fabric-admin
 
 # Disambiguate an overloaded Fabric term — routes to the right artifact + command group
 fabio context disambiguate <term>
-# Available: materialized-view, dataflow, semantic-model, sql-endpoint
+# Available: materialized-view, dataflow, semantic-model, sql-endpoint, mirroring, model
 
 # Item definition format (for create/update-definition)
 fabio context schema <type>
@@ -126,9 +126,11 @@ This root skill covers cross-cutting concerns (install, auth, output envelope, g
 | `fabio-warehouse-sql` | Warehouse / SQL Database / SQL endpoint — T-SQL, plans, insights, statistics |
 | `fabio-data-engineering` | Notebooks, Spark, Spark job definitions, environments, pipelines, copy jobs, scheduling |
 | `fabio-dataflows` | Dataflows Gen2 (Power Query low-code ETL) and datamarts |
+| `fabio-data-science` | ML experiments, models (versions, endpoints, scoring), anomaly detectors |
+| `fabio-mirroring` | Mirror Snowflake / Databricks / Cosmos / SQL into OneLake (real-time replication) |
 | `fabio-rti-kql` | Eventhouse, KQL, Eventstream, Activator (Real-Time Intelligence) |
 | `fabio-bi` | Semantic models (datasets), reports, paginated reports, dashboards, DAX, Direct Lake |
-| `fabio-ontology` | Fabric IQ ontologies, graph models, graph querysets, OWL import |
+| `fabio-ontology` | Fabric IQ ontologies, graph models/querysets, digital twins, OWL import |
 | `fabio-deploy-cicd` | Stateless content-hash deploy, Git, deployment pipelines, variable libraries |
 | `fabio-admin` | Capacity, tenant governance, domains, gateways, connections, labels |
 | `fabio-migration` | Port Synapse / Databricks / HDInsight / ADF to Fabric |
