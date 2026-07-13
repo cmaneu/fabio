@@ -162,12 +162,33 @@ Manage event schema sets (real-time intelligence)
 | `fabio event-schema-set update` | yes | Update event schema set properties |
 | `fabio event-schema-set update-definition` | yes | Update the definition of a event schema set |
 
+## Must / Prefer / Avoid
+### MUST
+- Create the eventhouse first; kql-database create requires --eventhouse-id.
+- Discover schema with kql-database list-entities before querying unknown tables.
+- Use kql-database manage for .create/.create-or-alter management commands (not query).
+
+### PREFER
+- rti nl-to-kql to draft a query, then verify the generated KQL before running it.
+- eventstream for continuous ingestion over repeated manual batch ingest.
+- list-entities / describe for schema discovery over guessing table/column names.
+
+### AVOID
+- Confusing a KQL materialized view with a lakehouse Materialized Lake View (see context disambiguate materialized-view).
+- Creating reflex actions that alert/mutate without human confirmation of the rule.
+- Assuming KQL uses the standard Fabric scope (it uses {kusto_uri}/.default; fabio handles it).
+
 ## Key gotchas
-- kql-database create requires --eventhouse-id (create the eventhouse first).
-- KQL queries use a separate auth scope: {kusto_uri}/.default, not the standard Fabric scope (fabio handles this).
-- kql-database manage runs .create / .create-or-alter management commands (routed to the mgmt endpoint).
-- KQL Queryset definition uses RealTimeQueryset.json (not RawQueryset.kql).
-- Discover schema with list-entities before querying unknown tables.
+- KQL Queryset definitions use RealTimeQueryset.json (NOT RawQueryset.kql).
+- KQL queries use a separate auth scope ({kusto_uri}/.default), not the standard Fabric scope (fabio handles this).
+
+## Troubleshooting
+| Symptom | Fix |
+|---|---|
+| kql-database create fails | Pass --eventhouse-id of an existing eventhouse; the KQL DB must live inside one. |
+| Query returns 'table not found' | Run kql-database list-entities to confirm the exact table name and casing. |
+| A .create command has no effect via query | Management commands must go through kql-database manage, which routes to the mgmt endpoint. |
+| AUTH errors on KQL queries | KQL uses a separate token scope ({kusto_uri}/.default); re-run fabio auth login if the cached token lacks it. |
 
 ## Safety
 - Reflex/activator triggers can take automated actions — confirm the rule, threshold, and action with the user before creating.

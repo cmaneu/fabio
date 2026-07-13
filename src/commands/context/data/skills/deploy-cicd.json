@@ -16,15 +16,34 @@
   ],
   "key_gotchas": [
     "Deploy is STATELESS — content-hash diffing against the live workspace, no state file. --workspace accepts a display name or GUID.",
-    "Always 'deploy plan' (dry-run) and review before 'deploy apply'.",
-    "Source format is fabric Git Integration '.platform' directories (100% fabric-cicd compatible).",
-    "--strategy default (per-item, content-hash skip) | bulk (fast initial deploy to empty workspace) | sequential (debugging).",
-    "Name value sets to match --env values — 'deploy apply --env prod' auto-activates the 'prod' value set as a post-hook."
+    "The .platform part IS sent (enables metadata propagation) but is EXCLUDED from the content hash, so idempotent skip still works.",
+    "--strategy: default (per-item, content-hash skip) | bulk (fast initial deploy to an empty, non-Git workspace) | sequential (debugging)."
   ],
   "safety": [
     "--force-all overwrites ALL matched items regardless of content changes — irreversible; run 'deploy plan' first.",
     "--delete-orphans removes workspace items not in source; protected data types (Lakehouse/Warehouse/SQLDatabase/Eventhouse/KQLDatabase) require --allow-delete-types.",
     "Deploy output includes a 'destructive' boolean — surface it to the human before applying."
+  ],
+  "must": [
+    "Run 'deploy plan' (dry-run) and review the changeset before 'deploy apply'.",
+    "Use the fabric Git Integration '.platform' directory format as the source.",
+    "Name variable-library value sets to match --env values so they auto-activate on apply."
+  ],
+  "prefer": [
+    "--strategy default (per-item, content-hash skip) for iterative CI/CD; --strategy bulk only for large initial deploys to an empty workspace.",
+    "deploy export + Git for snapshotting a workspace over ad-hoc manual recreation.",
+    "deploy validate (offline, no API calls) as a fast pre-flight before plan/apply."
+  ],
+  "avoid": [
+    "deploy apply --force-all without a reviewed plan (it overwrites everything).",
+    "--strategy bulk on a Git-connected workspace (not supported; use default).",
+    "--delete-orphans on protected data types without --allow-delete-types and explicit user approval."
+  ],
+  "troubleshooting": [
+    {"symptom": "Plan shows a rename as delete+create", "fix": "Ensure the item has a stable logicalId in its .platform file so rename detection matches it."},
+    {"symptom": "Re-running apply keeps changing the same items", "fix": "The .platform part is excluded from the content hash; a real convergent deploy should show 0 changes — check for portal edits."},
+    {"symptom": "bulk strategy fails on a Git-connected workspace", "fix": "Bulk import requires no Git integration; use --strategy default."},
+    {"symptom": "Connections resolve to TODO in params", "fix": "Run deploy init-params --resolve-connections and fill in the correct connection IDs before apply."}
   ],
   "see_also": [
     "fabio context persona migration-engineer",

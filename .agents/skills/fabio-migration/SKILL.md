@@ -70,12 +70,33 @@ Deploy item definitions from a local directory to a workspace
 | `fabio deploy plan` | no | Preview what would be deployed (create/update/delete/skip) |
 | `fabio deploy validate` | no | Validate source directory locally (no API calls). Checks .platform files, item types, duplicate names/logical IDs, cross-references, and parameters |
 
+## Must / Prefer / Avoid
+### MUST
+- Translate utility APIs (mssparkutils/dbutils -> notebookutils) and storage paths (DBFS/WASB/ADLS/S3 -> OneLake).
+- Map Linked Services -> Connections and global parameters -> Variable Library value sets.
+- Validate parity (row counts, schema, sample aggregates) before cutover.
+
+### PREFER
+- workspace clone / deploy export for bulk moves over recreating items by hand.
+- Lakehouse shortcuts to keep large source data in place instead of re-copying everything.
+- Variable libraries for environment-specific config instead of hardcoded IDs.
+
+### AVOID
+- Decommissioning the source before Fabric parity is validated.
+- One-shot 'deploy apply --force-all' without a reviewed plan.
+- Trying to migrate Spark pool/cluster sizing (Fabric manages compute per capacity).
+
 ## Key gotchas
-- mssparkutils.* / dbutils.* -> notebookutils.* (same method surface).
-- DBFS / WASB / ADLS Gen1/Gen2 / S3 paths -> OneLake abfss paths, or a Lakehouse shortcut to keep data in place.
-- Unity Catalog / Hive metastore tables -> Lakehouse Delta tables (Delta is cross-compatible — often re-point rather than re-write).
-- Linked Services -> Fabric Connections; ADF global parameters -> Variable Library value sets; Oozie/ADF triggers -> job schedules.
-- Spark pool / cluster sizing does NOT migrate — Fabric manages compute per capacity.
+- Delta tables are cross-compatible between platforms — you can often repoint to existing Parquet/Delta rather than re-writing data.
+- %run magic and job-cluster configs have no direct equivalent; refactor shared code and let Fabric manage compute.
+
+## Troubleshooting
+| Symptom | Fix |
+|---|---|
+| Notebook fails: 'mssparkutils'/'dbutils' not defined | Replace with notebookutils.* (see context best-practices migration-api-shims). |
+| Path not found (dbfs:/, wasb://, abfss://...core.windows.net) | Repoint to OneLake abfss paths or create a Lakehouse shortcut to the source. |
+| Table exists in source but not in Fabric | Map Unity Catalog / Hive tables to lakehouse Delta tables; Delta is cross-compatible (often just repoint). |
+| Pipeline references a missing connection | Recreate the Linked Service as a Fabric Connection and resolve it via deploy init-params --resolve-connections. |
 
 ## Safety
 - STOP after assessment: present feature-parity gaps and get user sign-off on the target architecture before writing code.

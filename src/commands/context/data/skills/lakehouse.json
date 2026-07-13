@@ -16,16 +16,34 @@
     "Report/semantic model over the lakehouse -> use the bi-developer persona."
   ],
   "key_gotchas": [
-    "load-table requires PascalCase enum values: --mode Overwrite (not overwrite), --format Csv/Parquet (not csv).",
-    "load-table ONLY supports Csv and Parquet — JSON is NOT supported (convert first).",
-    "Two-step: upload puts the file in Files/, THEN load-table reads from there. Or use upload-table for one step.",
-    "move-file within the same lakehouse is an atomic O(1) metadata rename; cross-item falls back to copy+delete.",
-    "Table file listing must list from the root to get real item-id-prefixed paths."
+    "Table file listing lists from the root to get real item-id-prefixed paths.",
+    "move-file within a lakehouse is an atomic O(1) rename; cross-item falls back to copy+delete automatically."
   ],
   "safety": [
     "load-table --mode Overwrite replaces the whole table — confirm with the user.",
     "sync --delete removes destination files not present in source — preview without --delete first.",
     "Deleting a lakehouse is a protected, data-bearing operation — never do it without explicit user approval."
+  ],
+  "must": [
+    "Use PascalCase for --mode (Overwrite/Append) and --format (Csv/Parquet).",
+    "Upload to Files/ before load-table, or use upload-table for the combined one-step path.",
+    "Convert JSON to CSV/Parquet before load-table (JSON is not a supported load format)."
+  ],
+  "prefer": [
+    "lakehouse sync (ETag-based, rename-aware) over manual re-upload loops.",
+    "move-file within a lakehouse (atomic O(1) rename) over copy+delete.",
+    "Runtime introspection (context agent --group lakehouse, context describe) over guessing flags."
+  ],
+  "avoid": [
+    "load-table with JSON format (unsupported).",
+    "Lowercase enum values like --mode overwrite or --format csv (silently rejected by the API).",
+    "Deleting Lakehouse/Warehouse/other data-bearing items without explicit user approval."
+  ],
+  "troubleshooting": [
+    {"symptom": "load-table fails or ignores the file", "fix": "Check --mode/--format are PascalCase (Overwrite, Csv) and the format is Csv or Parquet, not JSON."},
+    {"symptom": "FORBIDDEN when creating/deleting", "fix": "You need at least Member role on the workspace; Delete requires Member+."},
+    {"symptom": "list-tables shows no rows after an ETL run", "fix": "Confirm the notebook/job actually wrote Delta tables and completed (use notebook run --wait)."},
+    {"symptom": "move-file returns 403 across items", "fix": "Atomic rename only works within the same lakehouse; across items fabio falls back to copy+delete automatically."}
   ],
   "see_also": [
     "fabio context persona data-engineer",

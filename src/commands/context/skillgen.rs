@@ -78,6 +78,54 @@ fn render_command_index(command_groups: &[&str], commands: &Value) -> String {
     out
 }
 
+/// Render one subsection (MUST / PREFER / AVOID) into `md` if its array is present.
+fn render_triad_subsection(md: &mut String, family_value: &Value, key: &str, heading: &str) {
+    let bullets = render_bullets(family_value.get(key));
+    if !bullets.is_empty() {
+        let _ = writeln!(md, "### {heading}");
+        md.push_str(&bullets);
+        md.push('\n');
+    }
+}
+
+/// Render the "## Must / Prefer / Avoid" behavioral-guidance section, if present.
+fn render_must_prefer_avoid(family_value: &Value) -> String {
+    let has_any = ["must", "prefer", "avoid"].iter().any(|k| {
+        family_value
+            .get(*k)
+            .and_then(Value::as_array)
+            .is_some_and(|a| !a.is_empty())
+    });
+    if !has_any {
+        return String::new();
+    }
+    let mut out = String::from("## Must / Prefer / Avoid\n");
+    render_triad_subsection(&mut out, family_value, "must", "MUST");
+    render_triad_subsection(&mut out, family_value, "prefer", "PREFER");
+    render_triad_subsection(&mut out, family_value, "avoid", "AVOID");
+    out
+}
+
+/// Render the "## Troubleshooting" symptom -> fix table from an array of
+/// `{symptom, fix}` objects.
+fn render_troubleshooting(family_value: &Value) -> String {
+    let Some(rows) = family_value
+        .get("troubleshooting")
+        .and_then(Value::as_array)
+        .filter(|a| !a.is_empty())
+    else {
+        return String::new();
+    };
+    let mut out = String::from("## Troubleshooting\n| Symptom | Fix |\n|---|---|\n");
+    for row in rows {
+        let symptom = row.get("symptom").and_then(Value::as_str).unwrap_or("");
+        let fix = row.get("fix").and_then(Value::as_str).unwrap_or("");
+        let _ = writeln!(out, "| {} | {} |", escape_cell(symptom), escape_cell(fix));
+    }
+    out.push('\n');
+    out
+}
+
 /// Generate the full SKILL.md Markdown for one sub-skill family.
 pub(super) fn generate_markdown(family_value: &Value, commands: &Value) -> String {
     let family = family_value
@@ -138,12 +186,16 @@ pub(super) fn generate_markdown(family_value: &Value, commands: &Value) -> Strin
 
     md.push_str(&render_command_index(&command_groups, commands));
 
+    md.push_str(&render_must_prefer_avoid(family_value));
+
     let gotchas = render_bullets(family_value.get("key_gotchas"));
     if !gotchas.is_empty() {
         md.push_str("## Key gotchas\n");
         md.push_str(&gotchas);
         md.push('\n');
     }
+
+    md.push_str(&render_troubleshooting(family_value));
 
     let safety = render_bullets(family_value.get("safety"));
     if !safety.is_empty() {
@@ -220,6 +272,10 @@ mod tests {
         assert!(md.contains("## Command index"));
         assert!(md.contains("`fabio lakehouse create`"));
         assert!(md.contains("## When NOT to use"));
+        assert!(md.contains("## Must / Prefer / Avoid"));
+        assert!(md.contains("### MUST"));
+        assert!(md.contains("## Troubleshooting"));
+        assert!(md.contains("| Symptom | Fix |"));
     }
 
     /// Drift detection: committed sub-skill files must match generator output.

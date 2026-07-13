@@ -170,12 +170,32 @@ List and resolve sensitivity labels (from Microsoft Purview via Graph API)
 |---|---|---|
 | `fabio label list` | no | List available sensitivity labels (from Microsoft Purview via Graph API) |
 
+## Must / Prefer / Avoid
+### MUST
+- Call tenant-scoped commands WITHOUT --workspace (capacity, connection, gateway, domain, deployment-pipeline, admin).
+- Have a Fabric admin role before using admin commands (they FORBIDDEN otherwise).
+
+### PREFER
+- Batch operations (workspace batch-assign-roles, domain batch-assign) over N single calls to reduce throttling.
+- list APIs + client-side filter over repeated individual show calls.
+- --dry-run before any destructive tenant change.
+
+### AVOID
+- Passing --workspace to tenant-scoped commands (they operate at tenant level).
+- Suspending capacity during business hours without warning users about interrupted jobs.
+- Bulk tenant-setting changes without confirming the scope with the user.
+
 ## Key gotchas
-- Tenant-scoped commands have NO --workspace flag: capacity, connection, gateway, domain, deployment-pipeline, admin.
-- Capacity suspend/resume/create/delete use the ARM scope (management.azure.com), not the Fabric scope.
-- admin commands require a Fabric admin role (FORBIDDEN otherwise).
+- capacity suspend/resume/create/delete use the ARM scope (management.azure.com), not the Fabric scope.
 - label list resolves UUIDs to names via Microsoft Graph (needs M365 E5 + InformationProtection.Read).
-- Prefer batch operations (workspace batch-assign-roles, domain batch-assign) to reduce throttling.
+
+## Troubleshooting
+| Symptom | Fix |
+|---|---|
+| admin commands return FORBIDDEN | You need the Fabric administrator role; these are tenant-scoped operations. |
+| Operations fail with CAPACITY_INACTIVE | Resume the capacity (fabio capacity resume --id $CAP) before running workloads on it. |
+| label list shows UUIDs instead of names | Name resolution needs M365 E5 + InformationProtection.Read via Microsoft Graph. |
+| capacity suspend/resume fails | These use the ARM scope (management.azure.com); ensure your identity has rights on the capacity resource. |
 
 ## Safety
 - capacity suspend interrupts ALL running workloads (notebooks, pipelines, Spark jobs) on that capacity — warn about in-flight jobs.

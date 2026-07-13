@@ -16,15 +16,32 @@
     "DAX over a semantic model -> use the bi-developer persona (semantic-model query)."
   ],
   "key_gotchas": [
-    "Three distinct surfaces — see 'fabio context disambiguate sql-endpoint': analytics endpoint (read-only over lakehouse), warehouse (read-write), sql-database (OLTP).",
-    "SQL Database needs F4+ capacity (F2 fails with error 18456 State 240).",
-    "sys.dm_exec_requests has no login_name column on Fabric (it is in sys.dm_exec_sessions).",
-    "sys.dm_db_stats_properties is NOT supported on Lakehouse SQL endpoints.",
-    "--sql accepts @file.sql and stdin piping for large queries."
+    "sys.dm_exec_requests has no login_name column on Fabric (it lives in sys.dm_exec_sessions).",
+    "sys.dm_db_stats_properties is NOT supported on Lakehouse SQL endpoints."
   ],
   "safety": [
     "queries-kill terminates a running session (KILL) — confirm the session id and impact with the user.",
     "DDL/DML via query (DROP/DELETE/TRUNCATE) is executed for real — use 'plan' to inspect without executing, and confirm destructive statements."
+  ],
+  "must": [
+    "Pick the right surface for the intent: sql-endpoint (read-only over a lakehouse), warehouse (read-write analytics), sql-database (OLTP).",
+    "Provision SQL Database on F4+ capacity (F2 fails with error 18456 State 240)."
+  ],
+  "prefer": [
+    "'plan' (SHOWPLAN_XML) to inspect a query's cost before executing it.",
+    "--sql @file.sql or stdin piping for large/multiline queries over inline strings.",
+    "queries-history / queries-long-running for diagnostics instead of ad-hoc DMV queries."
+  ],
+  "avoid": [
+    "Using a Warehouse for OLTP or a SQL Database for heavy analytics — pick the surface that matches the workload.",
+    "Running destructive DDL/DML (DROP/DELETE/TRUNCATE) without confirming with the user first.",
+    "Assuming query monitoring DMVs behave identically to SQL Server (several columns/views differ on Fabric — see gotchas)."
+  ],
+  "troubleshooting": [
+    {"symptom": "SQL Database create fails with 18456 State 240", "fix": "The workspace capacity is too small; SQL Database requires F4 or higher."},
+    {"symptom": "Query against a lakehouse endpoint returns stale/missing tables", "fix": "The SQL analytics endpoint syncs from Delta; ensure the lakehouse tables exist and metadata has refreshed."},
+    {"symptom": "'invalid column name login_name'", "fix": "Join sys.dm_exec_sessions for login_name; sys.dm_exec_requests does not have it on Fabric."},
+    {"symptom": "FORBIDDEN executing a query", "fix": "You need appropriate workspace role / SQL permissions on the item."}
   ],
   "see_also": [
     "fabio context persona data-engineer",

@@ -100,12 +100,33 @@ Manage `OneLake` data access roles (row/column-level security)
 | `fabio onelake-security show` | no | Show details of a data access role |
 | `fabio onelake-security upsert` | yes | Replace all data access roles for an item (atomic PUT) |
 
+## Must / Prefer / Avoid
+### MUST
+- Use PascalCase for --mode (Overwrite/Append) and --format (Csv/Parquet).
+- Upload to Files/ before load-table, or use upload-table for the combined one-step path.
+- Convert JSON to CSV/Parquet before load-table (JSON is not a supported load format).
+
+### PREFER
+- lakehouse sync (ETag-based, rename-aware) over manual re-upload loops.
+- move-file within a lakehouse (atomic O(1) rename) over copy+delete.
+- Runtime introspection (context agent --group lakehouse, context describe) over guessing flags.
+
+### AVOID
+- load-table with JSON format (unsupported).
+- Lowercase enum values like --mode overwrite or --format csv (silently rejected by the API).
+- Deleting Lakehouse/Warehouse/other data-bearing items without explicit user approval.
+
 ## Key gotchas
-- load-table requires PascalCase enum values: --mode Overwrite (not overwrite), --format Csv/Parquet (not csv).
-- load-table ONLY supports Csv and Parquet — JSON is NOT supported (convert first).
-- Two-step: upload puts the file in Files/, THEN load-table reads from there. Or use upload-table for one step.
-- move-file within the same lakehouse is an atomic O(1) metadata rename; cross-item falls back to copy+delete.
-- Table file listing must list from the root to get real item-id-prefixed paths.
+- Table file listing lists from the root to get real item-id-prefixed paths.
+- move-file within a lakehouse is an atomic O(1) rename; cross-item falls back to copy+delete automatically.
+
+## Troubleshooting
+| Symptom | Fix |
+|---|---|
+| load-table fails or ignores the file | Check --mode/--format are PascalCase (Overwrite, Csv) and the format is Csv or Parquet, not JSON. |
+| FORBIDDEN when creating/deleting | You need at least Member role on the workspace; Delete requires Member+. |
+| list-tables shows no rows after an ETL run | Confirm the notebook/job actually wrote Delta tables and completed (use notebook run --wait). |
+| move-file returns 403 across items | Atomic rename only works within the same lakehouse; across items fabio falls back to copy+delete automatically. |
 
 ## Safety
 - load-table --mode Overwrite replaces the whole table — confirm with the user.

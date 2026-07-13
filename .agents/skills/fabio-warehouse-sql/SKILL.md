@@ -123,12 +123,32 @@ Manage warehouse snapshots
 | `fabio warehouse-snapshot show` | no | Show details of a warehouse snapshot |
 | `fabio warehouse-snapshot update` | yes | Update warehouse snapshot properties (name and/or description) |
 
+## Must / Prefer / Avoid
+### MUST
+- Pick the right surface for the intent: sql-endpoint (read-only over a lakehouse), warehouse (read-write analytics), sql-database (OLTP).
+- Provision SQL Database on F4+ capacity (F2 fails with error 18456 State 240).
+
+### PREFER
+- 'plan' (SHOWPLAN_XML) to inspect a query's cost before executing it.
+- --sql @file.sql or stdin piping for large/multiline queries over inline strings.
+- queries-history / queries-long-running for diagnostics instead of ad-hoc DMV queries.
+
+### AVOID
+- Using a Warehouse for OLTP or a SQL Database for heavy analytics — pick the surface that matches the workload.
+- Running destructive DDL/DML (DROP/DELETE/TRUNCATE) without confirming with the user first.
+- Assuming query monitoring DMVs behave identically to SQL Server (several columns/views differ on Fabric — see gotchas).
+
 ## Key gotchas
-- Three distinct surfaces — see 'fabio context disambiguate sql-endpoint': analytics endpoint (read-only over lakehouse), warehouse (read-write), sql-database (OLTP).
-- SQL Database needs F4+ capacity (F2 fails with error 18456 State 240).
-- sys.dm_exec_requests has no login_name column on Fabric (it is in sys.dm_exec_sessions).
+- sys.dm_exec_requests has no login_name column on Fabric (it lives in sys.dm_exec_sessions).
 - sys.dm_db_stats_properties is NOT supported on Lakehouse SQL endpoints.
-- --sql accepts @file.sql and stdin piping for large queries.
+
+## Troubleshooting
+| Symptom | Fix |
+|---|---|
+| SQL Database create fails with 18456 State 240 | The workspace capacity is too small; SQL Database requires F4 or higher. |
+| Query against a lakehouse endpoint returns stale/missing tables | The SQL analytics endpoint syncs from Delta; ensure the lakehouse tables exist and metadata has refreshed. |
+| 'invalid column name login_name' | Join sys.dm_exec_sessions for login_name; sys.dm_exec_requests does not have it on Fabric. |
+| FORBIDDEN executing a query | You need appropriate workspace role / SQL permissions on the item. |
 
 ## Safety
 - queries-kill terminates a running session (KILL) — confirm the session id and impact with the user.
