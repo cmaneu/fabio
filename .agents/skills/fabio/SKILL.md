@@ -291,7 +291,7 @@ Credential chain: FABIO_ACCESS_TOKEN > fabio cache > env vars > managed identity
 
 ## Command Quick Reference
 
-76 command groups. Use `fabio context agent --group <name>` for full flag details.
+77 command groups. Use `fabio context agent --group <name>` for full flag details.
 
 **Core:**
 ```bash
