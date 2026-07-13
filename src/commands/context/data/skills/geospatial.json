@@ -1,0 +1,44 @@
+{
+  "family": "geospatial",
+  "title": "Geospatial — Fabric maps",
+  "description": "Intent-scoped fabio skill for Fabric geospatial maps: create, inspect, and update map items and their definitions. Use to manage location/geospatial visualizations backed by Fabric data. Triggers: \"map\", \"geospatial\", \"create map\", \"location visualization\", \"spatial data\", \"map definition\".",
+  "command_groups": ["map"],
+  "when_to_use": [
+    "Creating/listing/inspecting map items in a workspace.",
+    "Editing a map's definition (get-definition / update-definition).",
+    "Managing geospatial visualizations over Fabric data."
+  ],
+  "when_not_to_use": [
+    "The underlying spatial data (tables/files) -> use fabio-lakehouse or fabio-warehouse-sql.",
+    "Non-spatial reports and dashboards -> use fabio-bi.",
+    "Real-time location streams -> use fabio-rti-kql."
+  ],
+  "must": [
+    "Edit map content via the definition part (get-definition / update-definition), not plain metadata flags.",
+    "Ensure the spatial data source the map reads from exists before wiring the map."
+  ],
+  "prefer": [
+    "Runtime introspection (context agent --group map, context describe map create) for exact flags and the definition shape.",
+    "Building the spatial dataset first (lakehouse/warehouse), then the map on top."
+  ],
+  "avoid": [
+    "Expecting a metadata-only update to change map content — use update-definition.",
+    "Confusing a map (geospatial visualization) with a graph model or an ontology."
+  ],
+  "key_gotchas": [
+    "Maps carry their configuration in a definition part (base64); create/update take a --content/definition, and get-definition returns it for round-tripping.",
+    "A map is a visualization layer — it renders data that lives in other Fabric items, which must exist and be populated."
+  ],
+  "troubleshooting": [
+    {"symptom": "Map changes don't persist", "fix": "Update the definition (map update-definition), not just metadata; metadata-only updates don't change map content."},
+    {"symptom": "Map renders empty", "fix": "Confirm the backing spatial dataset exists and is populated; the map only visualizes other items' data."}
+  ],
+  "safety": [
+    "Deleting a map removes its definition and configuration — confirm with the user."
+  ],
+  "shared_references": ["throttling", "pagination", "lro"],
+  "see_also": [
+    "fabio context persona bi-developer",
+    "fabio context persona data-engineer"
+  ]
+}

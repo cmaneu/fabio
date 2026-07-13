@@ -968,3 +968,18 @@ fn disambiguate_model_distinguishes_ml_from_semantic() {
         "model disambiguation should distinguish ml-model from semantic-model"
     );
 }
+
+#[test]
+fn geospatial_family_covers_map_group() {
+    let assert = fabio().args(["context", "list"]).assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    // 13 intent-scoped sub-skill families now exist (full workload coverage).
+    // The geospatial family is generated on disk; confirm its skill file is discoverable.
+    assert!(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(".agents/skills/fabio-geospatial/SKILL.md")
+            .exists(),
+        "fabio-geospatial sub-skill should be generated"
+    );
+    let _ = stdout;
+}

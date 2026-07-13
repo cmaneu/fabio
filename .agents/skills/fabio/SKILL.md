@@ -131,6 +131,7 @@ This root skill covers cross-cutting concerns (install, auth, output envelope, g
 | `fabio-rti-kql` | Eventhouse, KQL, Eventstream, Activator (Real-Time Intelligence) |
 | `fabio-bi` | Semantic models (datasets), reports, paginated reports, dashboards, DAX, Direct Lake |
 | `fabio-ontology` | Fabric IQ ontologies, graph models/querysets, digital twins, OWL import |
+| `fabio-geospatial` | Fabric maps (geospatial visualizations) |
 | `fabio-deploy-cicd` | Stateless content-hash deploy, Git, deployment pipelines, variable libraries |
 | `fabio-admin` | Capacity, tenant governance, domains, gateways, connections, labels |
 | `fabio-migration` | Port Synapse / Databricks / HDInsight / ADF to Fabric |
