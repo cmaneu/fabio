@@ -1,0 +1,44 @@
+{
+  "family": "dataflows",
+  "title": "Dataflows — low-code Power Query (Gen2) ETL and datamarts",
+  "description": "Intent-scoped fabio skill for Fabric low-code data preparation: Dataflows Gen2 (Power Query / M mashup) and datamarts. Use for visual/low-code ETL that loads into a lakehouse or warehouse. Triggers: \"dataflow\", \"dataflow gen2\", \"power query\", \"mashup\", \"low-code etl\", \"datamart\", \"transform without code\".",
+  "command_groups": ["dataflow", "datamart"],
+  "when_to_use": [
+    "Creating/updating/refreshing Dataflows Gen2 (Power Query mashup ETL).",
+    "Inspecting or querying an existing dataflow definition.",
+    "Managing datamarts."
+  ],
+  "when_not_to_use": [
+    "Code-first (PySpark/notebook) transformation -> use fabio-data-engineering.",
+    "Orchestrating activities (copy, notebook, stored proc) -> that's a Data Pipeline (fabio-data-engineering).",
+    "Loading files directly into Delta tables -> use fabio-lakehouse."
+  ],
+  "must": [
+    "Treat 'dataflow' as Dataflow Gen2 (the current Power Query item); see 'fabio context disambiguate dataflow'.",
+    "Provide both the mashup (Power Query M) and queryMetadata parts when building a definition."
+  ],
+  "prefer": [
+    "Dataflow Gen2 for new low-code ETL; migrate legacy Gen1 rather than authoring new Gen1.",
+    "A Data Pipeline (fabio-data-engineering) when the task is orchestration, not transformation."
+  ],
+  "avoid": [
+    "Confusing a Dataflow (transform) with a Data Pipeline (orchestrate) — see disambiguate dataflow.",
+    "Authoring new Gen1 dataflows (Gen2 is the strategic path)."
+  ],
+  "key_gotchas": [
+    "A Dataflow Gen2 definition combines a Power Query mashup with queryMetadata; both are required.",
+    "Refresh is asynchronous — poll or use the run/wait semantics."
+  ],
+  "troubleshooting": [
+    {"symptom": "Unsure whether to use a dataflow or a pipeline", "fix": "Transform data -> dataflow; sequence activities -> data-pipeline. Run 'fabio context disambiguate dataflow'."},
+    {"symptom": "Definition rejected", "fix": "Ensure both the mashup and queryMetadata parts are present and valid."}
+  ],
+  "safety": [
+    "Deleting or overwriting a dataflow definition replaces its transformation logic — confirm with the user."
+  ],
+  "shared_references": ["throttling", "pagination", "lro"],
+  "see_also": [
+    "fabio context persona data-engineer",
+    "fabio context disambiguate dataflow"
+  ]
+}

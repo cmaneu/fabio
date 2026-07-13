@@ -1,0 +1,57 @@
+{
+  "family": "data-engineering",
+  "title": "Data Engineering — notebooks, Spark, pipelines, scheduling",
+  "description": "Intent-scoped fabio skill for Fabric data engineering with code and orchestration: notebooks, Spark (Livy sessions, job definitions), Spark environments/libraries, data pipelines, copy jobs, and job scheduling. Use to author and run transformation code and orchestrate it. Triggers: \"notebook\", \"run notebook\", \"pyspark\", \"spark job\", \"livy\", \"spark environment\", \"data pipeline\", \"copy job\", \"schedule job\", \"orchestrate\", \"etl code\".",
+  "command_groups": ["notebook", "spark", "spark-job-definition", "environment", "data-pipeline", "copy-job", "job-scheduler", "apache-airflow-job", "data-build-tool-job", "mounted-data-factory"],
+  "when_to_use": [
+    "Creating/updating notebooks and running them (with parameters, --wait).",
+    "Running Spark job definitions or interactive Livy sessions.",
+    "Managing Spark environments (libraries, compute settings) and publishing them.",
+    "Building and running data pipelines; copy jobs for data movement.",
+    "Scheduling recurring runs of notebooks/pipelines/SJDs via the job scheduler.",
+    "Orchestrating with Apache Airflow jobs, running dbt (data-build-tool) jobs, or mounting an Azure Data Factory."
+  ],
+  "when_not_to_use": [
+    "Loading files/tables into a lakehouse -> use fabio-lakehouse.",
+    "Low-code Power Query ETL -> use fabio-dataflows.",
+    "T-SQL transformation in a warehouse -> use fabio-warehouse-sql.",
+    "CI/CD promotion of these items across environments -> use fabio-deploy-cicd."
+  ],
+  "must": [
+    "Use --file for notebook source (.py and .ipynb are auto-detected); fabio wraps the format — do NOT hand-build ipynb JSON.",
+    "Use --wait/--timeout on notebook/pipeline/SJD runs to observe completion.",
+    "Bind a notebook to its default lakehouse with --lakehouse at create time when it reads/writes lakehouse tables."
+  ],
+  "prefer": [
+    "--file (a written code file) over --content, which is only for small inline snippets.",
+    "job-scheduler create-schedule for recurring runs over external cron.",
+    "Spark environments to manage libraries once instead of per-notebook installs.",
+    "Runtime introspection (context agent --group notebook|spark|data-pipeline) over guessing flags."
+  ],
+  "avoid": [
+    "Constructing ipynb JSON manually — pass the file and let fabio handle wrapping.",
+    "Assuming a run is done without --wait (async jobs return before completion).",
+    "Ignoring cold-start latency on small capacity (first Spark run takes minutes)."
+  ],
+  "key_gotchas": [
+    "Notebook source cells must be a list of strings in ipynb; fabio builds this for you from --file/--content.",
+    "First Spark run on a small capacity is a 2-5 min cold start; LRO may report 430 TooManyRequestsForCapacity when the capacity is saturated.",
+    "Environment library changes require a publish (staging/publish) before they take effect."
+  ],
+  "troubleshooting": [
+    {"symptom": "Notebook run returns before the work is done", "fix": "Add --wait --timeout <secs>; the run is async (202 + polling)."},
+    {"symptom": "Spark job fails with 430 TooManyRequestsForCapacity", "fix": "Capacity is saturated; retry later, reduce concurrency, or use a larger capacity."},
+    {"symptom": "Notebook can't find its lakehouse tables", "fix": "Create it with --lakehouse $LH so the default lakehouse (trident) metadata is injected."},
+    {"symptom": "Installed library not available at runtime", "fix": "Publish the Spark environment (environment staging/publish) and attach it to the notebook."}
+  ],
+  "safety": [
+    "Deleting a notebook/pipeline/SJD removes its definition — confirm with the user.",
+    "Scheduling a recurring job commits ongoing capacity consumption — confirm cadence and timezone."
+  ],
+  "shared_references": ["throttling", "pagination", "lro"],
+  "see_also": [
+    "fabio context persona data-engineer",
+    "fabio context workflow lakehouse-etl",
+    "fabio context workflow rti-pipeline"
+  ]
+}

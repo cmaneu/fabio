@@ -873,3 +873,45 @@ fn list_includes_personas_and_disambiguations() {
         "context list should include disambiguations"
     );
 }
+
+#[test]
+fn app_developer_persona_routes_app_groups() {
+    let assert = fabio()
+        .args(["context", "persona", "app-developer"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("user-data-function")
+            && stdout.contains("graphql-api")
+            && stdout.contains("data-agent"),
+        "app-developer persona should route app/API/AI-app command groups"
+    );
+}
+
+#[test]
+fn context_list_has_full_persona_and_skill_coverage() {
+    let assert = fabio().args(["context", "list"]).assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let personas = json["data"]["personas"].as_array().unwrap();
+    // Six personas covering the major Fabric roles (incl. app-developer).
+    assert!(
+        personas.len() >= 6,
+        "expected at least 6 personas, got {}",
+        personas.len()
+    );
+    for expected in [
+        "data-engineer",
+        "app-developer",
+        "bi-developer",
+        "rti-engineer",
+        "migration-engineer",
+        "fabric-admin",
+    ] {
+        assert!(
+            personas.iter().any(|p| p.as_str() == Some(expected)),
+            "missing persona: {expected}"
+        );
+    }
+}

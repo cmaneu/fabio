@@ -1,0 +1,38 @@
+{
+  "name": "app-developer",
+  "description": "Orchestrator persona for building applications on Microsoft Fabric: user data functions, GraphQL APIs, app backends (Power Apps), Cosmos DB databases, organizational apps, and AI data agents. Routes app/API/AI-app requests to the right command groups.",
+  "purpose": "Build and operate application and API workloads on Fabric — serverless functions, GraphQL/data APIs, transactional backends, and AI data agents that answer questions over Fabric data.",
+  "delegates_to": [
+    {"request_type": "Serverless functions", "command_groups": ["user-data-function"], "notes": "User Data Functions expose Python/logic as callable functions."},
+    {"request_type": "Data/GraphQL APIs", "command_groups": ["graphql-api"], "notes": "GraphQL API items expose Fabric data over GraphQL."},
+    {"request_type": "App backend", "command_groups": ["app-backend"], "notes": "app-backend (aliases: rayfin-app, data-app) backs Power Apps / data apps."},
+    {"request_type": "Transactional store", "command_groups": ["sql-database", "cosmos-db-database"], "notes": "SQL Database for relational OLTP (F4+); Cosmos DB for NoSQL."},
+    {"request_type": "AI data agent (NL Q&A over data)", "command_groups": ["data-agent"], "workflows": ["data-agent-setup"], "notes": "Create, configure datasources/few-shots, publish, and query a Data Agent."},
+    {"request_type": "Organizational app / distribution", "command_groups": ["org-app", "org-app-audience"], "notes": "Package and share items as an Organizational App with audiences."}
+  ],
+  "decision_gates": [
+    "Confirm the backing data store exists (lakehouse/warehouse/SQL DB) before wiring a function or GraphQL API to it.",
+    "For a Data Agent, confirm datasources and table selection before publish; publish makes it available to consumers.",
+    "SQL Database backends require F4+ capacity."
+  ],
+  "guardrails": {
+    "must": [
+      "Wire APIs/functions to data stores that already exist.",
+      "Publish a Data Agent only after datasources, table selection, and few-shots are configured."
+    ],
+    "prefer": [
+      "Data Agent for natural-language Q&A over lakehouse data instead of hand-building query logic.",
+      "GraphQL API / User Data Functions over bespoke external services when the data lives in Fabric."
+    ],
+    "avoid": [
+      "Exposing an API over a store that is not yet populated.",
+      "Publishing a Data Agent before validating its answers against known questions."
+    ]
+  },
+  "negative_routing": [
+    "Building/transforming the underlying data -> use persona 'data-engineer'.",
+    "Reports/semantic models -> use persona 'bi-developer'.",
+    "Tenant governance/capacity -> use persona 'fabric-admin'."
+  ],
+  "see_also": ["fabio context workflow data-agent-setup", "fabio context examples data_agent query", "fabio context disambiguate sql-endpoint"]
+}

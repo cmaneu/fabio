@@ -1,0 +1,45 @@
+{
+  "family": "ontology",
+  "title": "Ontology & Graph — Fabric IQ ontologies, graph models, graph querysets",
+  "description": "Intent-scoped fabio skill for Fabric knowledge/graph modeling: ontology items (entity/relationship types and bindings), graph models, and graph querysets. Use to define/evolve ontologies and query graphs for agent grounding. fabio can also export a tenant scan as OWL (context tenant --format owl) and import it. Triggers: \"ontology\", \"fabric iq ontology\", \"knowledge graph\", \"graph model\", \"graph query\", \"entity type\", \"relationship type\", \"owl\".",
+  "command_groups": ["ontology", "graph-model", "graph-query-set"],
+  "when_to_use": [
+    "Creating/evolving an ontology item (entity types, relationship types, data bindings).",
+    "Managing graph models and running graph querysets.",
+    "Grounding an agent in a knowledge graph over Fabric data.",
+    "Importing an OWL schema (e.g. one produced by 'fabio context tenant --format owl')."
+  ],
+  "when_not_to_use": [
+    "Relational T-SQL modeling -> use fabio-warehouse-sql.",
+    "The Delta/lakehouse data the ontology binds to -> use fabio-lakehouse.",
+    "Semantic (tabular) models for BI -> use fabio-bi."
+  ],
+  "must": [
+    "Define entity/relationship types before adding data bindings.",
+    "Use the item-definition format for ontology create/update (see 'fabio context schema ontology')."
+  ],
+  "prefer": [
+    "context tenant --format owl to bootstrap an ontology schema from a real workspace scan, then ontology import.",
+    "Runtime introspection (context agent --group ontology|graph-model) for exact flags."
+  ],
+  "avoid": [
+    "Binding to data sources that do not yet exist — create the underlying items first.",
+    "Confusing an ontology (knowledge graph schema) with a semantic model (BI tabular model)."
+  ],
+  "key_gotchas": [
+    "Ontology definitions use the item-definition (base64 parts) format; fetch the template with 'fabio context schema ontology'.",
+    "fabio's context tenant graph can emit OWL/RDF that imports directly via 'fabio ontology import --file'."
+  ],
+  "troubleshooting": [
+    {"symptom": "Ontology import rejected", "fix": "Validate the OWL/JSON-LD against the ontology schema (context schema ontology); ensure entity types precede bindings."},
+    {"symptom": "Binding references a missing item", "fix": "Create the bound data source (lakehouse/eventhouse/etc.) first, then add the binding."}
+  ],
+  "safety": [
+    "Overwriting an ontology definition replaces its type system and bindings — confirm with the user."
+  ],
+  "shared_references": ["throttling", "pagination", "lro"],
+  "see_also": [
+    "fabio context schema ontology",
+    "fabio context persona data-engineer"
+  ]
+}

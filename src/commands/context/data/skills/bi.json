@@ -1,0 +1,53 @@
+{
+  "family": "bi",
+  "title": "Business Intelligence — semantic models, reports, dashboards",
+  "description": "Intent-scoped fabio skill for the Fabric BI layer: semantic models (datasets), Power BI reports, paginated reports, and dashboards. Use for creating/refreshing semantic models, running DAX, and managing report items. Triggers: \"semantic model\", \"dataset\", \"dax query\", \"refresh dataset\", \"power bi report\", \"paginated report\", \"dashboard\", \"direct lake\".",
+  "command_groups": ["semantic-model", "report", "paginated-report", "dashboard"],
+  "when_to_use": [
+    "Creating/updating semantic models from TMDL and binding them to a SQL endpoint.",
+    "Running DAX queries (EVALUATE) and refreshing models.",
+    "Creating/managing reports, paginated reports, and dashboards bound to a model.",
+    "Building Direct Lake reports over lakehouse Delta tables."
+  ],
+  "when_not_to_use": [
+    "Building the underlying lakehouse/warehouse data -> use fabio-lakehouse or fabio-warehouse-sql.",
+    "Real-time KQL dashboards -> use fabio-rti-kql.",
+    "Natural-language Q&A over data (fabio's AI analog) -> use the data-agent group / app-developer persona."
+  ],
+  "must": [
+    "Treat 'dataset' as a semantic model (use the semantic-model group, NOT report); see 'fabio context disambiguate semantic-model'.",
+    "Bind semantic-model create to a valid --connection (SQL endpoint) for import/DirectQuery.",
+    "Use PBIR-Legacy format when a report must render data programmatically (plain PBIR cannot)."
+  ],
+  "prefer": [
+    "Direct Lake over import mode when data already lives in a lakehouse (no refresh cost).",
+    "fabio rest call --api powerbi for Power BI-specific endpoints not on the Fabric surface.",
+    "semantic-model query --dax for validation before wiring a report."
+  ],
+  "avoid": [
+    "Inventing a 'fabio dataset' command — datasets are semantic models.",
+    "Expecting plain PBIR reports to render data (they need PBIR-Legacy).",
+    "Refreshing on inactive capacity (CAPACITY_INACTIVE)."
+  ],
+  "key_gotchas": [
+    "'dataset' (legacy Power BI term) == semantic model; Power BI REST still uses /datasets (reach it via rest call --api powerbi).",
+    "Report visuals need PBIR-Legacy to render data; plain PBIR cannot render programmatically.",
+    "Direct Lake reads Delta directly — the report is empty until the lakehouse tables are populated."
+  ],
+  "troubleshooting": [
+    {"symptom": "semantic-model create fails to bind", "fix": "Pass --connection with a valid SQL analytics endpoint; the model needs a data source."},
+    {"symptom": "Report shows no data", "fix": "For Direct Lake, populate the lakehouse tables first; for import, refresh the model; ensure PBIR-Legacy if rendering programmatically."},
+    {"symptom": "Refresh fails with CAPACITY_INACTIVE", "fix": "Resume the capacity (fabio capacity resume) before refreshing."},
+    {"symptom": "No 'fabio dataset' command", "fix": "Use the semantic-model group; 'dataset' is the legacy name for a semantic model."}
+  ],
+  "safety": [
+    "Refreshing a large model consumes capacity — confirm headroom before a full refresh.",
+    "Overwriting a semantic model definition replaces its measures/relationships — confirm with the user."
+  ],
+  "shared_references": ["throttling", "pagination", "lro"],
+  "see_also": [
+    "fabio context persona bi-developer",
+    "fabio context workflow direct-lake-report",
+    "fabio context disambiguate semantic-model"
+  ]
+}
