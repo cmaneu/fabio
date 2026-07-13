@@ -4176,6 +4176,16 @@
         ],
         "notes": "Returns operational guidance tailored for agents using fabio as execution layer."
       },
+      "persona": {
+        "description": "Show an orchestrator persona: which command groups, workflows, and best-practices to use for a role",
+        "mutates": false,
+        "returns": "object"
+      },
+      "disambiguate": {
+        "description": "Resolve an overloaded Fabric term to the concrete artifact + command group that handles it",
+        "mutates": false,
+        "returns": "object"
+      },
       "examples": {
         "description": "Show example output for a command (response shape + `JMESPath` tips)",
         "mutates": false,

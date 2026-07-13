@@ -103,8 +103,11 @@
 - `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
 - `src/commands/context/agent.rs`: Machine-readable command schema for AI agents (hierarchical access, MCP/OpenAI format emission, drift detection, auto-generation)
 - `src/commands/context/schemas.rs`: Item definition schemas (22 types)
-- `src/commands/context/workflows.rs`: Multi-step workflow recipes (5 recipes)
-- `src/commands/context/best_practices.rs`: Best-practices guidance (5 topics)
+- `src/commands/context/workflows.rs`: Multi-step workflow recipes (incl. 4 migration recipes)
+- `src/commands/context/best_practices.rs`: Best-practices guidance (incl. migration-api-shims)
+- `src/commands/context/personas.rs`: Orchestrator personas (Layer-1 routers: data-engineer, migration-engineer, fabric-admin, rti-engineer, bi-developer)
+- `src/commands/context/disambiguations.rs`: Overloaded-term resolution tables (materialized-view, dataflow, semantic-model, sql-endpoint)
+- `src/commands/context/skillgen.rs`: (`#[cfg(test)]`-only) generator + drift test for the 6 intent-scoped sub-skills (`.agents/skills/fabio-*/SKILL.md`) from `data/skills/*.json` + `commands.json`
 - `src/commands/context/examples.rs`: Output shape examples (34 commands)
 - `src/commands/context/tenant.rs`: Live workspace graph extraction
 - `src/commands/mcp/mod.rs`: MCP command group (serve subcommand)

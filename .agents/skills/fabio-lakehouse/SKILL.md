@@ -1,0 +1,120 @@
+---
+name: fabio-lakehouse
+description: >-
+  Intent-scoped fabio skill for Microsoft Fabric Lakehouse work: create lakehouses, upload/load/sync files and Delta tables, OneLake shortcuts, Iceberg, and Materialized Lake Views. Use when the user wants to ingest, organize, or move data in a lakehouse. Triggers: "create lakehouse", "upload to lakehouse", "load table", "list tables", "sync lakehouse", "onelake", "shortcut", "materialized lake view".
+license: MIT
+---
+
+# fabio-lakehouse — Lakehouse — files, tables, sync, Iceberg, Materialized Lake Views
+
+> **Generated file — do not edit by hand.** This intent-scoped sub-skill of the `fabio` skill is generated from fabio's command schema plus authored judgment. Regenerate with `cargo test generate_subskills -- --ignored`. For install, auth, output envelope, global flags, and agent-safety rules, see the root `fabio` skill.
+
+> **Prefer runtime introspection.** This index is a snapshot; the installed binary is always authoritative. Use `fabio context agent --group <group>` and `fabio context describe <group> <command>` for exact flags and output shapes.
+
+## When to use
+- Creating a lakehouse or listing/inspecting its files and Delta tables.
+- Uploading files to Files/ and loading them into Delta tables.
+- Syncing files between lakehouses or from a local directory (rsync-like).
+- Creating OneLake shortcuts (ADLS Gen2, S3, Dataverse, OneLake) or managing OneLake security.
+- Managing Materialized Lake Views (execution definitions + refresh schedules).
+
+## When NOT to use (route elsewhere)
+- Querying lakehouse tables with T-SQL -> use fabio-warehouse-sql (sql-endpoint / lakehouse plan/query).
+- Real-time/streaming ingestion or KQL -> use fabio-rti-kql.
+- Report/semantic model over the lakehouse -> use the bi-developer persona.
+
+## Command index
+
+Generated from fabio's command schema. For full flag details use `fabio context agent --group <group>` or `fabio context describe <group> <command>`.
+
+### fabio lakehouse
+Manage lakehouses (tables, files, shortcuts)
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio lakehouse bulk-create-shortcuts` | yes | Bulk-create multiple shortcuts (LRO) |
+| `fabio lakehouse copy-file` | yes | Copy files between lakehouses (supports glob patterns for parallel copy) |
+| `fabio lakehouse copy-table` | yes | Copy a table between lakehouses |
+| `fabio lakehouse create` | yes | Create a new lakehouse |
+| `fabio lakehouse create-directory` | yes | Create a directory in a lakehouse (DFS) |
+| `fabio lakehouse create-execution-definition` | yes | Create a materialized lake view execution definition |
+| `fabio lakehouse create-materialized-views-schedule` | yes | Create a schedule for materialized lake view refresh |
+| `fabio lakehouse create-shortcut` | yes | Create a shortcut |
+| `fabio lakehouse delete` | yes | Delete a lakehouse |
+| `fabio lakehouse delete-execution-definition` | yes | Delete a materialized lake view execution definition |
+| `fabio lakehouse delete-file` | yes | Delete a file from a lakehouse |
+| `fabio lakehouse delete-materialized-views-schedule` | yes | Delete a schedule for materialized lake view refresh |
+| `fabio lakehouse delete-shortcut` | yes | Delete a shortcut |
+| `fabio lakehouse delete-table` | yes | Delete a table from a lakehouse |
+| `fabio lakehouse download` | no | Download a file from a lakehouse |
+| `fabio lakehouse get-definition` | no | Get the definition of a lakehouse |
+| `fabio lakehouse get-livy-session` | no | Get details of a Livy session for a lakehouse |
+| `fabio lakehouse get-shortcut` | no | Get shortcut details |
+| `fabio lakehouse iceberg-config` | no | Get Iceberg REST Catalog configuration for a lakehouse |
+| `fabio lakehouse iceberg-credentials` | no | Load vended storage credentials scoped to a specific table |
+| `fabio lakehouse iceberg-namespace` | no | Get metadata for a specific namespace via the Iceberg REST Catalog |
+| `fabio lakehouse iceberg-namespace-exists` | no | Check if a namespace exists via the Iceberg REST Catalog (lightweight HEAD) |
+| `fabio lakehouse iceberg-namespaces` | no | List table namespaces (schemas) via the Iceberg REST Catalog |
+| `fabio lakehouse iceberg-snapshots` | no | Show snapshot history for a table via the Iceberg REST Catalog |
+| `fabio lakehouse iceberg-stats` | no | Show table statistics from the latest Iceberg snapshot (record/file counts, size) |
+| `fabio lakehouse iceberg-table` | no | Get table definition (schema, partitions, properties) via the Iceberg REST Catalog |
+| `fabio lakehouse iceberg-table-exists` | no | Check if a table exists via the Iceberg REST Catalog (lightweight HEAD) |
+| `fabio lakehouse iceberg-tables` | no | List tables in a namespace via the Iceberg REST Catalog |
+| `fabio lakehouse list` | no | List lakehouses in a workspace |
+| `fabio lakehouse list-execution-definitions` | no | List materialized lake view execution definitions for a lakehouse |
+| `fabio lakehouse list-files` | no | List files in a lakehouse |
+| `fabio lakehouse list-livy-sessions` | no | List Livy sessions for a lakehouse |
+| `fabio lakehouse list-tables` | no | List tables in a lakehouse |
+| `fabio lakehouse load-table` | yes | Load a file (already in the lakehouse) into a Delta table |
+| `fabio lakehouse move-file` | yes | Move files between lakehouses (supports glob patterns for parallel move) |
+| `fabio lakehouse move-table` | yes | Move a table between lakehouses (copy + delete source) |
+| `fabio lakehouse optimize-table` | yes | Optimize a Delta table (V-Order compaction + optional Z-Order) |
+| `fabio lakehouse plan` | yes | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
+| `fabio lakehouse queries-frequent` | yes | List frequently-run queries (from `queryinsights.frequently_run_queries`) |
+| `fabio lakehouse queries-history` | yes | List completed query history (from `queryinsights.exec_requests_history`) |
+| `fabio lakehouse queries-long-running` | yes | List long-running queries (from `queryinsights.long_running_queries`) |
+| `fabio lakehouse queries-running` | yes | List currently running queries on the lakehouse SQL endpoint |
+| `fabio lakehouse query` | no | Execute SQL against the lakehouse SQL endpoint |
+| `fabio lakehouse refresh-materialized-views` | yes | Trigger a refresh of materialized lake views |
+| `fabio lakehouse run-table-maintenance` | yes | Run table maintenance on a lakehouse |
+| `fabio lakehouse show` | no | Show details of a lakehouse |
+| `fabio lakehouse show-execution-definition` | no | Show a materialized lake view execution definition |
+| `fabio lakehouse sync` | yes | Sync files between lakehouses (parallel, copies new/modified files) |
+| `fabio lakehouse table-schema` | no | Show Delta table schema (reads from `OneLake` `_delta_log` without Spark/SQL) |
+| `fabio lakehouse update` | yes | Update a lakehouse (rename/redescribe) |
+| `fabio lakehouse update-definition` | yes | Update the definition of a lakehouse |
+| `fabio lakehouse update-execution-definition` | yes | Update a materialized lake view execution definition |
+| `fabio lakehouse update-materialized-views-schedule` | yes | Update a schedule for materialized lake view refresh |
+| `fabio lakehouse upload` | yes | Upload files to a lakehouse (supports glob patterns for parallel upload) |
+| `fabio lakehouse upload-table` | yes | Upload a local file and load it into a Delta table (upload + load-table in one step) |
+| `fabio lakehouse vacuum-table` | yes | Vacuum a Delta table (remove old files beyond retention period) |
+
+### fabio onelake-security
+Manage `OneLake` data access roles (row/column-level security)
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio onelake-security create` | yes | Create or update a single data access role |
+| `fabio onelake-security delete` | yes | Delete a data access role |
+| `fabio onelake-security list` | no | List data access roles for an item |
+| `fabio onelake-security show` | no | Show details of a data access role |
+| `fabio onelake-security upsert` | yes | Replace all data access roles for an item (atomic PUT) |
+
+## Key gotchas
+- load-table requires PascalCase enum values: --mode Overwrite (not overwrite), --format Csv/Parquet (not csv).
+- load-table ONLY supports Csv and Parquet — JSON is NOT supported (convert first).
+- Two-step: upload puts the file in Files/, THEN load-table reads from there. Or use upload-table for one step.
+- move-file within the same lakehouse is an atomic O(1) metadata rename; cross-item falls back to copy+delete.
+- Table file listing must list from the root to get real item-id-prefixed paths.
+
+## Safety
+- load-table --mode Overwrite replaces the whole table — confirm with the user.
+- sync --delete removes destination files not present in source — preview without --delete first.
+- Deleting a lakehouse is a protected, data-bearing operation — never do it without explicit user approval.
+
+## See also
+- fabio context persona data-engineer
+- fabio context workflow lakehouse-etl
+- fabio context workflow lakehouse-mlv
+- fabio context disambiguate materialized-view
+- fabio context disambiguate sql-endpoint

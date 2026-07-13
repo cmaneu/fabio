@@ -1,0 +1,33 @@
+{
+  "family": "admin",
+  "title": "Administration — capacity, tenant governance, connectivity, labels",
+  "description": "Intent-scoped fabio skill for Fabric tenant administration: capacity lifecycle, tenant-wide inventory and settings, domains, gateways, connections, managed private endpoints, and sensitivity labels. Most commands are tenant-scoped (no --workspace). Use for governance, connectivity, and capacity operations. Triggers: \"capacity\", \"resume capacity\", \"suspend capacity\", \"tenant settings\", \"admin list workspaces\", \"domain\", \"gateway\", \"connection\", \"private endpoint\", \"sensitivity label\".",
+  "command_groups": ["admin", "capacity", "domain", "gateway", "connection", "managed-private-endpoint", "label"],
+  "when_to_use": [
+    "Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped).",
+    "Tenant-wide inventory and settings (requires Fabric admin role).",
+    "Governance: domains (group workspaces), sensitivity labels.",
+    "Connectivity: gateways, connections, managed private endpoints."
+  ],
+  "when_not_to_use": [
+    "Building or transforming data -> use the data-engineer persona.",
+    "Workspace-scoped item CRUD -> use the specific workload skill."
+  ],
+  "key_gotchas": [
+    "Tenant-scoped commands have NO --workspace flag: capacity, connection, gateway, domain, deployment-pipeline, admin.",
+    "Capacity suspend/resume/create/delete use the ARM scope (management.azure.com), not the Fabric scope.",
+    "admin commands require a Fabric admin role (FORBIDDEN otherwise).",
+    "label list resolves UUIDs to names via Microsoft Graph (needs M365 E5 + InformationProtection.Read).",
+    "Prefer batch operations (workspace batch-assign-roles, domain batch-assign) to reduce throttling."
+  ],
+  "safety": [
+    "capacity suspend interrupts ALL running workloads (notebooks, pipelines, Spark jobs) on that capacity — warn about in-flight jobs.",
+    "Tenant setting changes are broad — confirm scope before applying.",
+    "Deleting a workspace is permanent and removes ALL items inside — warn and suggest --dry-run."
+  ],
+  "see_also": [
+    "fabio context persona fabric-admin",
+    "fabio context best-practices admin-apis",
+    "fabio context best-practices throttling"
+  ]
+}

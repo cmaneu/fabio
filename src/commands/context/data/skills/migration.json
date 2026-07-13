@@ -1,0 +1,37 @@
+{
+  "family": "migration",
+  "title": "Migration — port Synapse, Databricks, HDInsight, and ADF to Fabric",
+  "description": "Intent-scoped fabio skill for migrating existing analytics workloads to Microsoft Fabric from Azure Synapse, Databricks, HDInsight, and Azure Data Factory. Covers assessment, API/path translation, target setup, deploy, and parity validation. Use when porting notebooks, jobs, or pipelines onto Fabric. Triggers: \"migrate to fabric\", \"synapse to fabric\", \"databricks to fabric\", \"hdinsight to fabric\", \"port notebooks\", \"mssparkutils\", \"dbutils\", \"unity catalog\", \"dbfs\", \"linked service\".",
+  "command_groups": ["connection", "variable-library", "deploy"],
+  "when_to_use": [
+    "Assessing a source workspace and mapping its artifacts to Fabric items.",
+    "Translating utility APIs and storage paths (see best-practices migration-api-shims).",
+    "Setting up the target environment (workspace, lakehouse, connections, variable libraries).",
+    "Deploying migrated artifacts via stateless content-hash CI/CD and validating parity.",
+    "Follow the workflow for the specific source: synapse-migration, databricks-migration, hdinsight-migration, pipeline-migration."
+  ],
+  "when_not_to_use": [
+    "Greenfield build with no source system -> use the data-engineer persona.",
+    "Ongoing CI/CD of already-migrated items -> use fabio-deploy-cicd."
+  ],
+  "key_gotchas": [
+    "mssparkutils.* / dbutils.* -> notebookutils.* (same method surface).",
+    "DBFS / WASB / ADLS Gen1/Gen2 / S3 paths -> OneLake abfss paths, or a Lakehouse shortcut to keep data in place.",
+    "Unity Catalog / Hive metastore tables -> Lakehouse Delta tables (Delta is cross-compatible — often re-point rather than re-write).",
+    "Linked Services -> Fabric Connections; ADF global parameters -> Variable Library value sets; Oozie/ADF triggers -> job schedules.",
+    "Spark pool / cluster sizing does NOT migrate — Fabric manages compute per capacity."
+  ],
+  "safety": [
+    "STOP after assessment: present feature-parity gaps and get user sign-off on the target architecture before writing code.",
+    "Do NOT decommission source systems until parity validation passes.",
+    "Deploy migrated items with 'deploy plan' (dry-run) reviewed before 'deploy apply'."
+  ],
+  "see_also": [
+    "fabio context persona migration-engineer",
+    "fabio context best-practices migration-api-shims",
+    "fabio context workflow synapse-migration",
+    "fabio context workflow databricks-migration",
+    "fabio context workflow hdinsight-migration",
+    "fabio context workflow pipeline-migration"
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "family": "lakehouse",
+  "title": "Lakehouse — files, tables, sync, Iceberg, Materialized Lake Views",
+  "description": "Intent-scoped fabio skill for Microsoft Fabric Lakehouse work: create lakehouses, upload/load/sync files and Delta tables, OneLake shortcuts, Iceberg, and Materialized Lake Views. Use when the user wants to ingest, organize, or move data in a lakehouse. Triggers: \"create lakehouse\", \"upload to lakehouse\", \"load table\", \"list tables\", \"sync lakehouse\", \"onelake\", \"shortcut\", \"materialized lake view\".",
+  "command_groups": ["lakehouse", "onelake-security"],
+  "when_to_use": [
+    "Creating a lakehouse or listing/inspecting its files and Delta tables.",
+    "Uploading files to Files/ and loading them into Delta tables.",
+    "Syncing files between lakehouses or from a local directory (rsync-like).",
+    "Creating OneLake shortcuts (ADLS Gen2, S3, Dataverse, OneLake) or managing OneLake security.",
+    "Managing Materialized Lake Views (execution definitions + refresh schedules)."
+  ],
+  "when_not_to_use": [
+    "Querying lakehouse tables with T-SQL -> use fabio-warehouse-sql (sql-endpoint / lakehouse plan/query).",
+    "Real-time/streaming ingestion or KQL -> use fabio-rti-kql.",
+    "Report/semantic model over the lakehouse -> use the bi-developer persona."
+  ],
+  "key_gotchas": [
+    "load-table requires PascalCase enum values: --mode Overwrite (not overwrite), --format Csv/Parquet (not csv).",
+    "load-table ONLY supports Csv and Parquet — JSON is NOT supported (convert first).",
+    "Two-step: upload puts the file in Files/, THEN load-table reads from there. Or use upload-table for one step.",
+    "move-file within the same lakehouse is an atomic O(1) metadata rename; cross-item falls back to copy+delete.",
+    "Table file listing must list from the root to get real item-id-prefixed paths."
+  ],
+  "safety": [
+    "load-table --mode Overwrite replaces the whole table — confirm with the user.",
+    "sync --delete removes destination files not present in source — preview without --delete first.",
+    "Deleting a lakehouse is a protected, data-bearing operation — never do it without explicit user approval."
+  ],
+  "see_also": [
+    "fabio context persona data-engineer",
+    "fabio context workflow lakehouse-etl",
+    "fabio context workflow lakehouse-mlv",
+    "fabio context disambiguate materialized-view",
+    "fabio context disambiguate sql-endpoint"
+  ]
+}

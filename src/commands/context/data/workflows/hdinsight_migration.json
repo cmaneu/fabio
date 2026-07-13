@@ -1,0 +1,23 @@
+{
+  "name": "HDInsight to Fabric Migration",
+  "description": "Port HDInsight Spark/Hive workloads to Microsoft Fabric — remove HiveContext, translate WASB/ADLS paths to OneLake, replace Oozie orchestration with Data Pipelines, deploy, and validate.",
+  "prerequisites": [
+    "Authenticated via fabio auth login",
+    "Source HDInsight Spark/Hive scripts and Oozie workflow definitions",
+    "Target Fabric workspace with F2+ capacity"
+  ],
+  "steps": [
+    {"step_number": 1, "command": "fabio context best-practices migration-api-shims", "description": "Load the translation table (HiveContext removal, WASB/ADLS -> OneLake, Oozie -> Data Pipelines)."},
+    {"step_number": 2, "command": "fabio lakehouse create --workspace $WS --name \"lakehouse\"", "description": "Create target Lakehouse. Map Hive metastore tables -> lakehouse Delta tables."},
+    {"step_number": 3, "command": "fabio lakehouse upload --workspace $WS --id $LH --source ./data/ --dest Files/raw/", "description": "Migrate data from WASB (wasb://) / ADLS into OneLake."},
+    {"step_number": 4, "command": "fabio notebook create --workspace $WS --name \"HiveJob\" --file ./translated.py --lakehouse $LH", "description": "Translate scripts: remove HiveContext/SQLContext (use spark.sql on a SparkSession), replace wasb:// and adl:// paths with OneLake, convert Hive DDL to Spark SQL / Delta CREATE TABLE."},
+    {"step_number": 5, "command": "fabio data-pipeline create --workspace $WS --name \"Orchestration\"", "description": "Replace Oozie workflow with a Fabric Data Pipeline (or job schedules) to sequence the notebooks."},
+    {"step_number": 6, "command": "fabio notebook run --workspace $WS --id $NB --wait --timeout 1800", "description": "Run and confirm."},
+    {"step_number": 7, "command": "fabio deploy export --workspace $WS --dir ./fabric-items --overwrite", "description": "Snapshot for CI/CD and Git."}
+  ],
+  "tips": [
+    "Hive external tables over WASB -> lakehouse shortcuts (fabio shortcut create) if you want to keep data in place.",
+    "HDInsight cluster sizing does not migrate — Fabric manages Spark.",
+    "Route the overall effort with 'fabio context persona migration-engineer'."
+  ]
+}

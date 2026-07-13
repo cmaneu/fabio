@@ -1,0 +1,36 @@
+{
+  "term": "dataflow",
+  "summary": "Disambiguate 'dataflow' — Fabric has Dataflow Gen2 (the current Power Query-based ETL item) versus legacy Dataflow Gen1, and 'data pipeline' is a different orchestration item entirely.",
+  "aliases": ["dataflow", "data flow", "dataflow gen2", "dataflow gen1", "power query dataflow"],
+  "meanings": [
+    {
+      "context": "Dataflow Gen2 (current)",
+      "artifact": "Dataflow Gen2",
+      "description": "Power Query (M / mashup) based low-code ETL that loads into Lakehouse/Warehouse. The strategic, supported dataflow item.",
+      "command_group": "dataflow",
+      "example_commands": [
+        "fabio dataflow list --workspace $WS",
+        "fabio dataflow execute-query --workspace $WS --id $DF"
+      ]
+    },
+    {
+      "context": "Dataflow Gen1 (legacy)",
+      "artifact": "Dataflow Gen1",
+      "description": "Older Power BI dataflow. Being superseded by Gen2; migrate via a Gen1→Gen2 save-as upgrade rather than authoring new Gen1 flows.",
+      "command_group": "dataflow",
+      "example_commands": []
+    },
+    {
+      "context": "Orchestration (not a dataflow)",
+      "artifact": "Data Pipeline",
+      "description": "If the user means orchestrating activities (copy, notebook, stored proc) rather than Power Query transforms, they want a Data Pipeline, not a Dataflow.",
+      "command_group": "data-pipeline",
+      "example_commands": [
+        "fabio data-pipeline create --workspace $WS --name \"Daily-ETL\"",
+        "fabio data-pipeline run --workspace $WS --id $DP --wait"
+      ]
+    }
+  ],
+  "default_action": "Prefer Dataflow Gen2 for new Power Query ETL. If the user describes orchestrating steps (not transforms), route to data-pipeline.",
+  "related": ["fabio context persona data-engineer"]
+}

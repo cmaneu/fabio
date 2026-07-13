@@ -1,0 +1,21 @@
+{
+  "command": "fabio context disambiguate \"materialized view\"",
+  "description": "Resolves an overloaded Fabric term to the concrete artifact(s) and the fabio command group that handles each. Term lookup normalizes spaces, hyphens, and underscores (so \"materialized view\", \"materialized-view\", and \"materialized_view\" are equivalent).",
+  "response": {
+    "data": {
+      "term": "materialized-view",
+      "summary": "Disambiguate 'materialized view' across Fabric workloads — it means three different things depending on whether you are in a Lakehouse, an Eventhouse/KQL database, or a Warehouse.",
+      "meanings": [
+        {"context": "Spark / Lakehouse", "artifact": "Materialized Lake View (MLV)", "description": "Pre-computed Delta table snapshot refreshed on a schedule.", "command_group": "lakehouse"},
+        {"context": "KQL / Eventhouse", "artifact": "KQL Materialized View", "description": "Continuously-updated aggregation over a source table.", "command_group": "kql-database"},
+        {"context": "SQL Warehouse", "artifact": "Not supported", "description": "Use a regular view or a scheduled CTAS pattern.", "command_group": "warehouse"}
+      ],
+      "default_action": "If the workload is unclear, ask the user which workload they mean before proceeding."
+    }
+  },
+  "notes": "Available terms: materialized-view, dataflow, semantic-model, sql-endpoint. Each meaning maps to a command_group so agents route to the right place. Discover via 'fabio context list' or surfaced automatically in 'fabio context find'.",
+  "query_examples": [
+    {"query": "data.meanings[].command_group", "description": "Get the command group for each meaning."},
+    {"query": "data.meanings[?context=='Spark / Lakehouse'].artifact", "description": "Resolve the term for a specific workload."}
+  ]
+}

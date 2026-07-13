@@ -1,0 +1,23 @@
+{
+  "name": "Synapse/ADF Pipelines to Fabric Data Factory Migration",
+  "description": "Migrate Azure Synapse / Azure Data Factory pipelines to Fabric Data Factory — map Linked Services to Connections, global parameters to a Variable Library, deploy, and validate.",
+  "prerequisites": [
+    "Authenticated via fabio auth login",
+    "Source pipeline JSON (activities, datasets, linked services, triggers)",
+    "Target Fabric workspace with F2+ capacity"
+  ],
+  "steps": [
+    {"step_number": 1, "command": "fabio connection list", "description": "Map each Linked Service to a Fabric Connection. Create missing connections; record their IDs."},
+    {"step_number": 2, "command": "fabio variable-library create --workspace $WS --name \"pipeline_config\"", "description": "Move ADF global parameters into a Variable Library (dev/test/prod value sets) instead of hardcoding."},
+    {"step_number": 3, "command": "fabio data-pipeline create --workspace $WS --name \"MigratedPipeline\"", "description": "Recreate the pipeline. Translate activities: Copy -> Copy activity, Notebook -> Notebook activity, Stored Proc -> Script/SP activity. Datasets become inline source/sink definitions."},
+    {"step_number": 4, "command": "fabio deploy init-params --source ./src --resolve-connections --out params.json", "description": "For .platform-format pipeline exports, scan connection GUIDs and generate a parameter file to remap them.", "notes": "Edit params.json to fill in the correct target connection IDs."},
+    {"step_number": 5, "command": "fabio deploy apply --source ./src --workspace $WS --parameters params.json", "description": "Deploy the pipeline with resolved connections."},
+    {"step_number": 6, "command": "fabio data-pipeline run --workspace $WS --id $DP --wait --timeout 1800", "description": "Run and validate the migrated pipeline end-to-end."}
+  ],
+  "tips": [
+    "ADF triggers -> Fabric job schedules (fabio data-pipeline create-schedule).",
+    "IntegrationRuntime concepts do not migrate — Fabric manages compute; on-prem sources use gateways/connections.",
+    "Use 'fabio deploy plan' (dry-run) before apply to review the changeset.",
+    "Route the overall effort with 'fabio context persona migration-engineer'."
+  ]
+}

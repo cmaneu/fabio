@@ -1,0 +1,24 @@
+{
+  "command": "fabio context persona migration-engineer",
+  "description": "Returns an orchestrator persona — a Layer-1 router that maps a request type to the fabio command groups, workflows, and best-practices to use, plus decision gates, guardrails, and negative routing. Start here for broad multi-step tasks before drilling into specific commands.",
+  "response": {
+    "data": {
+      "name": "migration-engineer",
+      "description": "Orchestrator persona for porting workloads to Microsoft Fabric from Azure Synapse, Databricks, HDInsight, and Data Factory.",
+      "phases": [
+        {"phase": 1, "name": "Assessment", "action": "Inventory source artifacts and identify feature-parity gaps."}
+      ],
+      "delegates_to": [
+        {"request_type": "Migrate from Databricks", "workflows": ["databricks-migration"], "best_practices": ["migration-api-shims"], "notes": "dbutils -> notebookutils; Unity Catalog -> Lakehouse; DBFS -> OneLake."}
+      ],
+      "decision_gates": ["STOP after assessment: present feature-parity gaps and get user sign-off before writing code."],
+      "guardrails": {"must": ["Translate storage paths and utility APIs."], "prefer": ["workspace clone / deploy export for bulk moves."], "avoid": ["Deleting source systems before parity is validated."]},
+      "negative_routing": ["Greenfield build (no source) -> persona 'data-engineer'."]
+    }
+  },
+  "notes": "Personas hold no implementation depth — they route to Layer 3 mechanics (context agent/workflow/best-practices). Available personas: data-engineer, migration-engineer, fabric-admin, rti-engineer, bi-developer. Discover via 'fabio context list' or 'fabio context find <query>'.",
+  "query_examples": [
+    {"query": "data.delegates_to[].request_type", "description": "List the request types this persona routes."},
+    {"query": "data.guardrails.avoid", "description": "See the anti-patterns to avoid for this role."}
+  ]
+}

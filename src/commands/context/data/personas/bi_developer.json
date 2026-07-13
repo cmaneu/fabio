@@ -1,0 +1,38 @@
+{
+  "name": "bi-developer",
+  "description": "Orchestrator persona for business intelligence on Fabric: semantic models (datasets), reports, Direct Lake, DAX querying, and refresh. Routes model authoring, report creation, and analytics-consumption requests to the right command groups.",
+  "purpose": "Build and operate the BI layer on Fabric — semantic models over lakehouse/warehouse data, reports, and DAX analytics — including Direct Lake report patterns.",
+  "delegates_to": [
+    {"request_type": "Create / manage semantic model", "command_groups": ["semantic-model"], "commands": ["semantic-model create", "semantic-model refresh"], "notes": "'dataset' == semantic model. create --file model.tmdl --connection $SQLEP."},
+    {"request_type": "Query a model with DAX", "command_groups": ["semantic-model"], "commands": ["semantic-model query"], "notes": "query --dax \"EVALUATE Sales\"."},
+    {"request_type": "Create / manage reports", "command_groups": ["report", "paginated-report", "dashboard"], "commands": ["report create"], "notes": "report create --dataset $SM. PBIR-Legacy needed to render data programmatically."},
+    {"request_type": "Direct Lake report", "workflows": ["direct-lake-report"], "notes": "Model reads Delta tables directly from OneLake — no import/refresh."},
+    {"request_type": "Power BI service endpoints", "command_groups": ["rest"], "commands": ["rest call --api powerbi"], "notes": "Same Fabric token works for Power BI API (datasets/reports/dashboards)."},
+    {"request_type": "Refresh scheduling", "command_groups": ["semantic-model", "job-scheduler"], "notes": "Deploy auto-refreshes semantic models as a post-hook."}
+  ],
+  "decision_gates": [
+    "Confirm the source connection (SQL endpoint / warehouse) exists before creating a semantic model bound to it.",
+    "For Direct Lake, confirm the lakehouse Delta tables are populated first (report shows empty otherwise).",
+    "Before triggering a full refresh on a large model, confirm capacity headroom."
+  ],
+  "guardrails": {
+    "must": [
+      "Bind semantic-model create to a valid --connection (SQL endpoint) for import/DirectQuery.",
+      "Use PBIR-Legacy format when a report must render data programmatically."
+    ],
+    "prefer": [
+      "Direct Lake over import mode when data already lives in a lakehouse (no refresh cost).",
+      "fabio rest call --api powerbi for Power BI-specific endpoints not in the Fabric surface."
+    ],
+    "avoid": [
+      "Assuming a report renders data in plain PBIR (it needs PBIR-Legacy).",
+      "Refreshing on inactive capacity (CAPACITY_INACTIVE)."
+    ]
+  },
+  "negative_routing": [
+    "Building/loading the underlying data -> use persona 'data-engineer'.",
+    "Real-time/KQL dashboards -> use persona 'rti-engineer'.",
+    "Tenant/capacity governance -> use persona 'fabric-admin'."
+  ],
+  "see_also": ["fabio context workflow direct-lake-report", "fabio context disambiguate semantic-model", "fabio context examples semantic-model create"]
+}

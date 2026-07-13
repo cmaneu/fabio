@@ -1,0 +1,24 @@
+{
+  "name": "Databricks to Fabric Migration",
+  "description": "Port Databricks notebooks and jobs to Microsoft Fabric — translate dbutils/DBFS/Unity Catalog references, load data into a Lakehouse, deploy, and validate.",
+  "prerequisites": [
+    "Authenticated via fabio auth login",
+    "Exported Databricks notebooks (.py/.ipynb) and job definitions",
+    "Target Fabric workspace with F2+ capacity"
+  ],
+  "steps": [
+    {"step_number": 1, "command": "fabio context best-practices migration-api-shims", "description": "Load the translation table (dbutils -> notebookutils, DBFS -> OneLake, Unity Catalog -> Lakehouse)."},
+    {"step_number": 2, "command": "fabio lakehouse create --workspace $WS --name \"lakehouse\"", "description": "Create target Lakehouse. Map Unity Catalog catalog.schema.table -> lakehouse Tables/ (Delta is compatible)."},
+    {"step_number": 3, "command": "fabio lakehouse upload --workspace $WS --id $LH --source ./data/*.parquet --dest Files/raw/", "description": "Migrate data files from DBFS/S3/ADLS into OneLake. Delta tables copy directly (same format)."},
+    {"step_number": 4, "command": "fabio notebook create --workspace $WS --name \"Job1\" --file ./translated.ipynb --lakehouse $LH", "description": "Translate each notebook: dbutils.fs -> notebookutils.fs, dbutils.secrets -> notebookutils.credentials, spark.table('cat.sch.tbl') -> spark.read of lakehouse Tables/, remove %run magic (use notebookutils.notebook.run or shared code)."},
+    {"step_number": 5, "command": "fabio notebook run --workspace $WS --id $NB --wait --timeout 1800", "description": "Run and confirm completion."},
+    {"step_number": 6, "command": "fabio lakehouse list-tables --workspace $WS --id $LH", "description": "Validate output tables."},
+    {"step_number": 7, "command": "fabio deploy export --workspace $WS --dir ./fabric-items --overwrite", "description": "Snapshot for CI/CD and Git."}
+  ],
+  "tips": [
+    "Databricks Jobs -> Fabric Data Pipelines or job schedules (fabio job-scheduler create-schedule).",
+    "Cluster configs do not migrate — Fabric manages Spark compute.",
+    "Delta tables are cross-compatible; often just re-point the path rather than re-write data.",
+    "Route the overall effort with 'fabio context persona migration-engineer'."
+  ]
+}

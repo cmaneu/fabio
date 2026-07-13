@@ -1,0 +1,38 @@
+{
+  "term": "semantic-model",
+  "summary": "Disambiguate 'semantic model' vs 'dataset' vs 'report' — 'dataset' is the legacy Power BI name for a semantic model; a report is a separate visualization item bound to a semantic model.",
+  "aliases": ["semantic model", "semantic-model", "dataset", "power bi dataset", "pbi dataset", "tabular model"],
+  "meanings": [
+    {
+      "context": "Semantic Model (current name)",
+      "artifact": "Semantic Model",
+      "description": "The tabular data model (tables, measures, relationships) queried with DAX. Formerly called 'dataset' in Power BI. This is the same item — the name changed.",
+      "command_group": "semantic-model",
+      "example_commands": [
+        "fabio semantic-model create --workspace $WS --name \"Sales\" --file model.tmdl --connection $SQLEP",
+        "fabio semantic-model query --workspace $WS --id $SM --dax \"EVALUATE Sales\"",
+        "fabio semantic-model refresh --workspace $WS --id $SM"
+      ]
+    },
+    {
+      "context": "Dataset (legacy name)",
+      "artifact": "Semantic Model",
+      "description": "'Dataset' is the pre-2023 Power BI term for a semantic model. Power BI REST API endpoints still use /datasets. Access them via fabio rest call --api powerbi when a Power BI-specific endpoint is needed.",
+      "command_group": "semantic-model",
+      "example_commands": [
+        "fabio rest call --api powerbi --method GET --path \"/groups/$WS/datasets/$SM/refreshes\""
+      ]
+    },
+    {
+      "context": "Report (not a model)",
+      "artifact": "Report",
+      "description": "If the user means visuals/pages/dashboards, that is a Report item bound to a semantic model — a separate artifact from the model itself.",
+      "command_group": "report",
+      "example_commands": [
+        "fabio report create --workspace $WS --name \"Dashboard\" --dataset $SM"
+      ]
+    }
+  ],
+  "default_action": "Treat 'dataset' and 'semantic model' as the same item (use the semantic-model group). Route visualization requests to the report group.",
+  "related": ["fabio context persona bi-developer"]
+}

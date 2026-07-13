@@ -1,0 +1,34 @@
+{
+  "family": "deploy-cicd",
+  "title": "Deploy & CI/CD — stateless content-hash deployment, Git, pipelines, variable libraries",
+  "description": "Intent-scoped fabio skill for Fabric CI/CD: stateless content-hash deploy (export/validate/plan/apply), Git integration, deployment pipelines, and variable libraries for environment-specific config. Use for promoting Fabric items between environments, Git lifecycle, and parameterized deployments. Triggers: \"deploy\", \"ci/cd\", \"promote to production\", \"deploy plan\", \"deploy apply\", \"git commit\", \"git pull\", \"deployment pipeline\", \"variable library\", \"value set\".",
+  "command_groups": ["deploy", "git", "deployment-pipeline", "variable-library"],
+  "when_to_use": [
+    "Exporting a workspace to disk and deploying it to another environment.",
+    "Planning (dry-run diff) before applying changes; converging idempotently.",
+    "Git integration: connect, status, commit, pull, checkout, branch-out.",
+    "Managing deployment pipelines (dev/test/prod stages).",
+    "Managing variable libraries and activating environment value sets."
+  ],
+  "when_not_to_use": [
+    "Porting from Synapse/Databricks/HDInsight -> use the migration-engineer persona + migration workflows.",
+    "One-off item CRUD -> use the specific workload skill (fabio-lakehouse, fabio-rti-kql, etc.)."
+  ],
+  "key_gotchas": [
+    "Deploy is STATELESS — content-hash diffing against the live workspace, no state file. --workspace accepts a display name or GUID.",
+    "Always 'deploy plan' (dry-run) and review before 'deploy apply'.",
+    "Source format is fabric Git Integration '.platform' directories (100% fabric-cicd compatible).",
+    "--strategy default (per-item, content-hash skip) | bulk (fast initial deploy to empty workspace) | sequential (debugging).",
+    "Name value sets to match --env values — 'deploy apply --env prod' auto-activates the 'prod' value set as a post-hook."
+  ],
+  "safety": [
+    "--force-all overwrites ALL matched items regardless of content changes — irreversible; run 'deploy plan' first.",
+    "--delete-orphans removes workspace items not in source; protected data types (Lakehouse/Warehouse/SQLDatabase/Eventhouse/KQLDatabase) require --allow-delete-types.",
+    "Deploy output includes a 'destructive' boolean — surface it to the human before applying."
+  ],
+  "see_also": [
+    "fabio context persona migration-engineer",
+    "fabio context workflow cicd-deploy",
+    "fabio context best-practices deploy-parameters"
+  ]
+}

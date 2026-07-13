@@ -1,0 +1,39 @@
+{
+  "term": "sql-endpoint",
+  "summary": "Disambiguate the three T-SQL surfaces in Fabric — SQL analytics endpoint (read-only, auto-provisioned over a Lakehouse), Warehouse (read-write analytics), and SQL Database (OLTP). They look similar but are distinct items with different capabilities.",
+  "aliases": ["sql endpoint", "sql-endpoint", "sql analytics endpoint", "warehouse", "sql database", "sqldb", "sql db", "tds"],
+  "meanings": [
+    {
+      "context": "SQL analytics endpoint",
+      "artifact": "SQLEndpoint",
+      "description": "Read-only T-SQL surface auto-provisioned over a Lakehouse's Delta tables. You cannot create/deploy it independently (Fabric manages it). Use it to query lakehouse tables with T-SQL.",
+      "command_group": "sql-endpoint",
+      "example_commands": [
+        "fabio sql-endpoint query --workspace $WS --id $EP --sql \"SELECT COUNT(*) FROM dbo.orders\"",
+        "fabio lakehouse plan --workspace $WS --id $LH --sql \"SELECT ...\""
+      ]
+    },
+    {
+      "context": "Warehouse",
+      "artifact": "Warehouse",
+      "description": "Full read-write T-SQL analytics warehouse (DDL/DML, statistics, query insights). Use for a managed analytics warehouse you own end-to-end.",
+      "command_group": "warehouse",
+      "example_commands": [
+        "fabio warehouse create --workspace $WS --name \"Analytics\"",
+        "fabio warehouse query --workspace $WS --id $WH --sql \"SELECT ...\""
+      ]
+    },
+    {
+      "context": "SQL Database (OLTP)",
+      "artifact": "SQLDatabase",
+      "description": "Transactional (OLTP) SQL database in Fabric. Requires F4+ capacity (F2 fails with error 18456 State 240). Use for app/transactional workloads, not analytics.",
+      "command_group": "sql-database",
+      "example_commands": [
+        "fabio sql-database create --workspace $WS --name \"OrdersDB\"",
+        "fabio sql-database import --workspace $WS --id $DB --file data.csv --table orders --drop-if-exists"
+      ]
+    }
+  ],
+  "default_action": "Analytics + read-only over a lakehouse -> sql-endpoint. Analytics + read-write warehouse -> warehouse. Transactional/app database -> sql-database.",
+  "related": ["fabio context persona data-engineer"]
+}

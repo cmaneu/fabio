@@ -114,6 +114,8 @@ git clone https://github.com/iemejia/fabio ~/.agents/skills/fabio-repo
 # Skills are at ~/.agents/skills/fabio-repo/.agents/skills/fabio/
 ```
 
+The root `fabio` skill covers cross-cutting concerns (install, auth, output envelope, safety). For progressive disclosure, fabio also ships six **intent-scoped sub-skills** — `fabio-lakehouse`, `fabio-warehouse-sql`, `fabio-rti-kql`, `fabio-deploy-cicd`, `fabio-admin`, `fabio-migration` — so an agent can load only the workload it needs. Each pairs authored judgment (when to use, gotchas, safety, routing) with a command index generated from fabio's own schema, so they never drift from the CLI.
+
 **Docker** (multi-arch: amd64 + arm64):
 
 ```bash
@@ -267,7 +269,15 @@ fabio context workflow cicd-deploy
 
 # Best practices
 fabio context best-practices throttling
+
+# Orchestrator personas — which command groups + workflows to use for a role
+fabio context persona data-engineer     # also: migration-engineer, fabric-admin, rti-engineer, bi-developer
+
+# Resolve an overloaded Fabric term to the right artifact + command group
+fabio context disambiguate "materialized view"
 ```
+
+For broad multi-step tasks (build a medallion lakehouse, migrate from Synapse/Databricks/HDInsight, administer a tenant), start with `fabio context persona <name>` — personas are thin routers that map your request to the right command groups, workflows, and best-practices, with decision gates and safety guardrails. Migration recipes ship as workflows (`synapse-migration`, `databricks-migration`, `hdinsight-migration`, `pipeline-migration`) plus the `migration-api-shims` best-practice (mssparkutils/dbutils→notebookutils, DBFS/WASB/ADLS→OneLake, Linked Services→Connections).
 
 ## Authentication
 

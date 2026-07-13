@@ -1,0 +1,34 @@
+{
+  "family": "rti-kql",
+  "title": "Real-Time Intelligence — Eventhouse, KQL, Eventstream, Activator",
+  "description": "Intent-scoped fabio skill for Fabric Real-Time Intelligence: eventhouses, KQL databases (schema, ingest, query, monitoring), KQL querysets/dashboards, eventstreams (streaming topologies), reflex/activator triggers, and natural-language-to-KQL. Use for streaming ingestion, time-series analytics, and event-driven alerts. Triggers: \"eventhouse\", \"kql\", \"kusto\", \"kql database\", \"ingest events\", \"eventstream\", \"streaming\", \"reflex\", \"activator\", \"nl to kql\", \"real-time\".",
+  "command_groups": ["eventhouse", "kql-database", "kql-queryset", "kql-dashboard", "eventstream", "reflex", "rti", "event-schema-set"],
+  "when_to_use": [
+    "Creating an eventhouse and KQL databases inside it.",
+    "KQL schema discovery (list-entities), ingestion, querying, and query monitoring (running/journal/completed).",
+    "Building eventstream topologies (sources, destinations, connection strings).",
+    "Creating reflex/activator triggers for event-driven alerts.",
+    "Translating natural language to KQL (rti nl-to-kql)."
+  ],
+  "when_not_to_use": [
+    "Batch Delta lakehouse ETL -> use fabio-lakehouse.",
+    "T-SQL warehouse analytics -> use fabio-warehouse-sql.",
+    "'materialized view' in a lakehouse context -> that is a Materialized Lake View (fabio-lakehouse), not a KQL materialized view — see 'fabio context disambiguate materialized-view'."
+  ],
+  "key_gotchas": [
+    "kql-database create requires --eventhouse-id (create the eventhouse first).",
+    "KQL queries use a separate auth scope: {kusto_uri}/.default, not the standard Fabric scope (fabio handles this).",
+    "kql-database manage runs .create / .create-or-alter management commands (routed to the mgmt endpoint).",
+    "KQL Queryset definition uses RealTimeQueryset.json (not RawQueryset.kql).",
+    "Discover schema with list-entities before querying unknown tables."
+  ],
+  "safety": [
+    "Reflex/activator triggers can take automated actions — confirm the rule, threshold, and action with the user before creating.",
+    "KQL management commands that alter retention/caching/policies change data lifecycle — confirm before running."
+  ],
+  "see_also": [
+    "fabio context persona rti-engineer",
+    "fabio context workflow rti-pipeline",
+    "fabio context disambiguate materialized-view"
+  ]
+}

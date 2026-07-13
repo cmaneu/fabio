@@ -1,0 +1,38 @@
+{
+  "term": "materialized-view",
+  "summary": "Disambiguate 'materialized view' across Fabric workloads — it means three different things depending on whether you are in a Lakehouse, an Eventhouse/KQL database, or a Warehouse.",
+  "aliases": ["materialized view", "materialized-view", "mv", "materialized lake view", "mlv"],
+  "meanings": [
+    {
+      "context": "Spark / Lakehouse",
+      "artifact": "Materialized Lake View (MLV)",
+      "description": "Pre-computed Delta table snapshot refreshed on a schedule via execution definitions.",
+      "command_group": "lakehouse",
+      "example_commands": [
+        "fabio lakehouse refresh-materialized-views --workspace $WS --id $LH",
+        "fabio lakehouse create-execution-definition --workspace $WS --id $LH --content '{...}'",
+        "fabio lakehouse create-materialized-views-schedule --workspace $WS --id $LH --content '{...}'"
+      ]
+    },
+    {
+      "context": "KQL / Eventhouse",
+      "artifact": "KQL Materialized View",
+      "description": "A continuously-updated aggregation over a source table, created with the .create materialized-view management command.",
+      "command_group": "kql-database",
+      "example_commands": [
+        "fabio kql-database manage --workspace $WS --id $KDB --command \".create materialized-view MV on table T { T | summarize count() by bin(ts, 1h) }\""
+      ]
+    },
+    {
+      "context": "SQL Warehouse",
+      "artifact": "Not supported",
+      "description": "Fabric Warehouse does not support materialized views. Use a regular view, or a scheduled CTAS (CREATE TABLE AS SELECT) pattern to persist aggregates.",
+      "command_group": "warehouse",
+      "example_commands": [
+        "fabio warehouse query --workspace $WS --id $WH --sql \"CREATE VIEW dbo.v AS SELECT ...\""
+      ]
+    }
+  ],
+  "default_action": "If the workload is unclear, ask the user: 'Are you working with a Lakehouse (Materialized Lake View) or an Eventhouse (KQL Materialized View)?' before proceeding.",
+  "related": ["fabio context persona rti-engineer", "fabio context persona data-engineer"]
+}

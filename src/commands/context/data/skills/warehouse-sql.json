@@ -1,0 +1,34 @@
+{
+  "family": "warehouse-sql",
+  "title": "Warehouse & SQL — T-SQL query, execution plans, insights, statistics",
+  "description": "Intent-scoped fabio skill for Fabric T-SQL surfaces: Warehouse (read-write analytics), SQL Database (OLTP), SQL analytics endpoint (read-only over a lakehouse), and warehouse snapshots. Use for running T-SQL, capturing execution plans, monitoring queries, and managing statistics. Triggers: \"warehouse query\", \"run SQL\", \"T-SQL\", \"execution plan\", \"showplan\", \"queries running\", \"kill session\", \"statistics\", \"sql database\", \"sql endpoint\".",
+  "command_groups": ["warehouse", "sql-database", "sql-endpoint", "warehouse-snapshot"],
+  "when_to_use": [
+    "Executing T-SQL against a Warehouse, SQL Database, or SQL analytics endpoint (also lakehouse plan/query).",
+    "Capturing estimated execution plans (SHOWPLAN_XML) without running the query.",
+    "Monitoring queries: running / frequent / long-running / history; killing a session.",
+    "Managing user-defined statistics (list/show/create/update/delete).",
+    "Creating/managing warehouse snapshots."
+  ],
+  "when_not_to_use": [
+    "Loading files into Delta tables -> use fabio-lakehouse (load-table).",
+    "KQL / real-time queries -> use fabio-rti-kql.",
+    "DAX over a semantic model -> use the bi-developer persona (semantic-model query)."
+  ],
+  "key_gotchas": [
+    "Three distinct surfaces — see 'fabio context disambiguate sql-endpoint': analytics endpoint (read-only over lakehouse), warehouse (read-write), sql-database (OLTP).",
+    "SQL Database needs F4+ capacity (F2 fails with error 18456 State 240).",
+    "sys.dm_exec_requests has no login_name column on Fabric (it is in sys.dm_exec_sessions).",
+    "sys.dm_db_stats_properties is NOT supported on Lakehouse SQL endpoints.",
+    "--sql accepts @file.sql and stdin piping for large queries."
+  ],
+  "safety": [
+    "queries-kill terminates a running session (KILL) — confirm the session id and impact with the user.",
+    "DDL/DML via query (DROP/DELETE/TRUNCATE) is executed for real — use 'plan' to inspect without executing, and confirm destructive statements."
+  ],
+  "see_also": [
+    "fabio context persona data-engineer",
+    "fabio context disambiguate sql-endpoint",
+    "fabio context disambiguate semantic-model"
+  ]
+}

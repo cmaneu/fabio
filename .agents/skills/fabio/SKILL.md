@@ -61,11 +61,20 @@ fabio context find "upload"
 
 # Multi-step workflow recipes
 fabio context workflow <name>
-# Available: lakehouse-etl, rti-pipeline, direct-lake-report, cicd-deploy, data-agent-setup
+# Available: lakehouse-etl, rti-pipeline, direct-lake-report, cicd-deploy, data-agent-setup,
+#            synapse-migration, databricks-migration, hdinsight-migration, pipeline-migration
 
 # Best practices
 fabio context best-practices <topic>
-# Available: throttling, lro, pagination, admin-apis, shortcuts
+# Available: throttling, lro, pagination, admin-apis, shortcuts, migration-api-shims
+
+# Orchestrator personas — which command groups + workflows to use for a role (start here for a broad task)
+fabio context persona <name>
+# Available: data-engineer, migration-engineer, fabric-admin, rti-engineer, bi-developer
+
+# Disambiguate an overloaded Fabric term — routes to the right artifact + command group
+fabio context disambiguate <term>
+# Available: materialized-view, dataflow, semantic-model, sql-endpoint
 
 # Item definition format (for create/update-definition)
 fabio context schema <type>
@@ -83,6 +92,27 @@ fabio context tenant --workspace $WS --focus $ITEM_ID --depth 2  # ego-centric s
 fabio context tenant --workspace $WS --deep --include-connections --output-file context.json  # full graph
 fabio context tenant --workspace $NEW_WS --deep --merge context.json --output-file context.json  # incremental
 ```
+
+**Where to start (routing):**
+- **Broad / multi-step task** (e.g. "build a medallion lakehouse", "migrate from Databricks", "administer the tenant") → begin with `fabio context persona <name>`. Personas are thin routers that tell you which command groups, workflows, and best-practices to use, plus decision gates and guardrails.
+- **Ambiguous Fabric term** (e.g. "materialized view", "dataflow", "dataset", "SQL endpoint") → run `fabio context disambiguate <term>` to resolve it to the concrete artifact + command group before acting.
+- **Specific command** → use `fabio context agent --group <g>` / `fabio context describe <g> <cmd>` for flags and output shape.
+- **Prefer runtime introspection over re-reading this skill** — it is always in sync with the installed binary.
+
+### Intent-scoped sub-skills (progressive disclosure)
+
+This root skill covers cross-cutting concerns (install, auth, output envelope, global flags, safety). For focused, workload-specific guidance, fabio ships generated sub-skills — each pairs authored judgment (when to use, gotchas, safety, routing) with a command index generated from fabio's own schema:
+
+| Sub-skill | Covers |
+|-----------|--------|
+| `fabio-lakehouse` | Lakehouse files, tables, sync, Iceberg, OneLake, Materialized Lake Views |
+| `fabio-warehouse-sql` | Warehouse / SQL Database / SQL endpoint — T-SQL, plans, insights, statistics |
+| `fabio-rti-kql` | Eventhouse, KQL, Eventstream, Activator (Real-Time Intelligence) |
+| `fabio-deploy-cicd` | Stateless content-hash deploy, Git, deployment pipelines, variable libraries |
+| `fabio-admin` | Capacity, tenant governance, domains, gateways, connections, labels |
+| `fabio-migration` | Port Synapse / Databricks / HDInsight / ADF to Fabric |
+
+Load only the sub-skill(s) relevant to the task to keep context lean. They are generated from `commands.json` (drift-checked in CI), so they never fall out of sync with the CLI.
 
 ## Output & Errors
 

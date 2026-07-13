@@ -1,0 +1,45 @@
+{
+  "topic": "migration-api-shims",
+  "title": "API and storage-path translation for migrating to Fabric",
+  "summary": "Translation table for porting Synapse, Databricks, and HDInsight code to Fabric: utility APIs (mssparkutils/dbutils -> notebookutils), storage paths (DBFS/WASB/ADLS -> OneLake), catalogs, and orchestration.",
+  "utility_apis": {
+    "mssparkutils.fs.*": "notebookutils.fs.* (Synapse -> Fabric; same method surface: ls, cp, mv, rm, mkdirs, head, put).",
+    "mssparkutils.credentials.getSecret": "notebookutils.credentials.getSecret (or a Fabric Connection).",
+    "mssparkutils.notebook.run/exit": "notebookutils.notebook.run / notebookutils.notebook.exit.",
+    "dbutils.fs.*": "notebookutils.fs.* (Databricks -> Fabric).",
+    "dbutils.secrets.get": "notebookutils.credentials.getSecret (Databricks secret scopes -> Fabric connections/Key Vault).",
+    "dbutils.widgets.*": "notebookutils.notebook parameters / notebook run --parameters.",
+    "dbutils.notebook.run": "notebookutils.notebook.run.",
+    "%run ./other_nb": "notebookutils.notebook.run('other_nb') or refactor shared code into a library."
+  },
+  "storage_paths": {
+    "dbfs:/ or /dbfs/": "OneLake: abfss://<workspace>@onelake.dfs.fabric.microsoft.com/<lakehouse>.Lakehouse/Files/... (or the lakehouse-relative Files/ path in a bound notebook).",
+    "wasb[s]://container@account.blob.core.windows.net/": "OneLake abfss path, or a Lakehouse shortcut to keep data in place (fabio shortcut create).",
+    "adl:// (ADLS Gen1)": "OneLake abfss path (Gen1 is retired).",
+    "abfss://...dfs.core.windows.net (ADLS Gen2)": "OneLake abfss path, or a shortcut (fabio shortcut create --target adlsgen2).",
+    "s3://": "OneLake, or a Lakehouse shortcut (fabio shortcut create --target s3)."
+  },
+  "catalog_and_tables": {
+    "Unity Catalog (catalog.schema.table)": "Lakehouse Tables/ (Delta). Read via spark.read of the lakehouse table path or the SQL analytics endpoint.",
+    "Hive metastore / HiveContext": "Remove HiveContext; use spark.sql on the SparkSession. Hive tables -> lakehouse Delta tables.",
+    "Synapse dedicated SQL pool": "Fabric Warehouse (fabio warehouse ...).",
+    "Synapse serverless SQL": "Fabric SQL analytics endpoint over a Lakehouse (fabio sql-endpoint ...)."
+  },
+  "orchestration": {
+    "Oozie / ADF pipelines / Synapse pipelines": "Fabric Data Pipelines (fabio data-pipeline ...).",
+    "ADF/Synapse Linked Services": "Fabric Connections (fabio connection ...).",
+    "ADF global parameters": "Fabric Variable Library with dev/test/prod value sets (fabio variable-library ...).",
+    "ADF/Synapse triggers": "Fabric job schedules (fabio data-pipeline create-schedule / job-scheduler create-schedule).",
+    "Databricks Jobs": "Fabric Data Pipelines or job schedules."
+  },
+  "compute_notes": [
+    "Spark pool / cluster sizing does NOT migrate — Fabric manages Spark compute per capacity.",
+    "spark.conf platform-specific settings should be removed; Fabric sets sane defaults.",
+    "IntegrationRuntime has no equivalent — on-prem connectivity uses gateways/connections."
+  ],
+  "validation": [
+    "Compare row counts: source vs 'fabio warehouse query ... SELECT COUNT(*)' or 'fabio lakehouse list-tables'.",
+    "Spot-check schema and a sample of aggregates before decommissioning the source."
+  ],
+  "see_also": ["fabio context persona migration-engineer", "fabio context workflow synapse-migration", "fabio context workflow databricks-migration", "fabio context workflow hdinsight-migration", "fabio context workflow pipeline-migration"]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "Azure Synapse to Fabric Migration",
+  "description": "Port Azure Synapse Spark and SQL workloads to Microsoft Fabric — assess, set up the target, translate mssparkutils/Linked Services, deploy, and validate parity.",
+  "prerequisites": [
+    "Authenticated via fabio auth login",
+    "Access to the source Synapse workspace artifacts (notebooks, scripts, pipeline JSON)",
+    "Target Fabric workspace with F2+ capacity (F4+ if using SQL Database)"
+  ],
+  "steps": [
+    {"step_number": 1, "command": "fabio context best-practices migration-api-shims", "description": "Load the API/path translation table (mssparkutils -> notebookutils, ADLS -> OneLake, Linked Services -> Connections)."},
+    {"step_number": 2, "command": "fabio workspace create --name \"Migrated-Analytics\"", "description": "Create the target workspace.", "notes": "Then: fabio workspace assign-capacity --id $WS --capacity $CAP."},
+    {"step_number": 3, "command": "fabio lakehouse create --workspace $WS --name \"bronze\"", "description": "Create target storage. Map Synapse Spark tables/ADLS containers to a Lakehouse (Delta)."},
+    {"step_number": 4, "command": "fabio connection list", "description": "Map each Synapse Linked Service to a Fabric Connection (create where missing). Record connection IDs for pipeline params."},
+    {"step_number": 5, "command": "fabio notebook create --workspace $WS --name \"Ingest\" --file ./translated_notebook.py --lakehouse $LH", "description": "Translate each Synapse notebook: replace mssparkutils.* with notebookutils.*, abfss:// ADLS paths with OneLake abfss paths, and spark.read against Synapse tables with lakehouse Tables/ paths."},
+    {"step_number": 6, "command": "fabio notebook run --workspace $WS --id $NB --wait --timeout 1800", "description": "Run the translated notebook and confirm it completes."},
+    {"step_number": 7, "command": "fabio lakehouse list-tables --workspace $WS --id $LH", "description": "Validate expected tables were produced."},
+    {"step_number": 8, "command": "fabio deploy export --workspace $WS --dir ./fabric-items --overwrite", "description": "Snapshot the migrated workspace to disk for CI/CD; commit to Git.", "notes": "From here, 'fabio deploy plan/apply' promotes to other environments."}
+  ],
+  "tips": [
+    "Synapse SQL pools -> Fabric Warehouse; Spark pools -> Fabric Spark (no pool sizing to migrate).",
+    "Replace spark.conf Synapse-specific settings; Fabric manages Spark config.",
+    "Validate parity with row counts: compare source vs 'fabio warehouse query ... COUNT(*)'.",
+    "Route the overall effort with 'fabio context persona migration-engineer'."
+  ]
+}

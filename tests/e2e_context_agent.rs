@@ -729,3 +729,147 @@ fn find_content_search_matches_inside_json() {
         "content search should find deploy-parameters via $ENV: {results:?}"
     );
 }
+
+// ── Phase 5: context persona (orchestrator layer) ────────────────────────────
+
+#[test]
+fn persona_returns_delegation_table() {
+    let assert = fabio()
+        .args(["context", "persona", "data-engineer"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    assert_eq!(json["data"]["name"].as_str().unwrap(), "data-engineer");
+    assert!(
+        json["data"]["delegates_to"].is_array(),
+        "persona should expose a delegates_to routing table"
+    );
+    assert!(
+        !json["data"]["delegates_to"].as_array().unwrap().is_empty(),
+        "delegation table should not be empty"
+    );
+}
+
+#[test]
+fn persona_migration_engineer_references_migration_workflows() {
+    let assert = fabio()
+        .args(["context", "persona", "migration-engineer"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("synapse-migration") && stdout.contains("databricks-migration"),
+        "migration-engineer persona should route to migration workflows"
+    );
+}
+
+#[test]
+fn persona_unknown_returns_available_list() {
+    let assert = fabio()
+        .args(["context", "persona", "nonexistent-role"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(
+        json["data"]["available_personas"].is_array(),
+        "unknown persona should list available personas"
+    );
+}
+
+#[test]
+fn find_surfaces_persona() {
+    let assert = fabio()
+        .args(["context", "find", "migration engineer synapse databricks"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let results = json["data"]["results"].as_array().unwrap();
+    let has_persona = results
+        .iter()
+        .any(|r| r["type"].as_str() == Some("persona"));
+    assert!(has_persona, "find should surface personas: {results:?}");
+}
+
+// ── Phase 5: context disambiguate (terminology routing) ──────────────────────
+
+#[test]
+fn disambiguate_materialized_view_lists_three_meanings() {
+    let assert = fabio()
+        .args(["context", "disambiguate", "materialized view"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    assert_eq!(json["data"]["term"].as_str().unwrap(), "materialized-view");
+    let meanings = json["data"]["meanings"].as_array().unwrap();
+    assert!(
+        meanings.len() >= 3,
+        "materialized view should have at least 3 workload meanings"
+    );
+    // Each meaning must name the command group that handles it.
+    for m in meanings {
+        assert!(
+            m["command_group"].is_string(),
+            "each meaning must map to a command_group"
+        );
+    }
+}
+
+#[test]
+fn disambiguate_normalizes_spaces_and_hyphens() {
+    // "sql endpoint" (space) and "sql-endpoint" (hyphen) resolve to the same table.
+    let by_space = fabio()
+        .args(["context", "disambiguate", "sql endpoint"])
+        .assert()
+        .success();
+    let by_hyphen = fabio()
+        .args(["context", "disambiguate", "sql-endpoint"])
+        .assert()
+        .success();
+    let s1 = String::from_utf8_lossy(&by_space.get_output().stdout);
+    let s2 = String::from_utf8_lossy(&by_hyphen.get_output().stdout);
+    let j1: serde_json::Value = serde_json::from_str(&s1).unwrap();
+    let j2: serde_json::Value = serde_json::from_str(&s2).unwrap();
+    assert_eq!(j1["data"]["term"], j2["data"]["term"]);
+}
+
+#[test]
+fn disambiguate_unknown_returns_available_terms() {
+    let assert = fabio()
+        .args(["context", "disambiguate", "totally-unknown-term"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(
+        json["data"]["available_terms"].is_array(),
+        "unknown term should list available disambiguation terms"
+    );
+}
+
+// ── context list includes the new topic types ────────────────────────────────
+
+#[test]
+fn list_includes_personas_and_disambiguations() {
+    let assert = fabio().args(["context", "list"]).assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(
+        json["data"]["personas"].is_array()
+            && !json["data"]["personas"].as_array().unwrap().is_empty(),
+        "context list should include personas"
+    );
+    assert!(
+        json["data"]["disambiguations"].is_array()
+            && !json["data"]["disambiguations"]
+                .as_array()
+                .unwrap()
+                .is_empty(),
+        "context list should include disambiguations"
+    );
+}

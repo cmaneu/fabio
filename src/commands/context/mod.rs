@@ -2,8 +2,12 @@
 
 mod agent;
 mod best_practices;
+mod disambiguations;
 mod examples;
+mod personas;
 mod schemas;
+#[cfg(test)]
+mod skillgen;
 pub mod tenant;
 mod workflows;
 
@@ -105,6 +109,22 @@ pub enum ContextCommand {
         /// Topic name (`throttling`, `lro`, `pagination`, `admin-apis`)
         #[arg(name = "TOPIC")]
         topic: String,
+    },
+
+    /// Show an orchestrator persona: which command groups, workflows, and best-practices to use for a role
+    #[command(display_order = 8)]
+    Persona {
+        /// Persona name (`data-engineer`, `migration-engineer`, `fabric-admin`, `rti-engineer`, `bi-developer`)
+        #[arg(name = "NAME")]
+        name: String,
+    },
+
+    /// Resolve an overloaded Fabric term to the concrete artifact + command group that handles it
+    #[command(display_order = 9)]
+    Disambiguate {
+        /// Overloaded term (e.g. `materialized-view`, `dataflow`, `semantic-model`, `sql-endpoint`)
+        #[arg(name = "TERM")]
+        term: String,
     },
 
     /// Show example output for a command (response shape + `JMESPath` tips)
@@ -223,6 +243,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
             best_practices::execute(cli, topic);
             Ok(())
         }
+        ContextCommand::Persona { name } => {
+            personas::execute(cli, name);
+            Ok(())
+        }
+        ContextCommand::Disambiguate { term } => {
+            disambiguations::execute(cli, term);
+            Ok(())
+        }
         ContextCommand::Examples { group, command } => {
             examples::execute(cli, group, command.as_deref());
             Ok(())
@@ -278,11 +306,15 @@ fn list_topics(cli: &Cli) {
         "workflows": workflows::list_names(),
         "output_examples": examples::list_names(),
         "best_practices": best_practices::list_names(),
+        "personas": personas::list_names(),
+        "disambiguations": disambiguations::list_names(),
         "usage": {
             "schema": "fabio context schema <TYPE>",
             "workflow": "fabio context workflow <NAME>",
             "examples": "fabio context examples <GROUP> <COMMAND>",
-            "best_practices": "fabio context best-practices <TOPIC>"
+            "best_practices": "fabio context best-practices <TOPIC>",
+            "persona": "fabio context persona <NAME>",
+            "disambiguate": "fabio context disambiguate <TERM>"
         }
     });
     output::render_object(cli, &topics, "item_schemas");

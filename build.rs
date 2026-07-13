@@ -18,9 +18,27 @@ fn main() {
         &format!("{out_dir}/workflows.rs"),
         "WORKFLOWS",
     );
+    generate_entries(
+        "src/commands/context/data/personas",
+        &format!("{out_dir}/personas.rs"),
+        "PERSONAS",
+    );
+    generate_entries(
+        "src/commands/context/data/disambiguations",
+        &format!("{out_dir}/disambiguations.rs"),
+        "DISAMBIGUATIONS",
+    );
+    generate_entries(
+        "src/commands/context/data/skills",
+        &format!("{out_dir}/skills.rs"),
+        "SKILLS",
+    );
 
     println!("cargo::rerun-if-changed=src/commands/context/data/best_practices");
     println!("cargo::rerun-if-changed=src/commands/context/data/workflows");
+    println!("cargo::rerun-if-changed=src/commands/context/data/personas");
+    println!("cargo::rerun-if-changed=src/commands/context/data/disambiguations");
+    println!("cargo::rerun-if-changed=src/commands/context/data/skills");
 }
 
 fn generate_entries(data_dir: &str, output_file: &str, const_name: &str) {
