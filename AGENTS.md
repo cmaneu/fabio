@@ -177,10 +177,47 @@ Before pushing changes to the remote, you MUST run the cross-compilation check t
 - You can target a single platform to iterate faster: `./scripts/cross-check.sh --target windows-x64`
 - This catches issues that local clippy/tests miss: Windows-only code paths (`windows-sys`, `windows` crates), macOS Darwin targets, and ARM64 variants.
 
+## Agent Knowledge Architecture (MANDATORY READING)
+
+fabio's agent-facing knowledge is organized as a layered information architecture, inspired by microsoft/skills-for-fabric's Agents→Skills→Common model but implemented the fabio way: **authored judgment lives in data files; every mechanical index is generated from the source of truth (`commands.json`), so nothing drifts from the CLI.** When adding knowledge for agents, put it in the correct layer — do NOT hand-write command lists into markdown.
+
+### The layers (highest-level routing → deepest mechanics)
+
+| Layer | Purpose | Where it lives | Served by | Generated? |
+|-------|---------|----------------|-----------|------------|
+| **L1 — Personas** (orchestrators) | Route a *role/broad task* to command groups + workflows + best-practices; decision gates, guardrails, negative routing | `src/commands/context/data/personas/*.json` | `fabio context persona <name>` | Authored (auto-registered by `build.rs`) |
+| **L1 — Disambiguations** | Resolve an *overloaded term* to the concrete artifact + command group | `src/commands/context/data/disambiguations/*.json` | `fabio context disambiguate <term>` | Authored (auto-registered) |
+| **L2 — Sub-skills** (intent-scoped) | Focused per-workload guidance (judgment + command index) for progressive disclosure | judgment: `src/commands/context/data/skills/*.json`; output: `.agents/skills/fabio-*/SKILL.md` | loaded as agent skills; `context agent --group` | **Generated** (`skillgen.rs`) from judgment + `commands.json` |
+| **L3 — Mechanics** | The primitives sub-skills/personas point at | `data/{workflows,best_practices,examples,schemas}/*.json` + clap | `context {agent,describe,workflow,best-practices,examples,schema,find}` | `commands.json` generated from clap; rest authored |
+| **Root skill** | Cross-cutting entry point: install, auth, output envelope, global flags, safety, disambiguation quick-ref, routing to L1/L2 | `.agents/skills/fabio/SKILL.md` | loaded as the primary agent skill | Hand-authored |
+
+### The "common" layer
+
+skills-for-fabric's `common/*.md` shared references map to fabio's **best-practices** (`context best-practices <topic>`: throttling, pagination, lro, admin-apis, deploy-parameters, shortcuts, variable-libraries, migration-api-shims, etc.). Sub-skills deep-link to the relevant topics via their `shared_references` field (the generator renders each topic's own `summary`, so the link text is drift-free).
+
+### Division of labor (the core rule)
+
+- **Judgment** (when-to-use, gotchas, safety, routing, must/prefer/avoid, troubleshooting) → authored in JSON data files.
+- **Mechanics** (command names, flags, types, mutability) → generated from `commands.json` (itself generated from clap).
+- A sub-skill = authored judgment JSON **+** generated command index. Never hand-write the command table.
+
+### Where to add new agent knowledge
+
+| You want to… | Do this |
+|--------------|---------|
+| Route a new *role* (e.g. "ml-engineer") | Add `data/personas/<name>.json` |
+| Resolve a new *ambiguous term* | Add `data/disambiguations/<term>.json` |
+| Add a focused *workload sub-skill* | Add `data/skills/<family>.json`, then `cargo test generate_subskills -- --ignored` |
+| Add a *multi-step recipe* | Add `data/workflows/<name>.json` |
+| Add *cross-cutting operational guidance* | Add `data/best_practices/<topic>.json` (then reference it from the relevant sub-skills' `shared_references`) |
+| Document a *response shape* | Add `data/examples/<group>_<cmd>.json` + register in `examples.rs` |
+| Add an *item definition schema* | Add `data/schemas/<type>.json` |
+
+All of `data/{personas,disambiguations,skills,workflows,best_practices}/` are auto-registered by `build.rs` (drop a file + rebuild). `examples/` and `schemas/` require an `include_str!` registration. After ANY command/subcommand/flag change, regenerate `commands.json` AND the sub-skills (their command index would otherwise drift) — see the one-liner below. All layers are searchable via `fabio context find`.
+
 ## Auto-Generated Files (MANDATORY)
 
 The following files are auto-generated from the CLI source of truth. **NEVER edit them manually** — edits will be overwritten on regeneration and drift detection tests will fail in CI.
-
 ### Regeneration Commands
 
 After adding, modifying, or removing commands/flags, run ALL of these:
