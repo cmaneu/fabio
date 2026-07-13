@@ -325,7 +325,7 @@ All new features, improvements, and bug fixes MUST have corresponding tests. Thi
 
 The fabio user-facing skill (`.agents/skills/fabio/SKILL.md`) is quality-tested via [promptfoo](https://promptfoo.dev) — an LLM eval framework that validates whether an agent given the skill instructions produces correct CLI commands.
 
-**Config:** `tests/eval/promptfooconfig.yaml` (106 test cases across 15 categories)
+**Config:** `tests/eval/promptfooconfig.yaml` (153 test cases across 16 categories)
 
 **Run locally:**
 ```bash
@@ -354,6 +354,7 @@ Add promptfoo test cases whenever you:
 | **Basic CRUD** | New command groups | `icontains` for command + required flags |
 | **PascalCase compliance** | New enum-valued flags | `contains` (case-sensitive) for exact values |
 | **Routing discrimination** | Ambiguous terms | `llm-rubric` checking skill does NOT suggest fabio |
+| **Intra-Fabric routing** | Overloaded terms / broad tasks routed to the right group, persona, or disambiguation | `llm-rubric` (outcome-focused: routes to correct command group/artifact) + `javascript` group-name checks. Test the routing *outcome*, not that the model cites the persona/disambiguate helper. |
 | **Multi-turn sequencing** | Multi-step workflows | `javascript` with `indexOf()` comparisons for ordering |
 | **Error recovery** | New error codes/hints | `llm-rubric` + `icontains` for suggested fix |
 | **Agent safety** | Destructive operations | `icontains` for flag presence + optional `llm-rubric` for warnings |

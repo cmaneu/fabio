@@ -1833,3 +1833,81 @@ tests:
         metric: three-step-feature-workspace
       - type: icontains
         value: "--branch"
+
+  # ============================================================
+  # INTRA-FABRIC ROUTING (personas, disambiguation, sub-skills)
+  # Tests that the skill routes ambiguous/broad Fabric requests to
+  # the right artifact, command group, persona, or context helper.
+  # ============================================================
+
+  - description: "Disambiguate: 'materialized view' with no workload context"
+    vars:
+      user_query: "I want to create a materialized view in Fabric. How do I do that?"
+    assert:
+      - type: llm-rubric
+        value: "The response routes 'materialized view' to a VALID Fabric interpretation — either a Lakehouse Materialized Lake View (the 'lakehouse' command group) or a KQL/Eventhouse materialized view (the 'kql-database' group). It must NOT invent a non-existent command (there is no 'fabio materialized-view' group) and must NOT claim Warehouse supports materialized views. Acknowledging the ambiguity or asking which workload is ideal but not required as long as the routing is to a correct artifact."
+        metric: disambiguate-materialized-view
+      - type: javascript
+        value: |
+          output.includes('lakehouse') || output.includes('kql-database')
+        metric: mv-routes-to-valid-group
+
+  - description: "Disambiguate: 'dataset' means semantic model"
+    vars:
+      user_query: "Refresh my Power BI dataset called Sales in the workspace"
+    assert:
+      - type: llm-rubric
+        value: "The response treats 'dataset' as a semantic model (the legacy Power BI name) and uses the semantic-model command group (e.g. 'fabio semantic-model refresh'). It does NOT invent a 'fabio dataset' command."
+        metric: disambiguate-dataset-semantic-model
+      - type: javascript
+        value: |
+          output.includes('semantic-model') || output.includes('semantic model')
+        metric: routes-to-semantic-model
+
+  - description: "Disambiguate: warehouse vs SQL database vs SQL endpoint"
+    vars:
+      user_query: "What is the difference between a Warehouse, a SQL Database, and a SQL analytics endpoint in Fabric, and which command group do I use for each?"
+    assert:
+      - type: llm-rubric
+        value: "The response correctly distinguishes the three T-SQL surfaces: SQL analytics endpoint (read-only over a Lakehouse, 'sql-endpoint' group), Warehouse (read-write analytics, 'warehouse' group), and SQL Database (OLTP, needs F4+, 'sql-database' group). It maps each to the correct fabio command group. It may reference 'fabio context disambiguate sql-endpoint'."
+        metric: disambiguate-sql-surfaces
+
+  - description: "Persona routing: broad Databricks migration request"
+    vars:
+      user_query: "Help me migrate my Databricks notebooks and jobs to Microsoft Fabric"
+    assert:
+      - type: llm-rubric
+        value: "The response routes the broad migration task appropriately: it references the migration-engineer persona ('fabio context persona migration-engineer') and/or the databricks-migration workflow ('fabio context workflow databricks-migration') and/or the migration-api-shims best-practice, OR it lays out the migration steps including translating dbutils to notebookutils and DBFS paths to OneLake. It does NOT claim fabio cannot help (migration IS in scope)."
+        metric: persona-migration-routing
+
+  - description: "Persona routing: broad medallion / data-engineering task"
+    vars:
+      user_query: "I want to build a full medallion (bronze/silver/gold) lakehouse solution end to end. Where do I start?"
+    assert:
+      - type: llm-rubric
+        value: "The response routes the broad task to the data-engineer persona ('fabio context persona data-engineer') and/or the lakehouse-etl workflow ('fabio context workflow lakehouse-etl'), or lays out a lakehouse -> notebook -> table -> schedule sequence. It demonstrates awareness that fabio has orchestrator personas and workflow recipes for multi-step tasks."
+        metric: persona-medallion-routing
+
+  - description: "Persona routing: tenant administration task"
+    vars:
+      user_query: "I'm a Fabric admin and need to manage capacities and tenant settings. What should I look at?"
+    assert:
+      - type: llm-rubric
+        value: "The response routes to the correct fabio surfaces for tenant administration — the capacity and/or admin command groups (e.g. 'fabio capacity list', 'fabio admin list-tenant-settings'), and/or the fabric-admin persona. Correct routing to these groups is sufficient to pass."
+        metric: persona-admin-routing
+      - type: javascript
+        value: |
+          output.includes('capacity') || output.includes('admin')
+        metric: admin-routes-to-tenant-groups
+
+  - description: "Disambiguate: materialized view in explicit lakehouse context routes to MLV"
+    vars:
+      user_query: "In my lakehouse, I need to refresh my materialized lake views on a schedule"
+    assert:
+      - type: llm-rubric
+        value: "The response routes to the Lakehouse Materialized Lake View (MLV) capability in the 'lakehouse' command group (e.g. refresh-materialized-views, create-execution-definition, create-materialized-views-schedule), NOT to KQL. It does not confuse this with a KQL materialized view."
+        metric: mlv-lakehouse-routing
+      - type: javascript
+        value: |
+          output.includes('lakehouse')
+        metric: mlv-uses-lakehouse-group

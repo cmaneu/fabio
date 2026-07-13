@@ -99,6 +99,23 @@ fabio context tenant --workspace $NEW_WS --deep --merge context.json --output-fi
 - **Specific command** → use `fabio context agent --group <g>` / `fabio context describe <g> <cmd>` for flags and output shape.
 - **Prefer runtime introspection over re-reading this skill** — it is always in sync with the installed binary.
 
+### Disambiguation quick reference (overloaded Fabric terms)
+
+Common terms mean different things in Fabric. Resolve them to the right command group before acting (run `fabio context disambiguate <term>` for the full table):
+
+| Term the user says | What they usually mean | Command group |
+|---|---|---|
+| "dataset" | Semantic model (legacy Power BI name — same item) | `semantic-model` (NOT `report`) |
+| "materialized view" (lakehouse) | Materialized Lake View (MLV) | `lakehouse` (refresh-materialized-views, execution-definitions) |
+| "materialized view" (KQL/Eventhouse) | KQL materialized view | `kql-database manage` (`.create materialized-view`) |
+| "materialized view" (warehouse) | Not supported in Fabric | use a view or scheduled CTAS |
+| "dataflow" | Dataflow Gen2 (Power Query ETL) | `dataflow` (if they mean orchestration, that's `data-pipeline`) |
+| "SQL endpoint" | Read-only T-SQL over a lakehouse (auto-provisioned) | `sql-endpoint` |
+| "warehouse" | Read-write T-SQL analytics warehouse | `warehouse` |
+| "SQL database" | Transactional (OLTP) DB, needs F4+ capacity | `sql-database` |
+
+When a term is genuinely ambiguous and context does not resolve it (e.g. "materialized view" with no workload named), ask the user which workload they mean before proceeding.
+
 ### Intent-scoped sub-skills (progressive disclosure)
 
 This root skill covers cross-cutting concerns (install, auth, output envelope, global flags, safety). For focused, workload-specific guidance, fabio ships generated sub-skills — each pairs authored judgment (when to use, gotchas, safety, routing) with a command index generated from fabio's own schema:
