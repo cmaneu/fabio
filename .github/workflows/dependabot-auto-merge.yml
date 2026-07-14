@@ -15,7 +15,20 @@ jobs:
 
     steps:
       - name: Enable auto-merge for Dependabot PRs
-        run: gh pr merge --auto --rebase "$PR_URL" || echo "::warning::Auto-merge could not be enabled (PR may already be merged or may modify workflow files)"
+        run: |
+          # Dependabot opens the PR and this workflow fires within seconds, often
+          # before GitHub finishes computing the PR's mergeability (state UNKNOWN).
+          # Calling `gh pr merge --auto` in that window fails, so retry a few times.
+          for attempt in 1 2 3 4 5; do
+            if gh pr merge --auto --rebase "$PR_URL"; then
+              echo "Auto-merge enabled (or PR merged) on attempt $attempt."
+              exit 0
+            fi
+            echo "Attempt $attempt to enable auto-merge failed; retrying in 10s..."
+            sleep 10
+          done
+          echo "::error::Failed to enable auto-merge after 5 attempts (PR may modify workflow files or be otherwise ineligible)."
+          exit 1
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
