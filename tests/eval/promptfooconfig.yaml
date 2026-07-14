@@ -1798,8 +1798,17 @@ tests:
         value: "deploy export"
       - type: icontains
         value: "--workspace"
-      - type: llm-rubric
-        value: "The response mentions that schedules are automatically included in the export (as schedules.metadata.json files) without needing an extra flag"
+      # Job schedules are auto-included in the export (written as
+      # schedules.metadata.json). The agent must NOT invent an extra flag to
+      # request them — verify no hallucinated schedules flag appears.
+      - type: not-icontains
+        value: "--include-schedules"
+        metric: schedules-auto-export
+      - type: not-icontains
+        value: "--schedules"
+        metric: schedules-auto-export
+      - type: not-icontains
+        value: "--with-schedules"
         metric: schedules-auto-export
 
   - description: "Deploy: trigger data orchestration after deployment"

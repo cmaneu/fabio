@@ -300,6 +300,7 @@ fabio workspace assign-capacity --id $WS --capacity $CAP    # two-step: create, 
 fabio workspace list                                         # returns {"data":[...],"count":N}
 fabio workspace clone --source $SRC_WS --dest $DST_WS       # bulk clone via export/import APIs
 fabio workspace clone --source $SRC_WS --dest $DST_WS --allow-pairing-by-name  # initial clone (no logicalId match)
+fabio workspace clone --source $SRC_WS --dest $DST_WS --item-types "Notebook,DataPipeline"  # selective: only these item types
 fabio item list --workspace $WS --type Lakehouse             # filter by type
 fabio item exists --workspace $WS --id $ID                   # returns {"data":{"exists":true}}
 fabio item bulk-create --workspace $WS --items '[{"type":"Notebook","displayName":"NB1"},{"type":"Notebook","displayName":"NB2"}]'
@@ -471,7 +472,7 @@ Variable libraries are Microsoft's strategic capability for environment-specific
 
 **Deploy (CI/CD — stateless content-hash diffing):**
 ```bash
-fabio deploy export --workspace $WS --dir ./fabric-items/ --overwrite      # export workspace→disk (includes schedules)
+fabio deploy export --workspace $WS --dir ./fabric-items/ --overwrite      # export workspace→disk (job schedules are auto-included as schedules.metadata.json — no flag needed)
 fabio deploy validate --source ./fabric-items/                              # offline pre-flight checks
 fabio deploy plan --source ./fabric-items/ --workspace "Production"         # diff source vs live (DRY-RUN)
 fabio deploy apply --source ./fabric-items/ --workspace "Production"        # apply changes
