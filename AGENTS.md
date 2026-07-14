@@ -450,7 +450,7 @@ This pattern is required for any assertion where the model might insert global f
 
 ### Maintaining Pass Rate
 
-The eval should maintain **>95% pass rate** on gpt-4o-mini. If a new test consistently fails:
+The eval should maintain a high pass rate on gpt-5-mini (the CI eval model). If a new test consistently fails:
 1. First verify the SKILL.md actually teaches the behavior being tested
 2. If the skill is correct but the model doesn't emit it (e.g., safety warnings), relax the assertion to test capability rather than style
 3. If the skill is missing the information, update SKILL.md first, then verify the test passes

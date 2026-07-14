@@ -3,15 +3,19 @@
 # Tests that an LLM given the fabio SKILL.md instructions produces correct
 # CLI commands for common Fabric tasks.
 #
-# Uses Azure OpenAI (gpt-4.1-mini deployment) for reliable eval without rate limits.
+# Uses Azure OpenAI (gpt-5-mini deployment) for reliable eval without rate limits.
 # Auth: Set AZURE_OPENAI_API_KEY env var (or configure in CI secrets).
+#
+# Note: gpt-5-mini is a reasoning model. It rejects temperature != 1 (only the
+# default is supported), so we omit temperature and instead pin reasoning_effort
+# to "minimal" for fast, low-variance, command-generation-style outputs.
 #
 # Run locally:
 #   AZURE_OPENAI_API_KEY=<key> promptfoo eval -c tests/eval/promptfooconfig.yaml
 #   promptfoo view
 #
 # Fallback: GitHub Models (slower, rate-limited):
-#   GITHUB_TOKEN=<pat> promptfoo eval -c tests/eval/promptfooconfig.yaml --env-overrides '{"providers":[{"id":"github:openai/gpt-4o-mini"}]}'
+#   GITHUB_TOKEN=<pat> promptfoo eval -c tests/eval/promptfooconfig.yaml --env-overrides '{"providers":[{"id":"github:openai/gpt-5-mini"}]}'
 
 description: "fabio skill instruction quality"
 
@@ -28,16 +32,17 @@ prompts:
 
       User request: {{user_query}}
 
-# Azure OpenAI - gpt-4o-mini (Sweden Central)
+# Azure OpenAI - gpt-5-mini (Sweden Central)
 providers:
-  - id: azureopenai:chat:gpt-4o-mini
+  - id: azureopenai:chat:gpt-5-mini
     config:
       apiHost: foundry-imejiauseche-ai-demos.openai.azure.com
-      temperature: 0
+      apiVersion: "2024-10-21"
+      reasoning_effort: minimal
 
 defaultTest:
   options:
-    provider: azureopenai:chat:gpt-4o-mini
+    provider: azureopenai:chat:gpt-5-mini
   vars:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
