@@ -42,9 +42,11 @@ All tests must pass. If you added new code, verify it has tests.
 Only needed if you added, modified, or removed commands/flags:
 
 ```bash
-cargo test --bin fabio generate_agent_schema -- --include-ignored
-cargo test --bin fabio agent_schema_covers
+cargo test generate_agent_schema -- --ignored
+cargo test agent_schema_covers
 ```
+
+Skipping this leaves `commands.json` stale: the new subcommand won't be exposed as an MCP tool and can't be referenced by `--enable-commands` / `--disable-commands` policy patterns. The `agent_schema_covers_*` drift tests fail CI if you forget.
 
 ## Step 5: Self-review
 
@@ -109,5 +111,5 @@ Iterate faster with: `./scripts/cross-check.sh --target windows-x64`
 | Format | `cargo fmt -- --check` | `cargo fmt` |
 | Lint | `cargo clippy --tests -- -D warnings` | Fix each warning |
 | Test | `cargo test` | Fix failing tests |
-| Regen | `cargo test --bin fabio generate_agent_schema -- --include-ignored` | Only if commands changed |
+| Regen | `cargo test generate_agent_schema -- --ignored` | Only if commands changed |
 | Cross | `./scripts/cross-check.sh` | Fix platform-specific code |
