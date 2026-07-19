@@ -36,7 +36,7 @@ prompts:
 providers:
   - id: azureopenai:chat:gpt-5-mini
     config:
-      apiHost: foundry-imejiauseche-ai-demos.openai.azure.com
+      apiHost: foundry-imejiauseche-ai-caglobal-demos.openai.azure.com
       apiVersion: "2024-10-21"
       reasoning_effort: minimal
 
