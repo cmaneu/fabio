@@ -983,7 +983,7 @@ pub async fn wam_login(
     };
     let tenant = tenant.unwrap_or("organizations");
     let scope = scope.unwrap_or(FABRIC_SCOPE);
-    let client_id = client_id.map_or_else(public_client_id, Cow::Borrowed);
+    let client_id = resolve_client_id(client_id.map(str::to_owned));
 
     // Step 1: Find the AAD WAM provider
     let authority = format!("https://login.microsoftonline.com/{tenant}");
