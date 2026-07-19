@@ -25,7 +25,7 @@ use crate::errors::{ErrorCode, FabioError};
 /// `scripts/create-fabio-app.sh`, which re-registers the app (e.g. after a tenant
 /// migration) and patches this value in place. At runtime it can be overridden
 /// with the `FABIO_CLIENT_ID` environment variable without recompiling.
-const DEFAULT_PUBLIC_CLIENT_ID: &str = "38715dcd-c115-46b4-8ed1-967d06c9ec6d";
+const DEFAULT_PUBLIC_CLIENT_ID: &str = "25fab2a4-526f-403f-84f8-6503de3a3d4a";
 
 /// Environment variable that overrides the compiled-in public client ID.
 const CLIENT_ID_ENV: &str = "FABIO_CLIENT_ID";

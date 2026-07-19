@@ -60,6 +60,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 command -v az >/dev/null 2>&1 || { echo "ERROR: az CLI is not installed." >&2; exit 1; }
+command -v jq >/dev/null 2>&1 || { echo "ERROR: jq is not installed." >&2; exit 1; }
 
 echo "=== Create fabio public-client app registration ==="
 echo "Display name: $APP_NAME"
@@ -96,18 +97,13 @@ echo "[4/7] Creating service principal (home tenant)..."
 az ad sp create --id "$APP_ID" -o none 2>/dev/null || echo "       (service principal already exists)"
 
 # ── 5. Delegated API permissions ────────────────────────────────────────────
+# Built as a single requiredResourceAccess manifest and applied in ONE
+# `az ad app update` call. Adding scopes individually (az ad app permission add
+# per scope) is far too slow — Fabric/Power BI publishes ~200 delegated scopes.
 echo "[5/7] Adding delegated API permissions..."
 
-# 5a. Microsoft Graph: User.Read (sign-in + read profile)
-az ad app permission add --id "$APP_ID" \
-  --api "$GRAPH_APP_ID" \
-  --api-permissions "${GRAPH_USER_READ}=Scope" \
-  -o none 2>/dev/null || true
-echo "       + Microsoft Graph: User.Read"
-
-# 5b. Fabric / Power BI Service delegated scopes.
-# Resolve the resource service principal that serves the Fabric audience. Prefer
-# an SP that advertises the fabric identifier URI; fall back to Power BI Service.
+# 5a. Resolve the resource service principal that serves the Fabric audience.
+# Prefer an SP that advertises the fabric identifier URI; fall back to Power BI.
 FABRIC_RESOURCE_APPID=$(az ad sp list --all \
   --filter "servicePrincipalNames/any(n:n eq '${FABRIC_RESOURCE_URI}')" \
   --query "[0].appId" -o tsv 2>/dev/null || true)
@@ -115,23 +111,31 @@ if [[ -z "${FABRIC_RESOURCE_APPID}" || "${FABRIC_RESOURCE_APPID}" == "None" ]]; 
   FABRIC_RESOURCE_APPID="$POWER_BI_APP_ID"
 fi
 
-# Enumerate the delegated scopes the resource publishes and request them all so
-# that a `.default` token acquisition (as fabio uses) resolves to the full set.
-mapfile -t FABRIC_SCOPES < <(az ad sp show --id "$FABRIC_RESOURCE_APPID" \
-  --query "oauth2PermissionScopes[?isEnabled].id" -o tsv 2>/dev/null || true)
+# 5b. Enumerate every enabled delegated scope the resource publishes, so that a
+# `.default` token acquisition (as fabio uses) resolves to the full set.
+FABRIC_SCOPE_IDS=$(az ad sp show --id "$FABRIC_RESOURCE_APPID" \
+  --query "oauth2PermissionScopes[?isEnabled].id" -o json 2>/dev/null || echo "[]")
+FABRIC_SCOPE_COUNT=$(echo "$FABRIC_SCOPE_IDS" | jq 'length')
 
-if [[ "${#FABRIC_SCOPES[@]}" -eq 0 ]]; then
+# 5c. Compose the manifest: Fabric/Power BI scopes + Microsoft Graph User.Read.
+RRA_FILE="$(mktemp)"
+trap 'rm -f "$RRA_FILE"' EXIT
+echo "$FABRIC_SCOPE_IDS" | jq \
+  --arg fabric "$FABRIC_RESOURCE_APPID" \
+  --arg graph "$GRAPH_APP_ID" \
+  --arg uread "$GRAPH_USER_READ" '
+  [
+    { resourceAppId: $fabric, resourceAccess: [ .[] | { id: ., type: "Scope" } ] },
+    { resourceAppId: $graph,  resourceAccess: [ { id: $uread, type: "Scope" } ] }
+  ]' > "$RRA_FILE"
+
+az ad app update --id "$APP_ID" --required-resource-accesses @"$RRA_FILE" -o none
+echo "       + Microsoft Graph: User.Read"
+if [[ "$FABRIC_SCOPE_COUNT" -eq 0 ]]; then
   echo "       ! Could not enumerate Fabric delegated scopes for ${FABRIC_RESOURCE_APPID}."
   echo "         Add 'Power BI Service' delegated permissions manually in the portal."
 else
-  for scope in "${FABRIC_SCOPES[@]}"; do
-    [[ -z "$scope" ]] && continue
-    az ad app permission add --id "$APP_ID" \
-      --api "$FABRIC_RESOURCE_APPID" \
-      --api-permissions "${scope}=Scope" \
-      -o none 2>/dev/null || true
-  done
-  echo "       + Fabric/Power BI (${FABRIC_RESOURCE_APPID}): ${#FABRIC_SCOPES[@]} delegated scopes"
+  echo "       + Fabric/Power BI (${FABRIC_RESOURCE_APPID}): ${FABRIC_SCOPE_COUNT} delegated scopes"
 fi
 
 # ── 6. Optional admin consent (this tenant only) ────────────────────────────
