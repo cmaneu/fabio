@@ -350,6 +350,24 @@ Supported credential sources (in priority order):
 - Token cache encrypted with DPAPI (`CryptProtectData`, user scope) — matches Azure CLI behavior
 - WAM broker SSO via `--wam` flag — uses Windows OS-level sign-in, no browser needed
 
+### Custom app registration (`FABIO_CLIENT_ID`)
+
+Interactive sign-in (device code, browser PKCE, WAM) uses fabio's own multitenant public-client Entra ID app ("Fabio CLI"). You can point fabio at a **different** app registration — for example to run under your own tenant's app, or to recover if the default app becomes unavailable — by setting the `FABIO_CLIENT_ID` environment variable:
+
+```bash
+export FABIO_CLIENT_ID=<your-app-client-id>
+fabio auth login
+```
+
+When unset, fabio falls back to the compiled-in default. This only affects the interactive user flows; service-principal auth already takes its client ID from `--client-id` / `AZURE_CLIENT_ID`.
+
+To create a compatible app registration (multitenant, public client, correct redirect URIs and Fabric delegated permissions), use the helper script — it can also patch the compiled-in default for a from-source build:
+
+```bash
+# Requires az CLI with permission to create app registrations
+./scripts/create-fabio-app.sh --name "Fabio CLI" --admin-consent
+```
+
 ## Shell Completions
 
 Generate tab-completion scripts for your shell. Completions cover all 77 command groups, 850+ subcommands, and their flags.

@@ -8,6 +8,7 @@
 //!
 //! Supports the Microsoft Identity Platform device code flow and token refresh.
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -19,7 +20,35 @@ use crate::errors::{ErrorCode, FabioError};
 /// Fabio CLI's own Entra ID app registration (multitenant, public client).
 /// Users see "Fabio CLI" in the consent screen and audit logs — independent from
 /// Azure CLI or Azure PowerShell identity.
-const PUBLIC_CLIENT_ID: &str = "38715dcd-c115-46b4-8ed1-967d06c9ec6d";
+///
+/// This is the compile-time default. It is generated/updated by
+/// `scripts/create-fabio-app.sh`, which re-registers the app (e.g. after a tenant
+/// migration) and patches this value in place. At runtime it can be overridden
+/// with the `FABIO_CLIENT_ID` environment variable without recompiling.
+const DEFAULT_PUBLIC_CLIENT_ID: &str = "38715dcd-c115-46b4-8ed1-967d06c9ec6d";
+
+/// Environment variable that overrides the compiled-in public client ID.
+const CLIENT_ID_ENV: &str = "FABIO_CLIENT_ID";
+
+/// Resolve the public client ID used for interactive user authentication.
+///
+/// Honors the `FABIO_CLIENT_ID` environment variable (trimmed, non-empty) so the
+/// app registration can be switched at runtime — e.g. to recover from a lost
+/// tenant — falling back to the compiled-in [`DEFAULT_PUBLIC_CLIENT_ID`].
+fn public_client_id() -> Cow<'static, str> {
+    resolve_client_id(std::env::var(CLIENT_ID_ENV).ok())
+}
+
+/// Pure resolution of the public client ID from an optional override value.
+///
+/// Kept separate from [`public_client_id`] so the override precedence can be
+/// unit-tested without mutating process environment variables.
+fn resolve_client_id(override_value: Option<String>) -> Cow<'static, str> {
+    match override_value {
+        Some(v) if !v.trim().is_empty() => Cow::Owned(v.trim().to_string()),
+        _ => Cow::Borrowed(DEFAULT_PUBLIC_CLIENT_ID),
+    }
+}
 
 /// Default tenant for multi-tenant auth.
 const DEFAULT_TENANT: &str = "common";
@@ -261,6 +290,7 @@ pub async fn get_token_for_scope(scope: &str) -> Option<TokenData> {
 pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Result<TokenData> {
     let tenant = tenant.unwrap_or(DEFAULT_TENANT);
     let scope = scope.unwrap_or(FABRIC_SCOPE);
+    let client_id = public_client_id();
 
     // Disable redirects on token endpoint client to prevent credential forwarding
     let http = crate::client::http_client_builder()
@@ -275,7 +305,7 @@ pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Res
     let resp = http
         .post(&device_code_url)
         .form(&[
-            ("client_id", PUBLIC_CLIENT_ID),
+            ("client_id", client_id.as_ref()),
             ("scope", &format!("{scope} offline_access")),
         ])
         .send()
@@ -353,7 +383,7 @@ pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Res
         let resp = http
             .post(&token_url)
             .form(&[
-                ("client_id", PUBLIC_CLIENT_ID),
+                ("client_id", client_id.as_ref()),
                 ("device_code", dc.device_code.as_str()),
                 ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
             ])
@@ -448,11 +478,12 @@ async fn refresh_access_token(refresh_token: &str, tenant: &str, scope: &str) ->
         .build()
         .expect("Failed to build HTTP client for token refresh");
     let token_url = format!("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token");
+    let client_id = public_client_id();
 
     let resp = http
         .post(&token_url)
         .form(&[
-            ("client_id", PUBLIC_CLIENT_ID),
+            ("client_id", client_id.as_ref()),
             ("grant_type", "refresh_token"),
             ("refresh_token", refresh_token),
             ("scope", &format!("{scope} offline_access")),
@@ -727,6 +758,7 @@ pub async fn browser_login(tenant: Option<&str>, scope: Option<&str>) -> Result<
 
     let tenant = tenant.unwrap_or(DEFAULT_TENANT);
     let scope = scope.unwrap_or(FABRIC_SCOPE);
+    let client_id = public_client_id();
 
     // Step 1: Generate PKCE challenge
     let mut verifier_bytes = [0u8; 32];
@@ -759,7 +791,7 @@ pub async fn browser_login(tenant: Option<&str>, scope: Option<&str>) -> Result<
          &scope={scope}+offline_access\
          &code_challenge={code_challenge}\
          &code_challenge_method=S256",
-        client_id = urlencoding::encode(PUBLIC_CLIENT_ID),
+        client_id = urlencoding::encode(client_id.as_ref()),
         redirect_uri = urlencoding::encode(&redirect_uri),
         scope = urlencoding::encode(scope),
         code_challenge = urlencoding::encode(&code_challenge),
@@ -857,7 +889,7 @@ pub async fn browser_login(tenant: Option<&str>, scope: Option<&str>) -> Result<
     let resp = http
         .post(&token_url)
         .form(&[
-            ("client_id", PUBLIC_CLIENT_ID),
+            ("client_id", client_id.as_ref()),
             ("grant_type", "authorization_code"),
             ("code", &code),
             ("redirect_uri", &redirect_uri),
@@ -951,7 +983,7 @@ pub async fn wam_login(
     };
     let tenant = tenant.unwrap_or("organizations");
     let scope = scope.unwrap_or(FABRIC_SCOPE);
-    let client_id = client_id.unwrap_or(PUBLIC_CLIENT_ID);
+    let client_id = client_id.map_or_else(public_client_id, Cow::Borrowed);
 
     // Step 1: Find the AAD WAM provider
     let authority = format!("https://login.microsoftonline.com/{tenant}");
@@ -979,7 +1011,7 @@ pub async fn wam_login(
     let request = WebTokenRequest::Create(
         &provider,
         &windows::core::HSTRING::from(scope),
-        &windows::core::HSTRING::from(client_id),
+        &windows::core::HSTRING::from(client_id.as_ref()),
     )
     .map_err(|e| {
         FabioError::new(
@@ -1327,6 +1359,28 @@ mod tests {
     fn logout_marker_path_is_under_home_fabio() {
         let path = logout_marker_path().unwrap();
         assert!(path.ends_with(".fabio/.logged_out") || path.ends_with(".fabio\\.logged_out"));
+    }
+
+    #[test]
+    fn resolve_client_id_falls_back_to_default_when_unset() {
+        assert_eq!(resolve_client_id(None).as_ref(), DEFAULT_PUBLIC_CLIENT_ID);
+    }
+
+    #[test]
+    fn resolve_client_id_falls_back_to_default_when_blank() {
+        assert_eq!(
+            resolve_client_id(Some("   ".to_string())).as_ref(),
+            DEFAULT_PUBLIC_CLIENT_ID
+        );
+    }
+
+    #[test]
+    fn resolve_client_id_uses_override_and_trims() {
+        let custom = "11111111-2222-3333-4444-555555555555";
+        assert_eq!(
+            resolve_client_id(Some(format!("  {custom}  "))).as_ref(),
+            custom
+        );
     }
 
     #[tokio::test]
