@@ -280,7 +280,7 @@ impl FabioError {
             _ => ErrorCode::ApiError,
         };
         let hint = match code {
-            ErrorCode::AuthRequired => Some("Run 'fabio auth login' to authenticate.".to_string()),
+            ErrorCode::AuthRequired => Some(auth_required_hint(&msg, body)),
             ErrorCode::Forbidden => Some(forbidden_hint(&msg, body)),
             ErrorCode::Conflict => Some(if status == 412 {
                 // 412 Precondition Failed: always use the ETag-specific hint regardless of body
@@ -443,6 +443,48 @@ pub fn enrich_admin(err: anyhow::Error, operation: &str) -> anyhow::Error {
     err
 }
 
+/// Generate a context-aware hint for 401 Unauthorized errors.
+///
+/// Fabric returns `401` in two very different situations that require different fixes:
+///
+/// 1. **The token is missing/expired/invalid** — re-authentication fixes it.
+/// 2. **The token is valid, but the caller is not permitted to perform this specific
+///    operation** — Fabric replies `401` with the message
+///    `"The caller is not authenticated to access this resource"`. This is the
+///    signature response when a *service principal* is allowed to use Fabric APIs
+///    (reads succeed) but a separate tenant setting gates the mutation. The most
+///    common case is workspace/connection/deployment-pipeline creation, which
+///    requires the **"Service principals can create workspaces, connections, and
+///    deployment pipelines"** tenant setting to be enabled with the SP in the
+///    allowed security group. Re-running `fabio auth login` will NOT fix this.
+fn auth_required_hint(message: &str, body: &str) -> String {
+    let combined = format!("{} {}", message.to_lowercase(), body.to_lowercase());
+
+    // "The caller is not authenticated to access this resource" is Fabric's response
+    // when the token is valid but the identity is not permitted for this operation.
+    // A genuinely expired/invalid token produces a token-validation error instead.
+    if combined.contains("caller is not authenticated") {
+        return "The token is valid but the caller is not permitted to perform this \
+                operation. If you authenticated with a service principal, creating \
+                workspaces, connections, or deployment pipelines requires the tenant \
+                setting 'Service principals can create workspaces, connections, and \
+                deployment pipelines' to be enabled in the Fabric Admin Portal > \
+                Tenant settings > Developer settings, with the service principal (or a \
+                security group containing it) added to the allowed list. This is a \
+                separate setting from 'Service principals can use Fabric APIs' (which \
+                only enables read access). If you are using a user account, re-running \
+                'fabio auth login' will NOT help — the account lacks permission for this \
+                action. Otherwise, if the token has expired, re-authenticate with: \
+                fabio auth login"
+            .to_string();
+    }
+
+    "Not authenticated. Your token may be missing or expired. \
+     Re-authenticate with: fabio auth login (or 'fabio auth login --service-principal' \
+     for non-interactive auth)."
+        .to_string()
+}
+
 /// Generate a context-aware hint for 403 Forbidden errors based on the error message and body.
 fn forbidden_hint(message: &str, body: &str) -> String {
     let msg_lower = message.to_lowercase();
@@ -577,6 +619,23 @@ mod tests {
         assert_eq!(err.code, ErrorCode::AuthRequired);
         assert!(err.hint.is_some());
         assert!(err.hint.unwrap().contains("fabio auth login"));
+    }
+
+    #[test]
+    fn from_status_401_caller_not_authenticated_gives_sp_tenant_setting_hint() {
+        // Fabric returns 401 (not 403) when a service principal is authenticated
+        // (reads succeed) but a tenant setting gates the mutation (e.g. workspace create).
+        let body = r#"{"requestId":"abc","errorCode":"Unauthorized","message":"The caller is not authenticated to access this resource","isRetriable":false}"#;
+        let err = FabioError::from_status_with_body(
+            401,
+            "The caller is not authenticated to access this resource",
+            body,
+        );
+        assert_eq!(err.code, ErrorCode::AuthRequired);
+        let hint = err.hint.unwrap();
+        assert!(hint.contains("service principal"));
+        assert!(hint.contains("Service principals can create workspaces"));
+        assert!(!hint.starts_with("Not authenticated."));
     }
 
     #[test]
