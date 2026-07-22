@@ -10,7 +10,29 @@
 #   - Multitenant           (sign-in audience: AzureADMultipleOrgs)
 #   - Public client         (allowPublicClient = true → enables device code flow)
 #   - Redirect URIs         (loopback for browser PKCE, native client, WAM broker)
-#   - Delegated permissions (Microsoft Graph User.Read + Fabric/Power BI scopes)
+#   - Delegated permissions (the MINIMAL set covering fabio's 6 token audiences)
+#
+# Permission model (why these scopes):
+#   fabio acquires access tokens for SIX resources, each via `<resource>/.default`.
+#   For an interactive PUBLIC client, `.default` (and the non-interactive
+#   refresh-token exchange fabio uses for the non-Fabric audiences) only issues a
+#   token if the app has a CONSENTED delegated permission on that resource. So the
+#   app must carry one delegated permission per audience:
+#
+#     1. Power BI Service  (api.fabric.microsoft.com) — Fabric REST + Power BI REST.
+#        Fabric authorizes calls by the user's workspace/tenant role, NOT by the
+#        granular scope claim, so a small COARSE set covers the whole CLI surface
+#        (rather than all ~200 published scopes).
+#     2. Azure Storage     (storage.azure.com)        — OneLake DFS/Blob  → user_impersonation
+#     3. Azure SQL DB      (database.windows.net)     — TDS (warehouse/sql) → user_impersonation
+#     4. Azure Resource Mgmt (management.azure.com)   — capacity ARM ops   → user_impersonation
+#     5. Azure Data Explorer (*.kusto.fabric...)      — KQL query/mgmt     → user_impersonation
+#     6. Microsoft Graph   (graph.microsoft.com)      — sign-in + label list
+#
+#   Scope GUIDs are resolved at RUNTIME by name from each resource service
+#   principal (portable across tenants/clouds); missing resource SPs are
+#   auto-provisioned, and any allow-listed name the resource doesn't publish is
+#   reported so drift surfaces immediately.
 #
 # By default the script also patches src/token_cache.rs so the new app ID becomes
 # the compiled-in default. You can instead (or additionally) point an existing
@@ -39,11 +61,37 @@ PRINT_ONLY=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_FILE="${SCRIPT_DIR}/../src/token_cache.rs"
 
-# Well-known first-party resource identifiers.
+# Well-known first-party resource identifiers (stable across tenants/clouds).
+# Delegated scope GUIDs are resolved by NAME at runtime, so only appIds are fixed.
 GRAPH_APP_ID="00000003-0000-0000-c000-000000000000"        # Microsoft Graph
-GRAPH_USER_READ="e1fe6dd8-ba31-4d61-89e7-88639da4683d"     # Graph User.Read (delegated)
 POWER_BI_APP_ID="00000009-0000-0000-c000-000000000000"     # Power BI Service (serves api.fabric.microsoft.com)
+STORAGE_APP_ID="e406a681-f3d4-42a8-90b6-c2b029497af1"      # Azure Storage (OneLake)
+SQL_APP_ID="022907d3-0f1b-48f7-badc-1ba6abab6d66"          # Azure SQL Database (TDS)
+ARM_APP_ID="797f4846-ba00-4fd7-ba43-dac1f8f63013"          # Azure Resource Manager
+KUSTO_APP_ID="2746ea77-4702-4b45-80ca-3c97e680e8b7"        # Azure Data Explorer (Kusto / KQL)
 FABRIC_RESOURCE_URI="https://api.fabric.microsoft.com"
+
+# Curated COARSE Power BI/Fabric delegated scopes that cover the full fabio CLI
+# surface. Resolved to GUIDs at runtime by matching these values. Intentionally
+# minimal vs. the ~200 scopes the resource publishes.
+FABRIC_SCOPE_VALUES=(
+  # ── Fabric item/workspace/tenant plane ──
+  "Workspace.ReadWrite.All"       # workspaces + generic item management
+  "Item.ReadWrite.All"            # most Fabric item types (CRUD + definitions)
+  "Item.Execute.All"              # run notebooks / jobs / pipelines
+  "Item.Reshare.All"              # sharing / role assignment
+  "Capacity.ReadWrite.All"        # capacity assignment
+  "Connection.ReadWrite.All"      # connections
+  "Gateway.ReadWrite.All"         # gateways / managed private endpoints
+  "OneLake.ReadWrite.All"         # OneLake data plane via the Fabric audience
+  "Tenant.ReadWrite.All"          # admin plane: admin list, tenant settings, domains
+  # ── Power BI data plane (BI commands + Power BI REST passthrough) ──
+  "Dataset.ReadWrite.All"         # semantic models
+  "Report.ReadWrite.All"          # reports
+  "PaginatedReport.ReadWrite.All" # paginated reports
+  "Dashboard.ReadWrite.All"       # dashboards
+  "Dataflow.ReadWrite.All"        # dataflows Gen2 / datamarts
+)
 
 # ── Parse args ──────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -98,12 +146,40 @@ az ad sp create --id "$APP_ID" -o none 2>/dev/null || echo "       (service prin
 
 # ── 5. Delegated API permissions ────────────────────────────────────────────
 # Built as a single requiredResourceAccess manifest and applied in ONE
-# `az ad app update` call. Adding scopes individually (az ad app permission add
-# per scope) is far too slow — Fabric/Power BI publishes ~200 delegated scopes.
+# `az ad app update` call. Scope GUIDs are resolved by NAME from each resource
+# service principal so the script is portable across tenants and clouds.
 echo "[5/7] Adding delegated API permissions..."
 
-# 5a. Resolve the resource service principal that serves the Fabric audience.
-# Prefer an SP that advertises the fabric identifier URI; fall back to Power BI.
+# Ensure a first-party resource SP exists in this tenant, then emit a JSON array
+# [ {id,type:"Scope"}, ... ] for the requested delegated scope VALUES (resolved
+# to GUIDs by name). Warns (on stderr) for any requested value the resource does
+# not publish. Avoids bash-4 `mapfile` and empty-array pitfalls for portability.
+resource_access_json() {
+  local appid="$1"; shift
+
+  # Provision the resource SP if absent (needed to read its published scopes).
+  az ad sp show --id "$appid" -o none 2>/dev/null \
+    || az ad sp create --id "$appid" -o none 2>/dev/null \
+    || true
+
+  local scopes_json
+  scopes_json=$(az ad sp show --id "$appid" \
+    --query "oauth2PermissionScopes[?isEnabled].{value:value,id:id}" -o json 2>/dev/null || echo "[]")
+
+  local out="[]" v id
+  for v in "$@"; do
+    id=$(echo "$scopes_json" | jq -r --arg v "$v" 'first(.[] | select(.value==$v) | .id) // empty')
+    if [[ -z "$id" ]]; then
+      echo "       ! WARNING: '$v' not published by resource $appid (skipped)" >&2
+    else
+      out=$(echo "$out" | jq --arg id "$id" '. + [ { id: $id, type: "Scope" } ]')
+    fi
+  done
+  echo "$out"
+}
+
+# 5a. Resolve the resource SP that serves the Fabric audience (fall back to the
+# well-known Power BI Service appId if the identifier URI can't be resolved).
 FABRIC_RESOURCE_APPID=$(az ad sp list --all \
   --filter "servicePrincipalNames/any(n:n eq '${FABRIC_RESOURCE_URI}')" \
   --query "[0].appId" -o tsv 2>/dev/null || true)
@@ -111,31 +187,54 @@ if [[ -z "${FABRIC_RESOURCE_APPID}" || "${FABRIC_RESOURCE_APPID}" == "None" ]]; 
   FABRIC_RESOURCE_APPID="$POWER_BI_APP_ID"
 fi
 
-# 5b. Enumerate every enabled delegated scope the resource publishes, so that a
-# `.default` token acquisition (as fabio uses) resolves to the full set.
-FABRIC_SCOPE_IDS=$(az ad sp show --id "$FABRIC_RESOURCE_APPID" \
-  --query "oauth2PermissionScopes[?isEnabled].id" -o json 2>/dev/null || echo "[]")
-FABRIC_SCOPE_COUNT=$(echo "$FABRIC_SCOPE_IDS" | jq 'length')
+# 5b. Resolve the curated per-resource delegated scopes to requiredResourceAccess.
+FABRIC_ACCESS=$(resource_access_json "$FABRIC_RESOURCE_APPID" "${FABRIC_SCOPE_VALUES[@]}")
+STORAGE_ACCESS=$(resource_access_json "$STORAGE_APP_ID" "user_impersonation")
+SQL_ACCESS=$(resource_access_json "$SQL_APP_ID" "user_impersonation")
+ARM_ACCESS=$(resource_access_json "$ARM_APP_ID" "user_impersonation")
+KUSTO_ACCESS=$(resource_access_json "$KUSTO_APP_ID" "user_impersonation")
+GRAPH_ACCESS=$(resource_access_json "$GRAPH_APP_ID" "User.Read" "InformationProtectionPolicy.Read")
 
-# 5c. Compose the manifest: Fabric/Power BI scopes + Microsoft Graph User.Read.
+FABRIC_SCOPE_COUNT=$(echo "$FABRIC_ACCESS" | jq 'length')
+
+# 5c. Compose the full requiredResourceAccess manifest (6 resources) and apply it
+# in ONE `az ad app update` call. Resources that resolved no scopes are dropped.
 RRA_FILE="$(mktemp)"
 trap 'rm -f "$RRA_FILE"' EXIT
-echo "$FABRIC_SCOPE_IDS" | jq \
-  --arg fabric "$FABRIC_RESOURCE_APPID" \
-  --arg graph "$GRAPH_APP_ID" \
-  --arg uread "$GRAPH_USER_READ" '
+jq -n \
+  --arg fabric  "$FABRIC_RESOURCE_APPID" \
+  --arg storage "$STORAGE_APP_ID" \
+  --arg sql     "$SQL_APP_ID" \
+  --arg arm     "$ARM_APP_ID" \
+  --arg kusto   "$KUSTO_APP_ID" \
+  --arg graph   "$GRAPH_APP_ID" \
+  --argjson fabricAccess  "$FABRIC_ACCESS" \
+  --argjson storageAccess "$STORAGE_ACCESS" \
+  --argjson sqlAccess     "$SQL_ACCESS" \
+  --argjson armAccess     "$ARM_ACCESS" \
+  --argjson kustoAccess   "$KUSTO_ACCESS" \
+  --argjson graphAccess   "$GRAPH_ACCESS" '
   [
-    { resourceAppId: $fabric, resourceAccess: [ .[] | { id: ., type: "Scope" } ] },
-    { resourceAppId: $graph,  resourceAccess: [ { id: $uread, type: "Scope" } ] }
-  ]' > "$RRA_FILE"
+    { resourceAppId: $fabric,  resourceAccess: $fabricAccess  },
+    { resourceAppId: $storage, resourceAccess: $storageAccess },
+    { resourceAppId: $sql,     resourceAccess: $sqlAccess     },
+    { resourceAppId: $arm,     resourceAccess: $armAccess     },
+    { resourceAppId: $kusto,   resourceAccess: $kustoAccess   },
+    { resourceAppId: $graph,   resourceAccess: $graphAccess   }
+  ]
+  | map(select((.resourceAccess | length) > 0))' > "$RRA_FILE"
 
 az ad app update --id "$APP_ID" --required-resource-accesses @"$RRA_FILE" -o none
-echo "       + Microsoft Graph: User.Read"
+
+echo "       + Fabric/Power BI (${FABRIC_RESOURCE_APPID}): ${FABRIC_SCOPE_COUNT} delegated scopes"
+echo "       + Azure Storage:        user_impersonation (OneLake)"
+echo "       + Azure SQL Database:   user_impersonation (TDS)"
+echo "       + Azure Resource Mgmt:  user_impersonation (capacity ARM ops)"
+echo "       + Azure Data Explorer:  user_impersonation (KQL / Kusto)"
+echo "       + Microsoft Graph:      User.Read, InformationProtectionPolicy.Read"
 if [[ "$FABRIC_SCOPE_COUNT" -eq 0 ]]; then
-  echo "       ! Could not enumerate Fabric delegated scopes for ${FABRIC_RESOURCE_APPID}."
+  echo "       ! Could not resolve Fabric delegated scopes for ${FABRIC_RESOURCE_APPID}."
   echo "         Add 'Power BI Service' delegated permissions manually in the portal."
-else
-  echo "       + Fabric/Power BI (${FABRIC_RESOURCE_APPID}): ${FABRIC_SCOPE_COUNT} delegated scopes"
 fi
 
 # ── 6. Optional admin consent (this tenant only) ────────────────────────────
