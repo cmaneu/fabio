@@ -2768,6 +2768,31 @@ fn git_relation_create_dry_run() {
 }
 
 #[test]
+fn git_relation_create_branch_maps_to_pascalcase() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "git",
+            "relation",
+            "create",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--related-workspace",
+            "00000000-0000-0000-0000-000000000002",
+            "--relation-type",
+            "branch",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "git relation create");
+    // Lowercase CLI value must be mapped to the API's PascalCase enum.
+    assert_eq!(data["details"]["relationType"], "Branch");
+}
+
+#[test]
 fn git_relation_create_rejects_invalid_relation_type() {
     let assert = fabio()
         .args([

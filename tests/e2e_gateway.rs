@@ -152,6 +152,106 @@ fn gateway_dry_run_create_with_member_count_range() {
     let data = json.get("data").expect("should have data");
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["would_execute"], "gateway create");
+    // The range pair must land in the request body (and NOT the legacy fixed field).
+    assert_eq!(data["details"]["maxMemberGatewayCount"], 5);
+    assert_eq!(data["details"]["minMemberGatewayCount"], 1);
+    assert!(
+        data["details"].get("numberOfMemberGateways").is_none(),
+        "range mode must not emit numberOfMemberGateways"
+    );
+}
+
+#[test]
+fn gateway_dry_run_create_with_fixed_member_count() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "create",
+            "--name",
+            "test-gw-fixed",
+            "--capacity-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--subscription-id",
+            "00000000-0000-0000-0000-000000000099",
+            "--resource-group",
+            "rg",
+            "--vnet-name",
+            "vnet",
+            "--subnet",
+            "default",
+            "--member-count",
+            "3",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("should have data");
+    assert_eq!(data["would_execute"], "gateway create");
+    // Fixed value must land in the legacy field (and NOT the range pair).
+    assert_eq!(data["details"]["numberOfMemberGateways"], 3);
+    assert!(data["details"].get("maxMemberGatewayCount").is_none());
+    assert!(data["details"].get("minMemberGatewayCount").is_none());
+}
+
+#[test]
+fn gateway_dry_run_create_defaults_to_single_member() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "create",
+            "--name",
+            "test-gw-default",
+            "--capacity-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--subscription-id",
+            "00000000-0000-0000-0000-000000000099",
+            "--resource-group",
+            "rg",
+            "--vnet-name",
+            "vnet",
+            "--subnet",
+            "default",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("should have data");
+    assert_eq!(data["would_execute"], "gateway create");
+    // With no member-count flags, create defaults to a fixed count of 1.
+    assert_eq!(data["details"]["numberOfMemberGateways"], 1);
+}
+
+#[test]
+fn gateway_create_min_requires_max() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "create",
+            "--name",
+            "test-gw-min-only",
+            "--capacity-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--subscription-id",
+            "00000000-0000-0000-0000-000000000099",
+            "--resource-group",
+            "rg",
+            "--vnet-name",
+            "vnet",
+            "--subnet",
+            "default",
+            "--min-member-gateway-count",
+            "1",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("max-member-gateway-count") || stderr.contains("required"));
 }
 
 #[test]
