@@ -561,6 +561,7 @@ Automated: `./scripts/release.sh <version>` handles all steps end-to-end.
 - **SQL Endpoint insights**: `sql-endpoint queries-running|queries-frequent|queries-long-running|queries-history` — read-only query monitoring (no kill, endpoints are read-only). Same `queryinsights.*` views as warehouse.
 - **Lakehouse plan and insights**: `lakehouse plan|queries-running|queries-frequent|queries-long-running|queries-history` — direct discoverability for lakehouse users (previously only accessible via `fabio warehouse <cmd> --id <lakehouse_id>` workaround). Resolves connection from lakehouse `sqlEndpointProperties.connectionString`.
 - **KQL Database query monitoring**: `kql-database queries-running|journal|queries-completed` — uses `.show running queries`, `.show journal`, `.show queries` management commands via Kusto REST mgmt endpoint (`/v1/rest/mgmt`). Reuses existing `kql_utils::execute_kql` infrastructure which auto-routes `.show` commands to mgmt endpoint.
+- **Documentation website**: `docs/` is an Astro + Starlight site organized with the Diátaxis framework. Its browser-searchable command reference is generated at build time from `src/commands/context/data/agent/commands.json`, and `.github/workflows/docs.yml` publishes it to GitHub Pages.
 
 
 ## Relevant Files

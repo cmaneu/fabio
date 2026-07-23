@@ -10,6 +10,10 @@ export function inlineCode(value) {
   return `\`${String(value).replaceAll("`", "\\`")}\``;
 }
 
+export function escapeHtml(value) {
+  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
 export function renderGroup(groupName, group) {
   const lines = [
     "---",
@@ -17,16 +21,14 @@ export function renderGroup(groupName, group) {
     `description: ${JSON.stringify(group.description ?? `Commands for ${groupName}.`)}`,
     "---",
     "",
-    `# ${inlineCode(`fabio ${groupName}`)}`,
-    "",
-    group.description ?? `Commands for ${groupName}.`,
+    escapeHtml(group.description ?? `Commands for ${groupName}.`),
     "",
     `**Authentication scope:** ${inlineCode(group.auth_scope ?? "fabric")}`,
     "",
   ];
 
   for (const [commandName, command] of Object.entries(group.subcommands ?? {})) {
-    lines.push(`## ${inlineCode(commandName)}`, "", command.description ?? "No description available.", "");
+    lines.push(`## ${inlineCode(commandName)}`, "", escapeHtml(command.description ?? "No description available."), "");
 
     const flags = Object.entries(command.flags ?? {});
     const requiredFlags = flags.filter(([, flag]) => flag.required).map(([name]) => `${name} <value>`);
@@ -37,7 +39,7 @@ export function renderGroup(groupName, group) {
       lines.push("| Flag | Type | Required | Description |", "| --- | --- | :---: | --- |");
       for (const [flagName, flag] of flags) {
         lines.push(
-          `| ${inlineCode(flagName)} | ${inlineCode(flag.type ?? "string")} | ${flag.required ? "Yes" : "No"} | ${String(flag.description ?? "").replaceAll("|", "\\|")} |`,
+          `| ${inlineCode(flagName)} | ${inlineCode(flag.type ?? "string")} | ${flag.required ? "Yes" : "No"} | ${escapeHtml(flag.description ?? "").replaceAll("|", "\\|")} |`,
         );
       }
       lines.push("");

@@ -2,8 +2,8 @@
 import QuickStartTabs from "../components/QuickStartTabs.astro";
 import "../styles/landing.css";
 
-const base = import.meta.env.BASE_URL;
-const link = (path: string) => `${base}${path}`.replace(/\/{2,}/g, "/");
+const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const link = (path: string) => `${base}${path.replace(/^\/+/, "")}`;
 ---
 
 <!doctype html>
@@ -18,7 +18,7 @@ const link = (path: string) => `${base}${path}`.replace(/\/{2,}/g, "/");
   </head>
   <body>
     <header class="site-header">
-      <a class="brand" href={base} aria-label="Fabio home">
+      <a class="brand" href={link("")} aria-label="Fabio home">
         <span class="brand-mark">F</span><span>fabio</span>
       </a>
       <nav aria-label="Primary navigation">
@@ -52,16 +52,16 @@ const link = (path: string) => `${base}${path}`.replace(/\/{2,}/g, "/");
           <div class="window-bar"><i></i><i></i><i></i><span>fabio — workspace list</span></div>
           <pre><code><span class="prompt">$</span> fabio workspace list --limit 2
 
-<span class="punct">{</span>
+<span class="punct">&#123;</span>
   <span class="key">"data"</span><span class="punct">:</span> <span class="punct">[</span>
-    <span class="punct">{</span>
+    <span class="punct">&#123;</span>
       <span class="key">"id"</span><span class="punct">:</span> <span class="string">"8f3c…a21e"</span><span class="punct">,</span>
       <span class="key">"displayName"</span><span class="punct">:</span> <span class="string">"Analytics"</span><span class="punct">,</span>
       <span class="key">"type"</span><span class="punct">:</span> <span class="string">"Workspace"</span>
-    <span class="punct">}</span>
+    <span class="punct">&#125;</span>
   <span class="punct">],</span>
   <span class="key">"count"</span><span class="punct">:</span> <span class="number">1</span>
-<span class="punct">}</span></code></pre>
+<span class="punct">&#125;</span></code></pre>
         </div>
       </section>
 
@@ -75,7 +75,7 @@ const link = (path: string) => `${base}${path}`.replace(/\/{2,}/g, "/");
         </div>
         <div class="feature-grid">
           <article>
-            <span class="feature-icon">{ }</span>
+            <span class="feature-icon">&#123; &#125;</span>
             <h3>Structured by default</h3>
             <p>Stable JSON envelopes on stdout. Diagnostics and actionable errors stay on stderr.</p>
           </article>

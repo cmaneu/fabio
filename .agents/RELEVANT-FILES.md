@@ -206,7 +206,10 @@
 - `tests/e2e_upgrade.rs`: Upgrade tests (dry-run, check, version targeting, JSON output)
 - `.github/workflows/ci.yml`: Rust CI (fmt, clippy, test, build) on 6 targets (x64+arm64 x linux/macos/windows)
 - `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
+- `.github/workflows/docs.yml`: Builds, validates, and publishes the Astro documentation site to GitHub Pages
 - `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
 - `.github/dependabot.yml`: Cargo + GitHub Actions dependency updates
+- `docs/`: Astro + Starlight marketing and documentation website
+- `docs/scripts/generate-reference.mjs`: Generates command reference pages from the committed agent command schema
 - `cliff.toml`: git-cliff configuration (commit parsers, grouping, template)
 - `.github/RELEASE_TEMPLATE.md`: Release notes narrative structure template

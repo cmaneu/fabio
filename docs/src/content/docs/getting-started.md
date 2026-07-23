@@ -52,7 +52,7 @@ Follow the URL shown in the structured response and enter the device code. To us
 fabio auth login --browser
 ```
 
-For CI, use a service principal or workload identity rather than an interactive login. See [Authentication](/guides/authentication/).
+For CI, use a service principal or workload identity rather than an interactive login. See [Authentication](../guides/authentication/).
 
 ## 3. Inspect your tenant
 
@@ -94,10 +94,10 @@ Install Fabio's root skill and its focused workload skills:
 npx skills add https://github.com/iemejia/fabio
 ```
 
-The skill teaches compatible agents how to discover commands, preserve structured output, and handle destructive operations safely. Continue with [Use Fabio with coding agents](/guides/agents/).
+The skill teaches compatible agents how to discover commands, preserve structured output, and handle destructive operations safely. Continue with [Use Fabio with coding agents](../guides/agents/).
 
 ## Next steps
 
-- Create and load data in a [lakehouse](/reference/commands/lakehouse/).
-- Learn the [output and piping model](/guides/output-and-piping/).
-- Search the complete [CLI reference](/reference/).
+- Create and load data in a [lakehouse](../reference/commands/lakehouse/).
+- Learn the [output and piping model](../guides/output-and-piping/).
+- Search the complete [CLI reference](../reference/).

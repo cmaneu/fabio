@@ -29,4 +29,4 @@ fabio context agent --group <group>
 fabio context describe <group>
 ```
 
-Continue with [global flags](/reference/global-flags/) or select a command group in the sidebar.
+Continue with [global flags](./global-flags/) or select a command group in the sidebar.

@@ -32,13 +32,15 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: docs/package-lock.json
-      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
       - name: Install dependencies
         working-directory: docs
         run: npm ci
       - name: Test reference generator
         working-directory: docs
         run: npm test
+      - name: Type-check website
+        working-directory: docs
+        run: npm run check
       - name: Build website
         working-directory: docs
         run: npm run build

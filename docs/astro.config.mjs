@@ -14,9 +14,13 @@ export default defineConfig({
       description: "Agent-native command line interface for Microsoft Fabric.",
       favicon: "/favicon.svg",
       customCss: ["./src/styles/docs.css"],
-      social: {
-        github: "https://github.com/iemejia/fabio",
-      },
+      social: [
+        {
+          icon: "github",
+          label: "GitHub",
+          href: "https://github.com/iemejia/fabio",
+        },
+      ],
       editLink: {
         baseUrl: "https://github.com/iemejia/fabio/edit/main/docs/",
       },
@@ -27,11 +31,11 @@ export default defineConfig({
         },
         {
           label: "How-to guides",
-          autogenerate: { directory: "guides" },
+          items: [{ autogenerate: { directory: "guides" } }],
         },
         {
           label: "Explanation",
-          autogenerate: { directory: "explanation" },
+          items: [{ autogenerate: { directory: "explanation" } }],
         },
         {
           label: "Reference",
@@ -40,7 +44,7 @@ export default defineConfig({
             { label: "Global flags", slug: "reference/global-flags" },
             {
               label: "Commands",
-              autogenerate: { directory: "reference/commands" },
+              items: [{ autogenerate: { directory: "reference/commands" } }],
               collapsed: true,
             },
           ],
