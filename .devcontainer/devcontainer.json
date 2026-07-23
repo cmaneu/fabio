@@ -6,7 +6,8 @@
   },
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers/features/azure-cli:1": {}
+    "ghcr.io/devcontainers/features/azure-cli:1": {},
+    "ghcr.io/devcontainers/features/node:2": {}
   },
   "customizations": {
     "vscode": {
@@ -18,7 +19,12 @@
       ],
       "settings": {
         "rust-analyzer.check.command": "clippy",
-        "rust-analyzer.check.extraArgs": ["--tests", "--", "-D", "warnings"],
+        "rust-analyzer.check.extraArgs": [
+          "--tests",
+          "--",
+          "-D",
+          "warnings"
+        ],
         "editor.formatOnSave": true
       }
     }
