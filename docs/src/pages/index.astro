@@ -1,0 +1,115 @@
+---
+import QuickStartTabs from "../components/QuickStartTabs.astro";
+import "../styles/landing.css";
+
+const base = import.meta.env.BASE_URL;
+const link = (path: string) => `${base}${path}`.replace(/\/{2,}/g, "/");
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content="Fabio is the agent-native CLI for Microsoft Fabric." />
+    <meta name="theme-color" content="#07111f" />
+    <link rel="icon" type="image/svg+xml" href={link("favicon.svg")} />
+    <title>Fabio — Microsoft Fabric, built for agents</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href={base} aria-label="Fabio home">
+        <span class="brand-mark">F</span><span>fabio</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href={link("getting-started/")}>Getting started</a>
+        <a href={link("guides/agents/")}>For agents</a>
+        <a href={link("reference/")}>Reference</a>
+        <a class="github-link" href="https://github.com/iemejia/fabio">GitHub ↗</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-glow" aria-hidden="true"></div>
+        <div class="hero-content">
+          <span class="eyebrow"><span class="status-dot"></span> Agent-native by design</span>
+          <h1>Microsoft Fabric.<br /><span>Commanded clearly.</span></h1>
+          <p class="hero-lede">
+            A fast, non-interactive CLI that gives humans and coding agents the full Microsoft Fabric surface—with predictable JSON, safe mutations, and errors that teach.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href={link("getting-started/")}>Get started <span>→</span></a>
+            <a class="button secondary" href={link("reference/")}>Explore 850+ commands</a>
+          </div>
+          <div class="hero-proof" aria-label="Fabio highlights">
+            <span><strong>77</strong> command groups</span>
+            <span><strong>JSON</strong> by default</span>
+            <span><strong>1</strong> native binary</span>
+          </div>
+        </div>
+        <div class="hero-visual" aria-label="Example Fabio output">
+          <div class="window-bar"><i></i><i></i><i></i><span>fabio — workspace list</span></div>
+          <pre><code><span class="prompt">$</span> fabio workspace list --limit 2
+
+<span class="punct">{</span>
+  <span class="key">"data"</span><span class="punct">:</span> <span class="punct">[</span>
+    <span class="punct">{</span>
+      <span class="key">"id"</span><span class="punct">:</span> <span class="string">"8f3c…a21e"</span><span class="punct">,</span>
+      <span class="key">"displayName"</span><span class="punct">:</span> <span class="string">"Analytics"</span><span class="punct">,</span>
+      <span class="key">"type"</span><span class="punct">:</span> <span class="string">"Workspace"</span>
+    <span class="punct">}</span>
+  <span class="punct">],</span>
+  <span class="key">"count"</span><span class="punct">:</span> <span class="number">1</span>
+<span class="punct">}</span></code></pre>
+        </div>
+      </section>
+
+      <QuickStartTabs />
+
+      <section class="principles" aria-labelledby="principles-title">
+        <div class="section-heading">
+          <span class="eyebrow">Designed for reliable automation</span>
+          <h2 id="principles-title">A CLI that speaks agent.</h2>
+          <p>Every interaction is explicit, bounded, and machine-readable.</p>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <span class="feature-icon">{ }</span>
+            <h3>Structured by default</h3>
+            <p>Stable JSON envelopes on stdout. Diagnostics and actionable errors stay on stderr.</p>
+          </article>
+          <article>
+            <span class="feature-icon">✓</span>
+            <h3>Safe to automate</h3>
+            <p>Dry runs, destructive-operation signals, and explicit mutation boundaries prevent accidental retries.</p>
+          </article>
+          <article>
+            <span class="feature-icon">⌁</span>
+            <h3>Deeply discoverable</h3>
+            <p>Machine-readable schemas, personas, workflows, and focused skills give agents just enough context.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="docs-paths" aria-labelledby="docs-title">
+        <div class="section-heading">
+          <span class="eyebrow">Documentation</span>
+          <h2 id="docs-title">Choose your path.</h2>
+        </div>
+        <div class="path-grid">
+          <a href={link("getting-started/")}><small>Tutorial</small><h3>Start from zero</h3><p>Install Fabio, sign in, and create your first workspace.</p><span>Get started →</span></a>
+          <a href={link("guides/agents/")}><small>How-to</small><h3>Connect your agent</h3><p>Install the Fabio skill and give coding agents reliable Fabric context.</p><span>Configure an agent →</span></a>
+          <a href={link("explanation/agent-native/")}><small>Explanation</small><h3>Understand the design</h3><p>Learn why structured output and explicit safety matter for automation.</p><span>Read the principles →</span></a>
+          <a href={link("reference/")}><small>Reference</small><h3>Find any command</h3><p>Search every command group, subcommand, flag, and example.</p><span>Open reference →</span></a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="brand"><span class="brand-mark">F</span><span>fabio</span></div>
+      <p>Open source. Built for Microsoft Fabric. Designed for agents.</p>
+      <a href="https://github.com/iemejia/fabio">View on GitHub ↗</a>
+    </footer>
+  </body>
+</html>

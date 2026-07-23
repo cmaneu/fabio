@@ -1,0 +1,114 @@
+---
+const installs = [
+  {
+    id: "linux",
+    label: "Linux / macOS",
+    language: "bash",
+    command: "curl -fsSL https://raw.githubusercontent.com/iemejia/fabio/main/install.sh | bash",
+  },
+  {
+    id: "windows",
+    label: "Windows",
+    language: "powershell",
+    command: "irm https://raw.githubusercontent.com/iemejia/fabio/main/install.ps1 | iex",
+  },
+  {
+    id: "docker",
+    label: "Docker",
+    language: "bash",
+    command: "docker pull ghcr.io/iemejia/fabio:latest",
+  },
+  {
+    id: "agent",
+    label: "Agent skill",
+    language: "bash",
+    command: "npx skills add https://github.com/iemejia/fabio",
+  },
+];
+---
+
+<section class="quickstart" aria-labelledby="quickstart-title">
+  <div class="quickstart-copy">
+    <span class="eyebrow">From zero to Fabric</span>
+    <h2 id="quickstart-title">Install. Authenticate. Build.</h2>
+    <p>One native binary, no runtime, and structured JSON from the first command.</p>
+  </div>
+  <div class="terminal-card" data-tabs>
+    <div class="tablist" role="tablist" aria-label="Installation methods">
+      {installs.map((install, index) => (
+        <button
+          role="tab"
+          type="button"
+          id={`tab-${install.id}`}
+          aria-controls={`panel-${install.id}`}
+          aria-selected={index === 0 ? "true" : "false"}
+          tabindex={index === 0 ? "0" : "-1"}
+          data-tab={install.id}
+        >
+          {install.label}
+        </button>
+      ))}
+    </div>
+    {installs.map((install, index) => (
+      <div
+        class="install-panel"
+        id={`panel-${install.id}`}
+        role="tabpanel"
+        aria-labelledby={`tab-${install.id}`}
+        hidden={index !== 0}
+        data-panel={install.id}
+      >
+        <span class="prompt" aria-hidden="true">$</span>
+        <code data-language={install.language}>{install.command}</code>
+        <button class="copy" type="button" data-copy={install.command} aria-label={`Copy ${install.label} install command`}>
+          Copy
+        </button>
+      </div>
+    ))}
+    <div class="terminal-steps" aria-label="Basic Fabio commands">
+      <div>
+        <span class="step-number">01</span>
+        <div><small>Authenticate</small><code>fabio auth login</code></div>
+      </div>
+      <div>
+        <span class="step-number">02</span>
+        <div><small>Create a workspace</small><code>fabio workspace create --name "analytics"</code></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const tabGroups = document.querySelectorAll<HTMLElement>("[data-tabs]");
+  for (const group of tabGroups) {
+    const tabs = [...group.querySelectorAll<HTMLButtonElement>("[role='tab']")];
+    const activate = (tab: HTMLButtonElement) => {
+      for (const candidate of tabs) {
+        const selected = candidate === tab;
+        candidate.setAttribute("aria-selected", String(selected));
+        candidate.tabIndex = selected ? 0 : -1;
+        const panel = group.querySelector<HTMLElement>(`[data-panel="${candidate.dataset.tab}"]`);
+        if (panel) panel.hidden = !selected;
+      }
+    };
+    for (const [index, tab] of tabs.entries()) {
+      tab.addEventListener("click", () => activate(tab));
+      tab.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+        event.preventDefault();
+        const delta = event.key === "ArrowRight" ? 1 : -1;
+        const next = tabs[(index + delta + tabs.length) % tabs.length];
+        activate(next);
+        next.focus();
+      });
+    }
+  }
+
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
+    button.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(button.dataset.copy ?? "");
+      button.textContent = "Copied";
+      window.setTimeout(() => { button.textContent = "Copy"; }, 1500);
+    });
+  }
+</script>

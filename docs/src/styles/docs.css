@@ -1,0 +1,31 @@
+:root {
+  --sl-color-accent-low: #082c4c;
+  --sl-color-accent: #47cffa;
+  --sl-color-accent-high: #d7f4ff;
+  --sl-color-bg: #07111f;
+  --sl-color-bg-nav: rgba(7, 17, 31, 0.88);
+  --sl-color-bg-sidebar: #0a1728;
+  --sl-font: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #d7efff;
+  --sl-color-accent: #0f6cbd;
+  --sl-color-accent-high: #07355c;
+  --sl-color-bg: #f8fafc;
+  --sl-color-bg-nav: rgba(248, 250, 252, 0.9);
+  --sl-color-bg-sidebar: #f1f5f9;
+}
+
+header.header {
+  border-bottom: 1px solid color-mix(in srgb, var(--sl-color-gray-5) 50%, transparent);
+  backdrop-filter: blur(20px) saturate(140%);
+}
+
+.content-panel {
+  border-radius: 12px;
+}
+
+code {
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+}

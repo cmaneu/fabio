@@ -1,5 +1,8 @@
 # Build artifacts
 /target/
+/docs/dist/
+/docs/.astro/
+/docs/node_modules/
 *.d
 *.o
 *.so

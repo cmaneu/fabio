@@ -2,6 +2,8 @@
 
 Agent-native CLI for managing Microsoft Fabric artifacts and data.
 
+**[Documentation](https://iemejia.github.io/fabio/)** · [Getting started](https://iemejia.github.io/fabio/getting-started/) · [CLI reference](https://iemejia.github.io/fabio/reference/)
+
 Composable by design: commands just work together with JSON output by default, errors that explain how to fix things and what to try next, and results that pipe straight into the next command. Follows the [10 principles for agent-native CLIs](https://trevinsays.com/p/10-principles-for-agent-native-clis).
 
 Everything fabio does is achievable via the public Fabric REST APIs — `fabio` encodes the operational knowledge so coding agents can skip the trial and error, saving time, tokens, and money.
