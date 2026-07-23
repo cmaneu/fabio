@@ -1,7 +1,7 @@
 :root {
-  --sl-color-accent-low: #082c4c;
-  --sl-color-accent: #47cffa;
-  --sl-color-accent-high: #d7f4ff;
+  --sl-color-accent-low: #042f2e;
+  --sl-color-accent: #2dd4bf;
+  --sl-color-accent-high: #ccfbf1;
   --sl-color-bg: #07111f;
   --sl-color-bg-nav: rgba(7, 17, 31, 0.88);
   --sl-color-bg-sidebar: #0a1728;
@@ -9,12 +9,12 @@
 }
 
 :root[data-theme="light"] {
-  --sl-color-accent-low: #d7efff;
-  --sl-color-accent: #0f6cbd;
-  --sl-color-accent-high: #07355c;
+  --sl-color-accent-low: #ccfbf1;
+  --sl-color-accent: #0d9488;
+  --sl-color-accent-high: #134e4a;
   --sl-color-bg: #f8fafc;
   --sl-color-bg-nav: rgba(248, 250, 252, 0.9);
-  --sl-color-bg-sidebar: #f1f5f9;
+  --sl-color-bg-sidebar: #f0fdfa;
 }
 
 header.header {

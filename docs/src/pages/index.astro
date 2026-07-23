@@ -12,14 +12,14 @@ const link = (path: string) => `${base}${path.replace(/^\/+/, "")}`;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
     <meta name="description" content="Fabio is the agent-native CLI for Microsoft Fabric." />
-    <meta name="theme-color" content="#07111f" />
+    <meta name="theme-color" content="#0d9488" />
     <link rel="icon" type="image/svg+xml" href={link("favicon.svg")} />
     <title>Fabio — Microsoft Fabric, built for agents</title>
   </head>
   <body>
     <header class="site-header">
       <a class="brand" href={link("")} aria-label="Fabio home">
-        <span class="brand-mark">F</span><span>fabio</span>
+        <span class="brand-mark"><img src={link("fabio-square.png")} width="30" height="30" alt="" /></span><span>fabio</span>
       </a>
       <nav aria-label="Primary navigation">
         <a href={link("getting-started/")}>Getting started</a>
@@ -107,7 +107,7 @@ const link = (path: string) => `${base}${path.replace(/^\/+/, "")}`;
     </main>
 
     <footer>
-      <div class="brand"><span class="brand-mark">F</span><span>fabio</span></div>
+      <div class="brand"><span class="brand-mark"><img src={link("fabio-square.png")} width="30" height="30" alt="" /></span><span>fabio</span></div>
       <p>Open source. Built for Microsoft Fabric. Designed for agents.</p>
       <a href="https://github.com/iemejia/fabio">View on GitHub ↗</a>
     </footer>

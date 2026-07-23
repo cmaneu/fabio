@@ -13,6 +13,10 @@ export default defineConfig({
       title: "Fabio",
       description: "Agent-native command line interface for Microsoft Fabric.",
       favicon: "/favicon.svg",
+      logo: {
+        src: "./src/assets/fabio-square.png",
+        alt: "Fabio",
+      },
       customCss: ["./src/styles/docs.css"],
       social: [
         {
@@ -54,7 +58,7 @@ export default defineConfig({
       head: [
         {
           tag: "meta",
-          attrs: { name: "theme-color", content: "#0f6cbd" },
+          attrs: { name: "theme-color", content: "#0d9488" },
         },
       ],
     }),
