@@ -46,6 +46,7 @@ const link = (path: string) => `${base}${path.replace(/^\/+/, "")}`;
             <span><strong>77</strong> command groups</span>
             <span><strong>JSON</strong> by default</span>
             <span><strong>1</strong> native binary</span>
+            <span><strong>Daily</strong> API sync</span>
           </div>
         </div>
         <div class="hero-visual" aria-label="Example Fabio output">
@@ -92,6 +93,31 @@ const link = (path: string) => `${base}${path.replace(/^\/+/, "")}`;
         </div>
       </section>
 
+      <section class="freshness" aria-labelledby="freshness-title">
+        <div class="freshness-inner">
+          <div class="freshness-copy">
+            <span class="eyebrow"><span class="status-dot"></span> No manual releases needed</span>
+            <h2 id="freshness-title">Always current. By default.</h2>
+            <p>Most Fabric tools drift as the platform evolves. Fabio tracks the official Fabric REST API spec daily and uses GitHub Copilot to implement new endpoints automatically—verified by CI before any code ships.</p>
+            <a class="button primary" href={link("explanation/always-current/")}>See how it works →</a>
+          </div>
+          <div class="freshness-stats">
+            <div class="freshness-stat">
+              <strong>Daily</strong>
+              <span>Fabric API spec sync</span>
+            </div>
+            <div class="freshness-stat">
+              <strong>Weekly</strong>
+              <span>Automated dependency updates</span>
+            </div>
+            <div class="freshness-stat">
+              <strong>Per&nbsp;PR</strong>
+              <span>CVE &amp; vulnerability review</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="docs-paths" aria-labelledby="docs-title">
         <div class="section-heading">
           <span class="eyebrow">Documentation</span>
@@ -101,6 +127,7 @@ const link = (path: string) => `${base}${path.replace(/^\/+/, "")}`;
           <a href={link("getting-started/")}><small>Tutorial</small><h3>Start from zero</h3><p>Install Fabio, sign in, and create your first workspace.</p><span>Get started →</span></a>
           <a href={link("guides/agents/")}><small>How-to</small><h3>Connect your agent</h3><p>Install the Fabio skill and give coding agents reliable Fabric context.</p><span>Configure an agent →</span></a>
           <a href={link("explanation/agent-native/")}><small>Explanation</small><h3>Understand the design</h3><p>Learn why structured output and explicit safety matter for automation.</p><span>Read the principles →</span></a>
+          <a href={link("explanation/always-current/")}><small>Explanation</small><h3>Always current</h3><p>How daily API sync and automated dependency updates keep fabio ahead of other Fabric tools.</p><span>See how it works →</span></a>
           <a href={link("reference/")}><small>Reference</small><h3>Find any command</h3><p>Search every command group, subcommand, flag, and example.</p><span>Open reference →</span></a>
         </div>
       </section>
