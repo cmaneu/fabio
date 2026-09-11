@@ -2,7 +2,7 @@
 
 Agent-native CLI for managing Microsoft Fabric artifacts and data.
 
-**[Documentation](https://ismaelmejia.com/fabio/)** · [Getting started](https://ismaelmejia.com/fabio/getting-started/) · [CLI reference](https://ismaelmejia.com/fabio/reference/)
+**[Documentation](https://ismaelmejia.com/fabio/)** · [Getting started](https://ismaelmejia.com/fabio/getting-started/) · [CI/CD tutorial](https://ismaelmejia.com/fabio/cicd-tutorial/) · [CLI reference](https://ismaelmejia.com/fabio/reference/)
 
 Composable by design: commands just work together with JSON output by default, errors that explain how to fix things and what to try next, and results that pipe straight into the next command. Follows the [10 principles for agent-native CLIs](https://trevinsays.com/p/10-principles-for-agent-native-clis).
 

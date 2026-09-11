@@ -13,17 +13,27 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  FABIO_VERSION: "0.73.0"
+  FABIO_LINUX_X64_SHA256: "59d5307328ad9127ac53c47b7b4afb8cc594fa13afa6e16010513c9390fe59e2"
+
 jobs:
   validate:
     if: github.event_name == 'push' || github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install validation tools
         run: |
           python -m pip install --disable-pip-version-check -r requirements-dev.txt
-          curl -fsSL https://raw.githubusercontent.com/iemejia/fabio/main/install.sh | bash
+          mkdir -p "$RUNNER_TEMP/fabio-bin"
+          curl -fsSL \
+            "https://github.com/iemejia/fabio/releases/download/v${FABIO_VERSION}/fabio-linux-x64.tar.gz" \
+            -o "$RUNNER_TEMP/fabio.tar.gz"
+          echo "${FABIO_LINUX_X64_SHA256}  $RUNNER_TEMP/fabio.tar.gz" | sha256sum --check -
+          tar -xzf "$RUNNER_TEMP/fabio.tar.gz" -C "$RUNNER_TEMP/fabio-bin"
+          echo "$RUNNER_TEMP/fabio-bin" >> "$GITHUB_PATH"
 
       - name: Lint and test the notebook source
         run: |
@@ -49,10 +59,17 @@ jobs:
       id-token: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Fabio
-        run: curl -fsSL https://raw.githubusercontent.com/iemejia/fabio/main/install.sh | bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/fabio-bin"
+          curl -fsSL \
+            "https://github.com/iemejia/fabio/releases/download/v${FABIO_VERSION}/fabio-linux-x64.tar.gz" \
+            -o "$RUNNER_TEMP/fabio.tar.gz"
+          echo "${FABIO_LINUX_X64_SHA256}  $RUNNER_TEMP/fabio.tar.gz" | sha256sum --check -
+          tar -xzf "$RUNNER_TEMP/fabio.tar.gz" -C "$RUNNER_TEMP/fabio-bin"
+          echo "$RUNNER_TEMP/fabio-bin" >> "$GITHUB_PATH"
 
       - name: Sign in with GitHub OIDC
         env:
@@ -123,7 +140,7 @@ jobs:
             --verify
 
       - name: Comment with the preview workspace
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           WS_ID: ${{ steps.workspace.outputs.id }}
         with:
@@ -166,7 +183,14 @@ jobs:
       pull-requests: write
     steps:
       - name: Install Fabio
-        run: curl -fsSL https://raw.githubusercontent.com/iemejia/fabio/main/install.sh | bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/fabio-bin"
+          curl -fsSL \
+            "https://github.com/iemejia/fabio/releases/download/v${FABIO_VERSION}/fabio-linux-x64.tar.gz" \
+            -o "$RUNNER_TEMP/fabio.tar.gz"
+          echo "${FABIO_LINUX_X64_SHA256}  $RUNNER_TEMP/fabio.tar.gz" | sha256sum --check -
+          tar -xzf "$RUNNER_TEMP/fabio.tar.gz" -C "$RUNNER_TEMP/fabio-bin"
+          echo "$RUNNER_TEMP/fabio-bin" >> "$GITHUB_PATH"
 
       - name: Sign in with GitHub OIDC
         env:
@@ -196,7 +220,7 @@ jobs:
           fi
 
       - name: Mark the preview as deleted
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const marker = '<!-- fabio-preview-workspace -->';
@@ -224,10 +248,17 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Fabio
-        run: curl -fsSL https://raw.githubusercontent.com/iemejia/fabio/main/install.sh | bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/fabio-bin"
+          curl -fsSL \
+            "https://github.com/iemejia/fabio/releases/download/v${FABIO_VERSION}/fabio-linux-x64.tar.gz" \
+            -o "$RUNNER_TEMP/fabio.tar.gz"
+          echo "${FABIO_LINUX_X64_SHA256}  $RUNNER_TEMP/fabio.tar.gz" | sha256sum --check -
+          tar -xzf "$RUNNER_TEMP/fabio.tar.gz" -C "$RUNNER_TEMP/fabio-bin"
+          echo "$RUNNER_TEMP/fabio-bin" >> "$GITHUB_PATH"
 
       - name: Sign in with GitHub OIDC
         env:

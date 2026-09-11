@@ -48,7 +48,7 @@ You need:
 - A production capacity and permission to administer the production workspace.
 - A GitHub repository with Actions enabled.
 - An Entra application configured for
-  [GitHub workload identity federation](guides/authentication/#workload-identity-federation-github-actions-oidc).
+  [GitHub workload identity federation](../guides/authentication/#workload-identity-federation-github-actions-oidc).
 - Fabio, Python 3.11 or later, Git, and the GitHub CLI installed locally.
 
 For a same-repository pull request, the workflow can use OIDC and comment on the
@@ -140,8 +140,11 @@ fabio deploy apply --source ./fabric-items \
   --parameters ./parameters.json --env dev --verify
 ```
 
-Review `data.summary` before each apply. The final response's
-`data.verification.converged` should be `true`.
+Review `data.summary` before each apply. The final response includes
+`data.verification.converged`; `--verify` reports discrepancies but does not
+change the command's exit code. If Fabric normalizes a hand-authored definition
+on its first import, export that item once and commit the canonical definition
+before using it as your production baseline.
 
 ## 3. Configure passwordless GitHub authentication
 
@@ -188,6 +191,8 @@ For an open PR or a push to `main`, `validate`:
 4. Runs offline Fabric and PBIR validation.
 
 This job has only `contents: read` permission and does not authenticate to Fabric.
+The workflow pins GitHub Actions to commit SHAs and verifies the checksum of the
+versioned Fabio release before running it.
 
 ### Create and deploy a PR preview
 
@@ -261,7 +266,7 @@ production workspaces remain.
 - Add production environment reviewers and restrict deployments to `main`.
 - Replace the sample rows with your own ingestion logic and add notebook tests.
 - Add environment-specific values to `parameters.json` or a Fabric Variable Library.
-- Read the [GitHub Actions deployment guide](guides/github-actions-cicd/) for
+- Read the [GitHub Actions deployment guide](../guides/github-actions-cicd/) for
   branch-per-environment promotion, rollback, and hardening options.
-- Read the [`deploy` command reference](reference/commands/deploy/) for filters,
+- Read the [`deploy` command reference](../reference/commands/deploy/) for filters,
   saved plans, and deployment strategies.
