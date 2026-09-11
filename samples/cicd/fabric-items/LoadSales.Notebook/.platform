@@ -1,0 +1,12 @@
+{
+  "metadata": {
+    "type": "Notebook",
+    "displayName": "LoadSales",
+    "description": "Creates a small sales Delta table for the CI/CD tutorial"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "22222222-2222-4222-8222-222222222222",
+    "definitionFormat": "ipynb"
+  }
+}

@@ -5,6 +5,10 @@ description: A branch-per-environment CI/CD pipeline that deploys Fabric items w
 
 This guide shows a complete dev → test → prod CI/CD pipeline that deploys Microsoft Fabric items with Fabio. Git is the source of truth; each environment is a branch, and a merge triggers a deploy to the matching workspace.
 
+For a hands-on project that creates an isolated workspace for every pull request,
+runs Python notebook checks, and comments the preview URL on the PR, follow
+[Build a Fabric CI/CD pipeline](../../cicd-tutorial/).
+
 For the strategy behind this model (why API-driven deploy, branch layout, parameterization) see `fabio context best-practices cicd-lifecycle`. For authentication details see [Authenticate Fabio](../authentication/).
 
 ## The model

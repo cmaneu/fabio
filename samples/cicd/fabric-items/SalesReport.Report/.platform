@@ -1,0 +1,11 @@
+{
+  "metadata": {
+    "type": "Report",
+    "displayName": "SalesReport",
+    "description": "Power BI report deployed by the Fabio CI/CD tutorial"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "44444444-4444-4444-8444-444444444444"
+  }
+}

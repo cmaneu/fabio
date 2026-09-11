@@ -1,0 +1,27 @@
+table sales
+
+	column order_id
+		dataType: int64
+		sourceColumn: order_id
+
+	column order_date
+		dataType: dateTime
+		sourceColumn: order_date
+
+	column product
+		dataType: string
+		sourceColumn: product
+
+	column units
+		dataType: int64
+		sourceColumn: units
+
+	column amount
+		dataType: double
+		sourceColumn: amount
+
+	partition sales = entity
+		mode: directLake
+		source
+			entityName: sales
+			expressionSource: DatabaseQuery

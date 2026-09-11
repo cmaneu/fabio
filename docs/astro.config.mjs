@@ -48,7 +48,10 @@ export default defineConfig({
       sidebar: [
         {
           label: "Tutorials",
-          items: [{ label: "Getting started", slug: "getting-started" }],
+          items: [
+            { label: "Getting started", slug: "getting-started" },
+            { label: "Build a CI/CD pipeline", slug: "cicd-tutorial" },
+          ],
         },
         {
           label: "How-to guides",

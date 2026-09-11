@@ -273,9 +273,11 @@
 - `.github/dependabot.yml`: Cargo + GitHub Actions dependency updates
 - `docs/`: Astro + Starlight marketing and documentation website
 - `docs/README.md`: Contributor quickstart for the docs site (scripts, structure, generated vs authored, adding pages/blog posts, deployment)
+- `docs/src/content/docs/cicd-tutorial.md`: Hands-on GitHub Actions tutorial for PR preview workspaces and production deployment
 - `docs/src/content/docs/blog/`: Blog posts (Markdown) served by the `starlight-blog` plugin at `/blog/` + `blog/rss.xml`; the docs collection schema is extended with `blogSchema` in `docs/src/content.config.ts`
 - `docs/scripts/generate-reference.mjs`: Generates command reference pages from the committed agent command schema
 - `docs/scripts/check-links.mjs`: Dependency-free validator that checks internal doc links resolve to real pages (authored + generated command groups) and public assets
+- `samples/cicd/`: Deployable four-item Fabric project with notebook checks and a GitHub Actions PR-preview/production workflow
 - `cliff.toml`: git-cliff configuration (commit parsers, grouping, template)
 - `.github/RELEASE_TEMPLATE.md`: Release notes narrative structure template
 - `src/commands/context/blueprints.rs`: Runtime module serving architecture-shape blueprints (`fabio context blueprint <name>`); auto-registered from `data/blueprints/*.json` by `build.rs`

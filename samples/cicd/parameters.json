@@ -1,0 +1,13 @@
+{
+  "find_replace": [
+    {
+      "find_value": "FABIO_TARGET_WORKSPACE_ID",
+      "replace_value": {
+        "_ALL_": "$workspace.id"
+      },
+      "item_type": "SemanticModel",
+      "item_name": "SalesModel",
+      "file_path": "definition/expressions.tmdl"
+    }
+  ]
+}

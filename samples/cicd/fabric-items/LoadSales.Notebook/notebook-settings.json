@@ -1,0 +1,6 @@
+{
+  "defaultLakehouse": {
+    "knownName": "SalesLakehouse",
+    "referenceType": "LogicalIdReference"
+  }
+}

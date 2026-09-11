@@ -1,0 +1,11 @@
+{
+  "metadata": {
+    "type": "SemanticModel",
+    "displayName": "SalesModel",
+    "description": "Direct Lake model deployed by the Fabio CI/CD tutorial"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "33333333-3333-4333-8333-333333333333"
+  }
+}

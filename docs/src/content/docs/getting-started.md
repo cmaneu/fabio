@@ -98,6 +98,7 @@ The skill teaches compatible agents how to discover commands, preserve structure
 
 ## Next steps
 
+- Build a [CI/CD pipeline with pull request workspaces](../cicd-tutorial/).
 - Create and load data in a [lakehouse](../reference/commands/lakehouse/).
 - Learn the [output and piping model](../guides/output-and-piping/).
 - Search the complete [CLI reference](../reference/).
