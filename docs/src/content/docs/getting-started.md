@@ -22,6 +22,15 @@ irm https://raw.githubusercontent.com/iemejia/fabio/main/install.ps1 | iex
 ```
 
 The installer places Fabio in `%LOCALAPPDATA%\fabio` and updates your user `PATH`.
+It installs the latest release by default. To install a specific release, set `FABIO_VERSION` first (the `v` prefix is optional):
+
+```powershell
+$env:FABIO_VERSION = "0.78.0"
+irm https://raw.githubusercontent.com/iemejia/fabio/main/install.ps1 | iex
+Remove-Item Env:FABIO_VERSION
+```
+
+For a downloaded copy of the script, use `.\install.ps1 -Version 0.78.0`.
 
 ### Docker
 

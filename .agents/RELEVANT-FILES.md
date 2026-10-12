@@ -6,6 +6,9 @@
 - `.agents/skills/fabio/SKILL.md`: Agent skill bootstrapping document (330 lines, loaded by agent frameworks on activation)
 - `.agents/skills/fabio/references/API-BEHAVIORS.md`: Critical API gotchas that cause silent failures
 - `.agents/skills/fabio/scripts/install.sh`: Cross-platform binary installer for the skill
+- `install.ps1`: Windows release installer; supports latest or a version selected with `-Version`/`FABIO_VERSION`
+- `tests/install.ps1.tests.ps1`: Unit tests for Windows installer release-version resolution
+- `.github/workflows/ci.yml`: Cross-platform Rust CI matrix and Windows installer tests
 - `tests/eval/promptfooconfig.yaml`: 245-case promptfoo eval testing skill instruction quality (run with `GITHUB_TOKEN=$(gh auth token) promptfoo eval -c tests/eval/promptfooconfig.yaml`)
 - `src/main.rs`: Entry point, `#![recursion_limit = "256"]`, tokio async main, error handling dispatch
 - `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 74 subcommand groups

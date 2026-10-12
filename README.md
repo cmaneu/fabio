@@ -130,6 +130,16 @@ curl -fsSL https://raw.githubusercontent.com/iemejia/fabio/main/install.sh | bas
 irm https://raw.githubusercontent.com/iemejia/fabio/main/install.ps1 | iex
 ```
 
+To install a specific release instead of the latest, set `FABIO_VERSION` first (with or without the `v` prefix):
+
+```powershell
+$env:FABIO_VERSION = "0.78.0"
+irm https://raw.githubusercontent.com/iemejia/fabio/main/install.ps1 | iex
+Remove-Item Env:FABIO_VERSION
+```
+
+If the script is downloaded locally, you can alternatively run `.\install.ps1 -Version 0.78.0`.
+
 Or download pre-built binaries from the [releases page](https://github.com/iemejia/fabio/releases) (Linux, macOS, Windows — x64 and arm64).
 
 **Via agent skill** (for AI agents using [GitHub Copilot CLI](https://docs.github.com/en/copilot/github-copilot-in-the-cli) or compatible platforms):
